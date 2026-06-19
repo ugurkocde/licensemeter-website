@@ -92,7 +92,9 @@ export class UmapiClient implements AdobeClient {
     const productProfileNames = await this.getProductProfileNames(token);
     const users: AdobeUser[] = [];
     for (let page = 0; page < 100; page++) {
-      const res = await fetch(`${UMAPI_BASE}/users/${this.cfg.orgId}/${page}`, {
+      const params = new URLSearchParams({ directOnly: "false" });
+      const url = `${UMAPI_BASE}/users/${this.cfg.orgId}/${page}?${params.toString()}`;
+      const res = await fetch(url, {
         headers: this.requestHeaders(token),
         signal: AbortSignal.timeout(30_000),
       });

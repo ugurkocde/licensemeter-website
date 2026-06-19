@@ -12,7 +12,7 @@ type AnthropicCostBucket = {
   /** Bucket start, ISO timestamp (UTC). */
   starting_at?: string;
   results?: {
-    /** USD dollars, not cents. */
+    /** Decimal string in the currency's lowest unit, e.g. USD cents. */
     amount?: string | number;
     description?: string | null;
     currency?: string;
@@ -36,34 +36,34 @@ export const mapAnthropicUsers = (users: AnthropicApiUser[]): SaasSeat[] =>
 
 /**
  * The cost report buckets by day and groups by description, with amounts as
- * decimal USD values. Several token types share a description, so dollar
- * floats accumulate per (day, category) and are rounded once at the end,
- * because rounding each result separately drifts.
+ * decimal strings already in the currency's lowest unit. Several token types
+ * share a description, so cent floats accumulate per (day, category) and are
+ * rounded once at the end, because rounding each result separately drifts.
  */
 export const mapAnthropicCostBuckets = (
   buckets: AnthropicCostBucket[],
 ): AiSpendRow[] => {
-  const dollarsByDay = new Map<string, Map<string, number>>();
+  const centsByDay = new Map<string, Map<string, number>>();
   for (const bucket of buckets) {
     if (!bucket.starting_at) continue;
     const day = bucket.starting_at.slice(0, 10);
-    const byCategory = dollarsByDay.get(day) ?? new Map<string, number>();
-    dollarsByDay.set(day, byCategory);
+    const byCategory = centsByDay.get(day) ?? new Map<string, number>();
+    centsByDay.set(day, byCategory);
     for (const result of bucket.results ?? []) {
       const currency = result.currency?.toUpperCase();
       // Do not mix currencies into USD cent rows; the cost API is expected to
       // return USD, so anything else is intentionally ignored.
       if (currency !== "USD") continue;
-      const dollars = Number(result.amount);
-      if (!Number.isFinite(dollars)) continue;
+      const cents = Number(result.amount);
+      if (!Number.isFinite(cents)) continue;
       const category = (result.description ?? "other").slice(0, 120);
-      byCategory.set(category, (byCategory.get(category) ?? 0) + dollars);
+      byCategory.set(category, (byCategory.get(category) ?? 0) + cents);
     }
   }
   const rows: AiSpendRow[] = [];
-  for (const [day, byCategory] of dollarsByDay) {
-    for (const [category, dollars] of byCategory) {
-      rows.push({ day, category, amountCents: Math.round(dollars * 100) });
+  for (const [day, byCategory] of centsByDay) {
+    for (const [category, cents] of byCategory) {
+      rows.push({ day, category, amountCents: Math.round(cents) });
     }
   }
   return rows;

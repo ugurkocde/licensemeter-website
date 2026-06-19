@@ -130,13 +130,27 @@ describe("mapAnthropicUsers", () => {
 });
 
 describe("mapAnthropicCostBuckets", () => {
-  it("accumulates USD decimal amounts per description and rounds once", () => {
+  it("stores Anthropic lowest-unit USD amounts as cents without dollar conversion", () => {
     const rows = mapAnthropicCostBuckets([
       {
         starting_at: "2026-06-01T00:00:00Z",
         results: [
-          { amount: "1.23", description: "Claude Sonnet usage", currency: "USD" },
-          { amount: "0.77", description: "Claude Sonnet usage", currency: "USD" },
+          { amount: "123.45", description: "Claude Sonnet usage", currency: "USD" },
+        ],
+      },
+    ]);
+    expect(rows).toEqual([
+      { day: "2026-06-01", category: "Claude Sonnet usage", amountCents: 123 },
+    ]);
+  });
+
+  it("accumulates decimal cent amounts per description and rounds once", () => {
+    const rows = mapAnthropicCostBuckets([
+      {
+        starting_at: "2026-06-01T00:00:00Z",
+        results: [
+          { amount: "123.45", description: "Claude Sonnet usage", currency: "USD" },
+          { amount: "76.55", description: "Claude Sonnet usage", currency: "USD" },
         ],
       },
     ]);
@@ -153,7 +167,7 @@ describe("mapAnthropicCostBuckets", () => {
       },
     ]);
     expect(rows).toEqual([
-      { day: "2026-06-01", category: "other", amountCents: 1000 },
+      { day: "2026-06-01", category: "other", amountCents: 10 },
     ]);
   });
 
@@ -169,7 +183,7 @@ describe("mapAnthropicCostBuckets", () => {
       },
     ]);
     expect(rows).toEqual([
-      { day: "2026-06-01", category: "USD", amountCents: 100 },
+      { day: "2026-06-01", category: "USD", amountCents: 1 },
     ]);
   });
 
@@ -238,7 +252,7 @@ describe("AnthropicAdminClient", () => {
     }).getSpend("2026-06-01");
 
     expect(rows).toEqual([
-      { day: "2026-06-01", category: "Claude", amountCents: 200 },
+      { day: "2026-06-01", category: "Claude", amountCents: 2 },
     ]);
     expect(calls).toHaveLength(2);
     const first = new URL(calls[0]!);

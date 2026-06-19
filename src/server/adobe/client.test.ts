@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("UmapiClient", () => {
-  it("keeps only product-profile groups as Adobe products", async () => {
+  it("keeps direct and indirect product-profile groups as Adobe products", async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = fetchUrl(input);
       if (url === "https://ims-na1.adobelogin.com/ims/token/v3") {
@@ -46,20 +46,32 @@ describe("UmapiClient", () => {
       }
       if (
         url ===
-        "https://usermanagement.adobe.io/v2/usermanagement/users/org-123/0"
+        "https://usermanagement.adobe.io/v2/usermanagement/users/org-123/0?directOnly=false"
       ) {
         return Response.json({
           lastPage: true,
           users: [
             {
-              email: "designer@example.com",
+              email: "direct@example.com",
               status: "active",
               groups: [
                 "Design Team",
                 "Creative Cloud All Apps",
                 "_product_admin_Creative Cloud All Apps",
+              ],
+            },
+            {
+              email: "indirect@example.com",
+              status: "active",
+              groups: [
+                "Design Team",
                 "Acrobat Pro",
               ],
+            },
+            {
+              email: "admin-only@example.com",
+              status: "active",
+              groups: ["Design Team", "_product_admin_Creative Cloud All Apps"],
             },
           ],
         });
@@ -76,9 +88,19 @@ describe("UmapiClient", () => {
 
     expect(users).toEqual([
       {
-        email: "designer@example.com",
+        email: "direct@example.com",
         status: "active",
-        products: ["Creative Cloud All Apps", "Acrobat Pro"],
+        products: ["Creative Cloud All Apps"],
+      },
+      {
+        email: "indirect@example.com",
+        status: "active",
+        products: ["Acrobat Pro"],
+      },
+      {
+        email: "admin-only@example.com",
+        status: "active",
+        products: [],
       },
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(4);
