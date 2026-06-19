@@ -125,6 +125,7 @@ body {
 }
 
 .status-dot {
+  display: inline-block;
   width: 0.625rem;
   height: 0.625rem;
   border-radius: 999px;
