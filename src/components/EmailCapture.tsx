@@ -5,12 +5,22 @@ import { useRef, useState, useTransition } from "react";
 import { buttonClass } from "~/components/ui";
 import { captureEmail } from "~/server/actions";
 
-export const EmailCapture = () => {
+export const EmailCapture = ({
+  statusTone = "light",
+}: {
+  statusTone?: "light" | "dark";
+}) => {
   const [state, setState] = useState<"idle" | "done" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
+  const doneClass =
+    statusTone === "dark" ? "text-sm text-moss-soft" : "text-sm text-moss";
+  const errorClass =
+    statusTone === "dark"
+      ? "w-full text-xs text-rust-bright"
+      : "w-full text-xs text-rust-text";
 
   return (
     <form
@@ -57,7 +67,7 @@ export const EmailCapture = () => {
         aria-invalid={state === "error" || undefined}
         autoComplete="email"
         spellCheck={false}
-        className={`min-h-11 min-w-56 flex-1 border border-line bg-card px-3 py-2.5 text-sm focus:border-ink ${
+        className={`border-line bg-card text-ink placeholder:text-ink-faint focus:border-ink min-h-11 min-w-56 flex-1 border px-3 py-2.5 text-sm ${
           state === "done" ? "hidden" : ""
         }`}
       />
@@ -75,9 +85,9 @@ export const EmailCapture = () => {
         aria-live="polite"
         className={
           state === "done"
-            ? "text-sm text-moss"
+            ? doneClass
             : state === "error"
-              ? "w-full text-xs text-rust-text"
+              ? errorClass
               : "sr-only"
         }
       >

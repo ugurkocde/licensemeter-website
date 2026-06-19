@@ -585,7 +585,7 @@ export default async function LandingPage() {
             note follows when billing starts. Unsubscribe any time.
           </p>
           <div className="mt-5">
-            <EmailCapture />
+            <EmailCapture statusTone="dark" />
           </div>
         </div>
       </section>
