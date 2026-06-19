@@ -115,7 +115,7 @@ const TRUST_ITEMS = [
   "Built by Microsoft MVP Ugur Koc",
   "Exact Graph permissions shown before consent",
   "Read-only access, no mailbox or file content",
-  "EU data residency",
+  "EU storage details documented",
   "Disconnect deletes everything",
 ] as const;
 
