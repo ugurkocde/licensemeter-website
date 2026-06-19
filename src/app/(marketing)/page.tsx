@@ -583,7 +583,10 @@ export default async function LandingPage() {
           </Link>
         </div>
 
-        <div className="border-line bg-ink text-paper border px-6 py-6">
+        <div
+          id="request-scan"
+          className="border-line bg-ink text-paper scroll-mt-8 border px-6 py-6"
+        >
           <h2 className="font-display text-2xl tracking-tight">
             Need the one-pager first?
           </h2>

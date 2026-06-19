@@ -35,7 +35,7 @@ export const SignInButtons = ({
         </a>
       ) : (
         <a
-          href="mailto:support@licensemeter.com?subject=LicenseMeter%20scan%20access"
+          href="#request-scan"
           className={buttonClass("primary", "w-full sm:w-auto")}
         >
           <MicrosoftMark />
@@ -54,7 +54,7 @@ export const SignInButtons = ({
           href="#sample-tenant"
           className={buttonClass("secondary", "w-full sm:w-auto")}
         >
-          Open sample tenant
+          View sample tenant
         </a>
       )}
     </div>
