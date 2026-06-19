@@ -7,7 +7,7 @@ import { CONNECTOR_SCOPES } from "~/lib/scopes";
 export const metadata: Metadata = {
   title: "Security",
   description:
-    "How LicenseMeter accesses Microsoft 365 tenants: read-only application permissions, EU data residency, deletion on disconnect, named subprocessors.",
+    "How LicenseMeter accesses Microsoft 365 tenants: read-only application permissions, EU-hosted data storage, deletion on disconnect, named subprocessors.",
 };
 
 const NEVER_ACCESSED = [
@@ -226,13 +226,13 @@ export default function SecurityPage() {
 
       <Section title="Data residency, retention and deletion">
         <p>
-          All customer data is stored in the EU (Postgres, Frankfurt region).
-          {/* TODO before launch: confirm the exact provider/region wording. */}{" "}
-          Data is retained only while your tenant is connected. Disconnecting
-          the workspace (Settings → Danger zone) deletes all synced data
-          immediately and irreversibly: users, findings, prices, history.
-          Revoking the enterprise application in your Entra ID additionally cuts
-          our access at the source.
+          Customer application data is stored in the EU in a Supabase Postgres
+          database hosted on AWS eu-central-1 (Frankfurt), matching the current
+          Privacy Policy wording. Data is retained only while your tenant is
+          connected. Disconnecting the workspace (Settings → Danger zone)
+          deletes all synced data immediately and irreversibly: users, findings,
+          prices, history. Revoking the enterprise application in your Entra ID
+          additionally cuts our access at the source.
         </p>
       </Section>
 

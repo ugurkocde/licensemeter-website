@@ -122,7 +122,7 @@ const TRUST_ITEMS = [
 const SECURITY_POINTS = [
   {
     title: "Procurement sees the number",
-    body: `The demo tenant shows € ${demoEuros(
+    body: `The sample tenant shows € ${demoEuros(
       DEMO_FIGURES.monthlyWasteCents,
     )}/mo of recoverable spend before anyone exports a report.`,
   },
@@ -144,7 +144,7 @@ const STEPS = [
   },
   {
     n: "02",
-    title: "Join the evidence",
+    title: "Cross-check the evidence",
     body: "Directory, license assignments, sign-in activity, usage reports and connected app seats are checked against who still works there.",
   },
   {
@@ -323,7 +323,7 @@ export default async function LandingPage() {
                     </div>
                     <div className="text-left sm:text-right">
                       <p className="text-rust-text text-[11px] font-medium tracking-[0.14em] uppercase">
-                        Synthetic demo tenant
+                        Synthetic sample tenant
                       </p>
                       <p className="text-ink-faint font-mono text-xs">
                         Meridian Industries GmbH
@@ -428,9 +428,9 @@ export default async function LandingPage() {
             A license ledger, not another vanity dashboard.
           </h2>
           <p className="text-ink-soft mt-4 leading-relaxed">
-            The workflow is built around evidence procurement and IT can both
-            inspect: who owns the seat, why it is waste, what it costs and how
-            to reclaim it.
+            The workflow is built around evidence that procurement and IT can
+            both inspect: who owns the seat, why it is waste, what it costs and
+            how to reclaim it.
           </p>
         </div>
 
@@ -583,7 +583,7 @@ export default async function LandingPage() {
             {[
               "Read-only Graph scopes are documented before consent.",
               "Mailbox and file content stay outside the product boundary.",
-              "EU hosting, subprocessors and disconnect deletion are published.",
+              "EU-hosted storage, subprocessors and disconnect deletion are published.",
             ].map((item) => (
               <li key={item} className="text-ink-soft flex gap-3">
                 <span
