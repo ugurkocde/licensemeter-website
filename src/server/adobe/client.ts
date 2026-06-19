@@ -15,6 +15,11 @@ type UmapiUser = {
   type?: string;
 };
 
+type UmapiGroup = {
+  type?: string;
+  groupName?: string;
+};
+
 /**
  * Adobe User Management API via OAuth server-to-server credentials that the
  * customer's Adobe System Admin creates in the Adobe Developer Console.
@@ -50,16 +55,45 @@ export class UmapiClient implements AdobeClient {
     return body.access_token;
   }
 
+  private requestHeaders(token: string): Record<string, string> {
+    return {
+      Authorization: `Bearer ${token}`,
+      "X-Api-Key": this.cfg.clientId,
+      Accept: "application/json",
+    };
+  }
+
+  private async getProductProfileNames(token: string): Promise<Set<string>> {
+    const names = new Set<string>();
+    for (let page = 0; page < 100; page++) {
+      const res = await fetch(`${UMAPI_BASE}/groups/${this.cfg.orgId}/${page}`, {
+        headers: this.requestHeaders(token),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) {
+        throw new Error(`Adobe UMAPI groups request failed (${res.status})`);
+      }
+      const body = (await res.json()) as {
+        groups?: UmapiGroup[];
+        lastPage?: boolean;
+      };
+      for (const group of body.groups ?? []) {
+        if (group.type === "PRODUCT_PROFILE" && group.groupName) {
+          names.add(group.groupName);
+        }
+      }
+      if (body.lastPage !== false) break;
+    }
+    return names;
+  }
+
   async getUsers(): Promise<AdobeUser[]> {
     const token = await this.getToken();
+    const productProfileNames = await this.getProductProfileNames(token);
     const users: AdobeUser[] = [];
     for (let page = 0; page < 100; page++) {
       const res = await fetch(`${UMAPI_BASE}/users/${this.cfg.orgId}/${page}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "X-Api-Key": this.cfg.clientId,
-          Accept: "application/json",
-        },
+        headers: this.requestHeaders(token),
         signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) {
@@ -74,7 +108,9 @@ export class UmapiClient implements AdobeClient {
         users.push({
           email: u.email,
           status: u.status ?? "active",
-          products: u.groups ?? [],
+          products: (u.groups ?? []).filter((name) =>
+            productProfileNames.has(name),
+          ),
         });
       }
       if (body.lastPage !== false) break;

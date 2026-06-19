@@ -41,7 +41,7 @@ export const CONNECTOR_GUIDES: ConnectorGuide[] = [
     summary:
       "Find Creative Cloud seats held by people who are disabled or gone, via Adobe's User Management API. Entitlements only, read-only.",
     intro:
-      "Adobe seats are expensive and offboarding rarely reaches the Admin Console. LicenseMeter reads the user list and product entitlements through the User Management API and cross-checks every seat against Entra ID.",
+      "Adobe seats are expensive and offboarding rarely reaches the Admin Console. LicenseMeter reads the user list and filters memberships to product-profile entitlements through the User Management API, then cross-checks every seat against Entra ID.",
     steps: [
       {
         title: "Create the API project",
@@ -62,7 +62,7 @@ export const CONNECTOR_GUIDES: ConnectorGuide[] = [
     ],
     reads: [
       "The user list: email, name and account status",
-      "Product profile entitlements per user",
+      "Product profile entitlements per user, filtered from Adobe group memberships",
     ],
     neverReads: [
       "Files, libraries or any Creative Cloud content",
@@ -165,7 +165,7 @@ export const CONNECTOR_GUIDES: ConnectorGuide[] = [
       },
       {
         title: "Connect",
-        body: "Paste your My Domain URL (https://<org>.my.salesforce.com), the consumer key and the consumer secret on the Salesforce connector page. Validated before storage, encrypted at rest.",
+        body: "Paste your production My Domain URL (https://<org>.my.salesforce.com) or sandbox My Domain URL (https://<org>.sandbox.my.salesforce.com), plus the consumer key and consumer secret, on the Salesforce connector page. Validated before storage, encrypted at rest.",
       },
     ],
     reads: [
@@ -261,11 +261,11 @@ export const CONNECTOR_GUIDES: ConnectorGuide[] = [
     summary:
       "Match your ChatGPT Enterprise or Business member list against Entra ID with a CSV paste. No credentials, no API.",
     intro:
-      "ChatGPT seats are bought fast and reviewed rarely. Paste the member list from Workspace settings > Members and LicenseMeter prices every seat held by someone who is disabled, gone or inactive.",
+      "ChatGPT seats are bought fast and reviewed rarely. Paste a member table or analytics export if your workspace provides one, and LicenseMeter prices every seat held by someone who is disabled, gone or inactive when the pasted data includes activity dates.",
     steps: [
       {
-        title: "Copy the member list",
-        body: "In ChatGPT, open Workspace settings > Members and copy the member table including its header row (select the rows and copy — the Business plan has no member-list export). Workspace owners and admins can do this on Enterprise and Business plans.",
+        title: "Prepare the member data",
+        body: "In ChatGPT workspace settings or analytics, use a member table or CSV export if it is available for your workspace. Include the header row so LicenseMeter can detect the available columns.",
         doc: {
           label: "OpenAI: Managing members in ChatGPT Enterprise",
           href: "https://help.openai.com/en/articles/8266401-managing-members-seat-types-roles-and-access-in-chatgpt-enterprise",
@@ -273,7 +273,7 @@ export const CONNECTOR_GUIDES: ConnectorGuide[] = [
       },
       {
         title: "Paste it",
-        body: "On the ChatGPT connector page, paste the table. Columns for email, name, status, seat type and last activity are detected automatically; comma, semicolon and tab formats all work.",
+        body: "On the ChatGPT connector page, paste the table or export. Email is required; name, seat type, status and last activity are detected when those columns are present. Comma, semicolon and tab formats all work.",
       },
       {
         title: "Price the seats",
@@ -281,7 +281,7 @@ export const CONNECTOR_GUIDES: ConnectorGuide[] = [
       },
     ],
     reads: [
-      "Only what is in your paste: member emails, names, seat types, status and last-active dates",
+      "Only what is in your paste: member emails, names, seat types, and status or last-active dates when included",
     ],
     neverReads: [
       "Conversations, prompts or anything inside ChatGPT: no ChatGPT credentials are stored at all",

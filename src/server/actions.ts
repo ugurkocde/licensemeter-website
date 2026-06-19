@@ -663,7 +663,7 @@ export const connectSaasConnector = async (
     const origin = normalizeSalesforceOrgRef(orgRef);
     if (!origin)
       return fail(
-        "The instance URL must be your https://<domain>.my.salesforce.com My Domain",
+        "The instance URL must be your Salesforce My Domain, for example https://<domain>.my.salesforce.com or https://<domain>.sandbox.my.salesforce.com",
       );
     orgRef = origin;
   }

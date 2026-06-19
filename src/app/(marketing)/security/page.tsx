@@ -24,7 +24,7 @@ const STORED_DATA = [
   "Last sign-in timestamps (when your tenant has Entra ID P1) and per-workload last-activity dates",
   "The prices you enter in the price book and the findings derived from the above",
   "If you connect Adobe, Zoom, Atlassian, Salesforce, OpenAI or Anthropic (all optional): seat or console-member emails, status, product assignments and last-login dates where the provider exposes them, plus daily API cost totals for OpenAI and Anthropic; the credentials themselves are stored encrypted (AES-256-GCM) and used read-only",
-  "If you import ChatGPT or Claude member lists (optional CSV paste): the member emails, names, seat types and last-active dates contained in the export you paste",
+  "If you import ChatGPT or Claude member lists (optional CSV paste): the member emails, names, seat types and last-active dates contained in the data you paste",
   "A per-workspace activity log of exports and administrative actions, deleted with the workspace",
 ];
 

@@ -194,7 +194,7 @@ describe("provider mappers", () => {
     expect(seats[1]!.lastActiveAt).toBeNull();
   });
 
-  it("salesforce URL guard only accepts https My Domain hosts", () => {
+  it("salesforce URL guard accepts production and sandbox https My Domain hosts", () => {
     expect(validSalesforceUrl("https://acme.my.salesforce.com")).not.toBeNull();
     expect(
       validSalesforceUrl("https://acme--sb.sandbox.my.salesforce.com"),
@@ -209,8 +209,17 @@ describe("provider mappers", () => {
 
   it("salesforce orgRef normalization accepts address-bar copy shapes", () => {
     const ORIGIN = "https://acme.my.salesforce.com";
+    const SANDBOX_ORIGIN = "https://acme--sb.sandbox.my.salesforce.com";
     expect(normalizeSalesforceOrgRef("acme.my.salesforce.com")).toBe(ORIGIN);
     expect(normalizeSalesforceOrgRef("  acme.my.salesforce.com  ")).toBe(ORIGIN);
+    expect(normalizeSalesforceOrgRef("acme--sb.sandbox.my.salesforce.com")).toBe(
+      SANDBOX_ORIGIN,
+    );
+    expect(
+      normalizeSalesforceOrgRef(
+        "https://acme--sb.sandbox.my.salesforce.com/lightning/setup",
+      ),
+    ).toBe(SANDBOX_ORIGIN);
     expect(
       normalizeSalesforceOrgRef("https://acme.my.salesforce.com/lightning/setup"),
     ).toBe(ORIGIN);

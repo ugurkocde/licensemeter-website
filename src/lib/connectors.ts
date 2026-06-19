@@ -103,7 +103,7 @@ export const CONNECTORS: ConnectorSpec[] = [
       { name: "secret", label: "Consumer secret", placeholder: "A1B2C3D4E5F6…", secret: true },
     ],
     setupHint:
-      "A Salesforce admin creates a Connected App with the Client Credentials flow enabled and the 'Manage user data via APIs (api)' OAuth scope, with an integration user that has API Enabled and View All Users as the read-only run-as user, then pastes the My Domain URL, consumer key and consumer secret here. Stored encrypted; the only query is the user list with license type and last login.",
+      "A Salesforce admin creates a Connected App with the Client Credentials flow enabled and the 'Manage user data via APIs (api)' OAuth scope, with an integration user that has API Enabled and View All Users as the read-only run-as user, then pastes the production or sandbox My Domain URL, consumer key and consumer secret here. Stored encrypted; the only query is the user list with license type and last login.",
     detects: [
       "Salesforce licenses held by accounts that are disabled in Entra ID. At Salesforce prices, usually the single most expensive leak.",
       "Licenses with no matching directory account at all.",
@@ -157,11 +157,11 @@ export const CONNECTORS: ConnectorSpec[] = [
     seatNoun: "ChatGPT seats",
     fields: [],
     setupHint:
-      "In ChatGPT, open Workspace settings > Members and copy the member table including its header row, then paste it below (the Business plan has no member export; copy the on-screen list). The list is matched against Entra ID and stored like any other connector's seats.",
+      "In ChatGPT workspace settings or analytics, paste a member table or CSV export if one is available for your workspace, including its header row. The pasted rows are matched against Entra ID and stored like any other connector's seats.",
     detects: [
       "ChatGPT seats held by accounts that are disabled in Entra ID.",
       "Seats with no matching directory account at all.",
-      "Seats with no activity for your inactivity threshold, when the export includes a last-active column.",
+      "Seats with no activity for your inactivity threshold, only when the pasted data includes a last-active column.",
     ],
     hasActivity: true,
     connectCta: "Import member CSV",

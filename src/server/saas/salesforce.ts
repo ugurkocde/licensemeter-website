@@ -25,7 +25,8 @@ export const mapSalesforceRecords = (
 
 /**
  * The customer admin's My Domain URL is user input that we fetch
- * server-side, so it is pinned to Salesforce-owned hosts (SSRF guard).
+ * server-side, so it is pinned to Salesforce-owned My Domain hosts (SSRF
+ * guard), including production and sandbox domains.
  */
 export const validSalesforceUrl = (raw: string): URL | null => {
   let url: URL;
@@ -36,14 +37,18 @@ export const validSalesforceUrl = (raw: string): URL | null => {
   }
   if (url.protocol !== "https:") return null;
   if (url.pathname !== "/" || url.search || url.hash || url.port) return null;
-  return url.hostname.endsWith(".my.salesforce.com") ? url : null;
+  const host = url.hostname.toLowerCase();
+  const isSandboxMyDomain = host.endsWith(".sandbox.my.salesforce.com");
+  const isProductionMyDomain =
+    host.endsWith(".my.salesforce.com") && !isSandboxMyDomain;
+  return isProductionMyDomain || isSandboxMyDomain ? url : null;
 };
 
 /**
  * Admins paste whatever the address bar holds: a scheme-less host, http, or
  * a deep link into Setup. Normalize that to the bare https origin before the
  * strict host check: http is upgraded rather than rejected because the host
- * stays pinned to *.my.salesforce.com and only https is ever stored.
+ * stays pinned to Salesforce My Domain hosts and only https is ever stored.
  */
 export const normalizeSalesforceOrgRef = (raw: string): string | null => {
   let input = raw.trim();
@@ -78,7 +83,7 @@ export class SalesforceClient implements SaasClient {
     const url = validSalesforceUrl(this.cfg.instanceUrl);
     if (!url) {
       throw new Error(
-        "Instance URL must be your https://<domain>.my.salesforce.com My Domain",
+        "Instance URL must be your Salesforce My Domain, for example https://<domain>.my.salesforce.com or https://<domain>.sandbox.my.salesforce.com",
       );
     }
     return url.origin;

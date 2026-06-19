@@ -12,8 +12,8 @@ type AnthropicCostBucket = {
   /** Bucket start, ISO timestamp (UTC). */
   starting_at?: string;
   results?: {
-    /** Decimal string already in USD cents, e.g. "123.45". */
-    amount?: string;
+    /** USD dollars, not cents. */
+    amount?: string | number;
     description?: string | null;
     currency?: string;
   }[];
@@ -36,30 +36,34 @@ export const mapAnthropicUsers = (users: AnthropicApiUser[]): SaasSeat[] =>
 
 /**
  * The cost report buckets by day and groups by description, with amounts as
- * decimal strings already in cents. Several token types share a description,
- * so cent floats accumulate per (day, category) and are rounded once at the
- * end, because rounding each result separately drifts.
+ * decimal USD values. Several token types share a description, so dollar
+ * floats accumulate per (day, category) and are rounded once at the end,
+ * because rounding each result separately drifts.
  */
 export const mapAnthropicCostBuckets = (
   buckets: AnthropicCostBucket[],
 ): AiSpendRow[] => {
-  const centsByDay = new Map<string, Map<string, number>>();
+  const dollarsByDay = new Map<string, Map<string, number>>();
   for (const bucket of buckets) {
     if (!bucket.starting_at) continue;
     const day = bucket.starting_at.slice(0, 10);
-    const byCategory = centsByDay.get(day) ?? new Map<string, number>();
-    centsByDay.set(day, byCategory);
+    const byCategory = dollarsByDay.get(day) ?? new Map<string, number>();
+    dollarsByDay.set(day, byCategory);
     for (const result of bucket.results ?? []) {
-      const cents = Number.parseFloat(result.amount ?? "");
-      if (!Number.isFinite(cents)) continue;
+      const currency = result.currency?.toUpperCase();
+      // Do not mix currencies into USD cent rows; the cost API is expected to
+      // return USD, so anything else is intentionally ignored.
+      if (currency !== "USD") continue;
+      const dollars = Number(result.amount);
+      if (!Number.isFinite(dollars)) continue;
       const category = (result.description ?? "other").slice(0, 120);
-      byCategory.set(category, (byCategory.get(category) ?? 0) + cents);
+      byCategory.set(category, (byCategory.get(category) ?? 0) + dollars);
     }
   }
   const rows: AiSpendRow[] = [];
-  for (const [day, byCategory] of centsByDay) {
-    for (const [category, cents] of byCategory) {
-      rows.push({ day, category, amountCents: Math.round(cents) });
+  for (const [day, byCategory] of dollarsByDay) {
+    for (const [category, dollars] of byCategory) {
+      rows.push({ day, category, amountCents: Math.round(dollars * 100) });
     }
   }
   return rows;
@@ -71,7 +75,7 @@ export const mapAnthropicCostBuckets = (
  * members and the daily cost report, never request content.
  */
 export class AnthropicAdminClient {
-  constructor(private readonly cfg: { apiKey: string }) {}
+  constructor(private readonly cfg: { apiKey: string; now?: () => Date }) {}
 
   private headers(): Record<string, string> {
     return {
@@ -113,6 +117,7 @@ export class AnthropicAdminClient {
     for (let page = 0; page < 30; page++) {
       const params = new URLSearchParams({
         starting_at: `${sinceDay}T00:00:00Z`,
+        ending_at: (this.cfg.now?.() ?? new Date()).toISOString(),
         bucket_width: "1d",
         "group_by[]": "description",
         limit: "31",

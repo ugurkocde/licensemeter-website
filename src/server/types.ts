@@ -101,7 +101,7 @@ export type AiSpendRow = {
 export type AdobeUser = {
   email: string;
   status: string;
-  /** Product profile / user group names = the entitlements. */
+  /** Product profile group names: the billable entitlements. */
   products: string[];
 };
 

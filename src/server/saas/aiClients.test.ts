@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  AnthropicAdminClient,
   mapAnthropicCostBuckets,
   mapAnthropicUsers,
 } from "~/server/saas/anthropicAdmin";
@@ -10,6 +11,16 @@ import {
 } from "~/server/saas/openaiAdmin";
 
 const unixSeconds = (iso: string) => Math.floor(Date.parse(iso) / 1000);
+
+const fetchUrl = (input: string | URL | Request): string => {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+};
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("mapOpenAiUsers", () => {
   it("maps org members and skips entries without an email", () => {
@@ -119,13 +130,13 @@ describe("mapAnthropicUsers", () => {
 });
 
 describe("mapAnthropicCostBuckets", () => {
-  it("accumulates cent decimal strings per description and rounds once", () => {
+  it("accumulates USD decimal amounts per description and rounds once", () => {
     const rows = mapAnthropicCostBuckets([
       {
         starting_at: "2026-06-01T00:00:00Z",
         results: [
-          { amount: "123.45", description: "Claude Sonnet usage", currency: "USD" },
-          { amount: "76.55", description: "Claude Sonnet usage", currency: "USD" },
+          { amount: "1.23", description: "Claude Sonnet usage", currency: "USD" },
+          { amount: "0.77", description: "Claude Sonnet usage", currency: "USD" },
         ],
       },
     ]);
@@ -142,7 +153,23 @@ describe("mapAnthropicCostBuckets", () => {
       },
     ]);
     expect(rows).toEqual([
-      { day: "2026-06-01", category: "other", amountCents: 10 },
+      { day: "2026-06-01", category: "other", amountCents: 1000 },
+    ]);
+  });
+
+  it("skips non-USD and unknown-currency amounts", () => {
+    const rows = mapAnthropicCostBuckets([
+      {
+        starting_at: "2026-06-01T00:00:00Z",
+        results: [
+          { amount: "1", description: "USD", currency: "USD" },
+          { amount: "1", description: "EUR", currency: "EUR" },
+          { amount: "1", description: "Unknown" },
+        ],
+      },
+    ]);
+    expect(rows).toEqual([
+      { day: "2026-06-01", category: "USD", amountCents: 100 },
     ]);
   });
 
@@ -164,5 +191,61 @@ describe("mapAnthropicCostBuckets", () => {
       },
     ]);
     expect(rows[0]!.category).toBe("x".repeat(120));
+  });
+});
+
+describe("AnthropicAdminClient", () => {
+  it("requests a bounded cost window and keeps pagination parameters", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const requestUrl = fetchUrl(input);
+        calls.push(requestUrl);
+        const url = new URL(requestUrl);
+        expect(url.pathname).toBe("/v1/organizations/cost_report");
+        if (!url.searchParams.get("page")) {
+          return Response.json({
+            data: [
+              {
+                starting_at: "2026-06-01T00:00:00Z",
+                results: [
+                  { amount: "1.25", description: "Claude", currency: "USD" },
+                ],
+              },
+            ],
+            has_more: true,
+            next_page: "page-2",
+          });
+        }
+        return Response.json({
+          data: [
+            {
+              starting_at: "2026-06-01T00:00:00Z",
+              results: [
+                { amount: "0.75", description: "Claude", currency: "USD" },
+              ],
+            },
+          ],
+          has_more: false,
+        });
+      }),
+    );
+
+    const rows = await new AnthropicAdminClient({
+      apiKey: "admin-key",
+      now: () => new Date("2026-06-19T12:34:56.000Z"),
+    }).getSpend("2026-06-01");
+
+    expect(rows).toEqual([
+      { day: "2026-06-01", category: "Claude", amountCents: 200 },
+    ]);
+    expect(calls).toHaveLength(2);
+    const first = new URL(calls[0]!);
+    const second = new URL(calls[1]!);
+    expect(first.searchParams.get("starting_at")).toBe("2026-06-01T00:00:00Z");
+    expect(first.searchParams.get("ending_at")).toBe("2026-06-19T12:34:56.000Z");
+    expect(second.searchParams.get("ending_at")).toBe("2026-06-19T12:34:56.000Z");
+    expect(second.searchParams.get("page")).toBe("page-2");
   });
 });
