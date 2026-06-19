@@ -45,10 +45,11 @@ const SITE_LD = {
       url: BASE,
       logo: `${BASE}/icon.svg`,
       description: SITE_DEFINITION,
-      founder: {
+      legalName: "UgurLabs UG (haftungsbeschränkt)",
+      member: {
         "@type": "Person",
         name: "Ugur Koc",
-        jobTitle: "Founder",
+        jobTitle: "Maintainer",
         award: "Microsoft MVP for Intune and Security Copilot",
         url: "https://ugurkoc.de",
         sameAs: ["https://github.com/ugurkocde", "https://x.com/ugurkocde"],

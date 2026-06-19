@@ -610,9 +610,9 @@ export default async function LandingPage() {
             Need the security pack before consent?
           </h2>
           <p className="text-paper/75 mt-3 text-sm leading-relaxed">
-            Send the security one-pager and first-scan checklist to the admin,
-            finance or procurement stakeholder who needs to review the read-only
-            scopes before a tenant connects.
+            Get the security one-pager and first-scan checklist to share with
+            the admin, finance or procurement stakeholder who needs to review
+            the read-only scopes before a tenant connects.
           </p>
           <div className="mt-5">
             <EmailCapture statusTone="dark" />
