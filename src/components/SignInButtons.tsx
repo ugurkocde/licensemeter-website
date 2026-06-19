@@ -34,28 +34,28 @@ export const SignInButtons = ({
           Run a free Microsoft 365 scan
         </a>
       ) : (
-        <button
-          type="button"
-          disabled
-          title="Configure AUTH_MICROSOFT_ENTRA_ID_ID to enable Microsoft sign-in"
-          className={buttonClass(
-            "primary",
-            "w-full cursor-not-allowed opacity-40 sm:w-auto",
-          )}
+        <a
+          href="mailto:support@licensemeter.com?subject=LicenseMeter%20scan%20access"
+          className={buttonClass("primary", "w-full sm:w-auto")}
         >
           <MicrosoftMark />
-          Run a free Microsoft 365 scan
-          <span className="sr-only">
-            (Configure AUTH_MICROSOFT_ENTRA_ID_ID to enable Microsoft sign-in)
-          </span>
-        </button>
+          Request scan access
+        </a>
       )}
       {demoEnabled && (
         <form action="/api/auth/demo" method="post">
           <button className={buttonClass("secondary", "w-full sm:w-auto")}>
-            Open sample demo tenant
+            Open sample tenant
           </button>
         </form>
+      )}
+      {!demoEnabled && (
+        <a
+          href="#sample-tenant"
+          className={buttonClass("secondary", "w-full sm:w-auto")}
+        >
+          Open sample tenant
+        </a>
       )}
     </div>
     {showNote && (

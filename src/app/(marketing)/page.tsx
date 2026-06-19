@@ -12,7 +12,6 @@ import {
   demoEuros,
 } from "~/lib/demoFigures";
 import { ALL_RULES } from "~/lib/rules";
-import { SITE_DEFINITION } from "~/lib/site";
 import { getScanStats } from "~/server/marketingStats";
 
 /** "12,4": German decimal convention, matching the euro figures around it. */
@@ -114,9 +113,8 @@ const LEDGER_LINES = [
 
 const TRUST_ITEMS = [
   "Built by Microsoft MVP Ugur Koc",
-  "Permission list public before consent",
-  "Read-only Graph permissions",
-  "No mailbox or file content",
+  "Exact Graph permissions shown before consent",
+  "Read-only access, no mailbox or file content",
   "EU data residency",
   "Disconnect deletes everything",
 ] as const;
@@ -179,7 +177,7 @@ const PRICING_TEASER = [
 
 const HERO_METRICS = [
   {
-    label: "Demo tenant",
+    label: "Sample data",
     value: `${DEMO_FIGURES.users}`,
     suffix: "users",
   },
@@ -237,20 +235,14 @@ export default async function LandingPage() {
                 Find the paid seats that outlived your users.
               </h1>
               <p className="text-ink-soft mt-4 max-w-2xl text-base leading-relaxed xl:text-lg">
-                {/* Definition-shaped first sentence: what answer engines cite. */}
-                <span>
-                  For Microsoft 365 admins and finance or procurement teams at
-                  100-2,500 seat companies, LicenseMeter prices offboarding and
-                  renewal waste before the next renewal conversation.{" "}
-                </span>
-                <span className="max-sm:hidden">{SITE_DEFINITION} </span>
-                <span className="sm:hidden">
-                  It cross-checks Microsoft 365 and SaaS seats against your
-                  directory, then prices every wasted seat in euros per
-                  month.{" "}
-                </span>
-                Run a free, read-only Microsoft 365 scan and see the waste
-                ledger finance can act on.
+                For Microsoft 365 admins and finance/procurement teams at
+                100-2,500 seats. LicenseMeter finds offboarding and renewal
+                waste, prices it in euros, and gives you proof before the next
+                renewal conversation.
+              </p>
+              <p className="text-ink-soft mt-3 max-w-2xl text-sm leading-relaxed">
+                Read-only scan: license assignments, sign-in activity and usage
+                reports. No mailbox or file content.
               </p>
               <div className="mt-6">
                 <SignInButtons
@@ -291,7 +283,10 @@ export default async function LandingPage() {
               )}
             </div>
 
-            <div className="ledger-shell rise rise-3 border-line bg-card relative border shadow-[0_24px_80px_rgba(28,26,22,0.12)]">
+            <div
+              id="sample-tenant"
+              className="ledger-shell rise rise-3 border-line bg-card relative scroll-mt-8 border shadow-[0_16px_40px_rgba(28,26,22,0.10)]"
+            >
               <div className="border-line bg-paper/70 relative grid grid-cols-3 border-b">
                 {HERO_METRICS.map((metric, index) => (
                   <div
