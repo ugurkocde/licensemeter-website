@@ -22,7 +22,7 @@ const fmtMultiplier = (n: number): string =>
   }).format(n);
 
 const inputClass =
-  "tnum mt-1.5 block min-h-11 w-full border border-line bg-card px-3 py-2.5 text-sm focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-ink/20 focus-visible:outline-none";
+  "tnum mt-1.5 block min-h-11 w-full border border-line bg-card px-3 py-2.5 text-sm focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-rust-text/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card focus-visible:outline-none";
 
 /**
  * Interactive waste estimate for the landing page. Every number on screen is
@@ -44,10 +44,6 @@ export const RoiCalculator = () => {
   const seats = parseSeats(seatsRaw);
   const costPerSeatCents = parseEuroToCents(costRaw);
   const result = computeRoi(seats, costPerSeatCents, wastePct);
-  const paybackMultiple =
-    result.plan !== OVER_CAP && result.plan.priceEur > 0
-      ? result.monthlyWasteCents / (result.plan.priceEur * 100)
-      : null;
 
   return (
     <div className="border-line bg-card border shadow-[0_1px_0_var(--color-line)]">
@@ -162,12 +158,12 @@ export const RoiCalculator = () => {
                 </>
               ) : result.paysOff ? (
                 <>
-                  At {fmtSeats(seats)} seats the {result.plan.name} plan is €
+                  At {fmtSeats(seats)} seats the {result.plan.name} plan is €{" "}
                   {result.plan.priceEur}/month. Your assumed waste is{" "}
-                  {paybackMultiple !== null
-                    ? `${fmtMultiplier(paybackMultiple)}x`
-                    : "above"}{" "}
-                  that monthly plan cost.
+                  {fmtMultiplier(
+                    result.monthlyWasteCents / (result.plan.priceEur * 100),
+                  )}
+                  x that monthly plan cost.
                 </>
               ) : result.breakEvenSeats !== null ? (
                 <>
