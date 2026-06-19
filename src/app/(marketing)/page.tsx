@@ -112,7 +112,7 @@ const LEDGER_LINES = [
 ] as const;
 
 const TRUST_ITEMS = [
-  "Built by Microsoft MVP Ugur Koc",
+  "Microsoft 365 admin tooling history",
   "Exact Graph permissions shown before consent",
   "Read-only access, no mailbox or file content",
   "EU storage details documented",
@@ -558,11 +558,16 @@ export default async function LandingPage() {
 
       <section className="mx-auto grid max-w-6xl gap-8 px-6 pt-18 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="border-line bg-card border px-6 py-6">
-          <h2 className="font-display text-2xl tracking-tight">
-            Built by Ugur Koc
+          <p className="text-rust-text text-xs font-medium tracking-[0.2em] uppercase">
+            Trust and accountability
+          </p>
+          <h2 className="font-display mt-3 text-2xl tracking-tight text-balance">
+            A consent path admins can inspect before anything connects.
           </h2>
           <p className="text-ink-soft mt-3 text-sm leading-relaxed">
-            I am a Microsoft MVP for Intune and Security Copilot, and I build{" "}
+            LicenseMeter is operated by UgurLabs UG and maintained by a
+            Microsoft MVP for Intune and Security Copilot with a public history
+            of{" "}
             <a
               href="https://github.com/ugurkocde"
               target="_blank"
@@ -571,10 +576,24 @@ export default async function LandingPage() {
             >
               open-source tools for Microsoft 365 admins
             </a>{" "}
-            (IntuneAssignmentChecker, IntuneBrew, DeviceOffboardingManager).
-            LicenseMeter asks for read-only access to your tenant, so you should
-            know exactly who is behind it. I answer support myself.
+            including IntuneAssignmentChecker, IntuneBrew and
+            DeviceOffboardingManager.
           </p>
+          <ul className="border-line mt-5 grid gap-3 border-t pt-5 text-sm">
+            {[
+              "Read-only Graph scopes are documented before consent.",
+              "Mailbox and file content stay outside the product boundary.",
+              "EU hosting, subprocessors and disconnect deletion are published.",
+            ].map((item) => (
+              <li key={item} className="text-ink-soft flex gap-3">
+                <span
+                  className="bg-rust-text mt-2 h-1.5 w-1.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
           <Link
             href="/security"
             className="text-ink hover:text-rust-text mt-4 inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4 transition-colors"
@@ -588,16 +607,19 @@ export default async function LandingPage() {
           className="border-line bg-ink text-paper scroll-mt-8 border px-6 py-6"
         >
           <h2 className="font-display text-2xl tracking-tight">
-            Need the one-pager first?
+            Need the security pack before consent?
           </h2>
           <p className="text-paper/75 mt-3 text-sm leading-relaxed">
-            Leave your email and the security one-pager plus a getting-started
-            guide for your first scan land in your inbox right away. One short
-            note follows when billing starts. Unsubscribe any time.
+            Send the security one-pager and first-scan checklist to the admin,
+            finance or procurement stakeholder who needs to review the read-only
+            scopes before a tenant connects.
           </p>
           <div className="mt-5">
             <EmailCapture statusTone="dark" />
           </div>
+          <p className="text-paper/55 mt-3 text-xs leading-relaxed">
+            Includes one billing-start note. Unsubscribe any time.
+          </p>
         </div>
       </section>
 

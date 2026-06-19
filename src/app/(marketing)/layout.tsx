@@ -138,7 +138,7 @@ export default function MarketingLayout({
           ))}
         </div>
         <div className="border-line text-ink-faint mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 border-t px-6 py-6 text-xs">
-          <span>LicenseMeter, built by Ugur Koc</span>
+          <span>LicenseMeter, operated by UgurLabs UG</span>
           <span>
             Independent tool, not affiliated with Microsoft, Adobe, Zoom,
             Atlassian, Salesforce, OpenAI or Anthropic. All product names are

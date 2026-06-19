@@ -33,7 +33,7 @@ export const EmailCapture = ({
           if (result.ok) {
             setState("done");
             setMessage(
-              "Sent. The guide and the security one-pager are on their way to your inbox.",
+              "Sent. The security pack and first-scan checklist are on their way to your inbox.",
             );
             // The fields hide on success: park focus on the confirmation
             // before the commit so it is never dropped to <body>.
@@ -62,7 +62,7 @@ export const EmailCapture = ({
         type="email"
         name="email"
         required
-        placeholder="you@yourcompany.com"
+        placeholder="you@yourcompany.com…"
         aria-label="Email address"
         aria-invalid={state === "error" || undefined}
         autoComplete="email"
@@ -75,7 +75,7 @@ export const EmailCapture = ({
         disabled={pending}
         className={buttonClass("secondary", state === "done" ? "hidden" : "")}
       >
-        {pending ? "Sending…" : "Send me the guide"}
+        {pending ? "Sending…" : "Send Security Pack"}
       </button>
       {/* Live region mounted from first render so announcements are reliable. */}
       <p
