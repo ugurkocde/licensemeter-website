@@ -504,8 +504,8 @@ export default async function LandingPage() {
               Sized by seats, not by how much waste we find.
             </h2>
             <p className="text-ink-soft mt-3 text-sm leading-relaxed">
-              See your number free, compare it against the published plan and
-              decide with your own tenant data.
+              Use the calculator to pressure-test renewal math before consent.
+              The free scan replaces assumptions with your own tenant data.
             </p>
           </div>
           <div className="border-line grid border-t">
@@ -547,8 +547,8 @@ export default async function LandingPage() {
             What does your tenant leak?
           </h2>
           <p className="text-ink-soft mt-3 max-w-xl leading-relaxed">
-            Your assumptions, your math. The scan replaces guesses with your
-            actual number.
+            Estimate payback with conservative inputs, then replace the model
+            with real Microsoft 365 usage evidence from the scan.
           </p>
           <div className="mt-6">
             <RoiCalculator />
