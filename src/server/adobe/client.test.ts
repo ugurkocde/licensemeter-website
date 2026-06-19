@@ -97,11 +97,6 @@ describe("UmapiClient", () => {
         status: "active",
         products: ["Acrobat Pro"],
       },
-      {
-        email: "admin-only@example.com",
-        status: "active",
-        products: [],
-      },
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });

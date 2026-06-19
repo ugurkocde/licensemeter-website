@@ -133,12 +133,14 @@ export class UmapiClient implements AdobeClient {
       };
       for (const u of body.users ?? []) {
         if (!u.email) continue;
+        const products = (u.groups ?? []).filter((name) =>
+          productProfileNames.has(name),
+        );
+        if (products.length === 0) continue;
         users.push({
           email: u.email,
           status: u.status ?? "active",
-          products: (u.groups ?? []).filter((name) =>
-            productProfileNames.has(name),
-          ),
+          products,
         });
       }
       if (body.lastPage !== false) break;

@@ -19,6 +19,17 @@ type AnthropicCostBucket = {
   }[];
 };
 
+export const nextUtcDayBoundary = (date: Date): string => {
+  const boundary = new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate() + 1,
+    ),
+  );
+  return boundary.toISOString();
+};
+
 /**
  * The org users endpoint exposes no status or activity signal; presence in
  * the list means membership, so every seat maps to active with a null signal.
@@ -113,7 +124,7 @@ export class AnthropicAdminClient {
 
   async getSpend(sinceDay: string): Promise<AiSpendRow[]> {
     const buckets: AnthropicCostBucket[] = [];
-    const endingAt = (this.cfg.now?.() ?? new Date()).toISOString();
+    const endingAt = nextUtcDayBoundary(this.cfg.now?.() ?? new Date());
     let nextPage = "";
     for (let page = 0; page < 30; page++) {
       const params = new URLSearchParams({

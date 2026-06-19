@@ -4,6 +4,7 @@ import {
   AnthropicAdminClient,
   mapAnthropicCostBuckets,
   mapAnthropicUsers,
+  nextUtcDayBoundary,
 } from "~/server/saas/anthropicAdmin";
 import {
   mapOpenAiCostBuckets,
@@ -210,6 +211,15 @@ describe("mapAnthropicCostBuckets", () => {
 });
 
 describe("AnthropicAdminClient", () => {
+  it("uses the next UTC day boundary so the current daily bucket is included", () => {
+    expect(nextUtcDayBoundary(new Date("2026-06-19T12:34:56.000Z"))).toBe(
+      "2026-06-20T00:00:00.000Z",
+    );
+    expect(nextUtcDayBoundary(new Date("2026-06-19T23:59:59.000Z"))).toBe(
+      "2026-06-20T00:00:00.000Z",
+    );
+  });
+
   it("requests a bounded cost window and keeps pagination parameters", async () => {
     const calls: string[] = [];
     let nowCalls = 0;
@@ -267,8 +277,8 @@ describe("AnthropicAdminClient", () => {
     const first = new URL(calls[0]!);
     const second = new URL(calls[1]!);
     expect(first.searchParams.get("starting_at")).toBe("2026-06-01T00:00:00Z");
-    expect(first.searchParams.get("ending_at")).toBe("2026-06-19T12:34:56.000Z");
-    expect(second.searchParams.get("ending_at")).toBe("2026-06-19T12:34:56.000Z");
+    expect(first.searchParams.get("ending_at")).toBe("2026-06-20T00:00:00.000Z");
+    expect(second.searchParams.get("ending_at")).toBe("2026-06-20T00:00:00.000Z");
     expect(second.searchParams.get("page")).toBe("page-2");
     expect(nowCalls).toBe(1);
   });
