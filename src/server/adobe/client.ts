@@ -7,6 +7,8 @@ export interface AdobeClient {
 
 const IMS_TOKEN_URL = "https://ims-na1.adobelogin.com/ims/token/v3";
 const UMAPI_BASE = "https://usermanagement.adobe.io/v2/usermanagement";
+const GROUP_RATE_LIMIT_RETRY_MS = 60_000;
+const MAX_GROUP_PAGE_ATTEMPTS = 3;
 
 type UmapiUser = {
   email?: string;
@@ -18,6 +20,18 @@ type UmapiUser = {
 type UmapiGroup = {
   type?: string;
   groupName?: string;
+};
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const retryAfterMs = (value: string | null): number => {
+  if (!value) return GROUP_RATE_LIMIT_RETRY_MS;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, Math.ceil(seconds * 1000));
+  const retryAt = Date.parse(value);
+  if (Number.isFinite(retryAt)) return Math.max(0, retryAt - Date.now());
+  return GROUP_RATE_LIMIT_RETRY_MS;
 };
 
 /**
@@ -32,6 +46,7 @@ export class UmapiClient implements AdobeClient {
       orgId: string;
       clientId: string;
       clientSecret: string;
+      sleep?: (ms: number) => Promise<void>;
     },
   ) {}
 
@@ -63,13 +78,24 @@ export class UmapiClient implements AdobeClient {
     };
   }
 
-  private async getProductProfileNames(token: string): Promise<Set<string>> {
-    const names = new Set<string>();
-    for (let page = 0; page < 100; page++) {
+  private async fetchGroupPage(token: string, page: number): Promise<Response> {
+    for (let attempt = 1; attempt <= MAX_GROUP_PAGE_ATTEMPTS; attempt++) {
       const res = await fetch(`${UMAPI_BASE}/groups/${this.cfg.orgId}/${page}`, {
         headers: this.requestHeaders(token),
         signal: AbortSignal.timeout(30_000),
       });
+      if (res.status !== 429 || attempt === MAX_GROUP_PAGE_ATTEMPTS) {
+        return res;
+      }
+      await (this.cfg.sleep ?? sleep)(retryAfterMs(res.headers.get("Retry-After")));
+    }
+    throw new Error("Adobe UMAPI groups request failed (HTTP 429)");
+  }
+
+  private async getProductProfileNames(token: string): Promise<Set<string>> {
+    const names = new Set<string>();
+    for (let page = 0; page < 100; page++) {
+      const res = await this.fetchGroupPage(token, page);
       if (!res.ok) {
         throw new Error(`Adobe UMAPI groups request failed (${res.status})`);
       }

@@ -105,4 +105,70 @@ describe("UmapiClient", () => {
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
+
+  it("backs off and retries rate-limited Adobe group pages", async () => {
+    const sleepMock = vi.fn(() => Promise.resolve());
+    const groupPageAttempts = new Map<number, number>();
+    const groupPagePattern =
+      /^https:\/\/usermanagement\.adobe\.io\/v2\/usermanagement\/groups\/org-123\/(\d+)$/;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = fetchUrl(input);
+      if (url === "https://ims-na1.adobelogin.com/ims/token/v3") {
+        return Response.json({ access_token: "token" });
+      }
+      const groupMatch = groupPagePattern.exec(url);
+      if (groupMatch) {
+        const page = Number(groupMatch[1]!);
+        groupPageAttempts.set(page, (groupPageAttempts.get(page) ?? 0) + 1);
+        if (page === 5 && groupPageAttempts.get(page) === 1) {
+          return new Response(null, {
+            status: 429,
+            headers: { "Retry-After": "2" },
+          });
+        }
+        return Response.json({
+          lastPage: page === 5,
+          groups: [
+            { type: "USER_GROUP", groupName: `Team ${page}` },
+            { type: "PRODUCT_PROFILE", groupName: `Profile ${page}` },
+          ],
+        });
+      }
+      if (
+        url ===
+        "https://usermanagement.adobe.io/v2/usermanagement/users/org-123/0?directOnly=false"
+      ) {
+        return Response.json({
+          lastPage: true,
+          users: [
+            {
+              email: "large-org-user@example.com",
+              status: "active",
+              groups: ["Team 5", "Profile 0", "Profile 5"],
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const users = await new UmapiClient({
+      orgId: "org-123",
+      clientId: "client-id",
+      clientSecret: "secret",
+      sleep: sleepMock,
+    }).getUsers();
+
+    expect(sleepMock).toHaveBeenCalledTimes(1);
+    expect(sleepMock).toHaveBeenCalledWith(2000);
+    expect(groupPageAttempts.get(5)).toBe(2);
+    expect(users).toEqual([
+      {
+        email: "large-org-user@example.com",
+        status: "active",
+        products: ["Profile 0", "Profile 5"],
+      },
+    ]);
+  });
 });
