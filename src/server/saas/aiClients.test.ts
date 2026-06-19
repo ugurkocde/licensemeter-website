@@ -171,19 +171,20 @@ describe("mapAnthropicCostBuckets", () => {
     ]);
   });
 
-  it("skips non-USD and unknown-currency amounts", () => {
+  it("accepts missing currency as USD and skips explicit non-USD amounts", () => {
     const rows = mapAnthropicCostBuckets([
       {
         starting_at: "2026-06-01T00:00:00Z",
         results: [
           { amount: "1", description: "USD", currency: "USD" },
           { amount: "1", description: "EUR", currency: "EUR" },
-          { amount: "1", description: "Unknown" },
+          { amount: "2", description: "Missing currency" },
         ],
       },
     ]);
     expect(rows).toEqual([
       { day: "2026-06-01", category: "USD", amountCents: 1 },
+      { day: "2026-06-01", category: "Missing currency", amountCents: 2 },
     ]);
   });
 
@@ -211,6 +212,7 @@ describe("mapAnthropicCostBuckets", () => {
 describe("AnthropicAdminClient", () => {
   it("requests a bounded cost window and keeps pagination parameters", async () => {
     const calls: string[] = [];
+    let nowCalls = 0;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
@@ -248,7 +250,14 @@ describe("AnthropicAdminClient", () => {
 
     const rows = await new AnthropicAdminClient({
       apiKey: "admin-key",
-      now: () => new Date("2026-06-19T12:34:56.000Z"),
+      now: () => {
+        nowCalls += 1;
+        return new Date(
+          nowCalls === 1
+            ? "2026-06-19T12:34:56.000Z"
+            : "2026-06-19T12:35:56.000Z",
+        );
+      },
     }).getSpend("2026-06-01");
 
     expect(rows).toEqual([
@@ -261,5 +270,6 @@ describe("AnthropicAdminClient", () => {
     expect(first.searchParams.get("ending_at")).toBe("2026-06-19T12:34:56.000Z");
     expect(second.searchParams.get("ending_at")).toBe("2026-06-19T12:34:56.000Z");
     expect(second.searchParams.get("page")).toBe("page-2");
+    expect(nowCalls).toBe(1);
   });
 });

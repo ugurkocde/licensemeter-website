@@ -51,9 +51,9 @@ export const mapAnthropicCostBuckets = (
     centsByDay.set(day, byCategory);
     for (const result of bucket.results ?? []) {
       const currency = result.currency?.toUpperCase();
-      // Do not mix currencies into USD cent rows; the cost API is expected to
-      // return USD, so anything else is intentionally ignored.
-      if (currency !== "USD") continue;
+      // Missing currency is accepted as USD for Anthropic cost rows; only an
+      // explicit non-USD value is skipped so currencies are never mixed.
+      if (currency && currency !== "USD") continue;
       const cents = Number(result.amount);
       if (!Number.isFinite(cents)) continue;
       const category = (result.description ?? "other").slice(0, 120);
@@ -113,11 +113,12 @@ export class AnthropicAdminClient {
 
   async getSpend(sinceDay: string): Promise<AiSpendRow[]> {
     const buckets: AnthropicCostBucket[] = [];
+    const endingAt = (this.cfg.now?.() ?? new Date()).toISOString();
     let nextPage = "";
     for (let page = 0; page < 30; page++) {
       const params = new URLSearchParams({
         starting_at: `${sinceDay}T00:00:00Z`,
-        ending_at: (this.cfg.now?.() ?? new Date()).toISOString(),
+        ending_at: endingAt,
         bucket_width: "1d",
         "group_by[]": "description",
         limit: "31",
