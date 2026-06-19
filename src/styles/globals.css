@@ -55,6 +55,132 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.enterprise-grid {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--color-line) 62%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--color-line) 62%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, black 0%, black 64%, transparent 100%);
+}
+
+.ledger-shell {
+  isolation: isolate;
+}
+
+.ledger-shell::before {
+  position: absolute;
+  inset: 10px;
+  z-index: -1;
+  border: 1px solid color-mix(in srgb, var(--color-rust) 18%, transparent);
+  content: "";
+  transform: translate(10px, 10px);
+}
+
+.scan-sweep {
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: 2;
+  height: 96px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--color-rust-soft) 70%, transparent),
+    transparent
+  );
+  opacity: 0.75;
+  transform: translateY(-100%);
+  animation: scan-sweep 5.6s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
+}
+
+.meter-bar {
+  width: var(--bar);
+  transform-origin: left;
+  animation: meter-fill 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.meter-rust {
+  background: var(--color-rust);
+}
+.meter-gold {
+  background: var(--color-gold);
+}
+.meter-slate {
+  background: var(--color-slate-ink);
+}
+.meter-plum {
+  background: var(--color-plum);
+}
+.meter-teal {
+  background: var(--color-teal-ink);
+}
+
+.status-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 999px;
+  background: var(--color-rust-bright);
+  box-shadow: 0 0 0 6px
+    color-mix(in srgb, var(--color-rust-bright) 18%, transparent);
+  animation: status-pulse 1.8s ease-out infinite;
+}
+
+.bg-ink :where(a, button):focus-visible {
+  outline-color: var(--color-paper);
+}
+
+@keyframes scan-sweep {
+  0% {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  16% {
+    opacity: 0.75;
+  }
+  72% {
+    opacity: 0.75;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(620%);
+  }
+}
+
+@keyframes meter-fill {
+  from {
+    transform: scaleX(0.18);
+    opacity: 0.35;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes status-pulse {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.92);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.7;
+    transform: scale(0.92);
+  }
+}
+
 /* Staggered entrance for dashboard sections. */
 @keyframes rise {
   from {
@@ -70,15 +196,32 @@ body {
 .rise {
   animation: rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
-.rise-1 { animation-delay: 0.04s; }
-.rise-2 { animation-delay: 0.1s; }
-.rise-3 { animation-delay: 0.16s; }
-.rise-4 { animation-delay: 0.22s; }
-.rise-5 { animation-delay: 0.3s; }
+.rise-1 {
+  animation-delay: 0.04s;
+}
+.rise-2 {
+  animation-delay: 0.1s;
+}
+.rise-3 {
+  animation-delay: 0.16s;
+}
+.rise-4 {
+  animation-delay: 0.22s;
+}
+.rise-5 {
+  animation-delay: 0.3s;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .rise {
+  .rise,
+  .scan-sweep,
+  .meter-bar,
+  .status-dot {
     animation: none;
+  }
+
+  .scan-sweep {
+    display: none;
   }
 }
 
