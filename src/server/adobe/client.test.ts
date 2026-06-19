@@ -166,4 +166,71 @@ describe("UmapiClient", () => {
       },
     ]);
   });
+
+  it("fails before user import when the Adobe group catalog exceeds the safe page limit", async () => {
+    const groupPagePattern =
+      /^https:\/\/usermanagement\.adobe\.io\/v2\/usermanagement\/groups\/org-123\/(\d+)$/;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = fetchUrl(input);
+      if (url === "https://ims-na1.adobelogin.com/ims/token/v3") {
+        return Response.json({ access_token: "token" });
+      }
+      if (groupPagePattern.test(url)) {
+        return Response.json({
+          lastPage: false,
+          groups: [{ type: "PRODUCT_PROFILE", groupName: "Creative Cloud" }],
+        });
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      new UmapiClient({
+        orgId: "org-123",
+        clientId: "client-id",
+        clientSecret: "secret",
+      }).getUsers(),
+    ).rejects.toThrow("group catalog exceeds 20 pages");
+
+    const requestedUrls = fetchMock.mock.calls.map(([input]) => fetchUrl(input));
+    expect(
+      requestedUrls.some((url) => url.includes("/users/org-123/")),
+    ).toBe(false);
+    expect(requestedUrls.filter((url) => groupPagePattern.test(url))).toHaveLength(
+      20,
+    );
+  });
+
+  it("fails before sleeping when Adobe rate-limit retry would exceed the budget", async () => {
+    const sleepMock = vi.fn(() => Promise.resolve());
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = fetchUrl(input);
+      if (url === "https://ims-na1.adobelogin.com/ims/token/v3") {
+        return Response.json({ access_token: "token" });
+      }
+      if (
+        url ===
+        "https://usermanagement.adobe.io/v2/usermanagement/groups/org-123/0"
+      ) {
+        return new Response(null, {
+          status: 429,
+          headers: { "Retry-After": "300" },
+        });
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      new UmapiClient({
+        orgId: "org-123",
+        clientId: "client-id",
+        clientSecret: "secret",
+        sleep: sleepMock,
+      }).getUsers(),
+    ).rejects.toThrow("rate-limit retry budget");
+
+    expect(sleepMock).not.toHaveBeenCalled();
+  });
 });

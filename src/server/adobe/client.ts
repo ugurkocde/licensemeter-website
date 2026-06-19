@@ -8,7 +8,9 @@ export interface AdobeClient {
 const IMS_TOKEN_URL = "https://ims-na1.adobelogin.com/ims/token/v3";
 const UMAPI_BASE = "https://usermanagement.adobe.io/v2/usermanagement";
 const GROUP_RATE_LIMIT_RETRY_MS = 60_000;
+const MAX_GROUP_CATALOG_PAGES = 20;
 const MAX_GROUP_PAGE_ATTEMPTS = 3;
+const MAX_GROUP_RATE_LIMIT_WAIT_MS = 240_000;
 
 type UmapiUser = {
   email?: string;
@@ -78,7 +80,11 @@ export class UmapiClient implements AdobeClient {
     };
   }
 
-  private async fetchGroupPage(token: string, page: number): Promise<Response> {
+  private async fetchGroupPage(
+    token: string,
+    page: number,
+    retryBudget: { remainingMs: number },
+  ): Promise<Response> {
     for (let attempt = 1; attempt <= MAX_GROUP_PAGE_ATTEMPTS; attempt++) {
       const res = await fetch(`${UMAPI_BASE}/groups/${this.cfg.orgId}/${page}`, {
         headers: this.requestHeaders(token),
@@ -87,15 +93,23 @@ export class UmapiClient implements AdobeClient {
       if (res.status !== 429 || attempt === MAX_GROUP_PAGE_ATTEMPTS) {
         return res;
       }
-      await (this.cfg.sleep ?? sleep)(retryAfterMs(res.headers.get("Retry-After")));
+      const waitMs = retryAfterMs(res.headers.get("Retry-After"));
+      if (waitMs > retryBudget.remainingMs) {
+        throw new Error(
+          "Adobe UMAPI groups request exceeded the rate-limit retry budget; try again later",
+        );
+      }
+      retryBudget.remainingMs -= waitMs;
+      await (this.cfg.sleep ?? sleep)(waitMs);
     }
     throw new Error("Adobe UMAPI groups request failed (HTTP 429)");
   }
 
   private async getProductProfileNames(token: string): Promise<Set<string>> {
     const names = new Set<string>();
-    for (let page = 0; page < 100; page++) {
-      const res = await this.fetchGroupPage(token, page);
+    const retryBudget = { remainingMs: MAX_GROUP_RATE_LIMIT_WAIT_MS };
+    for (let page = 0; page < MAX_GROUP_CATALOG_PAGES; page++) {
+      const res = await this.fetchGroupPage(token, page, retryBudget);
       if (!res.ok) {
         throw new Error(`Adobe UMAPI groups request failed (${res.status})`);
       }
@@ -109,6 +123,11 @@ export class UmapiClient implements AdobeClient {
         }
       }
       if (body.lastPage !== false) break;
+      if (page === MAX_GROUP_CATALOG_PAGES - 1) {
+        throw new Error(
+          `Adobe UMAPI group catalog exceeds ${MAX_GROUP_CATALOG_PAGES} pages; cannot safely scan all product profiles within the sync time budget`,
+        );
+      }
     }
     return names;
   }
