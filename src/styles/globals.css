@@ -84,24 +84,6 @@ body {
   transform: translate(10px, 10px);
 }
 
-.scan-sweep {
-  position: absolute;
-  right: 0;
-  left: 0;
-  z-index: 2;
-  height: 96px;
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    color-mix(in srgb, var(--color-rust-soft) 70%, transparent),
-    transparent
-  );
-  opacity: 0.75;
-  transform: translateY(-100%);
-  animation: scan-sweep 5.6s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
-}
-
 .meter-bar {
   width: var(--bar);
   transform-origin: left;
@@ -130,30 +112,10 @@ body {
   height: 0.625rem;
   border-radius: 999px;
   background: var(--color-rust-bright);
-  box-shadow: 0 0 0 6px
-    color-mix(in srgb, var(--color-rust-bright) 18%, transparent);
-  animation: status-pulse 1.8s ease-out infinite;
 }
 
 .bg-ink :where(a, button):focus-visible {
   outline-color: var(--color-paper);
-}
-
-@keyframes scan-sweep {
-  0% {
-    opacity: 0;
-    transform: translateY(-100%);
-  }
-  16% {
-    opacity: 0.75;
-  }
-  72% {
-    opacity: 0.75;
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(620%);
-  }
 }
 
 @keyframes meter-fill {
@@ -164,21 +126,6 @@ body {
   to {
     transform: scaleX(1);
     opacity: 1;
-  }
-}
-
-@keyframes status-pulse {
-  0% {
-    opacity: 0.7;
-    transform: scale(0.92);
-  }
-  55% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0.7;
-    transform: scale(0.92);
   }
 }
 
@@ -215,14 +162,8 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .rise,
-  .scan-sweep,
-  .meter-bar,
-  .status-dot {
+  .meter-bar {
     animation: none;
-  }
-
-  .scan-sweep {
-    display: none;
   }
 }
 

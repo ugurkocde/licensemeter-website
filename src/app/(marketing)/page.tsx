@@ -78,7 +78,7 @@ const CONNECTOR_STRIP: Array<{
 ];
 
 /* Ledger lines render from the tested demo figures and sum exactly to the
- * headline: the card is a preview of the live demo tenant, not a mockup. */
+ * headline: the card is a synthetic sample tenant, not customer proof. */
 const LEDGER_LINES = [
   {
     label: "Left the company, still licensed",
@@ -113,6 +113,8 @@ const LEDGER_LINES = [
 ] as const;
 
 const TRUST_ITEMS = [
+  "Built by Microsoft MVP Ugur Koc",
+  "Permission list public before consent",
   "Read-only Graph permissions",
   "No mailbox or file content",
   "EU data residency",
@@ -229,21 +231,26 @@ export default async function LandingPage() {
           <div className="grid gap-7 lg:grid-cols-[0.95fr_1.25fr] lg:items-center">
             <div className="rise rise-1">
               <p className="text-rust-text text-xs font-medium tracking-[0.2em] uppercase">
-                LicenseMeter command center
+                Microsoft 365 renewal waste scan
               </p>
               <h1 className="font-display mt-4 max-w-3xl text-4xl leading-[1.02] tracking-tight text-balance md:text-5xl xl:text-[4.15rem]">
-                Find the paid seats that outlived their users.
+                Find the paid seats that outlived your users.
               </h1>
               <p className="text-ink-soft mt-4 max-w-2xl text-base leading-relaxed xl:text-lg">
                 {/* Definition-shaped first sentence: what answer engines cite. */}
+                <span>
+                  For Microsoft 365 admins and finance or procurement teams at
+                  100-2,500 seat companies, LicenseMeter prices offboarding and
+                  renewal waste before the next renewal conversation.{" "}
+                </span>
                 <span className="max-sm:hidden">{SITE_DEFINITION} </span>
                 <span className="sm:hidden">
-                  LicenseMeter cross-checks Microsoft 365 and SaaS seats against
-                  your directory, then prices every wasted seat in euros per
+                  It cross-checks Microsoft 365 and SaaS seats against your
+                  directory, then prices every wasted seat in euros per
                   month.{" "}
                 </span>
-                Run a free, read-only scan and see the waste ledger finance can
-                act on.
+                Run a free, read-only Microsoft 365 scan and see the waste
+                ledger finance can act on.
               </p>
               <div className="mt-6">
                 <SignInButtons
@@ -252,6 +259,10 @@ export default async function LandingPage() {
                   showNote={false}
                 />
               </div>
+              <p className="text-ink-faint mt-3 max-w-xl text-xs leading-relaxed">
+                First scan free. Paid plans start at EUR 79/month only after you
+                decide to keep monitoring.
+              </p>
               <ul className="text-ink-soft mt-5 flex flex-wrap gap-y-2 text-[13px]">
                 {TRUST_ITEMS.map((item, index) => (
                   <li
@@ -281,7 +292,6 @@ export default async function LandingPage() {
             </div>
 
             <div className="ledger-shell rise rise-3 border-line bg-card relative border shadow-[0_24px_80px_rgba(28,26,22,0.12)]">
-              <div className="scan-sweep" aria-hidden="true" />
               <div className="border-line bg-paper/70 relative grid grid-cols-3 border-b">
                 {HERO_METRICS.map((metric, index) => (
                   <div
@@ -317,6 +327,9 @@ export default async function LandingPage() {
                       </div>
                     </div>
                     <div className="text-left sm:text-right">
+                      <p className="text-rust-text text-[11px] font-medium tracking-[0.14em] uppercase">
+                        Synthetic demo tenant
+                      </p>
                       <p className="text-ink-faint font-mono text-xs">
                         Meridian Industries GmbH
                       </p>
@@ -352,7 +365,7 @@ export default async function LandingPage() {
                 <aside className="border-line bg-ink text-paper hidden border-t px-4 py-5 xl:block xl:border-t-0 xl:border-l">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-paper/60 text-[11px] font-medium tracking-[0.18em] uppercase">
-                      Tenant scan
+                      Sample tenant scan
                     </p>
                     <span className="status-dot" aria-hidden="true" />
                   </div>
@@ -385,7 +398,7 @@ export default async function LandingPage() {
                       className="mt-5"
                     >
                       <button className="border-paper/20 text-paper hover:border-rust-bright hover:text-rust-bright w-full cursor-pointer border px-4 py-3 text-left text-sm font-medium transition-colors">
-                        Open this tenant in the live demo
+                        Open this sample tenant
                       </button>
                     </form>
                   )}
@@ -606,7 +619,7 @@ export default async function LandingPage() {
               </h2>
               <p className="text-ink-soft mt-3 max-w-2xl leading-relaxed">
                 {demoEnabled
-                  ? "Start on the live demo tenant, no account needed. When you are ready, run the same read-only scan on your own."
+                  ? "Run the free read-only scan on your Microsoft 365 tenant. If you need to look around first, the sample tenant is still available."
                   : "Connect read-only and see the monthly cost of every wasted seat before you decide anything."}
               </p>
             </div>
