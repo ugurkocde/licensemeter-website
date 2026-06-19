@@ -112,7 +112,7 @@ const LEDGER_LINES = [
 ] as const;
 
 const TRUST_ITEMS = [
-  "Microsoft 365 admin tooling history",
+  "Microsoft MVP for Intune and Security Copilot",
   "Exact Graph permissions shown before consent",
   "Read-only access, no mailbox or file content",
   "EU storage details documented",

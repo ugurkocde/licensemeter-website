@@ -62,7 +62,7 @@ export const EmailCapture = ({
         type="email"
         name="email"
         required
-        placeholder="you@yourcompany.com…"
+        placeholder="you@yourcompany.com"
         aria-label="Email address"
         aria-invalid={state === "error" || undefined}
         autoComplete="email"
@@ -75,7 +75,7 @@ export const EmailCapture = ({
         disabled={pending}
         className={buttonClass("secondary", state === "done" ? "hidden" : "")}
       >
-        {pending ? "Sending…" : "Send Security Pack"}
+        {pending ? "Sending…" : "Send the security pack"}
       </button>
       {/* Live region mounted from first render so announcements are reliable. */}
       <p
