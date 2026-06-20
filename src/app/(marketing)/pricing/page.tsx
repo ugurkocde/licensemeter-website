@@ -10,6 +10,7 @@ import {
 } from "~/lib/demoFigures";
 import { ALL_RULES } from "~/lib/rules";
 import { SITE_DEFINITION } from "~/lib/site";
+import { SUPPORT_MAILTO } from "~/lib/support";
 
 export const metadata: Metadata = {
   title: "Pricing",
@@ -152,7 +153,7 @@ export default function PricingPage() {
       <p className="mt-4 text-sm text-ink-soft">
         More than 2.500 seats or managing multiple tenants as an MSP?{" "}
         <a
-          href="mailto:support@licensemeter.com"
+          href={SUPPORT_MAILTO}
           className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
         >
           Talk to us.

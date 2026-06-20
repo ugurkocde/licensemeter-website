@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { SUPPORT_EMAIL } from "~/lib/support";
+
 export const metadata: Metadata = {
   title: "Impressum",
   robots: { index: false },
@@ -38,7 +40,7 @@ export default function ImpressumPage() {
         <section>
           <h2 className="text-ink font-medium">Kontakt</h2>
           <p className="mt-2">
-            E-Mail: support@licensemeter.com
+            E-Mail: {SUPPORT_EMAIL}
             <br />
             [Telefonnummer, optional]
           </p>

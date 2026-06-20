@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { SUPPORT_EMAIL } from "~/lib/support";
+
 export const metadata: Metadata = {
   title: "Cookie Policy",
   robots: { index: false },
@@ -135,7 +137,7 @@ export default function CookiesPage() {
         <p>
           We update this Cookie Policy when the cookies we use change. The
           version published on this page applies. Questions: please email
-          support@licensemeter.com.
+          {SUPPORT_EMAIL}.
         </p>
       </Section>
     </main>

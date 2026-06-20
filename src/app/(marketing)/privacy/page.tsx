@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { SUPPORT_EMAIL } from "~/lib/support";
+
 export const metadata: Metadata = {
   title: "Privacy Policy",
   robots: { index: false },
@@ -39,7 +41,7 @@ export default function PrivacyPolicyPage() {
           <br />
           Managing Director: Ugur Koc
           <br />
-          Email: support@licensemeter.com
+          Email: {SUPPORT_EMAIL}
         </p>
       </Section>
 
@@ -155,7 +157,7 @@ export default function PrivacyPolicyPage() {
       </Section>
 
       <Section title="8. Contact">
-        <p>Privacy questions: support@licensemeter.com</p>
+        <p>Privacy questions: {SUPPORT_EMAIL}</p>
       </Section>
     </main>
   );

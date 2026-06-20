@@ -4,6 +4,7 @@ import Link from "next/link";
 import { isDemoMode, siteUrl } from "~/env";
 import { buttonClass } from "~/components/ui";
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
+import { SUPPORT_MAILTO } from "~/lib/support";
 
 export const metadata: Metadata = {
   title: "For MSPs",
@@ -82,7 +83,7 @@ const Ctas = ({ demoEnabled }: { demoEnabled: boolean }) => (
       </form>
     )}
     <a
-      href="mailto:support@licensemeter.com"
+      href={SUPPORT_MAILTO}
       className={buttonClass(
         demoEnabled ? "secondary" : "primary",
         "w-full sm:w-auto",

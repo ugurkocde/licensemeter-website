@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { SUPPORT_EMAIL } from "~/lib/support";
+
 export const metadata: Metadata = {
   title: "Terms and Conditions",
   robots: { index: false },
@@ -122,7 +124,7 @@ export default function TermsPage() {
           level). Maintenance, ongoing development and disruptions outside the
           Provider&rsquo;s control (in particular at third parties such as
           Microsoft or the connected source systems) may temporarily limit use.
-          Support is provided by email at support@licensemeter.com.
+          Support is provided by email at {SUPPORT_EMAIL}.
         </p>
       </Section>
 

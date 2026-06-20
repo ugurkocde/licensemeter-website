@@ -6,6 +6,7 @@ import { Analytics } from "@vercel/analytics/react";
 
 import { siteUrl } from "~/env";
 import { SITE_DEFINITION } from "~/lib/site";
+import { SUPPORT_EMAIL } from "~/lib/support";
 
 const plexSans = IBM_Plex_Sans({
   subsets: ["latin"],
@@ -57,7 +58,7 @@ const SITE_LD = {
       contactPoint: {
         "@type": "ContactPoint",
         contactType: "customer support",
-        email: "support@licensemeter.com",
+        email: SUPPORT_EMAIL,
         availableLanguage: ["English", "German"],
       },
       knowsAbout: [

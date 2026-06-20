@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { env, siteUrl } from "~/env";
+import { SUPPORT_EMAIL } from "~/lib/support";
 import { db } from "~/server/db";
 import { emailSignups, memberships } from "~/server/db/schema";
 import { emailEnabled, sendEmail } from "~/server/email";
@@ -46,7 +47,7 @@ export const maybeSendWelcome = async (email: string): Promise<void> => {
       to: [email],
       // Founder-voiced send; replies land in the monitored support inbox.
       from: "Ugur from LicenseMeter <hello@licensemeter.com>",
-      replyTo: "support@licensemeter.com",
+      replyTo: SUPPORT_EMAIL,
       headers: {
         "List-Unsubscribe": `<${unsub}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",

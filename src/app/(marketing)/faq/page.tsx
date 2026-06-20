@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { siteUrl } from "~/env";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
+import { SUPPORT_MAILTO } from "~/lib/support";
 
 export const metadata: Metadata = {
   title: "FAQ",
@@ -99,7 +100,7 @@ export default function FaqPage() {
       <p className="mt-8 text-sm text-ink-soft">
         Anything missing?{" "}
         <a
-          href="mailto:support@licensemeter.com"
+          href={SUPPORT_MAILTO}
           className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
         >
           Ask directly

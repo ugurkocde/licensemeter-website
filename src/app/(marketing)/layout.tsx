@@ -3,8 +3,7 @@ import Link from "next/link";
 import { BrandMark } from "~/components/BrandMark";
 import { HeaderAuthCta } from "~/components/HeaderAuthCta";
 import { MarketingMobileNav } from "~/components/MarketingMobileNav";
-
-const SUPPORT_EMAIL = "support@licensemeter.com";
+import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "~/lib/support";
 
 const NAV = [
   { href: "/pricing", label: "Pricing" },
@@ -38,7 +37,7 @@ const FOOTER_COLUMNS = [
   {
     title: "Contact",
     links: [
-      { href: `mailto:${SUPPORT_EMAIL}`, label: SUPPORT_EMAIL },
+      { href: SUPPORT_MAILTO, label: SUPPORT_EMAIL },
       { href: "/security#subprocessors", label: "Subprocessors" },
     ],
   },
@@ -113,6 +112,14 @@ export default function MarketingLayout({
               <h3 className="text-ink-faint text-xs font-medium tracking-[0.18em] uppercase">
                 {col.title}
               </h3>
+              {col.title === "Contact" && (
+                <a
+                  href={SUPPORT_MAILTO}
+                  className="border-line-strong text-ink hover:border-ink focus-visible:ring-rust-text mt-4 inline-flex min-h-11 touch-manipulation items-center justify-center border bg-paper px-4 py-2.5 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                >
+                  Email support
+                </a>
+              )}
               <ul className="mt-3 flex flex-col gap-2">
                 {col.links.map((link) => (
                   <li key={link.label}>

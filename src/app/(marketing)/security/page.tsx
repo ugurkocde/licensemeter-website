@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { env, siteUrl } from "~/env";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
+import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "~/lib/support";
 
 export const metadata: Metadata = {
   title: "Security",
@@ -287,10 +288,10 @@ export default function SecurityPage() {
         <p>
           Security review, pentest coordination or vendor questionnaires:{" "}
           <a
-            href="mailto:support@licensemeter.com"
+            href={SUPPORT_MAILTO}
             className="text-ink hover:text-rust-text font-medium underline underline-offset-4"
           >
-            support@licensemeter.com
+            {SUPPORT_EMAIL}
           </a>
           . See also the{" "}
           <Link
