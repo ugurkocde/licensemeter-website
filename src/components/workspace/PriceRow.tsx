@@ -55,7 +55,7 @@ export const PriceEditor = ({
       </button>
       <span
         aria-live="polite"
-        className={`w-10 text-[11px] ${state === "error" ? "text-rust-text" : "text-moss"}`}
+        className={`w-10 text-[11px] ${state === "error" ? "text-danger-text" : "text-moss"}`}
       >
         {state === "saved" ? "Saved" : state === "error" ? "Invalid" : ""}
       </span>

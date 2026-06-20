@@ -31,7 +31,7 @@ const CONNECTORS_LD = {
 export default function ConnectorsIndexPage() {
   return (
     <main className="mx-auto max-w-5xl px-6 pt-6 pb-24">
-      <p className="text-xs font-medium tracking-[0.2em] text-rust-text uppercase">
+      <p className="text-xs font-medium tracking-[0.2em] text-brand-text uppercase">
         Connectors
       </p>
       <h1 className="mt-4 font-display text-4xl tracking-tight text-balance">
@@ -42,7 +42,7 @@ export default function ConnectorsIndexPage() {
         Microsoft&rsquo;s admin-consent dialog, documented in the{" "}
         <Link
           href="/security"
-          className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+          className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           security overview
         </Link>
@@ -57,7 +57,7 @@ export default function ConnectorsIndexPage() {
           <Link
             key={g.slug}
             href={`/connectors/${g.slug}`}
-            className="group bg-card px-6 py-6 transition hover:bg-paper"
+            className="group bg-card px-6 py-6 transition hover:bg-canvas"
           >
             <div className="flex items-center gap-2">
               <span className="font-display text-xl tracking-tight group-hover:underline group-hover:underline-offset-4">

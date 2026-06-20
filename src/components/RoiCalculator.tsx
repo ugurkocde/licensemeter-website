@@ -22,7 +22,7 @@ const fmtMultiplier = (n: number): string =>
   }).format(n);
 
 const inputClass =
-  "tnum mt-1.5 block min-h-11 w-full border border-line bg-card px-3 py-2.5 text-sm focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-rust-text/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card focus-visible:outline-none";
+  "tnum mt-1.5 block min-h-11 w-full rounded-lg border border-line bg-card px-3 py-2.5 text-sm focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card focus-visible:outline-none";
 
 /**
  * Interactive waste estimate for the landing page. Every number on screen is
@@ -46,7 +46,7 @@ export const RoiCalculator = () => {
   const result = computeRoi(seats, costPerSeatCents, wastePct);
 
   return (
-    <div className="border-line bg-card border shadow-[0_1px_0_var(--color-line)]">
+    <div className="border-line bg-card shadow-card overflow-hidden rounded-2xl border">
       <div className="border-line flex items-baseline justify-between gap-3 border-b px-6 py-4">
         <span className="text-ink-faint text-xs font-medium tracking-[0.18em] uppercase">
           Waste estimate · your assumptions
@@ -125,7 +125,7 @@ export const RoiCalculator = () => {
               onChange={(e) => setWastePct(Number(e.currentTarget.value))}
               aria-describedby={shareHintId}
               aria-valuetext={`${wastePct} percent assumed waste share`}
-              className="accent-rust mt-1.5 block min-h-11 w-full cursor-pointer"
+              className="accent-brand mt-1.5 block min-h-11 w-full cursor-pointer"
             />
             <p
               id={shareHintId}
@@ -143,7 +143,7 @@ export const RoiCalculator = () => {
             <div className="text-ink-faint text-xs font-medium tracking-[0.18em] uppercase">
               Assumption-based estimate
             </div>
-            <div className="font-display text-rust-text mt-3 text-5xl tracking-tight">
+            <div className="font-display text-waste-text mt-3 text-5xl tracking-tight">
               € {demoEuros(result.monthlyWasteCents)}
             </div>
             <div className="text-ink-soft mt-1 text-sm">
@@ -181,7 +181,7 @@ export const RoiCalculator = () => {
           </div>
           <a
             href="#get-started"
-            className="text-ink hover:text-rust-text mt-4 inline-block text-sm font-medium underline underline-offset-4"
+            className="text-brand-text mt-4 inline-block text-sm font-medium underline underline-offset-4 hover:opacity-80"
           >
             Run the free scan instead →
           </a>

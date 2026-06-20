@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "Page not found",
 };
 
-/* Root-level 404. Static, no client JS. The paper background comes from the
+/* Root-level 404. Static, no client JS. The canvas background comes from the
  * body in globals.css; this only sets type and links in the ledger palette. */
 export default function NotFound() {
   return (
@@ -18,11 +18,11 @@ export default function NotFound() {
       >
         <BrandMark size={22} />
         <span>
-          License<span className="text-rust-text">Meter</span>
+          License<span className="text-brand-text">Meter</span>
         </span>
       </Link>
 
-      <p className="mt-12 text-xs font-medium tracking-[0.2em] text-rust-text uppercase">
+      <p className="mt-12 text-xs font-medium tracking-[0.2em] text-brand-text uppercase">
         404
       </p>
       <h1 className="mt-4 font-display text-4xl tracking-tight text-balance">
@@ -35,19 +35,19 @@ export default function NotFound() {
       <nav className="mt-8 flex flex-col gap-2 text-sm">
         <Link
           href="/"
-          className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+          className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           Home
         </Link>
         <Link
           href="/connectors"
-          className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+          className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           Connector setup guides
         </Link>
         <Link
           href="/app"
-          className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+          className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           Open the dashboard
         </Link>

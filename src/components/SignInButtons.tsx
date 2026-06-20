@@ -31,7 +31,7 @@ export const SignInButtons = ({
           className={buttonClass("primary", "w-full sm:w-auto")}
         >
           <MicrosoftMark />
-          Run a free Microsoft 365 scan
+          Run a free scan
         </a>
       ) : (
         <a
@@ -45,7 +45,7 @@ export const SignInButtons = ({
       {demoEnabled && (
         <form action="/api/auth/demo" method="post">
           <button className={buttonClass("secondary", "w-full sm:w-auto")}>
-            Open sample tenant
+            Open the sample tenant
           </button>
         </form>
       )}
@@ -54,7 +54,7 @@ export const SignInButtons = ({
           href="#sample-tenant"
           className={buttonClass("secondary", "w-full sm:w-auto")}
         >
-          View sample tenant
+          Open the sample tenant
         </a>
       )}
     </div>

@@ -1,87 +1,43 @@
-# Member roles review: follow-up actions (2026-06-18)
+# Landing page rework — full refresh + aggressive content cut (2026-06-20)
 
-Review verdict: keep all three roles (viewer/admin/owner). The model is a clean
-read/operate/govern hierarchy (ROLE_RANK in src/server/access.ts), enforcement is
-consistent via requireAccess/apiAccess, and Owner's two unique powers (manage
-owners, delete workspace) are exactly the irreversible/governance ones - correct
-to separate from Admin. No role should be removed.
+Plan: `~/.claude/plans/lets-rework-our-landing-serialized-quilt.md`
+Decisions: teal + amber palette, site-wide token swap, no real social proof yet, aggressive cuts.
 
-The actionable gaps are documentation and one missing capability.
+## Checklist
+- [x] Design-system foundation: globals.css teal/amber tokens + radius/shadow + retire ledger CSS; Geist/Geist Mono fonts; ui.tsx Button/Pill/Card rounded; BrandMark + OG recolor
+- [x] Landing components: HeroVisual (responsive — ledger lines at all breakpoints) + Reveal (IntersectionObserver, reduced-motion safe)
+- [x] Rebuild landing page → 6 sections; connector grid + pricing tiers → teasers/links; dedupe; loud free-scan offer; dual CTA
+- [x] Site-wide token cleanup (dashboard, workspace, marketing subpages, rules.ts, WasteReport.tsx) via 3 parallel agents; remove temp aliases
+- [x] Verify: build + lint + tsc + 196 tests green; Playwright 390/768/1280; pricing + connectors regression
+- [x] Evaluate with feature-dev:code-reviewer against acceptance criteria; fix findings
 
-## Plan
+## Review
 
-### P1 - Change a claimed member's role (functional gap)
-Today the only member writes are invite / resend / remove. A claimed member's
-role cannot be changed at all (addMember bails at actions.ts:280 once oid is set).
-This was a deliberate guard ("owner-demotion via re-invite closed"), so the fix is
-a NEW guarded action, not loosening addMember.
+**Outcome:** Landing reworked from 7 dense sections to 6 tight ones with a single spine
+(free scan → your € number → safe to connect → built by someone you trust), on a bright
+teal/amber design system applied site-wide.
 
-- [ ] Add `changeMemberRole(membershipId, newRole)` server action in src/server/actions.ts
-      - requires apiAccess("admin"); demo workspace blocked; target scoped to tenant
-      - granting owner OR changing an existing owner requires caller is owner
-        (mirror addMember:263 / removeMember:391)
-      - block changing your OWN role (mirror "cannot remove yourself") -> also
-        prevents last-owner self-demotion / workspace orphaning
-      - no-op if role unchanged; audit("member_role_changed", {email, from, to})
-- [ ] UI: role control in the settings member list (extend MemberActions or a
-      small RoleSelect) - visible to admins, owner option only when caller is owner,
-      hidden for self and in demo
-- Acceptance:
-  - admin can promote viewer->admin and demote admin->viewer with no remove/re-invite
-  - only an owner can set or unset the owner role
-  - nobody can change their own role; the last owner cannot be orphaned
-  - every change is audit-logged; demo workspace rejects it
+**Acceptance criteria:** 8/8 PASS (independent code-reviewer). Highlights:
+- Hero: one focal point, outcome+free H1, full-size free-scan offer, dual CTA, trust micro-row,
+  themed HeroVisual. The xl-only responsive bug is fixed — itemized ledger lines render at every
+  breakpoint (verified 390/768/1280).
+- 9-connector grid → `/connectors`; pricing-tiers table → `/pricing` (teasers + links remain).
+- Final CTA reuses the buttons with a different (urgency) headline.
+- No `rust-*`/`paper`/Fraunces references remain (rg clean); category tints (gold/slate/plum/teal/moss)
+  preserved + re-hued for dashboard/findings/PDF.
 
-### P2 - Document the roles at the point of use (the real weakness)
-Only "Viewer (finance)" is hinted in the UI; Admin and Owner are bare words. The
-FAQ only really explains Viewer.
+**Gates:** `npm run build` green, `npm run check` (lint+tsc) clean, `npm run test` 196/196.
+Browser-verified landing (3 breakpoints), `/pricing`, `/connectors`.
 
-- [ ] InviteForm.tsx: one-line plain-language description per role option
-      (viewer = read-only dashboards + exports; admin = manage data, settings,
-      members, connectors; owner = everything + delete workspace + manage owners)
-- [ ] Same descriptions beside the role control in the member list
-- [ ] FAQ (src/app/(marketing)/faq/page.tsx:32): expand to spell out Admin vs Owner
-- [ ] Optional: short permission matrix in README/docs
-- Acceptance: no role option appears as a bare word; FAQ explains all three tiers
+**Reviewer findings fixed:**
+1. `text-gold` on `bg-gold-soft` ~4.0:1 (AA fail) → added `--color-gold-text` (#854d0e, ~5.1:1) for
+   badge/pill text; kept `--color-gold` for meter fills (ui.tsx, rules.ts, users/[id]).
+2. `text-ink-faint` (#687772) on `bg-subtle` ~4.35:1 (AA fail) → darkened to #5c6b67 (~5.1:1).
+   Both re-verified live.
 
-### P3 - DB CHECK constraint on role (defense in depth)
-role is validated in app code only (schema.ts:75); no DB-level constraint.
-
-- [ ] Drizzle migration: CHECK (role IN ('viewer','admin','owner')) on memberships
-- Acceptance: invalid role insert rejected at DB level; existing rows valid; push clean
-
-### Explicitly NOT doing
-- Removing any role - decided against; the three tiers are necessary and
-  industry-standard (read / operate / govern)
-
-## Gates (per tasks/lessons.md)
-- npm run check (lint + tsc), npm test, npm run build all green before pushing
-- escape apostrophes as &rsquo; in any (marketing) / JSX copy touched
-- verify the member-role UI live in the running app (settings) before calling done
-- separate code-reviewer subagent evaluates against the acceptance criteria above
-
-## Review (2026-06-18) - all three shipped
-
-P1 PASS: changeMemberRole added (actions.ts) + RoleSelect in the member list.
-  Guards verified by code-reviewer: admin cannot promote-to/demote owner; cannot
-  change own role; tenant-scoped lookup; demo blocked; newRole validated; audits
-  member_role_changed; same ActionResult shape as siblings.
-P2 PASS: shared src/lib/roles.ts (ROLE_LABEL/ROLE_DESCRIPTION/ROLE_ORDER); invite
-  dropdown now shows a live per-role description; member Pill carries the
-  description as a tooltip; FAQ entry spells out viewer vs admin vs owner.
-P3 PASS: check() on memberships.role; constraint proven in an isolated pglite
-  (valid roles accepted; "superuser"/"Owner"/""/"guest" rejected). Repo deploys
-  via db:push (migration chain already stale from prior push-only changes), so
-  schema.ts is the source of truth - did not add to the broken migration chain.
-  Lands in prod on the next `npm run db:push`.
-
-Gates: next lint clean, tsc clean, 188/188 tests, production build green.
-
-Reviewer false-positive (NOT applied): claimed last-owner demotion can orphan the
-workspace. Disproven - demoting an owner requires being a different owner, so the
-actor always remains an owner (same invariant as removeMember). Added a clarifying
-doc-comment instead of a dead count-check.
-
-Not browser-verified: the member-role UI sits behind Microsoft sign-in on a
-non-demo workspace (the demo hides member management), so it is not reachable from
-the preview without real tenant credentials. Covered by types + build + review.
+**Notes / follow-ups (not blocking):**
+- Dashboard not visually verified here (auth-gated; demo mode off) — covered by typecheck/lint/agent
+  rg-checks. Worth a screenshot pass when signed in or with demo enabled.
+- `src/app/icon.svg` favicon still carries old mark colors (generated by `scripts/make-icons.mjs`) —
+  regenerate when convenient.
+- Not committed — left in the working tree for review.

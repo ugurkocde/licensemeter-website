@@ -91,7 +91,7 @@ export const ImportSeatsForm = ({ spec }: { spec: ConnectorSpec }) => {
         aria-live="polite"
         className={
           result
-            ? `text-xs focus:outline-none ${result.ok ? "text-moss" : "text-rust-text"}`
+            ? `text-xs focus:outline-none ${result.ok ? "text-moss" : "text-danger-text"}`
             : "sr-only"
         }
       >
@@ -151,7 +151,7 @@ export const ClearSeatsButton = ({ spec }: { spec: ConnectorSpec }) => {
         role="status"
         aria-live="polite"
         className={
-          message ? "max-w-64 text-right text-xs text-rust-text" : "sr-only"
+          message ? "max-w-64 text-right text-xs text-danger-text" : "sr-only"
         }
       >
         {message}

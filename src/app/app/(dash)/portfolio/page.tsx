@@ -72,7 +72,7 @@ export default async function PortfolioPage() {
         snapshot: latest,
         sync:
           lastRun?.status === "failed" ? (
-            <span className="text-rust-text">failed</span>
+            <span className="text-danger-text">failed</span>
           ) : isTrial ? (
             importedAt ? `imported ${fmtDate(importedAt)}` : "-"
           ) : (
@@ -116,7 +116,7 @@ export default async function PortfolioPage() {
             {sorted.map(({ ws, currency, snapshot, sync, openFindings }) => (
               <tr
                 key={ws.id}
-                className="border-b border-line last:border-b-0 hover:bg-paper"
+                className="border-b border-line last:border-b-0 hover:bg-canvas"
               >
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -138,7 +138,7 @@ export default async function PortfolioPage() {
                     ? fmtMoney(snapshot.totalMonthlySpendCents, currency)
                     : "-"}
                 </td>
-                <td className="tnum px-4 py-3 text-right font-mono font-medium text-rust-text">
+                <td className="tnum px-4 py-3 text-right font-mono font-medium text-waste-text">
                   {snapshot
                     ? fmtMoney(snapshot.totalMonthlyWasteCents, currency)
                     : "-"}
@@ -178,7 +178,7 @@ export default async function PortfolioPage() {
             <dl className="tnum mt-3 grid grid-cols-2 gap-x-6 gap-y-2 font-mono text-sm">
               <div className="flex justify-between gap-2">
                 <dt className="font-sans text-xs text-ink-faint">Waste/mo</dt>
-                <dd className="font-medium text-rust-text">
+                <dd className="font-medium text-waste-text">
                   {snapshot
                     ? fmtMoney(snapshot.totalMonthlyWasteCents, currency)
                     : "-"}

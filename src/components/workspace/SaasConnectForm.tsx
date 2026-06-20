@@ -72,7 +72,7 @@ export const SaasConnectForm = ({ spec }: { spec: ConnectorSpec }) => {
           tabIndex={-1}
           role="status"
           aria-live="polite"
-          className="text-xs text-rust-text focus:outline-none"
+          className="text-xs text-danger-text focus:outline-none"
         >
           {error?.message}
         </span>
@@ -134,7 +134,7 @@ export const SaasDisconnectButton = ({ spec }: { spec: ConnectorSpec }) => {
         role="status"
         aria-live="polite"
         className={
-          message ? "max-w-64 text-right text-xs text-rust-text" : "sr-only"
+          message ? "max-w-64 text-right text-xs text-danger-text" : "sr-only"
         }
       >
         {message}

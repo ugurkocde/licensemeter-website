@@ -32,9 +32,9 @@ export const DangerZone = ({ tenantName }: { tenantName: string }) => {
       : null;
 
   return (
-    <div className="border border-rust-soft bg-card">
-      <div className="border-b border-rust-soft px-5 py-3">
-        <h2 className="text-xs font-medium tracking-[0.18em] text-rust-deep uppercase">
+    <div className="border border-danger-soft bg-card">
+      <div className="border-b border-danger-soft px-5 py-3">
+        <h2 className="text-xs font-medium tracking-[0.18em] text-danger-text uppercase">
           Danger zone
         </h2>
       </div>
@@ -65,8 +65,8 @@ export const DangerZone = ({ tenantName }: { tenantName: string }) => {
             }}
             className={
               armed
-                ? "border border-rust bg-rust px-4 py-2 text-xs font-medium tracking-wide text-paper uppercase hover:border-rust-deep hover:bg-rust-deep disabled:opacity-50"
-                : "border border-rust px-4 py-2 text-xs font-medium tracking-wide text-rust-text uppercase hover:bg-rust-soft"
+                ? "border border-danger bg-danger px-4 py-2 text-xs font-medium tracking-wide text-canvas uppercase hover:border-danger-text hover:bg-danger-text disabled:opacity-50"
+                : "border border-danger px-4 py-2 text-xs font-medium tracking-wide text-danger-text uppercase hover:bg-danger-soft"
             }
           >
             {pending
@@ -79,7 +79,7 @@ export const DangerZone = ({ tenantName }: { tenantName: string }) => {
             role="status"
             aria-live="polite"
             className={
-              message ? "max-w-md text-right text-xs text-rust-text" : "sr-only"
+              message ? "max-w-md text-right text-xs text-danger-text" : "sr-only"
             }
           >
             {message}

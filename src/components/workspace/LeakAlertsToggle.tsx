@@ -66,7 +66,7 @@ export const LeakAlertsToggle = ({ initial }: { initial: boolean }) => {
         aria-live="polite"
         className={
           result
-            ? `text-xs ${result.ok ? "text-moss" : "text-rust-text"}`
+            ? `text-xs ${result.ok ? "text-moss" : "text-danger-text"}`
             : "sr-only"
         }
       >

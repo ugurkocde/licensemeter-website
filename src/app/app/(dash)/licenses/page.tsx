@@ -119,7 +119,7 @@ export default async function LicensesPage() {
               return (
                 <tr
                   key={s.skuId}
-                  className="border-b border-line last:border-b-0 hover:bg-paper"
+                  className="border-b border-line last:border-b-0 hover:bg-canvas"
                 >
                   <td className="px-4 py-3">
                     <div className="font-medium">

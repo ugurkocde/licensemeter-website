@@ -26,7 +26,7 @@ type FindingRow = typeof findings.$inferSelect;
 
 const StatusPill = ({ status }: { status: FindingStatus }) => (
   <Pill
-    tone={status === "open" ? "rust" : status === "acknowledged" ? "outline" : "moss"}
+    tone={status === "open" ? "brand" : status === "acknowledged" ? "outline" : "moss"}
   >
     {status}
   </Pill>
@@ -156,7 +156,7 @@ export default async function FindingsPage({
           aria-current={!ruleParam && !showResolved ? "true" : undefined}
           className={`relative px-3 py-1.5 text-xs font-medium after:absolute after:inset-x-0 after:-inset-y-2 after:content-[''] ${
             !ruleParam && !showResolved
-              ? "bg-ink text-paper"
+              ? "bg-ink text-canvas"
               : "border border-line bg-card text-ink-soft hover:border-ink"
           }`}
         >
@@ -173,7 +173,7 @@ export default async function FindingsPage({
               }
               className={`relative px-3 py-1.5 text-xs font-medium after:absolute after:inset-x-0 after:-inset-y-2 after:content-[''] ${
                 ruleParam === rule && !showResolved
-                  ? "bg-ink text-paper"
+                  ? "bg-ink text-canvas"
                   : "border border-line bg-card text-ink-soft hover:border-ink"
               }`}
             >
@@ -186,7 +186,7 @@ export default async function FindingsPage({
           aria-current={showResolved ? "true" : undefined}
           className={`relative px-3 py-1.5 text-xs font-medium after:absolute after:inset-x-0 after:-inset-y-2 after:content-[''] ${
             showResolved
-              ? "bg-ink text-paper"
+              ? "bg-ink text-canvas"
               : "border border-line bg-card text-ink-soft hover:border-ink"
           }`}
         >
@@ -228,7 +228,7 @@ export default async function FindingsPage({
               return (
                 <tr
                   key={f.id}
-                  className="border-b border-line align-top last:border-b-0 hover:bg-paper"
+                  className="border-b border-line align-top last:border-b-0 hover:bg-canvas"
                 >
                   {isAdmin && !showResolved && (
                     <td className="px-3 py-3">
@@ -264,7 +264,7 @@ export default async function FindingsPage({
                       </div>
                     )}
                   </td>
-                  <td className="tnum px-4 py-3 text-right font-mono font-medium text-rust-text">
+                  <td className="tnum px-4 py-3 text-right font-mono font-medium text-waste-text">
                     {f.monthlyImpactCents > 0
                       ? fmtMoney(f.monthlyImpactCents, currency)
                       : "-"}
@@ -318,7 +318,7 @@ export default async function FindingsPage({
                 <span className="text-xs text-ink-soft">
                   First seen {fmtDate(f.firstSeenAt)}
                 </span>
-                <span className="tnum font-mono text-sm font-medium text-rust-text">
+                <span className="tnum font-mono text-sm font-medium text-waste-text">
                   {f.monthlyImpactCents > 0
                     ? `${fmtMoney(f.monthlyImpactCents, currency)}/mo`
                     : "-"}

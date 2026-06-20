@@ -52,10 +52,10 @@ export default function MarketingLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <div className="bg-paper min-h-screen">
+    <div className="bg-canvas min-h-screen">
       <a
         href="#content"
-        className="focus:border-ink focus:bg-paper focus:text-ink sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:border focus:px-4 focus:py-2 focus:text-sm focus:font-medium"
+        className="focus:border-ink focus:bg-canvas focus:text-ink sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:border focus:px-4 focus:py-2 focus:text-sm focus:font-medium"
       >
         Skip to content
       </a>
@@ -66,7 +66,7 @@ export default function MarketingLayout({
         >
           <BrandMark size={22} />
           <span>
-            License<span className="text-rust-text">Meter</span>
+            License<span className="text-brand-text">Meter</span>
           </span>
         </Link>
         <div className="flex items-center gap-2 sm:gap-5">
@@ -98,7 +98,7 @@ export default function MarketingLayout({
             <div className="font-display flex items-center gap-2 text-lg tracking-tight">
               <BrandMark size={18} />
               <span>
-                License<span className="text-rust-text">Meter</span>
+                License<span className="text-brand-text">Meter</span>
               </span>
             </div>
             <p className="text-ink-soft mt-3 max-w-xs text-sm leading-relaxed">
@@ -115,7 +115,7 @@ export default function MarketingLayout({
               {col.title === "Contact" && (
                 <a
                   href={SUPPORT_MAILTO}
-                  className="border-line-strong text-ink hover:border-ink focus-visible:ring-rust-text mt-4 inline-flex min-h-11 touch-manipulation items-center justify-center border bg-paper px-4 py-2.5 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                  className="border-line-strong text-ink hover:border-brand focus-visible:ring-brand mt-4 inline-flex min-h-11 touch-manipulation items-center justify-center rounded-xl border bg-canvas px-4 py-2.5 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-card"
                 >
                   Email support
                 </a>
@@ -148,7 +148,7 @@ export default function MarketingLayout({
           <span>LicenseMeter, operated by UgurLabs UG</span>
           <span>
             Independent tool, not affiliated with Microsoft, Adobe, Zoom,
-            Atlassian, Salesforce, OpenAI or Anthropic. All product names are
+            Atlassian, Salesforce, ChatGPT or Claude. All product names are
             trademarks of their respective owners.
           </span>
         </div>

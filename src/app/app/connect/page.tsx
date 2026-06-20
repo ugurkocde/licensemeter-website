@@ -56,7 +56,7 @@ export default async function ConnectPage({
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center px-6 py-16">
       <Link href="/" className="font-display text-xl tracking-tight">
-        License<span className="text-rust-text">Meter</span>
+        License<span className="text-brand-text">Meter</span>
       </Link>
 
       <h1 className="mt-10 font-display text-4xl tracking-tight">
@@ -64,7 +64,7 @@ export default async function ConnectPage({
       </h1>
 
       {error && (
-        <div className="mt-6 border border-rust-soft bg-rust-soft/50 p-4 text-sm text-rust-deep">
+        <div className="mt-6 border border-danger-soft bg-danger-soft/50 p-4 text-sm text-danger-text">
           {ERROR_TEXT[error] ?? "Something went wrong. Please retry."}
         </div>
       )}
@@ -103,7 +103,7 @@ export default async function ConnectPage({
             Full details for your security team:{" "}
             <Link
               href="/security"
-              className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+              className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
             >
               security overview
             </Link>

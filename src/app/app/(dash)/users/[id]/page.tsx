@@ -75,7 +75,7 @@ export default async function UserDetailPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Pill tone={user.accountEnabled ? "moss" : "rust"}>
+          <Pill tone={user.accountEnabled ? "moss" : "danger"}>
             {user.accountEnabled ? "enabled" : "disabled"}
           </Pill>
           {user.userType === "Guest" && <Pill tone="teal">guest</Pill>}
@@ -120,7 +120,7 @@ export default async function UserDetailPage({
                   </span>
                 )}
                 {l.disabledPlans.length > 0 && (
-                  <span className="ml-2 text-xs text-gold">
+                  <span className="ml-2 text-xs text-gold-text">
                     {l.disabledPlans.length} plans disabled
                   </span>
                 )}
@@ -179,7 +179,7 @@ export default async function UserDetailPage({
                 <Pill
                   tone={
                     f.status === "open"
-                      ? "rust"
+                      ? "brand"
                       : f.status === "acknowledged"
                         ? "outline"
                         : "moss"
@@ -188,7 +188,7 @@ export default async function UserDetailPage({
                   {f.status}
                 </Pill>
               </div>
-              <span className="tnum shrink-0 font-mono text-sm font-medium text-rust-text">
+              <span className="tnum shrink-0 font-mono text-sm font-medium text-waste-text">
                 {f.monthlyImpactCents > 0
                   ? `${fmtMoney(f.monthlyImpactCents, currency)}/mo`
                   : "-"}

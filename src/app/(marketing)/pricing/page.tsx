@@ -102,7 +102,7 @@ const INCLUDED = [
 export default function PricingPage() {
   return (
     <main className="mx-auto max-w-5xl px-6 pt-6 pb-24">
-      <p className="text-xs font-medium tracking-[0.2em] text-rust-text uppercase">
+      <p className="text-xs font-medium tracking-[0.2em] text-brand-text uppercase">
         Pricing
       </p>
       <h1 className="mt-4 font-display text-4xl tracking-tight text-balance">
@@ -127,7 +127,7 @@ export default function PricingPage() {
                 {tier.name}
               </h2>
               {tier.featured && (
-                <span className="bg-ink px-2 py-0.5 text-[11px] font-medium tracking-wide text-paper uppercase">
+                <span className="bg-ink px-2 py-0.5 text-[11px] font-medium tracking-wide text-canvas uppercase">
                   Most common
                 </span>
               )}
@@ -154,14 +154,14 @@ export default function PricingPage() {
         More than 2.500 seats or managing multiple tenants as an MSP?{" "}
         <a
           href={SUPPORT_MAILTO}
-          className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+          className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           Talk to us.
         </a>{" "}
         The portfolio view, per-client price books and QBR reports are on the{" "}
         <Link
           href="/msp"
-          className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+          className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           MSP page
         </Link>
@@ -194,11 +194,11 @@ export default function PricingPage() {
             <span className="tnum font-mono">€ {GROWTH_ANNUAL}</span> a year.
             Six reclaimed E3 seats cover it. The live demo tenant of{" "}
             {DEMO_FIGURES.users} people shows{" "}
-            <span className="tnum font-mono text-rust-text">
+            <span className="tnum font-mono text-waste-text">
               € {demoEuros(DEMO_FIGURES.monthlyWasteCents)}
             </span>{" "}
             a month recoverable, about{" "}
-            <span className="tnum font-mono text-rust-text">
+            <span className="tnum font-mono text-waste-text">
               € {DEMO_ANNUAL_WASTE_ROUNDED}
             </span>{" "}
             a year.
@@ -215,14 +215,14 @@ export default function PricingPage() {
         Questions about scopes or data handling first? Read the{" "}
         <Link
           href="/security"
-          className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+          className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           security overview
         </Link>{" "}
         or the{" "}
         <Link
           href="/faq"
-          className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+          className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           FAQ
         </Link>

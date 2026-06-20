@@ -78,11 +78,11 @@ export const MobileNav = ({
       <div className="flex items-center justify-between px-4 py-3">
         <Link
           href="/app"
-          className="font-display text-paper flex items-center gap-2 text-lg tracking-tight"
+          className="font-display text-canvas flex items-center gap-2 text-lg tracking-tight"
         >
           <BrandMark size={18} tone="dark" />
           <span>
-            License<span className="text-rust-bright">Meter</span>
+            License<span className="text-brand-bright">Meter</span>
           </span>
         </Link>
         <button
@@ -91,7 +91,7 @@ export const MobileNav = ({
           aria-expanded={open}
           aria-controls="mobile-nav-drawer"
           aria-label={open ? "Close menu" : "Open menu"}
-          className="text-paper -my-1 flex size-11 items-center justify-center"
+          className="text-canvas -my-1 flex size-11 items-center justify-center"
         >
           <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
             {open ? (
@@ -128,7 +128,7 @@ export const MobileNav = ({
           {workspaces.length > 1 ? (
             <WorkspaceSwitcher workspaces={workspaces} activeId={activeId} />
           ) : (
-            <div className="text-paper truncate text-sm font-medium">
+            <div className="text-canvas truncate text-sm font-medium">
               {tenantName}
             </div>
           )}
@@ -142,13 +142,13 @@ export const MobileNav = ({
         />
         <div className="border-sidebar-line mt-3 flex items-center justify-between border-t px-4 pt-3">
           <div className="min-w-0">
-            <div className="text-paper truncate text-sm">{userName}</div>
+            <div className="text-canvas truncate text-sm">{userName}</div>
             <div className="text-sidebar-soft text-[11px] tracking-wider uppercase">
               {role}
             </div>
           </div>
           <form action="/api/auth/signout" method="post">
-            <button className="text-sidebar-soft hover:text-paper inline-flex min-h-11 items-center text-xs underline-offset-4 transition hover:underline">
+            <button className="text-sidebar-soft hover:text-canvas inline-flex min-h-11 items-center text-xs underline-offset-4 transition hover:underline">
               Sign out
             </button>
           </form>

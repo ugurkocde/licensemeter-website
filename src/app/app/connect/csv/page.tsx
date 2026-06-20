@@ -19,7 +19,7 @@ export default async function CsvTrialPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center px-6 py-16">
       <Link href="/" className="font-display text-xl tracking-tight">
-        License<span className="text-rust-text">Meter</span>
+        License<span className="text-brand-text">Meter</span>
       </Link>
 
       <h1 className="mt-10 font-display text-4xl tracking-tight">
@@ -52,7 +52,7 @@ export default async function CsvTrialPage() {
         Have consent rights?{" "}
         <Link
           href="/app/connect"
-          className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+          className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           Connect the read-only sync instead
         </Link>{" "}

@@ -150,7 +150,7 @@ export const SaasConnectorPage = async ({
                     : "first sync pending"}
                 </div>
                 {conn.lastSyncStatus === "failed" && (
-                  <p className="mt-2 max-w-md text-xs text-rust-text">
+                  <p className="mt-2 max-w-md text-xs text-danger-text">
                     The last sync could not reach {spec.label}. Findings are
                     based on the previous snapshot. If the credentials were
                     changed or revoked, disconnect and reconnect with fresh
@@ -176,7 +176,7 @@ export const SaasConnectorPage = async ({
           <ul className="flex flex-col gap-2 text-sm text-ink-soft">
             {spec.detects.map((line) => (
               <li key={line} className="flex gap-3">
-                <span aria-hidden="true" className="mt-0.5 text-rust-text">
+                <span aria-hidden="true" className="mt-0.5 text-brand-text">
                   ·
                 </span>
                 {line}

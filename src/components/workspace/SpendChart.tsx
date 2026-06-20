@@ -17,9 +17,9 @@ const fmtAxisDate = (day: string): string =>
     new Date(day),
   );
 
-/** Line tones by series position: ink first (OpenAI), rust second (Anthropic). */
-const STROKES = ["var(--color-ink-soft)", "var(--color-rust)"];
-const SWATCHES = ["bg-ink-soft", "bg-rust"];
+/** Line tones by series position: ink first (OpenAI), brand second (Anthropic). */
+const STROKES = ["var(--color-ink-soft)", "var(--color-brand)"];
+const SWATCHES = ["bg-ink-soft", "bg-brand"];
 
 /**
  * Daily AI API spend per provider. Server-rendered SVG sibling of TrendChart:
@@ -102,7 +102,7 @@ export const SpendChart = ({ series }: { series: SpendSeries[] }) => {
                   key={s.label}
                   d={pathOf(s.points)}
                   fill="none"
-                  stroke={STROKES[i] ?? "var(--color-rust)"}
+                  stroke={STROKES[i] ?? "var(--color-brand)"}
                   strokeWidth="1.5"
                 />
               ),
@@ -134,7 +134,7 @@ export const SpendChart = ({ series }: { series: SpendSeries[] }) => {
           {series.map((s, i) => (
             <span key={s.label} className="flex items-center gap-1.5">
               <span
-                className={`inline-block h-0.5 w-4 ${SWATCHES[i] ?? "bg-rust"}`}
+                className={`inline-block h-0.5 w-4 ${SWATCHES[i] ?? "bg-brand"}`}
               />{" "}
               {s.label}
             </span>

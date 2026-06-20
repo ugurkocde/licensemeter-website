@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 /**
  * Burger menu for the marketing header below sm. The inline nav links move
- * into a paper drawer so the header keeps only brand + CTA; mirrors the app
+ * into a canvas drawer so the header keeps only brand + CTA; mirrors the app
  * drawer mechanics (document-level Escape, drawer stays mounted so
  * aria-controls always resolves - Tailwind preflight gives [hidden]
  * display:none !important).
@@ -56,7 +56,7 @@ export const MarketingMobileNav = ({
       <div
         id="marketing-nav-drawer"
         hidden={!open}
-        className="absolute inset-x-0 top-full z-40 border-y border-line bg-paper sm:hidden"
+        className="absolute inset-x-0 top-full z-40 border-y border-line bg-canvas sm:hidden"
       >
         <nav aria-label="Main" className="py-2">
           {items.map((item) => (

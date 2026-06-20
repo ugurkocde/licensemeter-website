@@ -107,7 +107,7 @@ const Section = ({
 export default function SecurityPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 pt-6 pb-24">
-      <p className="text-rust-text text-xs font-medium tracking-[0.2em] uppercase">
+      <p className="text-brand-text text-xs font-medium tracking-[0.2em] uppercase">
         Security overview
       </p>
       <h1 className="font-display mt-4 text-4xl tracking-tight text-balance">
@@ -180,7 +180,7 @@ export default function SecurityPage() {
           No role with consent rights at hand today? The{" "}
           <a
             href="/api/auth/signin?returnTo=%2Fapp%2Fconnect%2Fcsv"
-            className="text-ink hover:text-rust-text font-medium underline underline-offset-4"
+            className="text-ink hover:text-brand-text font-medium underline underline-offset-4"
           >
             CSV trial
           </a>{" "}
@@ -194,7 +194,7 @@ export default function SecurityPage() {
         <ul className="mt-2 flex flex-col gap-2">
           {NEVER_ACCESSED.map((item) => (
             <li key={item} className="flex gap-3">
-              <span aria-hidden="true" className="text-rust-text mt-0.5">
+              <span aria-hidden="true" className="text-brand-text mt-0.5">
                 ×
               </span>
               {item}
@@ -289,21 +289,21 @@ export default function SecurityPage() {
           Security review, pentest coordination or vendor questionnaires:{" "}
           <a
             href={SUPPORT_MAILTO}
-            className="text-ink hover:text-rust-text font-medium underline underline-offset-4"
+            className="text-ink hover:text-brand-text font-medium underline underline-offset-4"
           >
             {SUPPORT_EMAIL}
           </a>
           . See also the{" "}
           <Link
             href="/faq"
-            className="text-ink hover:text-rust-text font-medium underline underline-offset-4"
+            className="text-ink hover:text-brand-text font-medium underline underline-offset-4"
           >
             FAQ
           </Link>{" "}
           and{" "}
           <Link
             href="/privacy"
-            className="text-ink hover:text-rust-text font-medium underline underline-offset-4"
+            className="text-ink hover:text-brand-text font-medium underline underline-offset-4"
           >
             Privacy Policy
           </Link>

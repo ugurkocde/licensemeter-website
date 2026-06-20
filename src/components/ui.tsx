@@ -8,11 +8,11 @@ import Link from "next/link";
  */
 const BUTTON_VARIANTS = {
   primary:
-    "inline-flex min-h-11 cursor-pointer touch-manipulation items-center justify-center gap-2.5 bg-ink px-5 py-3 text-sm font-medium text-paper transition hover:bg-rust-deep disabled:cursor-not-allowed disabled:opacity-40",
+    "inline-flex min-h-11 cursor-pointer touch-manipulation items-center justify-center gap-2.5 rounded-xl bg-brand-strong px-5 py-3 text-sm font-medium text-white shadow-card transition hover:bg-brand-deep hover:shadow-float disabled:cursor-not-allowed disabled:opacity-40",
   secondary:
-    "inline-flex min-h-11 cursor-pointer touch-manipulation items-center justify-center gap-2 border border-line-strong bg-card px-4 py-2.5 text-sm font-medium text-ink transition hover:border-ink disabled:opacity-50",
+    "inline-flex min-h-11 cursor-pointer touch-manipulation items-center justify-center gap-2 rounded-xl border border-line-strong bg-card px-5 py-2.5 text-sm font-medium text-ink transition hover:border-brand hover:bg-subtle disabled:opacity-50",
   micro:
-    "relative inline-flex cursor-pointer touch-manipulation items-center border border-line px-2.5 py-1 text-[11px] font-medium tracking-wide uppercase transition after:absolute after:inset-x-0 after:-inset-y-[9px] after:content-[''] hover:border-ink disabled:opacity-30",
+    "relative inline-flex cursor-pointer touch-manipulation items-center rounded-lg border border-line px-2.5 py-1 text-[11px] font-medium tracking-wide uppercase transition after:absolute after:inset-x-0 after:-inset-y-[9px] after:content-[''] hover:border-brand disabled:opacity-30",
 } as const;
 
 export type ButtonVariant = keyof typeof BUTTON_VARIANTS;
@@ -54,9 +54,9 @@ export const Card = ({
   title: string;
   children: React.ReactNode;
 }) => (
-  <section className="border border-line bg-card">
-    <div className="border-b border-line px-5 py-3">
-      <h2 className="text-xs font-medium tracking-[0.18em] text-ink-faint uppercase">
+  <section className="border-line bg-card shadow-card overflow-hidden rounded-2xl border">
+    <div className="border-line border-b px-5 py-3">
+      <h2 className="text-ink-faint text-xs font-medium tracking-[0.14em] uppercase">
         {title}
       </h2>
     </div>
@@ -66,20 +66,24 @@ export const Card = ({
 
 /** Category/status pill tones. Soft fill + dark text from the same ramp. */
 const PILL_TONES = {
-  rust: "bg-rust-soft text-rust-deep",
-  gold: "bg-gold-soft text-gold",
+  brand: "bg-brand-soft text-brand-deep",
+  waste: "bg-waste-soft text-waste-deep",
+  good: "bg-good-soft text-good-text",
+  danger: "bg-danger-soft text-danger-text",
+  gold: "bg-gold-soft text-gold-text",
   slate: "bg-slate-soft text-slate-ink",
   plum: "bg-plum-soft text-plum",
   teal: "bg-teal-soft text-teal-ink",
-  moss: "bg-moss-soft text-moss",
   /** Neutral outline tier, e.g. acknowledged status. */
   outline: "border border-line-strong text-ink-soft",
+  /** Legacy alias: moss maps to the good/emerald tone. */
+  moss: "bg-good-soft text-good-text",
 } as const;
 
 export type PillTone = keyof typeof PILL_TONES;
 
 export const PILL_BASE =
-  "inline-block px-2 py-0.5 text-[11px] font-medium tracking-wide whitespace-nowrap uppercase";
+  "inline-block rounded-full px-2.5 py-0.5 text-[11px] font-medium tracking-wide whitespace-nowrap uppercase";
 
 export const Pill = ({
   tone,

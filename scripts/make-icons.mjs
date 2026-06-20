@@ -48,11 +48,11 @@ await writeFile(
   ]),
 );
 
-/* Apple touch icon: opaque paper tile, mark at ~78% so iOS corner rounding
+/* Apple touch icon: opaque canvas tile, mark at ~78% so iOS corner rounding
  * does not clip the strike. */
 const appleMark = await sharp(svg).resize(140, 140).png().toBuffer();
 await sharp({
-  create: { width: 180, height: 180, channels: 4, background: "#faf8f3" },
+  create: { width: 180, height: 180, channels: 4, background: "#fbfcfc" },
 })
   .composite([{ input: appleMark, left: 20, top: 20 }])
   .png()
@@ -62,7 +62,7 @@ await sharp({
  * the paper card), 96px for crisp display at 28-32 CSS px. Served from
  * public/, safe alongside the app-dir icon routes; only a public
  * favicon.ico would conflict. */
-const transparentMark = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><g fill="#1c1a16"><rect x="6" y="6.5" width="4.5" height="19"/><rect x="13.75" y="6.5" width="4.5" height="19"/><rect x="21.5" y="6.5" width="4.5" height="19"/></g><line x1="3.5" y1="22.5" x2="28.5" y2="9.5" stroke="#bc3e12" stroke-width="4.5"/></svg>`;
+const transparentMark = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><g fill="#0c1a17"><rect x="6" y="6.5" width="4.5" height="19"/><rect x="13.75" y="6.5" width="4.5" height="19"/><rect x="21.5" y="6.5" width="4.5" height="19"/></g><line x1="3.5" y1="22.5" x2="28.5" y2="9.5" stroke="#f59e0b" stroke-width="4.5"/></svg>`;
 await sharp(Buffer.from(transparentMark))
   .resize(96, 96)
   .png()

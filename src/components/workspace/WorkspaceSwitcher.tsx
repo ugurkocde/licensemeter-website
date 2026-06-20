@@ -52,7 +52,7 @@ export const WorkspaceSwitcher = ({
           }
         });
       }}
-      className={`w-full rounded-none border border-sidebar-line bg-sidebar px-2 py-1 text-sm font-medium text-paper focus:border-sidebar-soft ${
+      className={`w-full rounded-none border border-sidebar-line bg-sidebar px-2 py-1 text-sm font-medium text-canvas focus:border-sidebar-soft ${
         pending ? "opacity-60" : ""
       }`}
     >

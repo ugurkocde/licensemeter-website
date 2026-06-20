@@ -40,7 +40,7 @@ export const HeaderAuthCta = () => {
   ) : (
     <ButtonLink href="/#get-started" variant="secondary">
       <span className="sm:hidden">Free scan</span>
-      <span className="hidden sm:inline">Free waste scan</span>
+      <span className="hidden sm:inline">Run a free scan</span>
     </ButtonLink>
   );
 };

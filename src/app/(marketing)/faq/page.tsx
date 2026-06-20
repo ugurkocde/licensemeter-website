@@ -74,7 +74,7 @@ const slugify = (s: string): string =>
 export default function FaqPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 pt-6 pb-24">
-      <p className="text-xs font-medium tracking-[0.2em] text-rust-text uppercase">
+      <p className="text-xs font-medium tracking-[0.2em] text-brand-text uppercase">
         FAQ
       </p>
       <h1 className="mt-4 font-display text-4xl tracking-tight text-balance">
@@ -101,14 +101,14 @@ export default function FaqPage() {
         Anything missing?{" "}
         <a
           href={SUPPORT_MAILTO}
-          className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+          className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           Ask directly
         </a>{" "}
         or read the{" "}
         <Link
           href="/security"
-          className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+          className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           security overview
         </Link>

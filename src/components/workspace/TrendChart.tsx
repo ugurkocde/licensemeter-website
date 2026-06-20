@@ -58,7 +58,7 @@ export const TrendChart = ({
         </h2>
         <span className="text-xs text-ink-soft">
           Waste {fmtMoney(first.wasteCents, currency)} →{" "}
-          <span className="font-medium text-rust-text">
+          <span className="font-medium text-waste-text">
             {fmtMoney(last.wasteCents, currency)}
           </span>
           /mo
@@ -81,11 +81,11 @@ export const TrendChart = ({
           />
           <path
             d={`${wastePath} L${W - PAD.right} ${H - PAD.bottom} L${PAD.left} ${H - PAD.bottom} Z`}
-            fill="var(--color-rust-soft)"
+            fill="var(--color-waste-soft)"
             opacity="0.7"
           />
           <path d={spendPath} fill="none" stroke="var(--color-ink-soft)" strokeWidth="1.5" />
-          <path d={wastePath} fill="none" stroke="var(--color-rust)" strokeWidth="1.5" />
+          <path d={wastePath} fill="none" stroke="var(--color-waste)" strokeWidth="1.5" />
           {/* In-chart labels scale with the viewBox. Below sm they would render
               unreadably small, so the legend line carries the range instead. */}
           <text
@@ -114,7 +114,7 @@ export const TrendChart = ({
             <span className="inline-block h-0.5 w-4 bg-ink-soft" /> Monthly spend
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-4 bg-rust" /> Monthly waste
+            <span className="inline-block h-0.5 w-4 bg-waste" /> Monthly waste
           </span>
         </div>
       </div>

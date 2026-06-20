@@ -25,7 +25,7 @@ const ActionStatus = ({
       aria-live="polite"
       className={
         message
-          ? `max-w-56 text-right text-xs ${result?.ok ? "text-moss" : "text-rust-text"}`
+          ? `max-w-56 text-right text-xs ${result?.ok ? "text-moss" : "text-danger-text"}`
           : "sr-only"
       }
     >
@@ -99,8 +99,8 @@ export const MemberActions = ({
               onBlur={() => setArmed(false)}
               className={`text-xs underline-offset-4 hover:underline disabled:opacity-50 ${
                 armed
-                  ? "text-rust-text underline"
-                  : "text-ink-faint hover:text-rust-text"
+                  ? "text-danger-text underline"
+                  : "text-ink-faint hover:text-danger-text"
               }`}
             >
               {removePending ? "Removing…" : armed ? "Confirm remove" : "Remove"}

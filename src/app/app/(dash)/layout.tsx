@@ -23,10 +23,10 @@ export default async function WorkspaceLayout({
   const tenantName = ctx.tenant.name ?? ctx.tenant.tid;
 
   return (
-    <div className="min-h-screen bg-paper lg:flex">
+    <div className="min-h-screen bg-canvas lg:flex">
       <a
         href="#content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:border focus:border-ink focus:bg-paper focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-ink"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:border focus:border-ink focus:bg-canvas focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-ink"
       >
         Skip to content
       </a>
@@ -43,8 +43,8 @@ export default async function WorkspaceLayout({
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto bg-sidebar lg:flex">
         <Link href="/app" className="flex items-center gap-2 px-5 pt-6 pb-7">
           <BrandMark size={20} tone="dark" />
-          <span className="font-display text-lg tracking-tight text-paper">
-            License<span className="text-rust-bright">Meter</span>
+          <span className="font-display text-lg tracking-tight text-canvas">
+            License<span className="text-brand-bright">Meter</span>
           </span>
         </Link>
 
@@ -55,7 +55,7 @@ export default async function WorkspaceLayout({
               activeId={ctx.tenant.id}
             />
           ) : (
-            <div className="truncate text-sm font-medium text-paper">
+            <div className="truncate text-sm font-medium text-canvas">
               {tenantName}
             </div>
           )}
@@ -69,7 +69,7 @@ export default async function WorkspaceLayout({
         </div>
 
         <div className="border-t border-sidebar-line px-5 py-4">
-          <div className="truncate text-sm text-paper">{ctx.user.name}</div>
+          <div className="truncate text-sm text-canvas">{ctx.user.name}</div>
           <div className="mt-0.5 text-[11px] tracking-wider text-sidebar-soft uppercase">
             {ctx.membership.role}
           </div>
@@ -80,7 +80,7 @@ export default async function WorkspaceLayout({
               redirect("/");
             }}
           >
-            <button className="mt-1 inline-flex min-h-11 items-center text-xs text-sidebar-soft underline-offset-4 transition hover:text-paper hover:underline">
+            <button className="mt-1 inline-flex min-h-11 items-center text-xs text-sidebar-soft underline-offset-4 transition hover:text-canvas hover:underline">
               Sign out
             </button>
           </form>

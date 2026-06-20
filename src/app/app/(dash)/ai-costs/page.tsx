@@ -131,7 +131,7 @@ export default async function AiCostsPage() {
               ? `Imported ${fmtDate(importedUser?.syncedAt ?? null)}`
               : `Last synced ${fmtAgo(lastRun?.finishedAt ?? null)}`}
           {lastRun?.status === "failed" && (
-            <span className="ml-2 text-rust-text">(last sync failed)</span>
+            <span className="ml-2 text-danger-text">(last sync failed)</span>
           )}
         </p>
       </header>
@@ -236,7 +236,7 @@ export default async function AiCostsPage() {
                   {topCategories.map((c) => (
                     <tr
                       key={`${c.provider}:${c.category}`}
-                      className="border-b border-line last:border-b-0 hover:bg-paper"
+                      className="border-b border-line last:border-b-0 hover:bg-canvas"
                     >
                       <td className="px-4 py-3 font-medium">{c.category}</td>
                       <td className="px-4 py-3 text-ink-soft">
@@ -248,7 +248,7 @@ export default async function AiCostsPage() {
                     </tr>
                   ))}
                   {otherCents > 0 && (
-                    <tr className="border-b border-line last:border-b-0 hover:bg-paper">
+                    <tr className="border-b border-line last:border-b-0 hover:bg-canvas">
                       <td className="px-4 py-3 text-ink-soft">Other</td>
                       <td className="px-4 py-3 text-ink-faint">-</td>
                       <td className="tnum px-4 py-3 text-right font-mono">

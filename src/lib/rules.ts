@@ -8,19 +8,19 @@ export const RULE_META: Record<
   disabled_account_with_license: {
     label: "Disabled account still licensed",
     short: "Disabled",
-    badgeClass: "bg-rust-soft text-rust-deep",
+    badgeClass: "bg-danger-soft text-danger-text",
   },
   never_active: {
     label: "Licensed but never active",
     short: "Never active",
-    badgeClass: "bg-gold-soft text-gold",
+    badgeClass: "bg-gold-soft text-gold-text",
   },
   inactive_90d: {
     // Threshold-neutral: the inactivity window is per-workspace (30-180 days)
     // and finding titles carry the actual day count.
     label: "Inactive seat",
     short: "Inactive",
-    badgeClass: "bg-gold-soft text-gold",
+    badgeClass: "bg-gold-soft text-gold-text",
   },
   shelfware: {
     label: "Unassigned paid seats",
@@ -40,7 +40,7 @@ export const RULE_META: Record<
   adobe_disabled_in_entra: {
     label: "Adobe seat, user disabled in Entra",
     short: "Adobe leak",
-    badgeClass: "bg-rust-soft text-rust-deep",
+    badgeClass: "bg-danger-soft text-danger-text",
   },
   adobe_orphaned: {
     label: "Adobe seat without Entra account",
@@ -50,7 +50,7 @@ export const RULE_META: Record<
   saas_disabled_in_entra: {
     label: "Connected app seat, user disabled in Entra",
     short: "App leak",
-    badgeClass: "bg-rust-soft text-rust-deep",
+    badgeClass: "bg-danger-soft text-danger-text",
   },
   saas_orphaned: {
     label: "Connected app seat without Entra account",
@@ -60,12 +60,12 @@ export const RULE_META: Record<
   saas_inactive: {
     label: "Connected app seat inactive",
     short: "App idle",
-    badgeClass: "bg-gold-soft text-gold",
+    badgeClass: "bg-gold-soft text-gold-text",
   },
   overlapping_licenses: {
     label: "Suite + standalone double-pay",
     short: "Overlap",
-    badgeClass: "bg-gold-soft text-gold",
+    badgeClass: "bg-gold-soft text-gold-text",
   },
   service_plans_disabled: {
     label: "Service plans disabled on paid suite",

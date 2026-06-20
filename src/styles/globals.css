@@ -1,52 +1,90 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", monospace;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
 }
 
 @theme {
-  /* Ledger palette: warm paper, ink, rust for waste, moss for healthy. */
-  --color-paper: #faf8f3;
+  /* Surfaces — cool, bright. */
+  --color-canvas: #fbfcfc;
   --color-card: #ffffff;
-  --color-ink: #1c1a16;
-  --color-ink-soft: #6b665d;
-  --color-ink-faint: #75705f;
-  --color-line: #e7e2d6;
-  --color-line-strong: #d2ccbb;
-  /* rust = fills, bars, badges; rust-text = AA text on light; rust-bright = AA text on ink */
-  --color-rust: #bc3e12;
-  --color-rust-text: #a8330d;
-  --color-rust-bright: #e2683f;
-  --color-rust-deep: #8f2f0c;
-  --color-rust-soft: #f9e9e1;
-  --color-moss: #3f6b3f;
-  --color-moss-soft: #e9f0e4;
-  --color-gold: #7a5300;
-  --color-gold-soft: #f7edd4;
-  --color-slate-ink: #45506b;
-  --color-slate-soft: #e8eaef;
-  --color-plum: #6d3b73;
-  --color-plum-soft: #f2e7f3;
-  --color-teal-ink: #1f6661;
-  --color-teal-soft: #e0efed;
-  --color-sidebar: #171511;
-  --color-sidebar-line: #2e2a21;
-  --color-sidebar-soft: #a8a296;
+  --color-subtle: #f3f6f5;
+  --color-ink: #0c1a17;
+  --color-ink-soft: #3a4541;
+  --color-ink-faint: #5c6b67;
+  --color-line: #e4eae8;
+  --color-line-strong: #d0d9d6;
+
+  /* Brand — teal: trust, action, savings. Button fill uses brand-strong so
+     white labels clear AA (#0d9488 alone fails on white at body size). */
+  --color-brand: #0d9488;
+  --color-brand-strong: #115e59;
+  --color-brand-text: #0f766e;
+  --color-brand-deep: #134e4a;
+  --color-brand-soft: #e6f7f4;
+  --color-brand-bright: #2dd4bf;
+
+  /* Waste / leak — amber: the money semantic, on every € figure. */
+  --color-waste: #f59e0b;
+  --color-waste-text: #b45309;
+  --color-waste-deep: #854f0b;
+  --color-waste-soft: #fef3e2;
+
+  /* Recovered / healthy — emerald. */
+  --color-good: #10b981;
+  --color-good-text: #047857;
+  --color-good-soft: #e7f7f0;
+
+  /* Danger / destructive — red (disconnect, remove, form errors). */
+  --color-danger: #dc2626;
+  --color-danger-text: #b91c1c;
+  --color-danger-bright: #f87171;
+  --color-danger-soft: #fdecec;
+
+  /* Dark ink panel (scan rail, dark CTA, dashboard sidebar). */
+  --color-ink-panel: #0c1a17;
+  --color-ink-soft-text: #a7b4b0;
+
+  /* Categorical ramp — finding categories on the dashboard / ledger / PDF.
+     Re-hued brighter; mapping preserved. Distinct from the brand teal. */
+  --color-moss: #047857;
+  --color-moss-soft: #e7f7f0;
+  --color-gold: #a16207;
+  --color-gold-text: #854d0e;
+  --color-gold-soft: #fbf0d4;
+  --color-slate-ink: #475569;
+  --color-slate-soft: #eef1f6;
+  --color-plum: #7c3aed;
+  --color-plum-soft: #f1e9ff;
+  --color-teal-ink: #0e7490;
+  --color-teal-soft: #def2f7;
+
+  /* Dashboard dark chrome. */
+  --color-sidebar: #0c1a17;
+  --color-sidebar-line: #20302c;
+  --color-sidebar-soft: #a7b4b0;
+
+  /* Soft, modern elevation. */
+  --shadow-card: 0 2px 8px -2px rgba(12, 26, 23, 0.08);
+  --shadow-float: 0 10px 28px -10px rgba(12, 26, 23, 0.14);
+  --shadow-hero: 0 24px 56px -18px rgba(12, 26, 23, 0.22);
 }
 
-/* Visible keyboard focus everywhere; rust ring on light, paper ring on ink. */
+/* Visible keyboard focus everywhere; teal ring on light, canvas ring on ink. */
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: 2px solid var(--color-rust);
+  outline: 2px solid var(--color-brand);
   outline-offset: 2px;
 }
-.bg-sidebar :where(a, button, select):focus-visible {
-  outline-color: var(--color-paper);
+.bg-sidebar :where(a, button, select):focus-visible,
+.bg-ink :where(a, button):focus-visible,
+.bg-ink-panel :where(a, button):focus-visible {
+  outline-color: var(--color-canvas);
 }
 
 body {
-  background-color: var(--color-paper);
+  background-color: var(--color-canvas);
   color: var(--color-ink);
 }
 
@@ -55,33 +93,19 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.enterprise-grid {
-  background-image:
-    linear-gradient(
-      to right,
-      color-mix(in srgb, var(--color-line) 62%, transparent) 1px,
-      transparent 1px
+/* Soft brand glow, replaces the old enterprise grid behind hero / CTA bands. */
+.brand-radial {
+  background:
+    radial-gradient(
+      62% 60% at 18% 0%,
+      color-mix(in srgb, var(--color-brand) 14%, transparent),
+      transparent 70%
     ),
-    linear-gradient(
-      to bottom,
-      color-mix(in srgb, var(--color-line) 62%, transparent) 1px,
-      transparent 1px
+    radial-gradient(
+      55% 55% at 100% 10%,
+      color-mix(in srgb, var(--color-waste) 10%, transparent),
+      transparent 68%
     );
-  background-size: 42px 42px;
-  mask-image: linear-gradient(to bottom, black 0%, black 64%, transparent 100%);
-}
-
-.ledger-shell {
-  isolation: isolate;
-}
-
-.ledger-shell::before {
-  position: absolute;
-  inset: 10px;
-  z-index: -1;
-  border: 1px solid color-mix(in srgb, var(--color-rust) 18%, transparent);
-  content: "";
-  transform: translate(10px, 10px);
 }
 
 .meter-bar {
@@ -90,8 +114,14 @@ body {
   animation: meter-fill 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
-.meter-rust {
-  background: var(--color-rust);
+.meter-waste {
+  background: var(--color-waste);
+}
+.meter-brand {
+  background: var(--color-brand);
+}
+.meter-danger {
+  background: var(--color-danger);
 }
 .meter-gold {
   background: var(--color-gold);
@@ -111,11 +141,7 @@ body {
   width: 0.625rem;
   height: 0.625rem;
   border-radius: 999px;
-  background: var(--color-rust-bright);
-}
-
-.bg-ink :where(a, button):focus-visible {
-  outline-color: var(--color-paper);
+  background: var(--color-brand-bright);
 }
 
 @keyframes meter-fill {
@@ -129,7 +155,7 @@ body {
   }
 }
 
-/* Staggered entrance for dashboard sections. */
+/* Staggered entrance for hero / above-the-fold blocks. */
 @keyframes rise {
   from {
     opacity: 0;
@@ -160,14 +186,33 @@ body {
   animation-delay: 0.3s;
 }
 
+/* Scroll-reveal (IntersectionObserver adds .in-view). Stagger via inline
+   transition-delay on children. */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.5s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.reveal.in-view {
+  opacity: 1;
+  transform: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rise,
   .meter-bar {
     animation: none;
   }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }
 
 ::selection {
-  background: var(--color-rust-soft);
-  color: var(--color-rust-deep);
+  background: var(--color-brand-soft);
+  color: var(--color-brand-deep);
 }

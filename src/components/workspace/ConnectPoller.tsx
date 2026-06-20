@@ -68,7 +68,7 @@ export const ConnectPoller = () => {
   return (
     <div role="status" aria-live="polite">
       {run?.status === "failed" ? (
-        <div className="border border-rust-soft bg-rust-soft/50 p-4 text-sm text-rust-deep">
+        <div className="border border-danger-soft bg-danger-soft/50 p-4 text-sm text-danger-text">
           <p className="font-medium">The first sync failed.</p>
           <p className="mt-1">
             {run.error ?? "Check the sync history in settings."}
@@ -92,7 +92,7 @@ export const ConnectPoller = () => {
         <div className="flex items-center gap-3 text-sm text-ink-soft">
           <span
             aria-hidden="true"
-            className="inline-block size-2 rounded-full bg-rust motion-safe:animate-pulse"
+            className="inline-block size-2 rounded-full bg-brand motion-safe:animate-pulse"
           />
           Running the first sync: pulling licenses, users and usage reports…
         </div>

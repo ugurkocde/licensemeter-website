@@ -16,11 +16,11 @@ export const EmailCapture = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const doneClass =
-    statusTone === "dark" ? "text-sm text-moss-soft" : "text-sm text-moss";
+    statusTone === "dark" ? "text-sm text-good" : "text-sm text-good-text";
   const errorClass =
     statusTone === "dark"
-      ? "w-full text-xs text-rust-bright"
-      : "w-full text-xs text-rust-text";
+      ? "w-full text-xs text-danger-bright"
+      : "w-full text-xs text-danger-text";
 
   return (
     <form
@@ -67,7 +67,7 @@ export const EmailCapture = ({
         aria-invalid={state === "error" || undefined}
         autoComplete="email"
         spellCheck={false}
-        className={`border-line bg-card text-ink placeholder:text-ink-faint focus:border-ink min-h-11 min-w-56 flex-1 border px-3 py-2.5 text-sm ${
+        className={`border-line bg-card text-ink placeholder:text-ink-faint focus:border-brand min-h-11 min-w-56 flex-1 rounded-lg border px-3 py-2.5 text-sm ${
           state === "done" ? "hidden" : ""
         }`}
       />

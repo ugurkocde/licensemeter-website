@@ -9,7 +9,7 @@ export const alt =
 
 /* Brand mark (see src/components/BrandMark.tsx) as a data URI: satori
  * renders raster/SVG images more reliably than inline SVG elements. */
-const MARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><g fill="#1c1a16"><rect x="6" y="6.5" width="4.5" height="19"/><rect x="13.75" y="6.5" width="4.5" height="19"/><rect x="21.5" y="6.5" width="4.5" height="19"/></g><line x1="3.5" y1="22.5" x2="28.5" y2="9.5" stroke="#bc3e12" stroke-width="4.5"/></svg>`;
+const MARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><g fill="#0c1a17"><rect x="6" y="6.5" width="4.5" height="19"/><rect x="13.75" y="6.5" width="4.5" height="19"/><rect x="21.5" y="6.5" width="4.5" height="19"/></g><line x1="3.5" y1="22.5" x2="28.5" y2="9.5" stroke="#f59e0b" stroke-width="4.5"/></svg>`;
 const MARK_SRC = `data:image/svg+xml,${encodeURIComponent(MARK_SVG)}`;
 
 export default function OpenGraphImage() {
@@ -22,9 +22,9 @@ export default function OpenGraphImage() {
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          backgroundColor: "#faf8f3",
+          backgroundColor: "#fbfcfc",
           padding: "72px 80px",
-          fontFamily: "Georgia, serif",
+          fontFamily: "sans-serif",
         }}
       >
         <div
@@ -33,13 +33,13 @@ export default function OpenGraphImage() {
             alignItems: "center",
             gap: 18,
             fontSize: 44,
-            color: "#1c1a16",
+            color: "#0c1a17",
           }}
         >
           <img src={MARK_SRC} width={46} height={46} alt="" />
           <div style={{ display: "flex" }}>
             License
-            <span style={{ color: "#a8330d" }}>Meter</span>
+            <span style={{ color: "#0f766e" }}>Meter</span>
           </div>
         </div>
         <div
@@ -53,7 +53,7 @@ export default function OpenGraphImage() {
             style={{
               fontSize: 76,
               lineHeight: 1.05,
-              color: "#1c1a16",
+              color: "#0c1a17",
               letterSpacing: "-2px",
               maxWidth: 980,
             }}
@@ -64,8 +64,7 @@ export default function OpenGraphImage() {
             style={{
               display: "flex",
               fontSize: 30,
-              color: "#6b665d",
-              fontFamily: "sans-serif",
+              color: "#3a4541",
             }}
           >
             Microsoft 365 plus eight SaaS connectors, priced per month.
@@ -77,18 +76,17 @@ export default function OpenGraphImage() {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            borderTop: "1px solid #d2ccbb",
+            borderTop: "1px solid #d0d9d6",
             paddingTop: 28,
             fontSize: 26,
-            fontFamily: "sans-serif",
-            color: "#a8330d",
+            color: "#b45309",
           }}
         >
           <span>
             Waste ledger · € {demoEuros(DEMO_FIGURES.monthlyWasteCents)} / month
             recoverable
           </span>
-          <span style={{ color: "#75705f" }}>licensemeter</span>
+          <span style={{ color: "#687772" }}>licensemeter</span>
         </div>
       </div>
     ),

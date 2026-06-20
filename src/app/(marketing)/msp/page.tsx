@@ -99,7 +99,7 @@ export default function MspPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-6 pt-6 pb-24">
-      <p className="text-xs font-medium tracking-[0.2em] text-rust-text uppercase">
+      <p className="text-xs font-medium tracking-[0.2em] text-brand-text uppercase">
         For managed service providers
       </p>
       <h1 className="mt-4 font-display text-4xl tracking-tight text-balance">
@@ -121,7 +121,7 @@ export default function MspPage() {
         <div className="mt-8 grid gap-10 md:grid-cols-3">
           {STEPS.map((step) => (
             <div key={step.n}>
-              <div className="font-mono text-xs text-rust-text">{step.n}</div>
+              <div className="font-mono text-xs text-brand-text">{step.n}</div>
               <h3 className="mt-3 font-display text-xl tracking-tight">
                 {step.title}
               </h3>
@@ -145,7 +145,7 @@ export default function MspPage() {
           live demo tenant shows the pattern: {DEMO_FIGURES.leaverCount}{" "}
           ex-employees still licensed, {DEMO_FIGURES.crossVendorLeaverCount} of
           them in connected apps. That&rsquo;s{" "}
-          <span className="tnum font-mono text-rust-text">
+          <span className="tnum font-mono text-waste-text">
             € {demoEuros(DEMO_FIGURES.byCategory.leavers)}
           </span>{" "}
           a month for people who already left.
@@ -179,7 +179,7 @@ export default function MspPage() {
           The{" "}
           <Link
             href="/security"
-            className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+            className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
           >
             security overview
           </Link>{" "}

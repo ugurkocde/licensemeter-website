@@ -6,7 +6,7 @@ import { Button } from "~/components/ui";
 import { submitCsvTrial, type CsvTrialResult } from "./actions";
 
 const inputClass =
-  "min-h-11 w-full border border-line bg-card px-3 py-2 text-sm file:mr-3 file:cursor-pointer file:border-0 file:bg-ink file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-paper focus:border-ink";
+  "min-h-11 w-full border border-line bg-card px-3 py-2 text-sm file:mr-3 file:cursor-pointer file:border-0 file:bg-ink file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-canvas focus:border-ink";
 
 /**
  * Two file inputs + optional workspace name, wrapped in useActionState so
@@ -24,7 +24,7 @@ export const CsvTrialForm = () => {
     <form action={formAction} className="mt-8 flex flex-col gap-6">
       <div className="flex flex-col gap-2">
         <label htmlFor="csv-trial-directory" className="text-sm font-medium">
-          User export <span className="text-rust-text">(required)</span>
+          User export <span className="text-brand-text">(required)</span>
         </label>
         <input
           id="csv-trial-directory"
@@ -80,7 +80,7 @@ export const CsvTrialForm = () => {
       <p
         role="status"
         aria-live="polite"
-        className={result && !result.ok ? "text-sm text-rust-text" : "sr-only"}
+        className={result && !result.ok ? "text-sm text-danger-text" : "sr-only"}
       >
         {result && !result.ok ? result.error : null}
       </p>

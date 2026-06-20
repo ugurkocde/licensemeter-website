@@ -69,7 +69,7 @@ export const InviteForm = ({
         aria-live="polite"
         className={
           result
-            ? `w-full text-xs ${result.ok ? "text-moss" : "text-rust-text"}`
+            ? `w-full text-xs ${result.ok ? "text-moss" : "text-danger-text"}`
             : "sr-only"
         }
       >

@@ -123,7 +123,7 @@ export default async function OverviewPage() {
                 ? `Imported ${fmtDate(importedUser?.syncedAt ?? null)}`
                 : `Last synced ${fmtAgo(lastRun?.finishedAt ?? null)}`}
             {lastRun?.status === "failed" && (
-              <span className="ml-2 text-rust-text">(last sync failed)</span>
+              <span className="ml-2 text-danger-text">(last sync failed)</span>
             )}
           </p>
         </div>
@@ -185,7 +185,7 @@ export default async function OverviewPage() {
                 <p className="mt-1 text-sm text-ink-soft">
                   {fmtNumber(openCount, currency)} open{" "}
                   {openCount === 1 ? "finding" : "findings"} worth{" "}
-                  <span className="font-medium text-rust-text">
+                  <span className="font-medium text-waste-text">
                     {fmtMoney(monthlyWaste, currency)}/mo
                   </span>
                   . Reclaim these seats before you re-commit.
@@ -213,7 +213,7 @@ export default async function OverviewPage() {
             label: "Monthly waste",
             value: fmtMoney(monthlyWaste, currency),
             sub: `${wasteShare.toFixed(1)}% of spend`,
-            tone: "rust",
+            tone: "waste",
             note: listPricesOnly ? (
               <>
                 Estimated at list prices.{" "}
@@ -230,7 +230,7 @@ export default async function OverviewPage() {
             label: "Annualized waste",
             value: fmtMoney(monthlyWaste * 12, currency),
             sub: "if nothing changes",
-            tone: "rust",
+            tone: "waste",
             note: null,
           },
           {
@@ -247,7 +247,7 @@ export default async function OverviewPage() {
             </div>
             <div
               className={`mt-2 font-display text-3xl tracking-tight ${
-                card.tone === "rust" ? "text-rust-text" : "text-ink"
+                card.tone === "waste" ? "text-waste-text" : "text-ink"
               }`}
             >
               {card.value}
@@ -316,7 +316,7 @@ export default async function OverviewPage() {
                 return (
                   <tr
                     key={s.skuId}
-                    className="border-b border-line last:border-b-0 hover:bg-paper"
+                    className="border-b border-line last:border-b-0 hover:bg-canvas"
                   >
                     <td className="px-4 py-3">
                       <div className="font-medium">
@@ -334,7 +334,7 @@ export default async function OverviewPage() {
                     </td>
                     <td
                       className={`tnum px-4 py-3 text-right font-mono ${
-                        free > 0 ? "font-medium text-rust-text" : "text-ink-faint"
+                        free > 0 ? "font-medium text-waste-text" : "text-ink-faint"
                       }`}
                     >
                       {fmtNumber(free, currency)}
@@ -383,7 +383,7 @@ export default async function OverviewPage() {
                   </div>
                   <div className="flex justify-between gap-2">
                     <dt className="font-sans text-xs text-ink-faint">Unassigned</dt>
-                    <dd className={free > 0 ? "font-medium text-rust-text" : ""}>
+                    <dd className={free > 0 ? "font-medium text-waste-text" : ""}>
                       {fmtNumber(free, currency)}
                     </dd>
                   </div>
@@ -428,7 +428,7 @@ export default async function OverviewPage() {
                 <FindingChip rule={f.rule} detail={f.detail} />
                 <span className="truncate text-sm">{f.title}</span>
               </div>
-              <span className="tnum shrink-0 font-mono text-sm font-medium text-rust-text">
+              <span className="tnum shrink-0 font-mono text-sm font-medium text-waste-text">
                 {f.monthlyImpactCents > 0
                   ? `${fmtMoney(f.monthlyImpactCents, currency)}/mo`
                   : "-"}

@@ -117,14 +117,14 @@ export default async function AdobeConnectorPage() {
         <Card title="What it detects">
           <ul className="flex flex-col gap-2 text-sm text-ink-soft">
             <li className="flex gap-3">
-              <span aria-hidden="true" className="mt-0.5 text-rust-text">
+              <span aria-hidden="true" className="mt-0.5 text-brand-text">
                 ·
               </span>
               Adobe seats whose owner is disabled in Entra ID: paid Creative
               Cloud for accounts that can no longer sign in.
             </li>
             <li className="flex gap-3">
-              <span aria-hidden="true" className="mt-0.5 text-rust-text">
+              <span aria-hidden="true" className="mt-0.5 text-brand-text">
                 ·
               </span>
               Orphaned Adobe seats with no matching directory account at all.

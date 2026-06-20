@@ -1,14 +1,14 @@
 /**
  * The LicenseMeter mark: a tally being struck out. Count the seats, strike
  * the waste. Colors are brand constants matching the tokens in globals.css;
- * "light" sits on paper surfaces (ink bars, rust strike), "dark" sits on the
- * ink sidebar (paper bars, rust-bright strike - rust reads only 3.3:1 there).
- * The favicon set (src/app/icon.svg, scripts/make-icons.mjs) carries the same
- * geometry in the light palette and must be regenerated if this changes.
+ * "light" sits on canvas surfaces (ink bars, amber strike), "dark" sits on the
+ * ink sidebar (canvas bars, brighter amber strike). The favicon set
+ * (src/app/icon.svg, scripts/make-icons.mjs) carries the same geometry in the
+ * light palette and must be regenerated if this changes.
  */
 const PALETTES = {
-  light: { bars: "#1c1a16", strike: "#bc3e12" },
-  dark: { bars: "#faf8f3", strike: "#e2683f" },
+  light: { bars: "#0c1a17", strike: "#f59e0b" },
+  dark: { bars: "#fbfcfc", strike: "#fbbf24" },
 } as const;
 
 export const BrandMark = ({

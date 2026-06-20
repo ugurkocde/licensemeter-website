@@ -1,30 +1,13 @@
 import "~/styles/globals.css";
 
 import { type Metadata, type Viewport } from "next";
-import { Fraunces, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import { Analytics } from "@vercel/analytics/react";
 
 import { siteUrl } from "~/env";
 import { SITE_DEFINITION } from "~/lib/site";
 import { SUPPORT_EMAIL } from "~/lib/support";
-
-const plexSans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-plex-sans",
-});
-
-const plexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-plex-mono",
-});
-
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  axes: ["opsz"],
-  variable: "--font-fraunces",
-});
 
 const TITLE =
   "LicenseMeter | find the Microsoft 365 licenses you pay for but do not use";
@@ -103,7 +86,7 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport: Viewport = { themeColor: "#faf8f3" };
+export const viewport: Viewport = { themeColor: "#fbfcfc" };
 
 export default function RootLayout({
   children,
@@ -111,7 +94,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${plexSans.variable} ${plexMono.variable} ${fraunces.variable}`}
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
     >
       <body className="font-sans antialiased">
         {children}

@@ -84,7 +84,7 @@ export const FindingsBulkForm = ({
             <p
               aria-live="polite"
               className={`text-xs ${
-                result && !result.ok ? "text-rust-text" : "text-ink-soft"
+                result && !result.ok ? "text-danger-text" : "text-ink-soft"
               }`}
             >
               {result

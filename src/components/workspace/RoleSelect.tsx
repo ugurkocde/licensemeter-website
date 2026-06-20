@@ -61,7 +61,7 @@ export const RoleSelect = ({
         role="status"
         aria-live="polite"
         className={
-          error ? "mt-1 max-w-56 text-right text-xs text-rust-text" : "sr-only"
+          error ? "mt-1 max-w-56 text-right text-xs text-danger-text" : "sr-only"
         }
       >
         {error}

@@ -6,17 +6,18 @@ import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
  */
 
 const C = {
-  paper: "#faf8f3",
-  ink: "#1c1a16",
-  inkSoft: "#6b665d",
-  inkFaint: "#a39d8f",
-  line: "#e7e2d6",
-  rust: "#a8330d",
+  canvas: "#fbfcfc",
+  ink: "#0c1a17",
+  inkSoft: "#3a4541",
+  inkFaint: "#687772",
+  line: "#e4eae8",
+  brand: "#0f766e",
+  waste: "#b45309",
 };
 
 const styles = StyleSheet.create({
   page: {
-    backgroundColor: C.paper,
+    backgroundColor: C.canvas,
     color: C.ink,
     padding: 48,
     fontSize: 10,
@@ -58,7 +59,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   cellTitle: { flex: 1, paddingRight: 12 },
-  cellImpact: { width: 90, textAlign: "right", color: C.rust },
+  cellImpact: { width: 90, textAlign: "right", color: C.waste },
   footer: {
     position: "absolute",
     bottom: 32,
@@ -92,7 +93,7 @@ export const WasteReport = ({ data }: { data: ReportData }) => (
       <View style={styles.hRow}>
         <View>
           <Text style={styles.wordmark}>
-            License<Text style={{ color: C.rust }}>Meter</Text>
+            License<Text style={{ color: C.brand }}>Meter</Text>
           </Text>
           <Text style={{ color: C.inkSoft, marginTop: 4 }}>
             License waste report
@@ -111,13 +112,13 @@ export const WasteReport = ({ data }: { data: ReportData }) => (
         </View>
         <View style={styles.kpi}>
           <Text style={styles.kpiLabel}>Monthly waste</Text>
-          <Text style={[styles.kpiValue, { color: C.rust }]}>
+          <Text style={[styles.kpiValue, { color: C.waste }]}>
             {data.monthlyWaste}
           </Text>
         </View>
         <View style={styles.kpi}>
           <Text style={styles.kpiLabel}>Annualized waste</Text>
-          <Text style={[styles.kpiValue, { color: C.rust }]}>
+          <Text style={[styles.kpiValue, { color: C.waste }]}>
             {data.annualWaste}
           </Text>
         </View>

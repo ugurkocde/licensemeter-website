@@ -277,7 +277,7 @@ export default async function SettingsPage() {
                             ? "bg-gold motion-safe:animate-pulse"
                             : run.status === "partial"
                               ? "bg-gold"
-                              : "bg-rust"
+                              : "bg-danger"
                       }`}
                     />
                     <span className="font-medium capitalize">{run.status}</span>
@@ -378,7 +378,7 @@ export default async function SettingsPage() {
                   </div>
                   <Link
                     href={row.href}
-                    className="text-xs font-medium text-ink underline-offset-4 hover:text-rust-text hover:underline"
+                    className="text-xs font-medium text-ink underline-offset-4 hover:text-brand-text hover:underline"
                   >
                     {!isAdmin
                       ? "View →"

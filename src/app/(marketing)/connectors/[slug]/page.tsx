@@ -71,7 +71,7 @@ export default async function ConnectorGuidePage({
           Connectors
         </Link>{" "}
         /{" "}
-        <span aria-current="page" className="text-rust-text">
+        <span aria-current="page" className="text-brand-text">
           {guide.name}
         </span>
       </nav>
@@ -96,7 +96,7 @@ export default async function ConnectorGuidePage({
             <li key={step.title} className="flex gap-5">
               <span
                 aria-hidden="true"
-                className="font-mono text-xs text-rust-text"
+                className="font-mono text-xs text-brand-text"
               >
                 {String(i + 1).padStart(2, "0")}
               </span>
@@ -113,7 +113,7 @@ export default async function ConnectorGuidePage({
                       href={step.doc.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+                      className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
                     >
                       {step.doc.label}
                     </a>{" "}
@@ -136,7 +136,7 @@ export default async function ConnectorGuidePage({
           <ul className="mt-4 flex flex-col gap-2 text-sm leading-relaxed text-ink-soft">
             {guide.detects.map((line) => (
               <li key={line} className="flex gap-3">
-                <span aria-hidden="true" className="mt-0.5 text-rust-text">
+                <span aria-hidden="true" className="mt-0.5 text-brand-text">
                   ·
                 </span>
                 {line}
@@ -169,7 +169,7 @@ export default async function ConnectorGuidePage({
           <ul className="mt-3 flex flex-col gap-2 text-sm leading-relaxed text-ink-soft">
             {guide.neverReads.map((line) => (
               <li key={line} className="flex gap-3">
-                <span aria-hidden="true" className="mt-0.5 text-rust-text">
+                <span aria-hidden="true" className="mt-0.5 text-brand-text">
                   ·
                 </span>
                 {line}
@@ -186,7 +186,7 @@ export default async function ConnectorGuidePage({
         Data lives in the EU (Postgres, Frankfurt). The{" "}
         <Link
           href="/security"
-          className="font-medium text-ink underline underline-offset-4 hover:text-rust-text"
+          className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           security overview
         </Link>{" "}

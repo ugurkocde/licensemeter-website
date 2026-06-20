@@ -1,16 +1,18 @@
-import type { CSSProperties } from "react";
 import Link from "next/link";
+import {
+  Calculator,
+  Check,
+  FileSpreadsheet,
+  ShieldCheck,
+  Terminal,
+} from "lucide-react";
 
 import { env, isDemoMode } from "~/env";
-import { EmailCapture } from "~/components/EmailCapture";
-import { RoiCalculator } from "~/components/RoiCalculator";
 import { SignInButtons } from "~/components/SignInButtons";
-import { Pill, type PillTone } from "~/components/ui";
-import {
-  DEMO_ANNUAL_WASTE_ROUNDED,
-  DEMO_FIGURES,
-  demoEuros,
-} from "~/lib/demoFigures";
+import { HeroVisual } from "~/components/landing/HeroVisual";
+import { Reveal } from "~/components/landing/Reveal";
+import { buttonClass } from "~/components/ui";
+import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
 import { ALL_RULES } from "~/lib/rules";
 import { getScanStats } from "~/server/marketingStats";
 
@@ -20,229 +22,115 @@ const fmtPct = (n: number): string =>
 
 /* Plain-text names by design: referencing compatibility is nominative use;
  * official logos would need each vendor's permission (see footer notice). */
-const CONNECTOR_STRIP: Array<{
-  name: string;
-  href: string;
-  blurb: string;
-  tag?: string;
-  tone?: PillTone;
-}> = [
-  {
-    name: "Microsoft 365",
-    tag: "Core",
-    tone: "moss",
-    href: "/security",
-    blurb: "The full scan: licenses, sign-in activity and usage reports.",
-  },
-  {
-    name: "Adobe",
-    href: "/connectors/adobe",
-    blurb: "Creative Cloud seats held by people who are disabled or gone.",
-  },
-  {
-    name: "Zoom",
-    href: "/connectors/zoom",
-    blurb: "Licensed seats nobody has opened since Teams took over.",
-  },
-  {
-    name: "Atlassian",
-    href: "/connectors/atlassian",
-    blurb: "Jira and Confluence seats that outlived their users.",
-  },
-  {
-    name: "Salesforce",
-    href: "/connectors/salesforce",
-    blurb: "CRM licenses, the most expensive seats to forget.",
-  },
-  {
-    name: "OpenAI",
-    href: "/connectors/openai",
-    blurb: "API spend by day, plus departed people still on the console.",
-  },
-  {
-    name: "Anthropic",
-    href: "/connectors/anthropic",
-    blurb: "Claude API costs tracked daily, console access cross-checked.",
-  },
-  {
-    name: "ChatGPT",
-    href: "/connectors/chatgpt",
-    blurb: "Enterprise seats matched against your directory via CSV import.",
-  },
-  {
-    name: "Claude",
-    href: "/connectors/claude",
-    blurb: "Team and Enterprise seats that outlived their users.",
-  },
-];
-
-/* Ledger lines render from the tested demo figures and sum exactly to the
- * headline: the card is a synthetic sample tenant, not customer proof. */
-const LEDGER_LINES = [
-  {
-    label: "Left the company, still licensed",
-    cents: DEMO_FIGURES.byCategory.leavers,
-    tone: "rust",
-  },
-  {
-    label: "App seats with no directory account",
-    cents: DEMO_FIGURES.byCategory.orphaned,
-    tone: "plum",
-  },
-  {
-    label: "Inactive 90+ days or never used",
-    cents: DEMO_FIGURES.byCategory.idle,
-    tone: "gold",
-  },
-  {
-    label: "Copilot seats never opened",
-    cents: DEMO_FIGURES.byCategory.copilotUnused,
-    tone: "plum",
-  },
-  {
-    label: "Unassigned paid seats",
-    cents: DEMO_FIGURES.byCategory.shelfware,
-    tone: "slate",
-  },
-  {
-    label: "Licensed guest accounts",
-    cents: DEMO_FIGURES.byCategory.guests,
-    tone: "teal",
-  },
+const CONNECTORS = [
+  "Microsoft 365",
+  "Adobe",
+  "Zoom",
+  "Atlassian",
+  "Salesforce",
+  "ChatGPT",
+  "Claude",
 ] as const;
 
-const TRUST_ITEMS = [
-  "Microsoft MVP for Intune and Security Copilot",
-  "Exact Graph permissions shown before consent",
-  "Read-only access, no mailbox or file content",
-  "EU storage details documented",
-  "Disconnect deletes everything",
-] as const;
-
-const SECURITY_POINTS = [
+const VALUE_CARDS = [
   {
+    Icon: Calculator,
     title: "Procurement sees the number",
     body: `The sample tenant shows € ${demoEuros(
       DEMO_FIGURES.monthlyWasteCents,
     )}/mo of recoverable spend before anyone exports a report.`,
   },
   {
+    Icon: ShieldCheck,
     title: "IT keeps control",
-    body: "LicenseMeter asks for read-only access, shows the consent path first and leaves remediation in your tenant.",
+    body: "Read-only access, the consent path shown up front, and remediation that stays in your tenant. No agent, no write access.",
   },
   {
+    Icon: FileSpreadsheet,
     title: "Finance gets proof",
-    body: "Every finding has a monthly euro impact, a category and an export path instead of a generic dashboard score.",
+    body: "Every finding carries a monthly euro impact, a category and an export path. Evidence, not a generic dashboard score.",
   },
 ] as const;
 
 const STEPS = [
   {
     n: "01",
-    title: "Consent once",
-    body: "A Global Admin grants read-only application permissions. No agent, no write access, five minutes.",
+    title: "Connect read-only",
+    body: "One Global Admin grants read-only application permissions. No agent, no write access, about five minutes.",
   },
   {
     n: "02",
-    title: "Cross-check the evidence",
-    body: "Directory, license assignments, sign-in activity, usage reports and connected app seats are checked against who still works there.",
+    title: "See every leak, priced",
+    body: `Directory, license assignments, sign-in activity, usage reports and connected-app seats are cross-checked against who still works there. ${ALL_RULES.length} rules price each finding in euros per month.`,
   },
   {
     n: "03",
-    title: "Price every leak",
-    body: `${ALL_RULES.length} waste rules classify the finding and calculate the monthly impact in euros.`,
-  },
-  {
-    n: "04",
     title: "Reclaim with proof",
     body: "Export the finance CSV or hand IT the generated PowerShell script for the seats you decide to remove.",
   },
 ] as const;
 
-const SCAN_STREAM = [
-  "Directory status",
-  "License assignments",
-  "Sign-in activity",
-  "Usage reports",
-  "Connected app seats",
-  "Daily AI spend",
+const HERO_TRUST = [
+  "Read-only",
+  "No mailbox or files",
+  "EU-hosted",
+  "Disconnect deletes everything",
 ] as const;
 
-// Mirrors the tiers on /pricing - keep both in sync.
-const PRICING_TEASER = [
-  { name: "Starter", price: "79", seats: "up to 250 seats" },
-  { name: "Growth", price: "199", seats: "up to 1.000 seats" },
-  { name: "Scale", price: "499", seats: "up to 2.500 seats" },
+// Mirrors the tiers on /pricing — keep both in sync.
+const TIERS = [
+  { name: "Starter", price: "79", seats: "Up to 250 seats", featured: false },
+  {
+    name: "Growth",
+    price: "199",
+    seats: "Up to 1.000 seats",
+    featured: true,
+  },
+  { name: "Scale", price: "499", seats: "Up to 2.500 seats", featured: false },
 ] as const;
 
-const HERO_METRICS = [
-  {
-    label: "Sample data",
-    value: `${DEMO_FIGURES.users}`,
-    suffix: "users",
-  },
-  {
-    label: "Findings",
-    value: `${DEMO_FIGURES.findingsCount}`,
-    suffix: "priced",
-  },
-  {
-    label: "Rules",
-    value: `${ALL_RULES.length}`,
-    suffix: "active",
-  },
+const INCLUDED = [
+  "Every connector: Microsoft 365, Adobe, Zoom, Atlassian, Salesforce, ChatGPT, Claude",
+  "All waste rules, priced in euros per month",
+  "Nightly sync, full history and offboarding-leak alerts",
+  "CSV + PowerShell exports and board-ready PDF reports",
+  "Unlimited workspace members, finance viewers included",
+  "EU-hosted, read-only, disconnect deletes everything",
 ] as const;
-
-const trustItemClass =
-  "after:mx-4 after:text-line-strong after:content-['/'] last:after:content-none sm:after:mx-6";
-
-const barStyle = (cents: number): CSSProperties & { "--bar": string } => ({
-  "--bar": `${Math.max(
-    8,
-    Math.round((cents / DEMO_FIGURES.monthlyWasteCents) * 100),
-  )}%`,
-});
 
 /* Static with daily revalidation: the only time-sensitive content is the
- * current month in the ledger-card header, and up to a day of staleness at a
- * month rollover is acceptable. Keeps the page CDN-cacheable for visitors and
- * crawlers alike. */
+ * current month inside the hero ledger card, and up to a day of staleness at a
+ * month rollover is acceptable. Keeps the page CDN-cacheable. */
 export const revalidate = 86400;
 
 export default async function LandingPage() {
   const entraConfigured = Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID);
   const demoEnabled = isDemoMode();
-  const month = new Date().toLocaleString("en-US", { month: "long" });
-  /* Build/ISR-time aggregate; null (renders nothing) until the numbers are
-   * worth quoting. Reads the db without any request-bound API, so the route
-   * stays fully static. */
+  /* Build/ISR-time aggregate; null until the numbers are worth quoting. */
   const stats = await getScanStats();
+  const trialHref = entraConfigured ? "/api/auth/signin" : "#get-started";
+  const month = new Date().toLocaleString("en-US", { month: "long" });
 
   return (
     <main>
+      {/* 1 — Hero */}
       <section id="get-started" className="relative overflow-hidden">
-        <div
-          className="enterprise-grid absolute inset-0 opacity-70"
-          aria-hidden="true"
-        />
-        <div className="relative mx-auto max-w-6xl px-6 pt-6 pb-8 lg:pt-8 lg:pb-10">
-          <div className="grid gap-7 lg:grid-cols-[0.95fr_1.25fr] lg:items-center">
+        <div className="brand-radial absolute inset-0" aria-hidden="true" />
+        <div className="relative mx-auto max-w-6xl px-6 pt-10 pb-14 lg:pt-16 lg:pb-20">
+          <div className="grid gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
             <div className="rise rise-1">
-              <p className="text-rust-text text-xs font-medium tracking-[0.2em] uppercase">
-                Microsoft 365 renewal waste scan
+              <p className="text-brand-text text-xs font-medium tracking-[0.12em] uppercase">
+                Microsoft 365 license waste, priced in euros
               </p>
-              <h1 className="font-display mt-4 max-w-3xl text-4xl leading-[1.02] tracking-tight text-balance md:text-5xl xl:text-[4.15rem]">
-                Find the paid seats that outlived your users.
+              <h1 className="font-display mt-4 text-4xl leading-[1.05] font-semibold tracking-tight text-balance md:text-5xl xl:text-[4rem]">
+                See what your unused licenses really cost you.
               </h1>
-              <p className="text-ink-soft mt-4 max-w-2xl text-base leading-relaxed xl:text-lg">
-                For Microsoft 365 admins and finance/procurement teams at
-                100-2,500 seats. LicenseMeter finds offboarding and renewal
-                waste, prices it in euros, and gives you proof before the next
-                renewal conversation.
-              </p>
-              <p className="text-ink-soft mt-3 max-w-2xl text-sm leading-relaxed">
-                Read-only scan: license assignments, sign-in activity and usage
-                reports. No mailbox or file content.
+              <p className="text-ink-soft mt-5 max-w-xl text-base leading-relaxed lg:text-lg">
+                LicenseMeter scans your tenant read-only and shows finance the
+                euros to reclaim before renewal.{" "}
+                <span className="text-brand-text font-semibold">
+                  The first scan is free.
+                </span>
               </p>
               <div className="mt-6">
                 <SignInButtons
@@ -251,399 +139,266 @@ export default async function LandingPage() {
                   showNote={false}
                 />
               </div>
-              <p className="text-ink-faint mt-3 max-w-xl text-xs leading-relaxed">
-                First scan free. Paid plans start at EUR 79/month only after you
-                decide to keep monitoring.
-              </p>
-              <ul className="text-ink-soft mt-5 flex flex-wrap gap-y-2 text-[13px]">
-                {TRUST_ITEMS.map((item, index) => (
-                  <li
-                    key={item}
-                    className={`${trustItemClass} ${
-                      index > 1 ? "hidden xl:list-item" : ""
-                    }`}
-                  >
-                    {item}
-                  </li>
-                ))}
-                <li className={trustItemClass}>
-                  <Link
-                    href="/security"
-                    className="text-ink hover:text-rust-text font-medium underline underline-offset-4 transition-colors"
-                  >
-                    Security overview
-                  </Link>
-                </li>
-              </ul>
-              {stats && (
-                <p className="text-ink-faint mt-4 text-[13px]">
-                  Across {stats.tenants} connected tenants, an average of{" "}
-                  {fmtPct(stats.avgWastePct)} percent of license spend is waste.
-                </p>
-              )}
             </div>
 
-            <div
-              id="sample-tenant"
-              className="ledger-shell rise rise-3 border-line bg-card relative scroll-mt-8 border shadow-[0_16px_40px_rgba(28,26,22,0.10)]"
-            >
-              <div className="border-line bg-paper/70 relative grid grid-cols-3 border-b">
-                {HERO_METRICS.map((metric, index) => (
-                  <div
-                    key={metric.label}
-                    className={`px-3 py-3 sm:px-4 sm:py-4 ${
-                      index > 0 ? "border-line border-l" : ""
-                    }`}
-                  >
-                    <div className="text-ink-faint text-[10px] font-medium tracking-[0.14em] uppercase sm:text-[11px] sm:tracking-[0.18em]">
-                      {metric.label}
-                    </div>
-                    <div className="mt-1 flex items-baseline gap-2">
-                      <span className="tnum font-display text-ink text-2xl tracking-tight sm:text-3xl">
-                        {metric.value}
-                      </span>
-                      <span className="text-ink-soft text-xs">
-                        {metric.suffix}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="relative grid xl:grid-cols-[1fr_0.72fr]">
-                <div className="px-4 py-5 sm:px-6">
-                  <div className="flex flex-wrap items-baseline justify-between gap-3">
-                    <div>
-                      <p className="text-ink-faint text-xs font-medium tracking-[0.18em] uppercase">
-                        Waste ledger · {month}
-                      </p>
-                      <div className="font-display text-rust-text mt-2 text-4xl tracking-tight sm:mt-3 sm:text-6xl">
-                        € {demoEuros(DEMO_FIGURES.monthlyWasteCents)}
-                      </div>
-                    </div>
-                    <div className="text-left sm:text-right">
-                      <p className="text-rust-text text-[11px] font-medium tracking-[0.14em] uppercase">
-                        Synthetic sample tenant
-                      </p>
-                      <p className="text-ink-faint font-mono text-xs">
-                        Meridian Industries GmbH
-                      </p>
-                      <p className="text-ink-soft mt-1 text-xs">
-                        about € {DEMO_ANNUAL_WASTE_ROUNDED} a year
-                      </p>
-                    </div>
-                  </div>
-
-                  <ul className="mt-5 hidden space-y-3 xl:block">
-                    {LEDGER_LINES.map((line) => (
-                      <li key={line.label}>
-                        <div className="flex items-baseline justify-between gap-4">
-                          <span className="text-ink-soft text-sm">
-                            {line.label}
-                          </span>
-                          <span className="tnum text-ink font-mono text-sm whitespace-nowrap">
-                            € {demoEuros(line.cents)}
-                            <span className="text-ink-faint">/mo</span>
-                          </span>
-                        </div>
-                        <div className="bg-line mt-2 h-1.5 overflow-hidden">
-                          <div
-                            className={`meter-bar meter-${line.tone} h-full`}
-                            style={barStyle(line.cents)}
-                          />
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <aside className="border-line bg-ink text-paper hidden border-t px-4 py-5 xl:block xl:border-t-0 xl:border-l">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-paper/60 text-[11px] font-medium tracking-[0.18em] uppercase">
-                      Sample tenant scan
-                    </p>
-                    <span className="status-dot" aria-hidden="true" />
-                  </div>
-                  <ol className="mt-5 space-y-3">
-                    {SCAN_STREAM.map((item, index) => (
-                      <li
-                        key={item}
-                        className="border-paper/10 flex items-center justify-between gap-3 border-b pb-3 last:border-b-0"
-                      >
-                        <span className="text-paper/80 text-sm">{item}</span>
-                        <span className="text-rust-bright font-mono text-[11px]">
-                          0{index + 1}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                  <div className="border-paper/10 bg-paper/5 mt-6 border p-4">
-                    <div className="text-paper/50 font-mono text-[11px] tracking-[0.14em] uppercase">
-                      Read-only consent
-                    </div>
-                    <p className="text-paper/80 mt-2 text-sm leading-relaxed">
-                      License, directory and usage metadata only. No mailbox or
-                      file content.
-                    </p>
-                  </div>
-                  {demoEnabled && (
-                    <form
-                      action="/api/auth/demo"
-                      method="post"
-                      className="mt-5"
-                    >
-                      <button className="border-paper/20 text-paper hover:border-rust-bright hover:text-rust-bright w-full cursor-pointer border px-4 py-3 text-left text-sm font-medium transition-colors">
-                        Open this sample tenant
-                      </button>
-                    </form>
-                  )}
-                </aside>
-              </div>
+            <div id="sample-tenant" className="rise rise-3 scroll-mt-8">
+              <HeroVisual month={month} />
             </div>
           </div>
         </div>
       </section>
 
-      <section className="border-line bg-card border-y">
-        <div className="bg-line mx-auto grid max-w-6xl gap-px px-6 py-px md:grid-cols-3">
-          {SECURITY_POINTS.map((item) => (
-            <div key={item.title} className="bg-card px-5 py-6">
-              <h2 className="font-display text-xl tracking-tight">
-                {item.title}
-              </h2>
-              <p className="text-ink-soft mt-2 text-sm leading-relaxed">
-                {item.body}
-              </p>
+      {/* 2 — Works with */}
+      <section className="border-line bg-subtle border-y">
+        <div className="mx-auto max-w-6xl px-6 py-10 lg:py-12">
+          <ul className="text-ink-soft flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[13px]">
+            {HERO_TRUST.map((item) => (
+              <li key={item} className="flex items-center gap-1.5">
+                <Check className="text-good size-4 shrink-0" />
+                {item}
+              </li>
+            ))}
+            <li>
+              <Link
+                href="/security"
+                className="text-brand-text font-medium underline underline-offset-4 hover:opacity-80"
+              >
+                Security overview →
+              </Link>
+            </li>
+          </ul>
+          <div className="border-line mt-8 border-t pt-8">
+            <p className="text-ink-faint text-center text-sm">
+              Works with the tools your seats live in
+            </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {CONNECTORS.map((name) => (
+                <span
+                  key={name}
+                  className="border-line bg-card text-ink-soft rounded-full border px-3 py-1.5 text-sm"
+                >
+                  {name}
+                </span>
+              ))}
             </div>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm">
+              <Link
+                href="/connectors"
+                className="text-brand-text inline-flex min-h-11 items-center font-medium underline underline-offset-4 hover:opacity-80"
+              >
+                See all connectors →
+              </Link>
+              {stats && (
+                <span className="text-ink-faint">
+                  {fmtPct(stats.avgWastePct)}% average waste across{" "}
+                  {stats.tenants} connected tenants
+                </span>
+              )}
+            </div>
+            <p className="text-ink-faint/70 mx-auto mt-6 max-w-2xl text-center text-xs leading-relaxed">
+              All product names are trademarks of their respective owners.
+              LicenseMeter is not affiliated with or endorsed by them.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* 3 — Value cards */}
+      <section className="mx-auto max-w-6xl px-6 py-16 lg:py-24">
+        <div className="max-w-2xl">
+          <h2 className="font-display text-3xl font-semibold tracking-tight text-balance lg:text-4xl">
+            Proof procurement, IT and finance can all act on.
+          </h2>
+        </div>
+        <div className="mt-10 grid gap-5 md:grid-cols-3">
+          {VALUE_CARDS.map((card, index) => (
+            <Reveal key={card.title} delay={index * 80}>
+              <article className="border-line bg-card shadow-card hover:shadow-float h-full rounded-2xl border p-6 transition-shadow duration-200">
+                <span className="bg-brand-soft text-brand-text ring-brand/10 inline-flex size-12 items-center justify-center rounded-2xl ring-1">
+                  <card.Icon className="size-6" strokeWidth={1.75} />
+                </span>
+                <h3 className="font-display mt-4 text-xl font-semibold tracking-tight">
+                  {card.title}
+                </h3>
+                <p className="text-ink-soft mt-2 text-sm leading-relaxed">
+                  {card.body}
+                </p>
+              </article>
+            </Reveal>
           ))}
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-6xl gap-10 px-6 pt-18 lg:grid-cols-[0.72fr_1.28fr] lg:items-start">
-        <div className="lg:sticky lg:top-8">
-          <p className="text-rust-text text-xs font-medium tracking-[0.2em] uppercase">
-            Product mechanics
+      {/* 4 — How it works */}
+      <section className="border-line bg-subtle border-y">
+        <div className="mx-auto grid max-w-6xl gap-10 px-6 py-16 lg:grid-cols-[0.8fr_1.2fr] lg:items-start lg:py-24">
+          <div className="lg:sticky lg:top-8">
+            <h2 className="font-display text-3xl font-semibold tracking-tight text-balance lg:text-4xl">
+              A license ledger, not another dashboard.
+            </h2>
+            <p className="text-ink-soft mt-4 leading-relaxed">
+              Built around evidence procurement and IT can both inspect: who owns
+              the seat, why it is waste, what it costs, and how to reclaim it.
+            </p>
+          </div>
+          <div className="grid gap-4">
+            {STEPS.map((step) => (
+              <Reveal key={step.n}>
+                <article className="group border-line bg-card shadow-card hover:shadow-float grid items-start gap-4 rounded-2xl border p-5 transition-shadow duration-200 sm:grid-cols-[auto_1fr]">
+                  <span className="bg-brand-soft text-brand-deep font-display flex size-11 items-center justify-center rounded-full text-lg font-semibold">
+                    {step.n}
+                  </span>
+                  <div>
+                    <h3 className="font-display text-xl font-semibold tracking-tight">
+                      {step.title}
+                    </h3>
+                    <p className="text-ink-soft mt-1.5 text-sm leading-relaxed">
+                      {step.body}
+                    </p>
+                  </div>
+                </article>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 5 — Pricing */}
+      <section id="pricing" className="mx-auto max-w-6xl px-6 py-16 lg:py-24">
+        <div className="max-w-2xl">
+          <p className="text-brand-text text-xs font-medium tracking-[0.12em] uppercase">
+            Pricing
           </p>
-          <h2 className="font-display mt-3 text-4xl tracking-tight text-balance">
-            A license ledger, not another vanity dashboard.
+          <h2 className="font-display mt-3 text-3xl font-semibold tracking-tight text-balance lg:text-4xl">
+            Flat pricing, sized by seats, not by how much waste we find.
           </h2>
-          <p className="text-ink-soft mt-4 leading-relaxed">
-            The workflow is built around evidence that procurement and IT can
-            both inspect: who owns the seat, why it is waste, what it costs and
-            how to reclaim it.
+          <p className="text-ink-soft mt-3 leading-relaxed">
+            Every plan includes every connector and every rule. You only pay for
+            the size of your tenant.
           </p>
+          <div className="bg-brand-soft text-brand-deep mt-5 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium">
+            <Check className="size-4 shrink-0" />
+            Every plan starts with a 14-day free trial
+          </div>
         </div>
 
-        <div className="grid gap-4">
-          {STEPS.map((step) => (
+        <div className="mt-10 grid gap-5 lg:grid-cols-3 lg:items-stretch">
+          {TIERS.map((tier) => (
             <article
-              key={step.n}
-              className="group border-line bg-card hover:border-line-strong grid gap-4 border p-5 transition-[border-color,transform] duration-200 motion-safe:hover:-translate-y-0.5 sm:grid-cols-[5rem_1fr]"
+              key={tier.name}
+              className={`relative flex h-full flex-col rounded-2xl border p-6 ${
+                tier.featured
+                  ? "border-brand ring-brand/30 bg-card shadow-float ring-2"
+                  : "border-line bg-card shadow-card"
+              }`}
             >
-              <div className="text-rust-text font-mono text-xs">{step.n}</div>
-              <div>
-                <h3 className="font-display text-2xl tracking-tight">
-                  {step.title}
-                </h3>
-                <p className="text-ink-soft mt-2 text-sm leading-relaxed">
-                  {step.body}
-                </p>
+              {tier.featured && (
+                <span className="bg-brand absolute -top-3 left-6 rounded-full px-3 py-1 text-[11px] font-medium tracking-wide text-white uppercase">
+                  Most popular
+                </span>
+              )}
+              <p className="text-ink-faint text-xs font-medium tracking-[0.12em] uppercase">
+                {tier.name}
+              </p>
+              <div className="font-display mt-3 text-4xl font-semibold tracking-tight">
+                € {tier.price}
+                <span className="text-ink-soft text-base font-normal">
+                  {" "}
+                  / month
+                </span>
               </div>
+              <p className="text-ink-soft mt-1 text-sm">{tier.seats}</p>
+              <a
+                href={trialHref}
+                className={buttonClass(
+                  tier.featured ? "primary" : "secondary",
+                  "mt-5 w-full",
+                )}
+              >
+                Start 14-day trial
+              </a>
+              <p className="text-ink-faint mt-3 text-xs">
+                Free for 14 days, then € {tier.price}/month.
+              </p>
             </article>
           ))}
         </div>
-      </section>
 
-      <section className="mx-auto max-w-6xl px-6 pt-18">
-        <div className="border-line flex flex-col gap-5 border-b pb-7 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-rust-text text-xs font-medium tracking-[0.2em] uppercase">
-              Connector coverage
-            </p>
-            <h2 className="font-display mt-3 max-w-2xl text-4xl tracking-tight text-balance">
-              Cross-check SaaS seats against the directory you already trust.
-            </h2>
-          </div>
-          <Link
-            href="/connectors"
-            className="text-ink hover:text-rust-text min-h-11 shrink-0 self-start py-3 text-sm font-medium underline underline-offset-4 transition-colors md:self-auto"
-          >
-            View connector notes
-          </Link>
-        </div>
-        <div className="bg-line grid gap-px sm:grid-cols-2 lg:grid-cols-3">
-          {CONNECTOR_STRIP.map((connector) => (
-            <Link
-              key={connector.name}
-              href={connector.href}
-              className="group bg-paper hover:bg-card px-5 py-5 transition-colors duration-200"
-            >
-              <div className="flex min-h-8 items-center gap-2">
-                <span className="font-medium underline-offset-4 group-hover:underline">
-                  {connector.name}
-                </span>
-                {connector.tag && connector.tone ? (
-                  <Pill tone={connector.tone}>{connector.tag}</Pill>
-                ) : null}
-              </div>
-              <p className="text-ink-soft mt-3 text-sm leading-relaxed">
-                {connector.blurb}
-              </p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto grid max-w-6xl gap-8 px-6 pt-18 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
-        <div className="border-line bg-card border">
-          <div className="px-6 py-6">
-            <p className="text-rust-text text-xs font-medium tracking-[0.2em] uppercase">
-              Published pricing
-            </p>
-            <h2 className="font-display mt-3 text-3xl tracking-tight text-balance">
-              Sized by seats, not by how much waste we find.
-            </h2>
-            <p className="text-ink-soft mt-3 text-sm leading-relaxed">
-              Use the calculator to pressure-test renewal math before consent.
-              The free scan replaces assumptions with your own tenant data.
-            </p>
-          </div>
-          <div className="border-line grid border-t">
-            {PRICING_TEASER.map((tier, index) => (
-              <div
-                key={tier.name}
-                className={`grid grid-cols-[1fr_auto] gap-4 px-6 py-4 ${
-                  index > 0 ? "border-line border-t" : ""
-                }`}
-              >
-                <div>
-                  <div className="text-ink-faint text-xs font-medium tracking-[0.18em] uppercase">
-                    {tier.name}
-                  </div>
-                  <div className="text-ink-soft mt-1 text-xs">{tier.seats}</div>
-                </div>
-                <div className="tnum font-display text-right text-2xl tracking-tight">
-                  € {tier.price}
-                  <span className="text-ink-soft font-sans text-xs">
-                    {" "}
-                    / month
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="border-line border-t px-6 py-5">
-            <Link
-              href="/pricing"
-              className="text-ink hover:text-rust-text inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4 transition-colors"
-            >
-              See full pricing
-            </Link>
-          </div>
-        </div>
-
-        <div>
-          <h2 className="font-display text-3xl tracking-tight text-balance">
-            What does your tenant leak?
-          </h2>
-          <p className="text-ink-soft mt-3 max-w-xl leading-relaxed">
-            Estimate payback with conservative inputs, then replace the model
-            with real Microsoft 365 usage evidence from the scan.
+        <div className="border-line bg-subtle mt-6 rounded-2xl border p-6">
+          <p className="text-ink-faint text-xs font-medium tracking-[0.12em] uppercase">
+            Every plan includes
           </p>
-          <div className="mt-6">
-            <RoiCalculator />
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto grid max-w-6xl gap-8 px-6 pt-18 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="border-line bg-card border px-6 py-6">
-          <p className="text-rust-text text-xs font-medium tracking-[0.2em] uppercase">
-            Trust and accountability
-          </p>
-          <h2 className="font-display mt-3 text-2xl tracking-tight text-balance">
-            A consent path admins can inspect before anything connects.
-          </h2>
-          <p className="text-ink-soft mt-3 text-sm leading-relaxed">
-            LicenseMeter is operated by UgurLabs UG and maintained by a
-            Microsoft MVP for Intune and Security Copilot with a public history
-            of{" "}
-            <a
-              href="https://github.com/ugurkocde"
-              target="_blank"
-              rel="noreferrer"
-              className="text-ink hover:text-rust-text font-medium underline underline-offset-4 transition-colors"
-            >
-              open-source tools for Microsoft 365 admins
-            </a>{" "}
-            including IntuneAssignmentChecker, IntuneBrew and
-            DeviceOffboardingManager.
-          </p>
-          <ul className="border-line mt-5 grid gap-3 border-t pt-5 text-sm">
-            {[
-              "Read-only Graph scopes are documented before consent.",
-              "Mailbox and file content stay outside the product boundary.",
-              "EU-hosted storage, subprocessors and disconnect deletion are published.",
-            ].map((item) => (
+          <ul className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+            {INCLUDED.map((item) => (
               <li key={item} className="text-ink-soft flex gap-3">
-                <span
-                  className="bg-rust-text mt-2 h-1.5 w-1.5 shrink-0"
-                  aria-hidden="true"
-                />
+                <Check className="text-good mt-0.5 size-4 shrink-0" />
                 <span>{item}</span>
               </li>
             ))}
           </ul>
+        </div>
+
+        <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-ink-soft text-sm">
+            Over 2.500 seats, or an MSP managing many tenants?{" "}
+            <Link
+              href="/msp"
+              className="text-brand-text font-medium underline underline-offset-4 hover:opacity-80"
+            >
+              Talk to us →
+            </Link>
+          </p>
           <Link
-            href="/security"
-            className="text-ink hover:text-rust-text mt-4 inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4 transition-colors"
+            href="/pricing"
+            className="text-brand-text inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4 hover:opacity-80"
           >
-            Read the security overview
+            Compare plans in detail →
           </Link>
         </div>
 
-        <div
-          id="request-scan"
-          className="border-line bg-ink text-paper scroll-mt-8 border px-6 py-6"
-        >
-          <h2 className="font-display text-2xl tracking-tight">
-            Need the security pack before consent?
-          </h2>
-          <p className="text-paper/75 mt-3 text-sm leading-relaxed">
-            Get the security one-pager and first-scan checklist to share with
-            the admin, finance or procurement stakeholder who needs to review
-            the read-only scopes before a tenant connects.
-          </p>
-          <div className="mt-5">
-            <EmailCapture statusTone="dark" />
+        {/* Free, open-source PowerShell option (the open-core entry point) */}
+        <div className="border-line bg-card mt-6 flex flex-col gap-4 rounded-2xl border p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex gap-4">
+            <span className="bg-ink-panel text-canvas inline-flex size-10 shrink-0 items-center justify-center rounded-xl">
+              <Terminal className="size-5" strokeWidth={1.75} />
+            </span>
+            <div>
+              <p className="font-display text-base font-semibold tracking-tight">
+                Prefer to run it yourself? It&rsquo;s free and open source.
+              </p>
+              <p className="text-ink-soft mt-1 text-sm leading-relaxed">
+                LicenseMeter Scan is a free PowerShell module that scans the
+                Microsoft 365 part locally and writes a self-contained HTML
+                report. No account, nothing leaves your tenant. Connectors,
+                history and alerts are the hosted upgrade.
+              </p>
+            </div>
           </div>
-          <p className="text-paper/55 mt-3 text-xs leading-relaxed">
-            Includes one billing-start note. Unsubscribe any time.
-          </p>
+          <a
+            href="https://github.com/ugurkocde/licensemeter"
+            target="_blank"
+            rel="noreferrer"
+            className={buttonClass("secondary", "shrink-0")}
+          >
+            Get it on GitHub →
+          </a>
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pt-18 pb-24">
-        <div className="border-line bg-card relative overflow-hidden border px-6 py-8 sm:px-8 lg:px-10">
-          <div
-            className="enterprise-grid absolute inset-0 opacity-55"
-            aria-hidden="true"
-          />
+      {/* Final CTA band */}
+      <section className="mx-auto max-w-6xl px-6 pb-24">
+        <div className="brand-radial border-line bg-brand-soft relative overflow-hidden rounded-3xl border px-6 py-10 sm:px-10">
           <div className="relative flex flex-col gap-7 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-rust-text text-xs font-medium tracking-[0.2em] uppercase">
-                Free read-only scan
-              </p>
-              <h2 className="font-display mt-3 max-w-2xl text-4xl tracking-tight text-balance">
-                See the waste ledger before the next renewal conversation.
+              <h2 className="font-display max-w-2xl text-3xl font-semibold tracking-tight text-balance lg:text-4xl">
+                See the number before your next renewal call.
               </h2>
-              <p className="text-ink-soft mt-3 max-w-2xl leading-relaxed">
-                {demoEnabled
-                  ? "Run the free read-only scan on your Microsoft 365 tenant. If you need to look around first, the sample tenant is still available."
-                  : "Connect read-only and see the monthly cost of every wasted seat before you decide anything."}
+              <p className="text-ink-soft mt-3 max-w-xl leading-relaxed">
+                Every month it runs, the waste keeps billing. The scan is free
+                and takes minutes. Pay only if you keep monitoring.
               </p>
             </div>
-            <div className="lg:max-w-md">
+            <div className="lg:max-w-md lg:shrink-0">
               <SignInButtons
                 entraConfigured={entraConfigured}
                 demoEnabled={demoEnabled}
