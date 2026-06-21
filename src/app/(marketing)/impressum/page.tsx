@@ -8,10 +8,11 @@ export const metadata: Metadata = {
 };
 
 /*
- * TODO before launch (legally required, § 5 DDG): a UG (haftungsbeschränkt)
- * must show a ladungsfähige Anschrift (street address) and the Handelsregister
- * entry (Registergericht + HRB number). Replace every [bracketed] placeholder
- * with the real details before going live.
+ * § 5 DDG: company name, ladungsfähige Anschrift and Geschäftsführer are
+ * filled. STILL REQUIRED before launch: the Handelsregister HRB number
+ * (replace the [Nummer eintragen] placeholder below). The Umsatzsteuer-ID
+ * section is intentionally omitted until a USt-IdNr is issued (§ 27a UStG
+ * requires it only "soweit vorhanden") — add it back once registered.
  */
 export default function ImpressumPage() {
   return (
@@ -24,9 +25,9 @@ export default function ImpressumPage() {
           <p className="mt-2">
             UgurLabs UG (haftungsbeschränkt)
             <br />
-            [Straße und Hausnummer]
+            Fährstraße 217
             <br />
-            [PLZ Ort]
+            40221 Düsseldorf
             <br />
             Deutschland
           </p>
@@ -39,11 +40,7 @@ export default function ImpressumPage() {
 
         <section>
           <h2 className="text-ink font-medium">Kontakt</h2>
-          <p className="mt-2">
-            E-Mail: {SUPPORT_EMAIL}
-            <br />
-            [Telefonnummer, optional]
-          </p>
+          <p className="mt-2">E-Mail: {SUPPORT_EMAIL}</p>
         </section>
 
         <section>
@@ -51,17 +48,9 @@ export default function ImpressumPage() {
           <p className="mt-2">
             Eingetragen im Handelsregister.
             <br />
-            Registergericht: Amtsgericht [Ort]
+            Registergericht: Amtsgericht Düsseldorf
             <br />
-            Registernummer: HRB [Nummer]
-          </p>
-        </section>
-
-        <section>
-          <h2 className="text-ink font-medium">Umsatzsteuer-ID</h2>
-          <p className="mt-2">
-            Umsatzsteuer-Identifikationsnummer gemäß § 27a UStG: [USt-IdNr.,
-            falls vorhanden]
+            Registernummer: HRB [Nummer eintragen]
           </p>
         </section>
 

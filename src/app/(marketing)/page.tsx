@@ -7,7 +7,8 @@ import {
   Terminal,
 } from "lucide-react";
 
-import { env, isDemoMode } from "~/env";
+import { env, isDemoMode, siteUrl } from "~/env";
+import { RoiCalculator } from "~/components/RoiCalculator";
 import { SignInButtons } from "~/components/SignInButtons";
 import { HeroVisual } from "~/components/landing/HeroVisual";
 import { Reveal } from "~/components/landing/Reveal";
@@ -15,7 +16,20 @@ import { buttonClass } from "~/components/ui";
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
 import { PLANS } from "~/lib/plans";
 import { ALL_RULES } from "~/lib/rules";
+import { SITE_DEFINITION } from "~/lib/site";
 import { getScanStats } from "~/server/marketingStats";
+
+const GITHUB_URL = "https://github.com/ugurkocde/licensemeter";
+
+/* The exact read-only Microsoft Graph permissions requested at connect, shown
+ * up front to clear the consent objection. Kept in sync with the consent path. */
+const GRAPH_SCOPES = [
+  "User.Read.All",
+  "AuditLog.Read.All",
+  "Reports.Read.All",
+  "LicenseAssignment.Read.All",
+  "ReportSettings.Read.All",
+] as const;
 
 /** "12,4": German decimal convention, matching the euro figures around it. */
 const fmtPct = (n: number): string =>
@@ -87,6 +101,48 @@ const INCLUDED = [
   "EU-hosted, read-only, disconnect deletes everything",
 ] as const;
 
+const BASE = siteUrl();
+
+/* Page-level JSON-LD for SEO/GEO. SoftwareApplication reuses the same @id as
+ * the pricing page so answer engines treat them as one entity; offers come
+ * straight from PLANS (monthly, EUR). The HowTo mirrors the three connect
+ * steps rendered below. "<" escaped so nothing can terminate the script. */
+const HOME_LD = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": `${BASE}/#software`,
+      name: "LicenseMeter",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      url: BASE,
+      description: SITE_DEFINITION,
+      offers: PLANS.map((plan) => ({
+        "@type": "Offer",
+        name: plan.name,
+        price: String(plan.monthly),
+        priceCurrency: "EUR",
+        availability: "https://schema.org/InStock",
+        description: `Per tenant, per month, ${plan.seats}`,
+        url: `${BASE}/pricing`,
+      })),
+    },
+    {
+      "@type": "HowTo",
+      name: "How to find Microsoft 365 license waste with LicenseMeter",
+      description:
+        "Connect Microsoft 365 read-only, see every wasted seat priced in euros, and reclaim it with proof.",
+      step: STEPS.map((step, index) => ({
+        "@type": "HowToStep",
+        position: index + 1,
+        name: step.title,
+        text: step.body,
+      })),
+    },
+  ],
+};
+
 /* Static with daily revalidation: the only time-sensitive content is the
  * current month inside the hero ledger card, and up to a day of staleness at a
  * month rollover is acceptable. Keeps the page CDN-cacheable. */
@@ -115,11 +171,18 @@ export default async function LandingPage() {
                 See what your unused licenses really cost you.
               </h1>
               <p className="text-ink-soft mt-5 max-w-xl text-base leading-relaxed lg:text-lg">
-                LicenseMeter scans your tenant read-only and shows finance the
-                euros to reclaim before renewal.{" "}
+                LicenseMeter connects to Microsoft 365 read-only and shows IT and
+                finance exactly which seats are wasted, priced in euros, before
+                your next renewal.{" "}
                 <span className="text-brand-text font-semibold">
                   The first scan is free.
                 </span>
+              </p>
+              <p className="text-ink-faint mt-4 max-w-xl text-sm leading-relaxed">
+                LicenseMeter is a SaaS license optimization tool that connects
+                read-only to Microsoft 365, cross-checks Adobe, Zoom, Atlassian,
+                Salesforce, ChatGPT and Claude seats against your directory, and
+                prices every leaked, unused or forgotten seat in euros per month.
               </p>
               <div className="mt-6">
                 <SignInButtons
@@ -127,6 +190,9 @@ export default async function LandingPage() {
                   demoEnabled={demoEnabled}
                   showNote={false}
                 />
+                <p className="text-ink-faint mt-3 text-xs">
+                  First scan free. No credit card. Read-only access.
+                </p>
               </div>
             </div>
 
@@ -248,11 +314,79 @@ export default async function LandingPage() {
                 </article>
               </Reveal>
             ))}
+
+            {/* Consent objection: the exact read-only Graph scopes, up front. */}
+            <Reveal>
+              <div className="border-line bg-card rounded-2xl border p-5">
+                <div className="flex items-start gap-3">
+                  <span className="bg-brand-soft text-brand-text inline-flex size-9 shrink-0 items-center justify-center rounded-xl">
+                    <ShieldCheck className="size-5" strokeWidth={1.75} />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium">
+                      Read-only, never content. Disconnect deletes everything.
+                    </p>
+                    <p className="text-ink-soft mt-1.5 text-sm leading-relaxed">
+                      The consent screen requests exactly these Microsoft Graph
+                      permissions, all read-only:
+                    </p>
+                    <ul className="mt-3 flex flex-wrap gap-2">
+                      {GRAPH_SCOPES.map((scope) => (
+                        <li
+                          key={scope}
+                          className="border-line bg-subtle text-ink-soft rounded-full border px-2.5 py-1 font-mono text-xs"
+                        >
+                          {scope}
+                        </li>
+                      ))}
+                    </ul>
+                    <Link
+                      href="/security"
+                      className="text-brand-text mt-3 inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4 hover:opacity-80"
+                    >
+                      Security overview →
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+
+            {/* Open-source scanner as an earlier trust signal. */}
+            <p className="text-ink-soft text-sm">
+              Prefer not to connect yet?{" "}
+              <a
+                href={GITHUB_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="text-brand-text font-medium underline underline-offset-4 hover:opacity-80"
+              >
+                Run our open-source scanner locally →
+              </a>
+            </p>
           </div>
         </div>
       </section>
 
-      {/* 5 — Pricing */}
+      {/* 5 — ROI calculator */}
+      <section className="mx-auto max-w-6xl px-6 py-16 lg:py-24">
+        <div className="max-w-2xl">
+          <p className="text-brand-text text-xs font-medium tracking-[0.12em] uppercase">
+            Estimate your own waste
+          </p>
+          <h2 className="font-display mt-3 text-3xl font-semibold tracking-tight text-balance lg:text-4xl">
+            Put your own numbers in before you connect.
+          </h2>
+          <p className="text-ink-soft mt-3 leading-relaxed">
+            The estimate runs entirely in your browser. No data leaves this page,
+            and your free scan replaces every assumption with real tenant data.
+          </p>
+        </div>
+        <div className="mt-10">
+          <RoiCalculator />
+        </div>
+      </section>
+
+      {/* 6 — Pricing */}
       <section id="pricing" className="mx-auto max-w-6xl px-6 py-16 lg:py-24">
         <div className="max-w-2xl">
           <p className="text-brand-text text-xs font-medium tracking-[0.12em] uppercase">
@@ -304,10 +438,10 @@ export default async function LandingPage() {
                   "mt-5 w-full",
                 )}
               >
-                Start 14-day trial
+                Start free — no card
               </a>
               <p className="text-ink-faint mt-3 text-xs">
-                Free for 14 days, then € {p.monthly}/month.
+                First scan free, then free for 14 days, then € {p.monthly}/month.
               </p>
             </article>
           ))}
@@ -393,10 +527,20 @@ export default async function LandingPage() {
                 demoEnabled={demoEnabled}
                 showNote={false}
               />
+              <p className="text-ink-faint mt-3 text-xs">
+                First scan free. No credit card. Read-only access.
+              </p>
             </div>
           </div>
         </div>
       </section>
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(HOME_LD).replaceAll("<", "\\u003c"),
+        }}
+      />
     </main>
   );
 }

@@ -37,7 +37,7 @@ export default function PrivacyPolicyPage() {
         <p>
           UgurLabs UG (haftungsbeschränkt)
           <br />
-          [Street and number], [Postal code, City], Germany
+          Fährstraße 217, 40221 Düsseldorf, Germany
           <br />
           Managing Director: Ugur Koc
           <br />

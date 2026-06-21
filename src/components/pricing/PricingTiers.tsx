@@ -55,7 +55,7 @@ export const PricingTiers = ({
                 </h2>
                 {plan.featured && (
                   <span className="bg-ink px-2 py-0.5 text-[11px] font-medium tracking-wide text-canvas uppercase">
-                    Most common
+                    Most popular
                   </span>
                 )}
               </div>

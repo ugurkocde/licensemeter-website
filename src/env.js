@@ -15,7 +15,11 @@ export const env = createEnv({
      */
     DATABASE_URL: z.string().url().optional(),
 
-    /** Session cookie signing secret. Generate with `openssl rand -base64 32`. */
+    /**
+     * Session cookie signing secret. Generate with `openssl rand -base64 32`.
+     * Production (incl. Vercel preview builds, which run NODE_ENV=production)
+     * requires >=32 chars; local dev allows a shorter throwaway value.
+     */
     AUTH_SECRET:
       process.env.NODE_ENV === "production"
         ? z.string().min(32)

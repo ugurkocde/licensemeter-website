@@ -2,7 +2,7 @@ import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { billingEnabled } from "~/env";
+import { billingEnabled, env } from "~/env";
 import { auth, type Session } from "~/server/auth";
 import { cookieOptions } from "~/server/auth/session";
 import { db } from "~/server/db";
@@ -11,7 +11,10 @@ import { ensureDemoWorkspace } from "~/server/demo/seed";
 import { entitlementOf, type Entitlement } from "~/server/entitlement";
 import type { MembershipRole } from "~/server/types";
 
-export const WORKSPACE_COOKIE = "lm_ws";
+// __Host- prefix in production locks the workspace cookie to this exact host
+// over HTTPS (no subdomain can inject it), matching the session/oauth cookies.
+export const WORKSPACE_COOKIE =
+  env.NODE_ENV === "production" ? "__Host-lm_ws" : "lm_ws";
 const WORKSPACE_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
 
 /** Unclaimed invites stop matching after this many days; resending resets the clock. */
