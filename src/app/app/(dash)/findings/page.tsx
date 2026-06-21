@@ -9,6 +9,7 @@ import {
   FindingsBulkForm,
   SelectAllFindings,
 } from "~/components/workspace/FindingsSelectionBar";
+import { PaywallCard } from "~/components/workspace/PaywallCard";
 import { ButtonAnchor, Pill, buttonClass } from "~/components/ui";
 import { fmtDate, fmtMoney } from "~/lib/format";
 import { ALL_RULES, isWasteRule, RULE_META } from "~/lib/rules";
@@ -71,6 +72,7 @@ export default async function FindingsPage({
   const ruleParam = typeof sp.rule === "string" && isWasteRule(sp.rule) ? sp.rule : null;
   const showResolved = sp.show === "resolved";
   const isAdmin = hasRole(ctx, "admin");
+  const locked = !ctx.entitlement.active;
   const currency = ctx.tenant.currency;
 
   const allRows = await db.query.findings.findMany({
@@ -133,23 +135,33 @@ export default async function FindingsPage({
               : `${rows.length} findings worth ${fmtMoney(shownImpact, currency)}/mo`}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {isAdmin && (
-            <>
-              <CopyScriptButton
-                url={`/api/export/remediation${ruleParam ? `?rule=${ruleParam}` : ""}`}
-              />
-              <ButtonAnchor
-                href={`/api/export/remediation${ruleParam ? `?rule=${ruleParam}` : ""}`}
-              >
-                Download .ps1
-              </ButtonAnchor>
-            </>
-          )}
-          <ButtonAnchor href="/api/export/findings">Export CSV</ButtonAnchor>
-        </div>
+        {!locked && (
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin && (
+              <>
+                <CopyScriptButton
+                  url={`/api/export/remediation${ruleParam ? `?rule=${ruleParam}` : ""}`}
+                />
+                <ButtonAnchor
+                  href={`/api/export/remediation${ruleParam ? `?rule=${ruleParam}` : ""}`}
+                >
+                  Download .ps1
+                </ButtonAnchor>
+              </>
+            )}
+            <ButtonAnchor href="/api/export/findings">Export CSV</ButtonAnchor>
+          </div>
+        )}
       </header>
 
+      {locked && (
+        <div className="rise rise-2 mt-8">
+          <PaywallCard isOwner={hasRole(ctx, "owner")} />
+        </div>
+      )}
+
+      {!locked && (
+        <>
       <nav aria-label="Finding filters" className="rise rise-2 mt-8 flex flex-wrap gap-2">
         <Link
           href={filterHref(null)}
@@ -361,6 +373,8 @@ export default async function FindingsPage({
             )}
           </div>
         </nav>
+      )}
+        </>
       )}
     </div>
   );

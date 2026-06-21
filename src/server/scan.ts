@@ -79,6 +79,8 @@ export const resolveScanTenant = async (
       // Placeholder until the scan reads the real name from /organization.
       name: upn.split("@")[1] ?? null,
       consentedAt: null,
+      // Trial clock starts the moment the workspace is created.
+      trialStartedAt: new Date(),
       concealedNames: false,
       hasP1: false,
       activitySignal: "none",

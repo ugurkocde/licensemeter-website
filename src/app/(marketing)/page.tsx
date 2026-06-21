@@ -13,6 +13,7 @@ import { HeroVisual } from "~/components/landing/HeroVisual";
 import { Reveal } from "~/components/landing/Reveal";
 import { buttonClass } from "~/components/ui";
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
+import { PLANS } from "~/lib/plans";
 import { ALL_RULES } from "~/lib/rules";
 import { getScanStats } from "~/server/marketingStats";
 
@@ -75,18 +76,6 @@ const HERO_TRUST = [
   "No mailbox or files",
   "EU-hosted",
   "Disconnect deletes everything",
-] as const;
-
-// Mirrors the tiers on /pricing — keep both in sync.
-const TIERS = [
-  { name: "Starter", price: "79", seats: "Up to 250 seats", featured: false },
-  {
-    name: "Growth",
-    price: "199",
-    seats: "Up to 1.000 seats",
-    featured: true,
-  },
-  { name: "Scale", price: "499", seats: "Up to 2.500 seats", featured: false },
 ] as const;
 
 const INCLUDED = [
@@ -278,47 +267,47 @@ export default async function LandingPage() {
           </p>
           <div className="bg-brand-soft text-brand-deep mt-5 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium">
             <Check className="size-4 shrink-0" />
-            Every plan starts with a 14-day free trial
+            Every plan starts with a 14-day free trial, no card required
           </div>
         </div>
 
         <div className="mt-10 grid gap-5 lg:grid-cols-3 lg:items-stretch">
-          {TIERS.map((tier) => (
+          {PLANS.map((p) => (
             <article
-              key={tier.name}
+              key={p.name}
               className={`relative flex h-full flex-col rounded-2xl border p-6 ${
-                tier.featured
+                p.featured
                   ? "border-brand ring-brand/30 bg-card shadow-float ring-2"
                   : "border-line bg-card shadow-card"
               }`}
             >
-              {tier.featured && (
+              {p.featured && (
                 <span className="bg-brand absolute -top-3 left-6 rounded-full px-3 py-1 text-[11px] font-medium tracking-wide text-white uppercase">
                   Most popular
                 </span>
               )}
               <p className="text-ink-faint text-xs font-medium tracking-[0.12em] uppercase">
-                {tier.name}
+                {p.name}
               </p>
               <div className="font-display mt-3 text-4xl font-semibold tracking-tight">
-                € {tier.price}
+                € {p.monthly}
                 <span className="text-ink-soft text-base font-normal">
                   {" "}
                   / month
                 </span>
               </div>
-              <p className="text-ink-soft mt-1 text-sm">{tier.seats}</p>
+              <p className="text-ink-soft mt-1 text-sm">{p.seats}</p>
               <a
                 href={trialHref}
                 className={buttonClass(
-                  tier.featured ? "primary" : "secondary",
+                  p.featured ? "primary" : "secondary",
                   "mt-5 w-full",
                 )}
               >
                 Start 14-day trial
               </a>
               <p className="text-ink-faint mt-3 text-xs">
-                Free for 14 days, then € {tier.price}/month.
+                Free for 14 days, then € {p.monthly}/month.
               </p>
             </article>
           ))}

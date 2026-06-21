@@ -10,6 +10,8 @@ import { priceBook, tenantSkus } from "~/server/db/schema";
 export const GET = async () => {
   const ctx = await apiAccess("viewer");
   if (!ctx) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!ctx.entitlement.active)
+    return NextResponse.json({ error: "upgrade_required" }, { status: 402 });
 
   const [skus, prices] = await Promise.all([
     db.query.tenantSkus.findMany({ where: eq(tenantSkus.tenantId, ctx.tenant.id) }),

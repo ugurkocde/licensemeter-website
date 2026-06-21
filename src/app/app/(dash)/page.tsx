@@ -45,6 +45,8 @@ export default async function OverviewPage() {
   const ctx = await requireAccess("viewer");
   const tenantId = ctx.tenant.id;
   const currency = ctx.tenant.currency;
+  // Soft-locked workspaces keep the read-only dashboard but lose exports/sync.
+  const locked = !ctx.entitlement.active;
   // CSV/scan trials never get syncRuns rows; their freshness signal is the
   // import time on the user snapshots.
   const isTrial = !ctx.tenant.consentedAt && !ctx.tenant.isDemo;
@@ -128,10 +130,16 @@ export default async function OverviewPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ButtonAnchor href="/api/export/report">PDF report</ButtonAnchor>
-          {/* Trial workspaces (consentedAt null) have no Graph access: a
-              manual sync could only fail. Demo tenants have consentedAt set. */}
-          {hasRole(ctx, "admin") && ctx.tenant.consentedAt && <SyncNowButton />}
+          {locked ? (
+            <ButtonLink href="/app/billing">Upgrade to export</ButtonLink>
+          ) : (
+            <>
+              <ButtonAnchor href="/api/export/report">PDF report</ButtonAnchor>
+              {/* Trial workspaces (consentedAt null) have no Graph access: a
+                  manual sync could only fail. Demo tenants have consentedAt set. */}
+              {hasRole(ctx, "admin") && ctx.tenant.consentedAt && <SyncNowButton />}
+            </>
+          )}
         </div>
       </header>
 
@@ -288,12 +296,14 @@ export default async function OverviewPage() {
           <h2 className="text-xs font-medium tracking-[0.18em] text-ink-faint uppercase">
             License inventory
           </h2>
-          <a
-            href="/api/export/licenses"
-            className="text-xs text-ink-soft underline-offset-4 hover:text-ink hover:underline"
-          >
-            Export CSV
-          </a>
+          {!locked && (
+            <a
+              href="/api/export/licenses"
+              className="text-xs text-ink-soft underline-offset-4 hover:text-ink hover:underline"
+            >
+              Export CSV
+            </a>
+          )}
         </div>
 
         {/* Desktop table */}

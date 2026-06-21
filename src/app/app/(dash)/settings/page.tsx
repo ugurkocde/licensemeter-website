@@ -8,6 +8,7 @@ import { LeakAlertsToggle } from "~/components/workspace/LeakAlertsToggle";
 import { MemberActions } from "~/components/workspace/MemberActions";
 import { MonthlyReportToggle } from "~/components/workspace/MonthlyReportToggle";
 import { RenewalDateForm } from "~/components/workspace/RenewalDateForm";
+import { TrialRemindersToggle } from "~/components/workspace/TrialRemindersToggle";
 import { RoleSelect } from "~/components/workspace/RoleSelect";
 import { Button, Card, Pill } from "~/components/ui";
 import { fmtDate, fmtDateTime } from "~/lib/format";
@@ -222,6 +223,18 @@ export default async function SettingsPage() {
                 {isAdmin ? (
                   <MonthlyReportToggle initial={ctx.tenant.monthlyReport} />
                 ) : ctx.tenant.monthlyReport ? (
+                  "On"
+                ) : (
+                  "Off"
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-ink-faint">Trial reminder emails</dt>
+              <dd className="mt-0.5">
+                {isAdmin ? (
+                  <TrialRemindersToggle initial={ctx.tenant.trialReminders} />
+                ) : ctx.tenant.trialReminders ? (
                   "On"
                 ) : (
                   "Off"

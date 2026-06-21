@@ -18,6 +18,7 @@ const ITEMS: NavItem[] = [
   { href: "/app/findings", label: "Findings", also: ["/app/users"] },
   { href: "/app/licenses", label: "Licenses & prices" },
   { href: "/app/ai-costs", label: "AI costs" },
+  { href: "/app/billing", label: "Billing" },
   {
     href: "/app/settings",
     label: "Settings",

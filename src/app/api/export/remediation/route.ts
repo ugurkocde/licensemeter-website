@@ -21,6 +21,8 @@ const RULES: WasteRuleId[] = [
 export const GET = async (req: NextRequest) => {
   const ctx = await apiAccess("admin");
   if (!ctx) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!ctx.entitlement.active)
+    return NextResponse.json({ error: "upgrade_required" }, { status: 402 });
 
   const ruleParam = req.nextUrl.searchParams.get("rule");
   const rule = RULES.find((r) => r === ruleParam);

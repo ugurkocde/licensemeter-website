@@ -6,6 +6,30 @@ export type FindingStatus = "open" | "acknowledged" | "resolved";
 
 export type SyncRunStatus = "running" | "success" | "partial" | "failed";
 
+/** Stripe subscription.status values we persist and reason about. */
+export type SubscriptionStatus =
+  | "active"
+  | "trialing"
+  | "past_due"
+  | "canceled"
+  | "unpaid"
+  | "incomplete"
+  | "incomplete_expired"
+  | "paused";
+
+/** Self-serve plan tiers, sized by seat band. */
+export type PlanTier = "starter" | "growth" | "scale";
+
+/** Stripe recurring interval for a plan price. */
+export type PlanInterval = "month" | "year";
+
+/** Trial/billing reminder stages the cron can emit (one send per stage per trial). */
+export type ReminderStage =
+  | "trial_day7"
+  | "trial_day12"
+  | "trial_last"
+  | "trial_expired";
+
 export type UserLicense = {
   skuId: string;
   /** Group object id when the license is inherited via group-based licensing, null when direct. */
@@ -131,7 +155,13 @@ export type AuditAction =
   | "seats_import_cleared"
   | "renewal_date_changed"
   | "leak_alerts_changed"
-  | "monthly_report_changed";
+  | "monthly_report_changed"
+  | "checkout_started"
+  | "subscription_activated"
+  | "subscription_updated"
+  | "subscription_canceled"
+  | "billing_portal_opened"
+  | "trial_reminders_changed";
 
 /** Aggregate counts captured when user identities are concealed in usage reports. */
 export type AggregateUsage = {

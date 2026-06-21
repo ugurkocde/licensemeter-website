@@ -181,6 +181,8 @@ export const submitCsvTrial = async (
         tid,
         name: orgName,
         consentedAt: null,
+        // Trial clock starts the moment the workspace is created.
+        trialStartedAt: new Date(),
         concealedNames: false,
         hasP1: false,
         activitySignal: hasUsage ? "full" : "none",

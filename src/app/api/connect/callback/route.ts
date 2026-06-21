@@ -67,7 +67,14 @@ export const GET = async (req: NextRequest) => {
     (
       await db
         .insert(tenants)
-        .values({ tid: grantedTid!, consentedAt: new Date() })
+        // trialStartedAt is written once here and deliberately NOT on the
+        // reconnect UPDATE below, so re-running admin consent cannot reset the
+        // 14-day trial clock.
+        .values({
+          tid: grantedTid!,
+          consentedAt: new Date(),
+          trialStartedAt: new Date(),
+        })
         .returning({ id: tenants.id })
     )[0]!.id;
   if (existing) {

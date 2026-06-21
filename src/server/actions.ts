@@ -44,7 +44,8 @@ import { emailEnabled, inviteHtml, sendEmail } from "~/server/email";
 import { notifyOps } from "~/server/ops";
 import { clientIp, rateLimit } from "~/server/rateLimit";
 import { maybeSendWelcome } from "~/server/welcome";
-import { siteUrl } from "~/env";
+import { billingEnabled, siteUrl } from "~/env";
+import { teardownTenantBilling } from "~/server/stripe";
 import { runAnalysis, runSync } from "~/server/sync/runSync";
 import type { MembershipRole } from "~/server/types";
 
@@ -535,6 +536,20 @@ export const setMonthlyReport = async (
   return ok();
 };
 
+export const setTrialReminders = async (
+  enabled: boolean,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  await db
+    .update(tenants)
+    .set({ trialReminders: enabled === true })
+    .where(eq(tenants.id, ctx.tenant.id));
+  await audit(ctx, "trial_reminders_changed", { enabled: enabled === true });
+  revalidateApp();
+  return ok();
+};
+
 export const setCurrency = async (currency: string): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
@@ -554,6 +569,8 @@ export const setCurrency = async (currency: string): Promise<ActionResult> => {
 export const triggerSync = async (): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
+  if (!ctx.entitlement.active)
+    return fail("Your trial has ended. Upgrade to run a sync.");
   await audit(ctx, "sync_triggered", {});
   const result = await runSync(ctx.tenant.id);
   revalidateApp();
@@ -934,6 +951,13 @@ export const disconnectTenant = async (): Promise<ActionResult> => {
   const ctx = await apiAccess("owner");
   if (!ctx) return fail("Not allowed");
   if (ctx.tenant.isDemo) return fail("The demo workspace cannot be disconnected");
+  // Cancel the Stripe subscription and erase the Stripe customer BEFORE the
+  // local delete, while we still hold the ids. Best-effort and non-throwing so
+  // a Stripe outage never blocks the GDPR deletion; the late
+  // customer.subscription.deleted webhook no-ops once the tenant row is gone.
+  if (billingEnabled()) {
+    await teardownTenantBilling(ctx.tenant);
+  }
   await db.delete(tenants).where(eq(tenants.id, ctx.tenant.id));
   revalidatePath("/", "layout");
   redirect("/");

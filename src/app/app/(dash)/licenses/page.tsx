@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { ImportPricesForm } from "./ImportPricesForm";
 import { PriceEditor } from "~/components/workspace/PriceRow";
-import { ButtonAnchor, Pill } from "~/components/ui";
+import { ButtonAnchor, ButtonLink, Pill } from "~/components/ui";
 import { CONNECTORS } from "~/lib/connectors";
 import { fmtMoney, fmtNumber } from "~/lib/format";
 import { adobePriceKey } from "~/server/adobe/analyze";
@@ -35,6 +35,7 @@ const PriceSourcePill = ({ price }: { price: PriceRow | undefined }) => {
 export default async function LicensesPage() {
   const ctx = await requireAccess("viewer");
   const isAdmin = hasRole(ctx, "admin");
+  const locked = !ctx.entitlement.active;
   const currency = ctx.tenant.currency;
   // Trial workspaces (consentedAt null, never the demo) have no sync button,
   // so do not tell them to run one.
@@ -94,7 +95,11 @@ export default async function LicensesPage() {
             numbers. There is no Microsoft API for tenant pricing.
           </p>
         </div>
-        <ButtonAnchor href="/api/export/licenses">Export CSV</ButtonAnchor>
+        {locked ? (
+          <ButtonLink href="/app/billing">Upgrade to export</ButtonLink>
+        ) : (
+          <ButtonAnchor href="/api/export/licenses">Export CSV</ButtonAnchor>
+        )}
       </header>
 
       {/* Desktop table */}
@@ -319,12 +324,14 @@ export default async function LicensesPage() {
             <h2 className="text-xs font-medium tracking-[0.18em] text-ink-faint uppercase">
               Bulk price import
             </h2>
-            <a
-              href="/api/export/pricebook"
-              className="text-xs text-ink-soft underline-offset-4 hover:text-ink hover:underline"
-            >
-              Export price book CSV
-            </a>
+            {!locked && (
+              <a
+                href="/api/export/pricebook"
+                className="text-xs text-ink-soft underline-offset-4 hover:text-ink hover:underline"
+              >
+                Export price book CSV
+              </a>
+            )}
           </div>
           <p className="mt-1 max-w-2xl text-sm text-ink-soft">
             Maintaining prices for many products or workspaces? Export the

@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { siteUrl } from "~/env";
-import { ButtonLink } from "~/components/ui";
+import { env, siteUrl, taxEnabled } from "~/env";
+import { PricingTiers } from "~/components/pricing/PricingTiers";
 import {
   DEMO_ANNUAL_WASTE_ROUNDED,
   DEMO_FIGURES,
   demoEuros,
 } from "~/lib/demoFigures";
+import { PLANS } from "~/lib/plans";
 import { ALL_RULES } from "~/lib/rules";
 import { SITE_DEFINITION } from "~/lib/site";
 import { SUPPORT_MAILTO } from "~/lib/support";
@@ -18,38 +19,16 @@ export const metadata: Metadata = {
     "Flat monthly pricing per tenant, sized by seat count. Every plan starts with a free waste scan.",
 };
 
-const TIERS = [
-  {
-    name: "Starter",
-    price: "79",
-    seats: "up to 250 seats",
-    featured: false,
-  },
-  {
-    name: "Growth",
-    price: "199",
-    seats: "up to 1.000 seats",
-    featured: true,
-  },
-  {
-    name: "Scale",
-    price: "499",
-    seats: "up to 2.500 seats",
-    featured: false,
-  },
-] as const;
-
 const BASE = siteUrl();
 
-/* Growth annual cost, computed from the tier price so the payback copy can
- * never drift from the card. German thousands format, whole euros. */
-const GROWTH_MONTHLY = Number(TIERS.find((t) => t.name === "Growth")!.price);
+/* Growth annual cost, computed from the plan price so the payback copy can
+ * never drift from the cards. German thousands format, whole euros. */
 const GROWTH_ANNUAL = new Intl.NumberFormat("de-DE").format(
-  GROWTH_MONTHLY * 12,
+  PLANS.find((p) => p.tier === "growth")!.annual,
 );
 
 /* SoftwareApplication with concrete EUR offers: the machine-readable price
- * list answer engines quote instead of guessing. Static content from TIERS;
+ * list answer engines quote instead of guessing. Both intervals from PLANS;
  * "<" escaped so nothing can terminate the script element. */
 const PRICING_LD = {
   "@context": "https://schema.org",
@@ -63,16 +42,27 @@ const PRICING_LD = {
       url: BASE,
       description: SITE_DEFINITION,
       publisher: { "@id": `${BASE}/#organization` },
-      offers: TIERS.map((tier) => ({
-        "@type": "Offer",
-        name: tier.name,
-        price: tier.price,
-        priceCurrency: "EUR",
-        // Google requires availability or priceValidUntil for price snippets.
-        availability: "https://schema.org/InStock",
-        description: `Per tenant, per month, ${tier.seats}`,
-        url: `${BASE}/pricing`,
-      })),
+      offers: PLANS.flatMap((plan) => [
+        {
+          "@type": "Offer",
+          name: plan.name,
+          price: String(plan.monthly),
+          priceCurrency: "EUR",
+          // Google requires availability or priceValidUntil for price snippets.
+          availability: "https://schema.org/InStock",
+          description: `Per tenant, per month, ${plan.seats}`,
+          url: `${BASE}/pricing`,
+        },
+        {
+          "@type": "Offer",
+          name: `${plan.name} (annual)`,
+          price: String(plan.annual),
+          priceCurrency: "EUR",
+          availability: "https://schema.org/InStock",
+          description: `Per tenant, per year, ${plan.seats}`,
+          url: `${BASE}/pricing`,
+        },
+      ]),
     },
     {
       "@type": "BreadcrumbList",
@@ -114,41 +104,22 @@ export default function PricingPage() {
         month. Licenses leak every time someone joins, moves or leaves.
       </p>
 
-      <div className="mt-12 grid gap-px border border-line bg-line md:grid-cols-3">
-        {TIERS.map((tier) => (
-          <div
-            key={tier.name}
-            className={`flex flex-col bg-card px-6 py-6 ${
-              tier.featured ? "outline outline-2 -outline-offset-1 outline-ink" : ""
-            }`}
-          >
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-xs font-medium tracking-[0.18em] text-ink-faint uppercase">
-                {tier.name}
-              </h2>
-              {tier.featured && (
-                <span className="bg-ink px-2 py-0.5 text-[11px] font-medium tracking-wide text-canvas uppercase">
-                  Most common
-                </span>
-              )}
-            </div>
-            <div className="mt-4 font-display text-4xl tracking-tight">
-              € {tier.price}
-              <span className="font-sans text-sm text-ink-soft"> / month</span>
-            </div>
-            <div className="mt-1 text-sm text-ink-soft">{tier.seats}</div>
-            <div className="mt-6">
-              <ButtonLink
-                href="/#get-started"
-                variant={tier.featured ? "primary" : "secondary"}
-                className="w-full"
-              >
-                Start with a free scan
-              </ButtonLink>
-            </div>
-          </div>
-        ))}
+      <div className="mt-12">
+        <PricingTiers
+          entraConfigured={Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID)}
+        />
       </div>
+
+      {taxEnabled() ? (
+        <p className="mt-4 text-sm text-ink-soft">
+          Prices include applicable VAT. EU businesses with a valid VAT ID are
+          reverse-charged at checkout.
+        </p>
+      ) : (
+        <p className="mt-4 text-sm text-ink-soft">
+          14-day free trial. No credit card required.
+        </p>
+      )}
 
       <p className="mt-4 text-sm text-ink-soft">
         More than 2.500 seats or managing multiple tenants as an MSP?{" "}
@@ -204,9 +175,9 @@ export default function PricingPage() {
             a year.
           </p>
           <p className="mt-3 text-xs text-ink-faint">
-            Billing is not switched on yet. Workspaces that connect now use
-            LicenseMeter free until it is, and you will hear from me well
-            before anything costs money.
+            Every plan starts with a 14-day free trial, no credit card
+            required. Connect, see your number, and only subscribe if you keep
+            monitoring it month after month.
           </p>
         </div>
       </section>

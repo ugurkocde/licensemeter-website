@@ -269,3 +269,127 @@ export const leakAlertHtml = (args: {
     Immediate alert for new offboarding leaks. Turn these off in Settings.
   </p>
 </div>`;
+
+/** Primary call-to-action button, matching the dark wordmark buttons. */
+const ctaButton = (href: string, label: string): string => `
+  <p style="margin:24px 0">
+    <a href="${href}"
+       style="font-family:Arial,sans-serif;font-size:14px;background:#1c1a16;color:#faf8f3;padding:12px 20px;text-decoration:none">
+      ${escapeHtml(label)}
+    </a>
+  </p>`;
+
+/** Footer with a one-click unsubscribe, for suppressible reminder nudges. */
+const reminderFooter = (unsubscribeUrl: string): string => `
+  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;line-height:1.5;margin-top:24px">
+    You get these reminders while your workspace is on trial. Manage billing
+    anytime in the app. <a href="${unsubscribeUrl}" style="color:#a39d8f">Unsubscribe</a>
+    to stop reminders for this workspace.
+  </p>`;
+
+/**
+ * In-trial nudge (day 7 / 12 / last). Suppressible: carries an unsubscribe
+ * link and is gated on the workspace's trialReminders flag by the caller.
+ */
+export const trialReminderHtml = (args: {
+  tenantName: string;
+  daysLeft: number;
+  /** Pre-formatted recoverable-waste line; omitted when no number yet. */
+  wasteLine?: string;
+  appUrl: string;
+  unsubscribeUrl: string;
+}): string => {
+  const when =
+    args.daysLeft <= 0
+      ? "ends today"
+      : args.daysLeft === 1
+        ? "ends tomorrow"
+        : `ends in ${args.daysLeft} days`;
+  return `
+<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
+  ${emailWordmark(args.appUrl)}
+  <h1 style="font-size:22px;font-weight:normal">Your trial ${when}: ${escapeHtml(args.tenantName)}</h1>
+  <p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+    Keep monitoring license waste after the trial. Upgrade now to avoid any
+    interruption to nightly sync, exports and alerts.
+  </p>
+  ${args.wasteLine ? lineBlock(args.wasteLine) : ""}
+  ${ctaButton(`${args.appUrl}/app/billing`, "Choose a plan")}
+  ${reminderFooter(args.unsubscribeUrl)}
+</div>`;
+};
+
+/**
+ * Trial-ended notice (sent once). Essential transactional mail: no unsubscribe,
+ * always sent regardless of the reminders flag.
+ */
+export const trialExpiredHtml = (args: {
+  tenantName: string;
+  wasteLine?: string;
+  appUrl: string;
+}): string => `
+<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
+  ${emailWordmark(args.appUrl)}
+  <h1 style="font-size:22px;font-weight:normal">Trial ended: ${escapeHtml(args.tenantName)}</h1>
+  <p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+    Your 14-day trial has ended. Your dashboard stays available, but exports,
+    nightly sync and alerts are paused until you choose a plan.
+  </p>
+  ${args.wasteLine ? lineBlock(args.wasteLine) : ""}
+  ${ctaButton(`${args.appUrl}/app/billing`, "Choose a plan")}
+  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;margin-top:24px">
+    A required notice about your workspace. Not a marketing email.
+  </p>
+</div>`;
+
+/**
+ * Failed-payment dunning notice. Essential transactional mail. Access is
+ * retained during Stripe's automatic retries (the grace window), so the copy
+ * is truthful about "avoid interruption".
+ */
+export const paymentFailedHtml = (args: {
+  tenantName: string;
+  /** Stripe hosted invoice URL to update the card / pay; falls back to the app. */
+  invoiceUrl?: string;
+  appUrl: string;
+}): string => `
+<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
+  ${emailWordmark(args.appUrl)}
+  <h1 style="font-size:22px;font-weight:normal">Payment failed: ${escapeHtml(args.tenantName)}</h1>
+  <p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+    We could not charge your card. We will retry automatically over the coming
+    days. Update your payment method to avoid any interruption to monitoring.
+  </p>
+  ${ctaButton(args.invoiceUrl ?? `${args.appUrl}/app/billing`, "Update payment method")}
+  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;margin-top:24px">
+    A required notice about your subscription. Not a marketing email.
+  </p>
+</div>`;
+
+/**
+ * Paid-subscription confirmation cover note. Essential transactional mail; the
+ * VAT-compliant invoice PDF is sent separately by Stripe.
+ */
+export const subscriptionConfirmedHtml = (args: {
+  tenantName: string;
+  planName: string;
+  invoiceUrl?: string;
+  appUrl: string;
+}): string => `
+<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
+  ${emailWordmark(args.appUrl)}
+  <h1 style="font-size:22px;font-weight:normal">You're on ${escapeHtml(args.planName)}: ${escapeHtml(args.tenantName)}</h1>
+  <p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+    Thanks for subscribing. Nightly sync, exports and alerts stay on. Your
+    receipt and invoice are emailed separately by Stripe.
+  </p>
+  ${
+    args.invoiceUrl
+      ? `<p style="font-family:Arial,sans-serif;font-size:13px;margin-top:8px"><a href="${args.invoiceUrl}" style="color:#1c1a16">View your invoice &rarr;</a></p>`
+      : ""
+  }
+  ${ctaButton(`${args.appUrl}/app/billing`, "Manage billing")}
+  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;margin-top:24px">
+    A required notice about your subscription. Not a marketing email.
+  </p>
+</div>`;

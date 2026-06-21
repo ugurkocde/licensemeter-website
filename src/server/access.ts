@@ -2,11 +2,13 @@ import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { billingEnabled } from "~/env";
 import { auth, type Session } from "~/server/auth";
 import { cookieOptions } from "~/server/auth/session";
 import { db } from "~/server/db";
 import { memberships, tenants } from "~/server/db/schema";
 import { ensureDemoWorkspace } from "~/server/demo/seed";
+import { entitlementOf, type Entitlement } from "~/server/entitlement";
 import type { MembershipRole } from "~/server/types";
 
 export const WORKSPACE_COOKIE = "lm_ws";
@@ -31,6 +33,11 @@ export type AccessContext = {
   membership: typeof memberships.$inferSelect;
   /** Every workspace this user can open (MSP/consultant support). */
   workspaces: WorkspaceSummary[];
+  /**
+   * Billing entitlement for the active workspace, computed from cached tenant
+   * columns (no extra query). Drives the trial banner and the soft-lock gates.
+   */
+  entitlement: Entitlement;
 };
 
 const ROLE_RANK: Record<MembershipRole, number> = {
@@ -123,6 +130,15 @@ const resolveAccess = async (
       role: r.membership.role,
       isDemo: r.tenant.isDemo,
     })),
+    // Cached-column fast path: status/paidUntil live on the tenant row, so the
+    // banner and gates need no extra query. The full subscription row (plan,
+    // cancel date) is loaded only on the billing page.
+    entitlement: entitlementOf(
+      active.tenant,
+      null,
+      new Date(),
+      !billingEnabled(),
+    ),
   };
 };
 

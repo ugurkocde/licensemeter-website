@@ -19,7 +19,10 @@ import type {
   AuditAction,
   FindingStatus,
   MembershipRole,
+  PlanInterval,
+  PlanTier,
   SaasProvider,
+  SubscriptionStatus,
   SyncRunStatus,
   SyncStep,
   UserLicense,
@@ -54,12 +57,39 @@ export const tenants = pgTable(
     copilotAggregate: jsonb("copilot_aggregate").$type<AggregateUsage>(),
     isDemo: boolean("is_demo").notNull().default(false),
     consentedAt: timestamp("consented_at", { withTimezone: true }),
+    /**
+     * Immutable trial anchor, written once at tenant creation and NEVER
+     * updated (unlike consentedAt, which is re-stamped on every reconnect and
+     * would reset the trial clock). entitlementOf anchors on
+     * trialStartedAt ?? createdAt.
+     */
+    trialStartedAt: timestamp("trial_started_at", { withTimezone: true }),
+    /** Stripe customer id (cus_…); created lazily at first Checkout, null on trial. */
+    stripeCustomerId: text("stripe_customer_id"),
+    /** Cached subscription status, mirrored from the webhook (source of truth: subscriptions row). */
+    subscriptionStatus: text("subscription_status").$type<SubscriptionStatus>(),
+    /** Cached current_period_end; the paid-access horizon. Null on trial. */
+    paidUntil: timestamp("paid_until", { withTimezone: true }),
+    /** Comp / grandfather flag, NEVER written by the webhook. Set => always entitled. */
+    compedAt: timestamp("comped_at", { withTimezone: true }),
+    /** Suppressible trial-reminder nudges to owners/admins (one-click unsubscribe). */
+    trialReminders: boolean("trial_reminders").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
-  (t) => [uniqueIndex("tenants_tid_idx").on(t.tid)],
+  (t) => [
+    uniqueIndex("tenants_tid_idx").on(t.tid),
+    // One Stripe customer per tenant: a mismatched second customer is a DB
+    // error, not a silent overwrite.
+    uniqueIndex("tenants_stripe_customer_idx")
+      .on(t.stripeCustomerId)
+      .where(sql`${t.stripeCustomerId} is not null`),
+  ],
 );
+
+/** A full tenant row, for code that passes tenants around by value. */
+export type TenantRow = typeof tenants.$inferSelect;
 
 /** Who may sign in to which tenant workspace, and as what. */
 export const memberships = pgTable(
@@ -403,3 +433,45 @@ export const snapshots = pgTable(
   },
   (t) => [uniqueIndex("snapshots_tenant_day_idx").on(t.tenantId, t.day)],
 );
+
+/**
+ * One row per tenant with a Stripe subscription (current or past). The webhook
+ * is the source of truth; tenants.subscriptionStatus/paidUntil are a cached
+ * read-fast mirror. tier/interval are nullable so an unmapped price is never
+ * coerced to the cheapest tier.
+ */
+export const subscriptions = pgTable("subscriptions", {
+  tenantId: uuid("tenant_id")
+    .primaryKey()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  stripeSubscriptionId: text("stripe_subscription_id").notNull(),
+  stripeCustomerId: text("stripe_customer_id").notNull(),
+  stripePriceId: text("stripe_price_id").notNull(),
+  tier: text("tier").$type<PlanTier>(),
+  interval: text("interval").$type<PlanInterval>(),
+  status: text("status").$type<SubscriptionStatus>().notNull(),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  /** event.created of the last applied webhook; gates stale out-of-order writes. */
+  lastEventAt: timestamp("last_event_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
+ * Idempotency ledger for Stripe webhook deliveries. Insert-on-receipt inside
+ * the same transaction as the handler: a duplicate event id is a no-op, and a
+ * handler failure rolls the row back so Stripe's retry re-processes exactly
+ * once. No FK — survives tenant deletion.
+ */
+export const stripeEvents = pgTable("stripe_events", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

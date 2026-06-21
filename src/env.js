@@ -70,6 +70,29 @@ export const env = createEnv({
     APP_BASE_URL: process.env.VERCEL
       ? z.string().url()
       : z.string().url().optional(),
+
+    /**
+     * Stripe billing. All optional and gated behind billingEnabled(): without
+     * STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET the whole billing subsystem is
+     * a no-op and every workspace keeps full access (safe incremental rollout).
+     */
+    STRIPE_SECRET_KEY: z.string().optional(),
+    STRIPE_WEBHOOK_SECRET: z.string().optional(),
+    /** Pinned Customer Portal configuration id (from scripts/setup-stripe-portal.ts). */
+    STRIPE_PORTAL_CONFIGURATION_ID: z.string().optional(),
+    /** Recurring Price ids per tier+interval (from scripts/setup-stripe.ts). */
+    STRIPE_PRICE_STARTER_MONTHLY: z.string().optional(),
+    STRIPE_PRICE_STARTER_ANNUAL: z.string().optional(),
+    STRIPE_PRICE_GROWTH_MONTHLY: z.string().optional(),
+    STRIPE_PRICE_GROWTH_ANNUAL: z.string().optional(),
+    STRIPE_PRICE_SCALE_MONTHLY: z.string().optional(),
+    STRIPE_PRICE_SCALE_ANNUAL: z.string().optional(),
+    /**
+     * "true" turns on Stripe Tax (automatic_tax) + VAT-id collection + the
+     * VAT-aware pricing copy. Off at launch; flip on once VAT-registered. No
+     * code change required.
+     */
+    STRIPE_TAX_ENABLED: z.enum(["true", "false"]).optional(),
   },
 
   client: {},
@@ -89,6 +112,16 @@ export const env = createEnv({
     ALERT_EMAIL: process.env.ALERT_EMAIL,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     EMAIL_FROM: process.env.EMAIL_FROM,
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+    STRIPE_PORTAL_CONFIGURATION_ID: process.env.STRIPE_PORTAL_CONFIGURATION_ID,
+    STRIPE_PRICE_STARTER_MONTHLY: process.env.STRIPE_PRICE_STARTER_MONTHLY,
+    STRIPE_PRICE_STARTER_ANNUAL: process.env.STRIPE_PRICE_STARTER_ANNUAL,
+    STRIPE_PRICE_GROWTH_MONTHLY: process.env.STRIPE_PRICE_GROWTH_MONTHLY,
+    STRIPE_PRICE_GROWTH_ANNUAL: process.env.STRIPE_PRICE_GROWTH_ANNUAL,
+    STRIPE_PRICE_SCALE_MONTHLY: process.env.STRIPE_PRICE_SCALE_MONTHLY,
+    STRIPE_PRICE_SCALE_ANNUAL: process.env.STRIPE_PRICE_SCALE_ANNUAL,
+    STRIPE_TAX_ENABLED: process.env.STRIPE_TAX_ENABLED,
   },
 
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
@@ -96,6 +129,20 @@ export const env = createEnv({
 });
 
 export const isDemoMode = () => env.DEMO_MODE === "true";
+
+/**
+ * Master billing flag. When false the entire Stripe subsystem no-ops and
+ * entitlementOf grants full access to everyone, so nothing locks until Stripe
+ * is configured (mirrors how emailEnabled() gates outgoing mail).
+ */
+export const billingEnabled = () =>
+  Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET);
+
+/**
+ * Whether to collect VAT via Stripe Tax. Off at launch (sell flat prices, no
+ * VAT shown); flip STRIPE_TAX_ENABLED=true once VAT-registered.
+ */
+export const taxEnabled = () => env.STRIPE_TAX_ENABLED === "true";
 
 /**
  * Like appBaseUrl but never throws, for sitemap/OG metadata where a localhost

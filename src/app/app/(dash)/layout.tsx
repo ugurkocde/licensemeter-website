@@ -4,10 +4,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { BrandMark } from "~/components/BrandMark";
+import { EntitlementBanner } from "~/components/workspace/EntitlementBanner";
 import { MobileNav } from "~/components/workspace/MobileNav";
 import { NavLinks } from "~/components/workspace/NavLinks";
 import { WorkspaceSwitcher } from "~/components/workspace/WorkspaceSwitcher";
-import { requireAccess } from "~/server/access";
+import { hasRole, requireAccess } from "~/server/access";
 import { clearSessionCookie } from "~/server/auth";
 
 /* Auth already gates these routes; noindex closes the gap robots.txt leaves
@@ -88,6 +89,10 @@ export default async function WorkspaceLayout({
       </aside>
 
       <main id="content" className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-8 lg:px-12">
+        <EntitlementBanner
+          entitlement={ctx.entitlement}
+          isOwner={hasRole(ctx, "owner")}
+        />
         {children}
       </main>
     </div>

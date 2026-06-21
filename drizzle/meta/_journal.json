@@ -43,6 +43,13 @@
       "when": 1781216785590,
       "tag": "0005_saas_connectors",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782080785590,
+      "tag": "0006_billing",
+      "breakpoints": true
     }
   ]
 }

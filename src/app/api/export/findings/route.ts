@@ -10,6 +10,8 @@ import { findings } from "~/server/db/schema";
 export const GET = async () => {
   const ctx = await apiAccess("viewer");
   if (!ctx) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!ctx.entitlement.active)
+    return NextResponse.json({ error: "upgrade_required" }, { status: 402 });
 
   const rows = await db.query.findings.findMany({
     where: eq(findings.tenantId, ctx.tenant.id),
