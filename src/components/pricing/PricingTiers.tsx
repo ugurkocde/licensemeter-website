@@ -79,7 +79,7 @@ export const PricingTiers = ({
                 >
                   {entraConfigured
                     ? "Start 14-day trial"
-                    : "Start with a free scan"}
+                    : "Start free"}
                 </a>
               </div>
             </div>

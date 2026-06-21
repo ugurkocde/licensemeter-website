@@ -30,8 +30,8 @@ export const HeaderAuthCta = () => {
   }, []);
 
   /* Always visible: on mobile the nav links live in the burger drawer, so
-     the action keeps its header slot. Labels shorten below sm to fit brand +
-     CTA + burger on 360px viewports without wrapping. */
+     the action keeps its header slot. "Start free" is short enough to fit
+     brand + CTA + burger on 360px viewports without wrapping. */
   return signedIn ? (
     <ButtonLink href="/app" variant="secondary">
       <span className="sm:hidden">Dashboard</span>
@@ -39,8 +39,7 @@ export const HeaderAuthCta = () => {
     </ButtonLink>
   ) : (
     <ButtonLink href="/#get-started" variant="secondary">
-      <span className="sm:hidden">Free scan</span>
-      <span className="hidden sm:inline">Run a free scan</span>
+      Start free
     </ButtonLink>
   );
 };

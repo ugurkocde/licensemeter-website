@@ -191,7 +191,8 @@ export default async function LandingPage() {
                   showNote={false}
                 />
                 <p className="text-ink-faint mt-3 text-xs">
-                  First scan free. No credit card. Read-only access.
+                  Start free with a 14-day trial. No credit card, read-only
+                  access.
                 </p>
               </div>
             </div>
@@ -528,7 +529,8 @@ export default async function LandingPage() {
                 showNote={false}
               />
               <p className="text-ink-faint mt-3 text-xs">
-                First scan free. No credit card. Read-only access.
+                Start free with a 14-day trial. No credit card, read-only
+                access.
               </p>
             </div>
           </div>

@@ -16,7 +16,7 @@ const FOOTER_COLUMNS = [
   {
     title: "Product",
     links: [
-      { href: "/#get-started", label: "Free waste scan" },
+      { href: "/#get-started", label: "Start free" },
       { href: "/pricing", label: "Pricing" },
       { href: "/msp", label: "For MSPs" },
       { href: "/connectors", label: "Connectors" },

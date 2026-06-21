@@ -183,7 +183,7 @@ export const RoiCalculator = () => {
             href="#get-started"
             className="text-brand-text mt-4 inline-block text-sm font-medium underline underline-offset-4 hover:opacity-80"
           >
-            Run the free scan instead →
+            Start free instead →
           </a>
         </div>
       </div>
