@@ -5,9 +5,14 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { billingEnabled, env } from "~/env";
 import { fmtMoney } from "~/lib/format";
-import { sendTrialExpired, sendTrialReminder } from "~/server/billingEmail";
+import { planByTier, seatNudge } from "~/lib/plans";
+import {
+  sendSeatNudge,
+  sendTrialExpired,
+  sendTrialReminder,
+} from "~/server/billingEmail";
 import { db } from "~/server/db";
-import { opsAlerts, snapshots, tenants } from "~/server/db/schema";
+import { opsAlerts, snapshots, subscriptions, tenants } from "~/server/db/schema";
 import { emailEnabled } from "~/server/email";
 import { entitlementOf, type Entitlement } from "~/server/entitlement";
 import { notifyOps } from "~/server/ops";
@@ -15,6 +20,9 @@ import { reconcileTenantSubscription } from "~/server/stripe";
 import type { ReminderStage } from "~/server/types";
 
 export const maxDuration = 300;
+
+/** A paid tenant gets at most one seat-band nudge per tier this often. */
+const SEAT_NUDGE_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Constant-time bearer check; a length mismatch is false, never a throw. */
 const authorized = (req: NextRequest, secret: string): boolean => {
@@ -121,5 +129,71 @@ export const GET = async (req: NextRequest) => {
     }
   }
 
-  return NextResponse.json({ tenants: allTenants.length, reconciled, sent });
+  // Seat-band nudges for paid tenants: tell owners to change plan (never an
+  // auto-charge) when seats outgrow the band. At most one per (tenant, tier)
+  // every SEAT_NUDGE_COOLDOWN, tracked in opsAlerts; suppressible by the owner.
+  let nudged = 0;
+  for (const tenant of allTenants) {
+    try {
+      const sub = await db.query.subscriptions.findFirst({
+        where: eq(subscriptions.tenantId, tenant.id),
+        columns: { tier: true, status: true },
+      });
+      if (!sub?.tier || (sub.status !== "active" && sub.status !== "trialing")) {
+        continue;
+      }
+      const snap = await db.query.snapshots.findFirst({
+        where: eq(snapshots.tenantId, tenant.id),
+        orderBy: desc(snapshots.day),
+        columns: { purchasedSeats: true },
+      });
+      if (!snap) continue;
+      const nudge = seatNudge(sub.tier, snap.purchasedSeats);
+      if (!nudge) continue;
+
+      const key = `seat-nudge:${tenant.id}:${sub.tier}`;
+      const prior = await db.query.opsAlerts.findFirst({
+        where: eq(opsAlerts.key, key),
+        columns: { lastSentAt: true },
+      });
+      if (
+        prior &&
+        now.getTime() - prior.lastSentAt.getTime() < SEAT_NUDGE_COOLDOWN_MS
+      ) {
+        continue;
+      }
+
+      const ok = await sendSeatNudge(tenant, {
+        planName: planByTier(sub.tier).name,
+        seats: snap.purchasedSeats,
+        seatMax: nudge.seatMax,
+        recommendedName: nudge.recommendedTier
+          ? planByTier(nudge.recommendedTier).name
+          : null,
+        over: nudge.state === "over",
+      });
+      if (ok) {
+        await db
+          .insert(opsAlerts)
+          .values({ key, lastSentAt: now, suppressedCount: 0 })
+          .onConflictDoUpdate({
+            target: opsAlerts.key,
+            set: { lastSentAt: now },
+          });
+        nudged++;
+      }
+    } catch (err) {
+      void notifyOps(
+        `seat nudge failed for tenant ${tenant.name ?? tenant.tid}: ${err instanceof Error ? err.message : String(err)}`,
+        { key: `seat-nudge-err:${tenant.id}`, cooldownMs: 3_600_000 },
+      );
+    }
+  }
+
+  return NextResponse.json({
+    tenants: allTenants.length,
+    reconciled,
+    sent,
+    nudged,
+  });
 };

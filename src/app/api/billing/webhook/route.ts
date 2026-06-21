@@ -27,7 +27,13 @@ type Tenant = typeof tenants.$inferSelect;
 
 /** Side effect to run AFTER the DB transaction commits (never inside it). */
 type EmailJob =
-  | { kind: "confirmed"; tenant: Tenant; planName: string; invoiceUrl?: string }
+  | {
+      kind: "confirmed";
+      tenant: Tenant;
+      planName: string;
+      invoiceUrl?: string;
+      trialEndsAt?: Date;
+    }
   | { kind: "payment_failed"; tenant: Tenant; invoiceUrl?: string };
 
 const customerIdOf = (c: string | { id: string } | null): string | null =>
@@ -214,12 +220,19 @@ async function handleEvent(tx: Tx, event: Stripe.Event): Promise<EmailJob[]> {
         return [{ kind: "payment_failed", tenant: res.tenant, invoiceUrl }];
       }
       if (invoice.billing_reason === "subscription_create") {
+        // A preserved-trial subscription confirms while still trialing: tell the
+        // owner nothing is charged yet and when the first charge lands.
+        const trialEndsAt =
+          live.status === "trialing" && live.trial_end
+            ? new Date(live.trial_end * 1000)
+            : undefined;
         return [
           {
             kind: "confirmed",
             tenant: res.tenant,
             planName: planLabel(live),
             invoiceUrl,
+            trialEndsAt,
           },
         ];
       }
@@ -281,7 +294,12 @@ export const POST = async (req: NextRequest) => {
       if (job.kind === "payment_failed") {
         await sendPaymentFailed(job.tenant, job.invoiceUrl);
       } else {
-        await sendSubscriptionConfirmed(job.tenant, job.planName, job.invoiceUrl);
+        await sendSubscriptionConfirmed(
+          job.tenant,
+          job.planName,
+          job.invoiceUrl,
+          job.trialEndsAt,
+        );
       }
     } catch (err) {
       void notifyOps(

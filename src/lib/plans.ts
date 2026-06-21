@@ -37,6 +37,45 @@ export const planByTier = (tier: PlanTier): Plan =>
 export const tierForSeats = (seats: number): PlanTier | null =>
   PLANS.find((p) => seats <= p.seatMax)?.tier ?? null;
 
+const TIER_ORDER: PlanTier[] = ["starter", "growth", "scale"];
+
+/** The next band up, or null when already on the top self-serve band (-> MSP). */
+export const nextTier = (tier: PlanTier): PlanTier | null => {
+  const i = TIER_ORDER.indexOf(tier);
+  return i >= 0 && i < TIER_ORDER.length - 1 ? (TIER_ORDER[i + 1] ?? null) : null;
+};
+
+/** Seats at or above this fraction of the band cap trigger an upgrade nudge. */
+export const SEAT_NUDGE_RATIO = 0.85;
+
+export type SeatNudge = {
+  state: "approaching" | "over";
+  /** Seat cap of the tenant's current band. */
+  seatMax: number;
+  /** Band to move to; null means past self-serve (-> MSP / contact sales). */
+  recommendedTier: PlanTier | null;
+};
+
+/**
+ * Whether a subscribed tenant should be nudged to change plan: "over" once its
+ * seat count passes the current band cap, "approaching" within
+ * SEAT_NUDGE_RATIO of it, null when comfortably inside. Pure and side-effect
+ * free — nudges only; we never auto-charge a higher tier.
+ */
+export const seatNudge = (
+  currentTier: PlanTier,
+  seats: number,
+): SeatNudge | null => {
+  const seatMax = planByTier(currentTier).seatMax;
+  if (seats > seatMax) {
+    return { state: "over", seatMax, recommendedTier: tierForSeats(seats) };
+  }
+  if (seats >= Math.floor(seatMax * SEAT_NUDGE_RATIO)) {
+    return { state: "approaching", seatMax, recommendedTier: nextTier(currentTier) };
+  }
+  return null;
+};
+
 /** Annual price expressed per month, for "/mo billed annually" copy. */
 export const annualPerMonth = (plan: Plan): number => Math.round(plan.annual / 12);
 

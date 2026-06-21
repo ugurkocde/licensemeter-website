@@ -8,7 +8,9 @@ import { fmtDate, fmtMoney } from "~/lib/format";
 import {
   MAX_SELF_SERVE_SEATS,
   PLANS,
+  planByTier,
   priceEurosFor,
+  seatNudge,
   tierForSeats,
 } from "~/lib/plans";
 import { hasRole, requireAccess } from "~/server/access";
@@ -78,8 +80,18 @@ export default async function BillingPage({
   );
   const seats = await knownSeats(ctx.tenant.id);
 
+  // A subscribed tenant that outgrows its band gets a change-plan nudge (never
+  // an auto-charge); the action is the existing Change plan button below.
+  const overPlan =
+    sub?.tier && seats.hasSync ? seatNudge(sub.tier, seats.seats) : null;
+
+  // A subscription that exists (incl. a preserved-trial one) is managed through
+  // the portal, not re-picked — otherwise the picker could start a 2nd checkout.
   const manageable = Boolean(
-    sub && (sub.status === "active" || sub.status === "past_due"),
+    sub &&
+      (sub.status === "active" ||
+        sub.status === "trialing" ||
+        sub.status === "past_due"),
   );
   const overSelfServe = seats.hasSync && seats.seats > MAX_SELF_SERVE_SEATS;
   const recommendedTier = seats.hasSync
@@ -108,6 +120,8 @@ export default async function BillingPage({
     sub?.currentPeriodEnd
   ) {
     datedLine = `Cancels on ${fmtDate(sub.currentPeriodEnd)}`;
+  } else if (sub?.status === "trialing" && sub?.currentPeriodEnd) {
+    datedLine = `Free trial — first charge ${fmtDate(sub.currentPeriodEnd)}`;
   } else if (entitlement.state === "paid" && sub?.currentPeriodEnd) {
     datedLine = `Renews on ${fmtDate(sub.currentPeriodEnd)}`;
   }
@@ -123,6 +137,26 @@ export default async function BillingPage({
       </header>
 
       <div className="rise rise-2 flex flex-col gap-6">
+        {overPlan && (
+          <div
+            className={`rounded-2xl px-5 py-4 text-sm ${
+              overPlan.state === "over"
+                ? "bg-danger-soft text-danger-text"
+                : "bg-gold-soft text-gold-text"
+            }`}
+          >
+            <p className="font-medium">
+              {overPlan.state === "over"
+                ? `Your tenant has ${seats.seats} seats — above ${plan?.name ?? "your plan"}'s ${overPlan.seatMax}.`
+                : `You're at ${seats.seats} of ${plan?.name ?? "your plan"}'s ${overPlan.seatMax} seats.`}{" "}
+              {overPlan.recommendedTier
+                ? `Move up to ${planByTier(overPlan.recommendedTier).name} with Change plan below — the switch prorates automatically.`
+                : overPlan.state === "over"
+                  ? "Your seat count is past our self-serve bands — talk to us about an MSP plan."
+                  : "You're near the top of our self-serve bands — talk to us about an MSP plan."}
+            </p>
+          </div>
+        )}
         <Card title="Status">
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">

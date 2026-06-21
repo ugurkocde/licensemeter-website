@@ -59,7 +59,7 @@ export const TrialRemindersToggle = ({ initial }: { initial: boolean }) => {
           }}
           className="size-4 shrink-0 accent-ink"
         />
-        <span>Email me trial reminders</span>
+        <span>Email me trial and plan-limit reminders</span>
       </label>
       <span
         role="status"

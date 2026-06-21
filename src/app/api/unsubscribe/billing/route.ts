@@ -14,9 +14,9 @@ import { tenants } from "~/server/db/schema";
  * one-click unsubscribe. The HMAC token over the tenant id is the entire
  * authorization; responses are idempotent and reveal nothing.
  *
- * This only suppresses the nudge reminders (trial day-7/12/last). Essential
- * mail (payment failed, trial expired, subscription confirmed) ignores this
- * flag and always sends.
+ * This only suppresses the nudge reminders (trial day-7/12/last and the plan
+ * seat-limit nudge). Essential mail (payment failed, trial expired,
+ * subscription confirmed) ignores this flag and always sends.
  */
 const page = (title: string, body: string): Response =>
   new Response(
@@ -63,10 +63,11 @@ export const GET = (req: NextRequest): Response => {
   const parsed = parse(req);
   if (!parsed) return invalid();
   return page(
-    "Stop trial reminders",
+    "Stop reminder emails",
     `<p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
-      Confirm below to stop trial reminder emails for this workspace (all of its
-      owners and admins). Essential billing notices are still sent.
+      Confirm below to stop trial and plan-limit reminder emails for this
+      workspace (all of its owners and admins). Essential billing notices are
+      still sent.
     </p>
     <form method="post" style="margin-top:20px">
       <button type="submit"
@@ -87,8 +88,8 @@ export const POST = async (req: NextRequest): Promise<Response> => {
   return page(
     "Reminders stopped",
     `<p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
-      This workspace gets no more trial reminders. You can turn them back on in
-      Settings. Essential billing notices are unaffected.
+      This workspace gets no more trial or plan-limit reminders. You can turn
+      them back on in Settings. Essential billing notices are unaffected.
     </p>`,
   );
 };

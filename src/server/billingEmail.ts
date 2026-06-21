@@ -1,12 +1,14 @@
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { env, siteUrl } from "~/env";
+import { fmtDate } from "~/lib/format";
 import { db } from "~/server/db";
 import { memberships, type TenantRow } from "~/server/db/schema";
 import { makeBillingUnsubToken } from "~/server/billingUnsubToken";
 import {
   emailEnabled,
   paymentFailedHtml,
+  seatNudgeHtml,
   sendEmail,
   subscriptionConfirmedHtml,
   trialExpiredHtml,
@@ -14,6 +16,12 @@ import {
 } from "~/server/email";
 
 type Tenant = TenantRow;
+
+/**
+ * Billing lifecycle mail is sent from a billing-specific address rather than the
+ * digest sender. Must be on the Resend-verified domain (same as EMAIL_FROM).
+ */
+const BILLING_FROM = "LicenseMeter <billing@licensemeter.com>";
 
 /** Workspace-scoped unsubscribe link for billing reminder nudges. */
 export const billingUnsubscribeUrl = (tenantId: string): string => {
@@ -57,6 +65,7 @@ export const sendTrialReminder = async (
   const unsub = billingUnsubscribeUrl(tenant.id);
   return sendEmail({
     to,
+    from: BILLING_FROM,
     subject: trialSubject(daysLeft, name),
     html: trialReminderHtml({
       tenantName: name,
@@ -83,6 +92,7 @@ export const sendTrialExpired = async (
   const name = tenant.name ?? tenant.tid;
   return sendEmail({
     to,
+    from: BILLING_FROM,
     subject: `LicenseMeter trial ended — ${name}`,
     html: trialExpiredHtml({ tenantName: name, wasteLine, appUrl: siteUrl() }),
   });
@@ -99,6 +109,7 @@ export const sendPaymentFailed = async (
   const name = tenant.name ?? tenant.tid;
   return sendEmail({
     to,
+    from: BILLING_FROM,
     subject: `Payment failed — ${name}`,
     html: paymentFailedHtml({ tenantName: name, invoiceUrl, appUrl: siteUrl() }),
   });
@@ -109,6 +120,10 @@ export const sendSubscriptionConfirmed = async (
   tenant: Tenant,
   planName: string,
   invoiceUrl?: string,
+  /** Set while the subscription is still in its preserved free trial: the email
+   *  then explains "no charge yet, first charge on <date>" and hides the €0
+   *  trial invoice. */
+  trialEndsAt?: Date,
 ): Promise<boolean> => {
   if (!emailEnabled()) return false;
   const to = await recipients(tenant.id);
@@ -116,12 +131,53 @@ export const sendSubscriptionConfirmed = async (
   const name = tenant.name ?? tenant.tid;
   return sendEmail({
     to,
+    from: BILLING_FROM,
     subject: `Subscription confirmed — ${name}`,
     html: subscriptionConfirmedHtml({
       tenantName: name,
       planName,
       invoiceUrl,
       appUrl: siteUrl(),
+      trialEndsAt: trialEndsAt ? fmtDate(trialEndsAt) : undefined,
     }),
+  });
+};
+
+/** Suppressible upgrade nudge when a paid tenant outgrows its plan's seat band. */
+export const sendSeatNudge = async (
+  tenant: Tenant,
+  args: {
+    planName: string;
+    seats: number;
+    seatMax: number;
+    recommendedName: string | null;
+    over: boolean;
+  },
+): Promise<boolean> => {
+  if (!emailEnabled() || !tenant.trialReminders) return false;
+  const to = await recipients(tenant.id);
+  if (to.length === 0) return false;
+  const name = tenant.name ?? tenant.tid;
+  const unsub = billingUnsubscribeUrl(tenant.id);
+  return sendEmail({
+    to,
+    from: BILLING_FROM,
+    subject: args.over
+      ? `Action needed: ${name} is over its plan seat limit`
+      : `${name} is nearing its plan seat limit`,
+    html: seatNudgeHtml({
+      tenantName: name,
+      planName: args.planName,
+      seats: args.seats,
+      seatMax: args.seatMax,
+      recommendedName: args.recommendedName,
+      over: args.over,
+      appUrl: siteUrl(),
+      unsubscribeUrl: unsub,
+    }),
+    headers: {
+      "List-Unsubscribe": `<${unsub}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    },
   });
 };

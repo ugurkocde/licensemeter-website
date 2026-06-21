@@ -375,11 +375,25 @@ export const subscriptionConfirmedHtml = (args: {
   planName: string;
   invoiceUrl?: string;
   appUrl: string;
+  /** Formatted first-charge date when the subscription is still in its
+   *  preserved free trial; switches the copy to "nothing charged yet". */
+  trialEndsAt?: string;
 }): string => `
 <div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
   ${emailWordmark(args.appUrl)}
   <h1 style="font-size:22px;font-weight:normal">You're on ${escapeHtml(args.planName)}: ${escapeHtml(args.tenantName)}</h1>
-  <p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+  ${
+    args.trialEndsAt
+      ? `<p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+    Thanks for subscribing &mdash; and you keep your free trial.
+    <strong style="color:#1c1a16">Nothing is charged today.</strong>
+    Your card is on file; your trial runs until
+    <strong style="color:#1c1a16">${escapeHtml(args.trialEndsAt)}</strong>, when
+    ${escapeHtml(args.planName)} begins at the listed monthly price and Stripe
+    emails your first receipt. Nightly sync, exports and alerts stay on, and you
+    can cancel anytime before then.
+  </p>`
+      : `<p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
     Thanks for subscribing. Nightly sync, exports and alerts stay on. Your
     receipt and invoice are emailed separately by Stripe.
   </p>
@@ -387,9 +401,50 @@ export const subscriptionConfirmedHtml = (args: {
     args.invoiceUrl
       ? `<p style="font-family:Arial,sans-serif;font-size:13px;margin-top:8px"><a href="${args.invoiceUrl}" style="color:#1c1a16">View your invoice &rarr;</a></p>`
       : ""
+  }`
   }
   ${ctaButton(`${args.appUrl}/app/billing`, "Manage billing")}
   <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;margin-top:24px">
     A required notice about your subscription. Not a marketing email.
+  </p>
+</div>`;
+
+/**
+ * Upgrade nudge for a subscribed tenant that has outgrown (or is nearing) its
+ * plan's seat band. Pure copy: we never auto-charge — the owner chooses to
+ * change plan. Carries a one-click unsubscribe like the other nudges.
+ */
+export const seatNudgeHtml = (args: {
+  tenantName: string;
+  planName: string;
+  seats: number;
+  seatMax: number;
+  /** Band to move up to; null when past self-serve (-> MSP). */
+  recommendedName: string | null;
+  over: boolean;
+  appUrl: string;
+  unsubscribeUrl: string;
+}): string => `
+<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
+  ${emailWordmark(args.appUrl)}
+  <h1 style="font-size:22px;font-weight:normal">${args.over ? "Your plan is below your seat count" : "You're nearing your plan's seat limit"}: ${escapeHtml(args.tenantName)}</h1>
+  <p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+    ${escapeHtml(args.tenantName)} now has
+    <strong style="color:#1c1a16">${args.seats} licensed seats</strong>. Your
+    ${escapeHtml(args.planName)} plan covers up to ${args.seatMax}.
+    ${
+      args.recommendedName
+        ? `Moving up to <strong style="color:#1c1a16">${escapeHtml(args.recommendedName)}</strong> keeps you within plan &mdash; one click, and the switch prorates automatically.`
+        : args.over
+          ? `That is past our self-serve bands &mdash; reply and we will set you up with an MSP plan.`
+          : `You are near the top of our self-serve bands &mdash; reply and we will line up an MSP plan before you outgrow ${escapeHtml(args.planName)}.`
+    }
+    Nothing changes automatically; you stay on ${escapeHtml(args.planName)} until
+    you choose to upgrade.
+  </p>
+  ${ctaButton(`${args.appUrl}/app/billing`, args.recommendedName ? "Change plan" : "Talk to us")}
+  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;margin-top:24px">
+    You receive plan nudges for this workspace.
+    <a href="${args.unsubscribeUrl}" style="color:#a39d8f">Unsubscribe</a>.
   </p>
 </div>`;
