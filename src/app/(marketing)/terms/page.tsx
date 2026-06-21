@@ -23,9 +23,9 @@ const Section = ({
 );
 
 /*
- * TODO before launch: fill in the [bracketed] provider details, confirm the
- * billing terms once invoicing starts, and have the final text reviewed (this
- * is a structured draft, not legal advice). Pricing wording must stay
+ * Provider details are filled. Before launch: confirm the billing terms once
+ * invoicing starts, and have the final text reviewed by a lawyer (this is a
+ * structured draft, not legal advice). Pricing wording must stay
  * consistent with /pricing and the Privacy Policy "billing not started"
  * framing. German law applies; the English text is provided for the product's
  * English-speaking audience.
