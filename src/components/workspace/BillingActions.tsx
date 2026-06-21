@@ -228,6 +228,11 @@ export const BillingActions = ({
                     {interval === "year" ? " / year" : " / month"}
                   </span>
                 </div>
+                {interval === "year" && (
+                  <div className="mt-1 text-xs font-medium text-brand-deep">
+                    2 months free
+                  </div>
+                )}
                 <div className="mt-1 text-xs text-ink-soft">{plan.seats}</div>
                 <button
                   type="button"

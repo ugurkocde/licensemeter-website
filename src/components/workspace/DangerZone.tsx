@@ -1,35 +1,31 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 
 import { disconnectTenant } from "~/server/actions";
 import type { ActionResult } from "~/server/actions";
 
 /**
- * Owner-only workspace deletion with the same single-button armed-confirm
- * pattern as MemberActions: the first press arms the button in place (so
- * keyboard focus never drops), the second one fires the action; Escape,
- * blur or ~5s of inaction disarm it.
+ * Owner-only workspace deletion behind a type-the-name confirmation: the delete
+ * button stays disabled until the workspace name is typed exactly, the strongest
+ * guard for an irreversible "delete everything" action. When the workspace has a
+ * paid subscription, the copy warns that it is cancelled immediately with no
+ * refund for the remaining period.
  */
-export const DangerZone = ({ tenantName }: { tenantName: string }) => {
-  const [armed, setArmed] = useState(false);
+export const DangerZone = ({
+  tenantName,
+  activeSubscription = false,
+}: {
+  tenantName: string;
+  activeSubscription?: boolean;
+}) => {
+  const [confirmText, setConfirmText] = useState("");
   const [result, formAction, pending] = useActionState(
     async (_prev: ActionResult | null) => disconnectTenant(),
     null,
   );
 
-  /* Disarm when the confirm click does not come within ~5s. */
-  useEffect(() => {
-    if (!armed) return;
-    const t = setTimeout(() => setArmed(false), 5000);
-    return () => clearTimeout(t);
-  }, [armed]);
-
-  const message = armed
-    ? "Press again to delete every synced record. Escape cancels."
-    : result && !result.ok
-      ? (result.error ?? "Something went wrong")
-      : null;
+  const confirmed = confirmText.trim() === tenantName.trim();
 
   return (
     <div className="border border-danger-soft bg-card">
@@ -38,53 +34,53 @@ export const DangerZone = ({ tenantName }: { tenantName: string }) => {
           Danger zone
         </h2>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
-        <p className="max-w-md text-sm text-ink-soft">
+      <div className="flex flex-col gap-4 px-5 py-4">
+        <p className="max-w-xl text-sm text-ink-soft">
           Disconnecting deletes every synced record for {tenantName}: users,
-          findings, prices, history. The admin consent in your tenant can then
-          be revoked under Enterprise applications.
+          findings, prices, history. The admin consent in your tenant can then be
+          revoked under Enterprise applications.
+          {activeSubscription && (
+            <span className="text-danger-text">
+              {" "}
+              Your active subscription is cancelled immediately, with no refund
+              for the remaining period.
+            </span>
+          )}
         </p>
         <form
           action={formAction}
-          onSubmit={(e) => {
-            /* First submit arms only; the second one fires the action. */
-            if (!armed) {
-              e.preventDefault();
-              setArmed(true);
-            } else {
-              setArmed(false);
-            }
-          }}
-          className="flex flex-col items-end gap-1"
+          className="flex flex-col gap-2 sm:flex-row sm:items-center"
         >
-          <button
-            disabled={pending}
-            onBlur={() => setArmed(false)}
+          <label htmlFor="danger-confirm" className="sr-only">
+            Type the workspace name to confirm deletion
+          </label>
+          <input
+            id="danger-confirm"
+            type="text"
+            autoComplete="off"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Escape") setArmed(false);
+              // A single-input form submits on Enter even with the button
+              // disabled; block it until the name matches so the gate holds.
+              if (e.key === "Enter" && !confirmed) e.preventDefault();
             }}
-            className={
-              armed
-                ? "border border-danger bg-danger px-4 py-2 text-xs font-medium tracking-wide text-canvas uppercase hover:border-danger-text hover:bg-danger-text disabled:opacity-50"
-                : "border border-danger px-4 py-2 text-xs font-medium tracking-wide text-danger-text uppercase hover:bg-danger-soft"
-            }
+            placeholder={`Type "${tenantName}" to confirm`}
+            className="min-h-11 w-full border border-line bg-card px-3 py-2 text-sm focus:border-danger sm:max-w-xs"
+          />
+          <button
+            type="submit"
+            disabled={pending || !confirmed}
+            className="min-h-11 shrink-0 border border-danger px-4 py-2 text-xs font-medium tracking-wide text-danger-text uppercase hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {pending
-              ? "Deleting…"
-              : armed
-                ? "Confirm delete everything"
-                : "Disconnect workspace"}
+            {pending ? "Deleting…" : "Delete everything"}
           </button>
-          <span
-            role="status"
-            aria-live="polite"
-            className={
-              message ? "max-w-md text-right text-xs text-danger-text" : "sr-only"
-            }
-          >
-            {message}
-          </span>
         </form>
+        {result && !result.ok && (
+          <span role="status" aria-live="polite" className="text-xs text-danger-text">
+            {result.error ?? "Something went wrong"}
+          </span>
+        )}
       </div>
     </div>
   );

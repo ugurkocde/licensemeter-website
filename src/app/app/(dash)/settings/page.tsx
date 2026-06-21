@@ -443,7 +443,10 @@ export default async function SettingsPage() {
         )}
 
         {isOwner && !ctx.tenant.isDemo && (
-          <DangerZone tenantName={ctx.tenant.name ?? ctx.tenant.tid} />
+          <DangerZone
+            tenantName={ctx.tenant.name ?? ctx.tenant.tid}
+            activeSubscription={ctx.tenant.subscriptionStatus === "active"}
+          />
         )}
         {ctx.tenant.isDemo && (
           <p className="text-xs text-ink-faint">

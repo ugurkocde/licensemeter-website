@@ -21,6 +21,9 @@ export const stripe = (): Stripe => {
   client ??= new Stripe(env.STRIPE_SECRET_KEY ?? "", {
     apiVersion: "2026-05-27.dahlia",
     appInfo: { name: "LicenseMeter", url: siteUrl() },
+    // Auto-retry transient failures (network, 429, 5xx) with idempotency keys so
+    // a blip during e.g. GDPR teardown self-heals instead of needing a manual fix.
+    maxNetworkRetries: 2,
   });
   return client;
 };
