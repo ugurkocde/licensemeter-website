@@ -9,10 +9,12 @@ export const metadata: Metadata = {
 
 /*
  * § 5 DDG: company name, ladungsfähige Anschrift and Geschäftsführer are
- * filled. STILL REQUIRED before launch: the Handelsregister HRB number
- * (replace the [Nummer eintragen] placeholder below). The Umsatzsteuer-ID
- * section is intentionally omitted until a USt-IdNr is issued (§ 27a UStG
- * requires it only "soweit vorhanden") — add it back once registered.
+ * filled. STILL REQUIRED before public launch: the Handelsregister HRB number.
+ * If the UG is already registered, replace the "wird nach Eintragung ergänzt"
+ * line with "Eingetragen im Handelsregister. Registernummer: HRB <Nummer>"; if
+ * it is still in Gründung, the firm name must carry the "i.G." suffix. The
+ * Umsatzsteuer-ID section is intentionally omitted until a USt-IdNr is issued
+ * (§ 27a UStG requires it only "soweit vorhanden").
  */
 export default function ImpressumPage() {
   return (
@@ -46,11 +48,9 @@ export default function ImpressumPage() {
         <section>
           <h2 className="text-ink font-medium">Registereintrag</h2>
           <p className="mt-2">
-            Eingetragen im Handelsregister.
-            <br />
             Registergericht: Amtsgericht Düsseldorf
             <br />
-            Registernummer: HRB [Nummer eintragen]
+            Handelsregisternummer (HRB): wird nach Eintragung ergänzt
           </p>
         </section>
 
