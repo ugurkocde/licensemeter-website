@@ -4,6 +4,7 @@ import type { UserLicense } from "~/server/types";
 import {
   analyzeWaste,
   COPILOT_SKU_ID,
+  purchasedSeatsOf,
   type WasteInput,
   type WasteUser,
 } from "./engine";
@@ -331,5 +332,33 @@ describe("shelfware", () => {
         ],
       }),
     ).toHaveLength(0);
+  });
+});
+
+describe("purchasedSeatsOf", () => {
+  it("excludes free/viral/capacity SKUs (real tenant: 26 paid seats)", () => {
+    // The five subscribedSkus a live 25-user tenant actually reports. The naive
+    // sum is 1,010,026; only DEVELOPERPACK_E5 (25) + EMS (1) are real seats.
+    const seats = purchasedSeatsOf([
+      { skuPartNumber: "Microsoft_Intune_Suite", prepaidEnabled: 0 },
+      { skuPartNumber: "WINDOWS_STORE", prepaidEnabled: 1_000_000 },
+      { skuPartNumber: "FLOW_FREE", prepaidEnabled: 10_000 },
+      { skuPartNumber: "DEVELOPERPACK_E5", prepaidEnabled: 25 },
+      { skuPartNumber: "EMS", prepaidEnabled: 1 },
+    ]);
+    expect(seats).toBe(26);
+  });
+
+  it("drops capacity-style allotments at or above the threshold", () => {
+    expect(
+      purchasedSeatsOf([
+        { skuPartNumber: "SPE_E5", prepaidEnabled: 100 },
+        { skuPartNumber: "SOME_FUTURE_VIRAL_SKU", prepaidEnabled: 50_000 },
+      ]),
+    ).toBe(100);
+  });
+
+  it("is zero for an empty tenant", () => {
+    expect(purchasedSeatsOf([])).toBe(0);
   });
 });

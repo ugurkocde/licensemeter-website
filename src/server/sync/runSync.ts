@@ -47,7 +47,11 @@ import { pickLeakFindings } from "~/server/leakAlerts";
 import { notifyOps } from "~/server/ops";
 import { joinSignals } from "~/server/sync/join";
 import type { SyncRunStatus, SyncStep, WasteRuleId } from "~/server/types";
-import { analyzeWaste, type WasteFinding } from "~/server/waste/engine";
+import {
+  analyzeWaste,
+  purchasedSeatsOf,
+  type WasteFinding,
+} from "~/server/waste/engine";
 
 const chunk = <T>(arr: T[], size: number): T[][] => {
   const out: T[][] = [];
@@ -778,6 +782,12 @@ export const runSync = async (
     );
 
     const day = now.toISOString().slice(0, 10);
+    const purchasedSeats = purchasedSeatsOf(
+      skus.map((s) => ({
+        skuPartNumber: s.skuPartNumber,
+        prepaidEnabled: s.prepaidUnits.enabled,
+      })),
+    );
     await db
       .insert(snapshots)
       .values({
@@ -785,7 +795,7 @@ export const runSync = async (
         day,
         totalMonthlySpendCents,
         totalMonthlyWasteCents,
-        purchasedSeats: skus.reduce((s, x) => s + x.prepaidUnits.enabled, 0),
+        purchasedSeats,
         assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
         bySku: Object.fromEntries(
           skus.map((s) => [
@@ -799,7 +809,7 @@ export const runSync = async (
         set: {
           totalMonthlySpendCents,
           totalMonthlyWasteCents,
-          purchasedSeats: skus.reduce((s, x) => s + x.prepaidUnits.enabled, 0),
+          purchasedSeats,
           assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
         },
       });
@@ -965,6 +975,8 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     0,
   );
   const day = now.toISOString().slice(0, 10);
+  const purchasedSeats = purchasedSeatsOf(skuRows);
+  const assignedSeats = skuRows.reduce((s, x) => s + x.consumedUnits, 0);
   await db
     .insert(snapshots)
     .values({
@@ -972,8 +984,8 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
       day,
       totalMonthlySpendCents,
       totalMonthlyWasteCents,
-      purchasedSeats: skuRows.reduce((s, x) => s + x.prepaidEnabled, 0),
-      assignedSeats: skuRows.reduce((s, x) => s + x.consumedUnits, 0),
+      purchasedSeats,
+      assignedSeats,
       bySku: Object.fromEntries(
         skuRows.map((s) => [
           s.skuId,
@@ -983,7 +995,12 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     })
     .onConflictDoUpdate({
       target: [snapshots.tenantId, snapshots.day],
-      set: { totalMonthlySpendCents, totalMonthlyWasteCents },
+      set: {
+        totalMonthlySpendCents,
+        totalMonthlyWasteCents,
+        purchasedSeats,
+        assignedSeats,
+      },
     });
 };
 

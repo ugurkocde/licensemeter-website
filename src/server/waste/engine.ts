@@ -146,9 +146,29 @@ const SHELFWARE_EXEMPT_PART_NUMBERS = new Set([
 /** Capacity-style allotments (10k+ "seats") are licensing plumbing, not purchases. */
 const SHELFWARE_CAPACITY_THRESHOLD = 5000;
 
-const isShelfwareExempt = (sku: WasteSku): boolean =>
-  SHELFWARE_EXEMPT_PART_NUMBERS.has(sku.skuPartNumber) ||
-  sku.prepaidEnabled >= SHELFWARE_CAPACITY_THRESHOLD;
+const isShelfwareExempt = (
+  skuPartNumber: string,
+  prepaidEnabled: number,
+): boolean =>
+  SHELFWARE_EXEMPT_PART_NUMBERS.has(skuPartNumber) ||
+  prepaidEnabled >= SHELFWARE_CAPACITY_THRESHOLD;
+
+/**
+ * Purchased seats for billing: prepaid (enabled) seats summed only over SKUs
+ * that represent a real purchase. Excludes the same free/viral/capacity SKUs as
+ * the shelfware rule, so Microsoft's sentinel allotments (e.g. WINDOWS_STORE's
+ * 1,000,000 prepaid units) never inflate the Stripe seat-tier gate (knownSeats).
+ */
+export const purchasedSeatsOf = (
+  skus: readonly { skuPartNumber: string; prepaidEnabled: number }[],
+): number =>
+  skus.reduce(
+    (sum, s) =>
+      isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled)
+        ? sum
+        : sum + s.prepaidEnabled,
+    0,
+  );
 
 const daysBetween = (from: Date, to: Date): number =>
   Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000));
@@ -317,7 +337,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
 
   // Rule 4: shelfware, paid seats nobody is assigned to.
   for (const sku of skus) {
-    if (isShelfwareExempt(sku)) continue;
+    if (isShelfwareExempt(sku.skuPartNumber, sku.prepaidEnabled)) continue;
     const unassigned = sku.prepaidEnabled - sku.consumedUnits;
     if (unassigned > 0) {
       findings.push({
