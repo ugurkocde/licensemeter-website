@@ -10,9 +10,14 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Build-time env validation runs with NODE_ENV=production; these are
-      # CI-only values, never used at runtime.
+      # CI-only values, never used at runtime. WorkOS is the default auth
+      # provider, so its credentials are required at build — dummy values here
+      # satisfy the schema (cookie password must be >=32 chars).
       AUTH_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
       DEMO_MODE: "true"
+      WORKOS_API_KEY: sk_ci_only
+      WORKOS_CLIENT_ID: client_ci_only
+      WORKOS_COOKIE_PASSWORD: ci-only-cookie-password-0123456789abcdef
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
