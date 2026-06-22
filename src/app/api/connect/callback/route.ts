@@ -84,18 +84,25 @@ export const GET = async (req: NextRequest) => {
       .where(eq(tenants.id, tenantId));
   }
 
+  // Bind the initiator as owner using whichever identity the nonce carries:
+  // workosUserId for WorkOS sign-ins, oid for entra. Only the matching column
+  // is updated on conflict, so re-consent never clobbers the other provider's id.
+  const isWorkos = !!stateRow!.workosUserId;
   await db
     .insert(memberships)
     .values({
       tenantId,
       oid: stateRow!.oid,
+      workosUserId: stateRow!.workosUserId,
       email: stateRow!.email,
       name: stateRow!.name,
       role: "owner",
     })
     .onConflictDoUpdate({
       target: [memberships.tenantId, memberships.email],
-      set: { oid: stateRow!.oid, role: "owner" },
+      set: isWorkos
+        ? { workosUserId: stateRow!.workosUserId, role: "owner" }
+        : { oid: stateRow!.oid, role: "owner" },
     });
 
   // The single most important founder signal there is.

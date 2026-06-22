@@ -11,18 +11,22 @@ import { consentStates } from "~/server/db/schema";
  */
 export const GET = async () => {
   const session = await auth();
-  if (!session?.user?.oid) redirect("/");
-  if (session.user.isDemo) redirect("/app");
+  const user = session?.user;
+  // Accept either login stack: entra carries oid, workos carries workosUserId.
+  if (!user || (!user.oid && !user.workosUserId)) redirect("/");
+  if (user.isDemo) redirect("/app");
   if (!env.CONNECTOR_CLIENT_ID) redirect("/app/connect?error=not_configured");
 
   const state = crypto.randomUUID();
   await db.insert(consentStates).values({
     state,
-    oid: session.user.oid,
-    tid: session.user.tid,
-    email:
-      session.user.upn !== "" ? session.user.upn : (session.user.email ?? ""),
-    name: session.user.name ?? null,
+    // Exactly one identity is populated; the empty entra fields collapse to null
+    // in workos mode and vice-versa.
+    oid: user.oid || null,
+    tid: user.tid || null,
+    workosUserId: user.workosUserId ?? null,
+    email: user.upn !== "" ? user.upn : (user.email ?? ""),
+    name: user.name ?? null,
   });
 
   const url = new URL(

@@ -232,4 +232,43 @@ app, so use WorkOS **Organizations**, not the flat B2C model:
 
 ## Review
 
-_(to be filled after implementation — outcome, acceptance-criteria pass/fail, gates)_
+### Phase A — DONE (commit 541bf43, 2026-06-22)
+
+Flag-gated WorkOS login landed and verified. `AUTH_PROVIDER` (default `entra`) routes
+`auth()` to the MSAL session reader or the WorkOS bridge. Identity lives in new columns
+(`memberships.workos_user_id`, `tenants.workos_org_id`); the Entra `tid` stays the connector key
+(no clobber). `resolveAccess` split into `resolveEntra` (unchanged) + `resolveWorkos` (match by
+workos_user_id or migration-safe verified-email link).
+
+- **Gates:** `tsc` clean · `next build` green · 223/223 tests · independent code-review (2 findings
+  fixed: stale-invite resurrection in the email arm; CSV-trial guard against empty tid/oid) · dev
+  smoke under `AUTH_PROVIDER=workos` boots + redirects correctly.
+- **Default behavior unchanged:** with the flag unset, entra path is byte-identical.
+
+**Deferred to Phase B/C (known dead-end):** a brand-new WorkOS user with no membership currently
+reaches `/app/connect` but cannot complete onboarding — the admin-consent connect flow
+(`/api/connect/start` + `callback`) still binds via `session.user.oid`, which is empty in workos
+mode. Wiring WorkOS-user onboarding (managed admin-consent + the BYO path) is exactly Phase B/C.
+
+**Live OAuth round-trip** (Google/MS → dashboard) still needs a manual browser pass with the flag
+on; the structural smoke test (boot + redirect, no `/[object Object]`) passed.
+
+### Phase B — DONE (2026-06-22)
+
+WorkOS-mode managed onboarding now works end-to-end; the Phase A dead-end is closed. The
+admin-consent flow is identity-agnostic: `consent_states` carries `workos_user_id` (and `oid`/`tid`
+are now nullable, entra-only), `/api/connect/start` accepts either identity, and the callback binds
+the membership by whichever the nonce holds — so a WorkOS user reaches their dashboard after consent
+(resolveWorkos matches the new `workos_user_id`).
+
+- **Gates:** `db:push` applied · `tsc` clean · `next build` green · 223/223 tests · code-review PASS
+  on logic (entra path unchanged, dead-end closed, onConflict sound, guards correct).
+- **Schema deploy:** this repo syncs schema via `drizzle-kit push` (the `0000–0006` SQL files are
+  stale history — the billing work already drifted them). Changes here are **columns only on
+  existing tables** → no new `app_all` RLS policy needed. Run `db:push` against prod **before**
+  flipping `AUTH_PROVIDER=workos`; until then the new code is inert in prod (flag-gated).
+- **Deferred:** WorkOS Organization creation + domain-JIT auto-join (workspace↔org mapping) — not
+  required for onboarding to work (resolveWorkos keys on `workos_user_id`); layer in later. The
+  `tenants.workos_org_id` column is staged and currently unused.
+
+### Phases C–F — pending

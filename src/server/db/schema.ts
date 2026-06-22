@@ -133,12 +133,20 @@ export const memberships = pgTable(
   ],
 );
 
-/** Short-lived nonces for the admin-consent redirect, bound to the initiating user. */
+/**
+ * Short-lived nonces for the admin-consent redirect, bound to the initiating
+ * user. The initiator identity is provider-specific: entra sign-ins set oid (+
+ * the vestigial home tid); WorkOS sign-ins set workosUserId. Exactly one is
+ * populated, and the callback binds the membership with whichever it finds.
+ */
 export const consentStates = pgTable("consent_states", {
   state: text("state").primaryKey(),
-  oid: text("oid").notNull(),
-  /** The initiator's sign-in tenant; the granted tenant must match it (v1: one workspace per tenant). */
-  tid: text("tid").notNull(),
+  /** Entra object id of the initiator (entra mode). */
+  oid: text("oid"),
+  /** Initiator's Entra home tenant (entra mode); not read on callback. */
+  tid: text("tid"),
+  /** WorkOS user id of the initiator (workos mode). */
+  workosUserId: text("workos_user_id"),
   email: text("email").notNull(),
   name: text("name"),
   createdAt: timestamp("created_at", { withTimezone: true })
