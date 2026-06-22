@@ -1,55 +1,34 @@
 import { buttonClass } from "~/components/ui";
 
 /**
- * Official Microsoft logo: unaltered 2x2 squares in the exact brand colors,
- * as required by Microsoft's "Sign in with Microsoft" branding guidelines.
- * https://learn.microsoft.com/entra/identity-platform/howto-add-branding-in-apps
- */
-const MicrosoftMark = () => (
-  <svg width="20" height="20" viewBox="0 0 21 21" aria-hidden="true">
-    <rect x="0" y="0" width="10" height="10" fill="#F25022" />
-    <rect x="11" y="0" width="10" height="10" fill="#7FBA00" />
-    <rect x="0" y="11" width="10" height="10" fill="#00A4EF" />
-    <rect x="11" y="11" width="10" height="10" fill="#FFB900" />
-  </svg>
-);
-
-/**
- * Microsoft-compliant "Sign in with Microsoft" button (dark scheme). The label
- * is fixed to the only text Microsoft permits next to its logo ("Sign in with
- * Microsoft", or the shorter "Sign in"); the "start free, no card" value
- * framing lives in the surrounding copy, never on the button itself. Segoe UI
- * matches the official asset and falls back cleanly off Windows.
- */
-const microsoftButtonClass =
-  "inline-flex min-h-11 w-full cursor-pointer touch-manipulation items-center justify-center gap-3 rounded-xl bg-[#2f2f2f] px-5 py-3 text-[15px] font-semibold text-white shadow-card transition hover:bg-[#1f1f1f] sm:w-auto";
-
-const MS_FONT = '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-
-/**
- * Sign-in CTA hierarchy: the compliant "Sign in with Microsoft" button is the
- * primary action, with the sample tenant as the lower-commitment fallback.
- * Buttons go full-width when they stack on small screens.
+ * Sign-in CTA hierarchy: the primary action is sign-in (WorkOS AuthKit, which
+ * offers Microsoft, Google, Apple, passkey, Magic Auth and email+password on
+ * its hosted page), with the sample tenant as the lower-commitment fallback.
+ * The button is provider-neutral on purpose: it no longer claims "Sign in with
+ * Microsoft" because WorkOS presents multiple methods. Buttons go full-width
+ * when they stack on small screens.
  */
 export const SignInButtons = ({
-  entraConfigured,
+  signInEnabled,
+  signInHref,
   demoEnabled,
   showNote = true,
 }: {
-  entraConfigured: boolean;
+  /** Whether sign-in is configured on this deployment. */
+  signInEnabled: boolean;
+  /** Sign-in entry path for the active provider. */
+  signInHref: string;
   demoEnabled: boolean;
   showNote?: boolean;
 }) => (
   <div>
     <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-      {entraConfigured ? (
+      {signInEnabled ? (
         <a
-          href="/auth/sign-in"
-          className={microsoftButtonClass}
-          style={{ fontFamily: MS_FONT }}
+          href={signInHref}
+          className={buttonClass("primary", "w-full sm:w-auto")}
         >
-          <MicrosoftMark />
-          Sign in with Microsoft
+          Sign in
         </a>
       ) : (
         <a

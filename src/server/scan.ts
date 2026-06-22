@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 
-import type { SessionUser } from "~/server/auth";
 import { db } from "~/server/db";
 import { memberships, tenants } from "~/server/db/schema";
 import { DelegatedGraphClient } from "~/server/graph/msGraph";
@@ -29,6 +28,19 @@ export type ScanTenantResult =
     };
 
 /**
+ * The Microsoft identity the scan token proves (from the delegated id_token's
+ * claims) and the LicenseMeter actor to bind as owner. The actor is the WorkOS
+ * user (workos sign-in) or the Entra object id (entra opt-out) — decoupled from
+ * the Microsoft tenant being scanned, since under WorkOS the person signs in
+ * with any method and only proves Microsoft access here.
+ */
+export type ScanIdentity = {
+  ms: { tid: string; upn: string; name?: string | null; email?: string | null };
+  actor: { workosUserId?: string; oid?: string };
+  isDemo: boolean;
+};
+
+/**
  * Resolves (or creates) the workspace an instant scan may write to. Same
  * matrix as the CSV trial (connect/csv/actions.ts): demo never; a consented
  * tenant already syncs nightly; an existing trial workspace is only
@@ -36,10 +48,16 @@ export type ScanTenantResult =
  * created with the caller as owner, conflict-safe against a colleague racing.
  */
 export const resolveScanTenant = async (
-  user: SessionUser,
+  identity: ScanIdentity,
 ): Promise<ScanTenantResult> => {
-  if (user.isDemo) return { ok: false, error: "scan_demo" };
-  const { oid, tid, upn, name, email } = user;
+  if (identity.isDemo) return { ok: false, error: "scan_demo" };
+  const { ms, actor } = identity;
+  const tid = ms.tid;
+
+  // The actor owns the membership by whichever identity the session carries.
+  const matchActor = actor.workosUserId
+    ? eq(memberships.workosUserId, actor.workosUserId)
+    : eq(memberships.oid, actor.oid!);
 
   const existing = await db.query.tenants.findFirst({
     where: eq(tenants.tid, tid),
@@ -48,10 +66,7 @@ export const resolveScanTenant = async (
   if (existing) {
     if (existing.isDemo) return { ok: false, error: "scan_demo" };
     const membership = await db.query.memberships.findFirst({
-      where: and(
-        eq(memberships.tenantId, existing.id),
-        eq(memberships.oid, oid),
-      ),
+      where: and(eq(memberships.tenantId, existing.id), matchActor),
     });
     if (existing.consentedAt) {
       return {
@@ -77,7 +92,7 @@ export const resolveScanTenant = async (
     .values({
       tid,
       // Placeholder until the scan reads the real name from /organization.
-      name: upn.split("@")[1] ?? null,
+      name: ms.upn.split("@")[1] ?? null,
       consentedAt: null,
       // Trial clock starts the moment the workspace is created.
       trialStartedAt: new Date(),
@@ -94,14 +109,17 @@ export const resolveScanTenant = async (
     .insert(memberships)
     .values({
       tenantId: inserted.id,
-      oid,
-      email: email ?? upn,
-      name: name || null,
+      oid: actor.oid ?? null,
+      workosUserId: actor.workosUserId ?? null,
+      email: ms.email ?? ms.upn,
+      name: ms.name ?? null,
       role: "owner",
     })
     .onConflictDoUpdate({
       target: [memberships.tenantId, memberships.email],
-      set: { oid, role: "owner" },
+      set: actor.workosUserId
+        ? { workosUserId: actor.workosUserId, role: "owner" }
+        : { oid: actor.oid, role: "owner" },
     });
 
   return { ok: true, tenantId: inserted.id };

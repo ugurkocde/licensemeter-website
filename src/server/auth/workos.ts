@@ -10,8 +10,10 @@
  * `tid` — that id is the connector's per-tenant Graph key (tenants.tid) and
  * must keep its Entra meaning. No Directory Sync is required.
  */
+import { cookies } from "next/headers";
 import { withAuth, signOut as workosSignOut } from "@workos-inc/authkit-nextjs";
 
+import { expiredSessionCookie } from "./session";
 import type { Session, SessionUser } from "./session";
 
 /**
@@ -43,8 +45,14 @@ export const auth = async (): Promise<Session | null> => {
   };
 };
 
-/** Signs out via WorkOS (clears the sealed AuthKit session cookie). */
+/**
+ * Signs out via WorkOS (clears the sealed AuthKit session cookie and redirects
+ * to the logout URL). Also expires the entra-style session cookie first, since
+ * the demo sample tenant signs in with it even under workos auth and WorkOS
+ * signOut() only knows the WorkOS session.
+ */
 export const clearSessionCookie = async (): Promise<void> => {
+  (await cookies()).set(expiredSessionCookie());
   await workosSignOut();
 };
 

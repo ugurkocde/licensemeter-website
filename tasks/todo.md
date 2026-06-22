@@ -434,6 +434,37 @@ Independent end-to-end verification of all phases before opening the PR to main.
   (`.playwright-cli/`, `output/`) that were accidentally committed and are already
   in `.gitignore`.
 
+### WorkOS becomes the only sign-in (2026-06-22, post-review directive) — DONE
+
+All boxes below implemented; gates green (lint/tsc/224 tests/build exit 0), dev
+smoke confirmed the "Sign in" CTA → /auth/sign-in, the legacy /api/auth/signin
+redirect, and the demo sample-tenant working under the WorkOS default. One
+review bug fixed: the WorkOS sign-in route passed returnTo as `state`
+(customState, dropped by the callback) instead of `returnTo` → fixed so the
+pricing CTA lands on /app/billing.
+
+User decision: **sign-in is WorkOS-only. No MSAL on the sign-in button. MSAL
+stays only for the Microsoft connector (admin-consent / BYO) after sign-in.**
+WorkOS is the default provider; entra is a flag-only opt-out. Instant-scan and
+the demo sample-tenant are kept and reworked to run under a WorkOS session.
+
+- [ ] `authProvider()` defaults to `workos` (entra only when `AUTH_PROVIDER=entra`).
+- [ ] `middleware.ts` runs AuthKit unless `AUTH_PROVIDER=entra` (pass-through).
+- [ ] Marketing sign-in button + CTAs (landing, pricing) gate on `signInEnabled()`
+      and link to `signInPath()` (the active provider's route); button relabeled
+      from "Sign in with Microsoft" to a neutral "Sign in" (WorkOS is multi-method).
+- [ ] `/api/auth/signin` (entra MSAL login) redirects to `/auth/sign-in` in workos
+      mode; MSAL login kept only for the entra opt-out.
+- [ ] `auth()` dispatcher: workos by default, with a demo fallback (the sample
+      tenant uses the entra-style session cookie even under workos).
+- [ ] Sign-out works for WorkOS users AND the demo (clearSessionCookie expires the
+      demo cookie too; signOutAction redirects on the non-redirecting entra path).
+- [ ] Instant scan reworked for WorkOS: `/api/scan/start` + the scan callback bind
+      the workspace by `workosUserId` (or entra `oid`), take the Microsoft identity
+      from the delegated scan token's claims, and skip the entra identity-match in
+      workos mode. `resolveScanTenant` re-parameterized (MS identity vs actor).
+- [ ] Gates green (lint/tsc/tests/build) + independent review; PR updated.
+
 ### Rollback runbook
 
 The whole feature is inert until flags flip; rollback is flag-only, no schema

@@ -64,7 +64,8 @@ const handleScanCallback = async (
   const error = params.get("error");
 
   const session = await auth();
-  if (!session?.user?.oid) {
+  const actorId = session?.user?.workosUserId ?? session?.user?.oid;
+  if (!session?.user || !actorId) {
     const res = NextResponse.redirect(new URL("/", req.url));
     res.cookies.set(expiredOAuthCookie());
     return res;
@@ -109,19 +110,35 @@ const handleScanCallback = async (
     );
   }
 
-  // The token must belong to the signed-in user: the scan runs with THEIR
-  // permissions and writes into the workspace keyed by THEIR tenant.
-  if (claims.tid !== session.user.tid || claims.oid !== session.user.oid) {
+  // Entra opt-out only: the session IS a Microsoft identity, so the scan token
+  // must belong to that same signed-in user. Under WorkOS the session carries
+  // no Microsoft identity (oid/tid empty); the freshly consented scan token is
+  // itself the proof of tenant access, so there is nothing to cross-check.
+  const entraSession = !!session.user.oid && !!session.user.tid;
+  if (
+    entraSession &&
+    (claims.tid !== session.user.tid || claims.oid !== session.user.oid)
+  ) {
     return backToConnect(req, "scan_mismatch", "token identity != session");
   }
 
-  const resolved = await resolveScanTenant(session.user);
+  const upn = claims.preferred_username ?? claims.email ?? session.user.upn;
+  const resolved = await resolveScanTenant({
+    ms: {
+      tid: claims.tid,
+      upn,
+      name: claims.name,
+      email: claims.email ?? claims.preferred_username ?? null,
+    },
+    actor: session.user.workosUserId
+      ? { workosUserId: session.user.workosUserId }
+      : { oid: session.user.oid },
+    isDemo: session.user.isDemo,
+  });
   if (!resolved.ok) return backToConnect(req, resolved.error, "guard matrix");
   const tenantId = resolved.tenantId;
 
-  void notifyOps(
-    `instant scan started: ${session.user.upn} (tenant ${session.user.tid})`,
-  );
+  void notifyOps(`instant scan started: ${upn} (tenant ${claims.tid})`);
 
   // The scan runs after the redirect is sent; the connect page polls the
   // sync status exactly like the consent flow's first sync.

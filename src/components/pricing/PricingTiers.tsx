@@ -16,9 +16,13 @@ import type { PlanInterval } from "~/server/types";
 const fmtEuros = (n: number): string => new Intl.NumberFormat("de-DE").format(n);
 
 export const PricingTiers = ({
-  entraConfigured,
+  signInEnabled,
+  signInHref,
 }: {
-  entraConfigured: boolean;
+  /** Whether sign-in is configured on this deployment. */
+  signInEnabled: boolean;
+  /** Sign-in entry path for the active provider (returnTo appended below). */
+  signInHref: string;
 }) => {
   const [interval, setInterval] = useState<PlanInterval>("month");
 
@@ -35,8 +39,8 @@ export const PricingTiers = ({
               ? annualPerMonth(plan)
               : priceEurosFor(plan.tier, "month");
           const annualTotal = priceEurosFor(plan.tier, "year");
-          const ctaHref = entraConfigured
-            ? `/auth/sign-in?returnTo=${encodeURIComponent(
+          const ctaHref = signInEnabled
+            ? `${signInHref}?returnTo=${encodeURIComponent(
                 "/app/billing?plan=" + planString(plan.tier, interval),
               )}`
             : "/#get-started";
@@ -77,9 +81,7 @@ export const PricingTiers = ({
                     "w-full",
                   )}
                 >
-                  {entraConfigured
-                    ? "Start 14-day trial"
-                    : "Start free"}
+                  {signInEnabled ? "Start 14-day trial" : "Start free"}
                 </a>
               </div>
             </div>

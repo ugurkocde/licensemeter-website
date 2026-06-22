@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { env } from "~/env";
+import { authProvider, env } from "~/env";
 import { auth } from "~/server/auth";
 import {
   getSignInClient,
@@ -22,6 +22,16 @@ export const GET = async (req: Request) => {
   const returnTo = validateReturnTo(
     new URL(req.url).searchParams.get("returnTo"),
   );
+
+  // WorkOS is the only sign-in by default; MSAL login is the entra opt-out.
+  // Defer any hit on this legacy route to the WorkOS sign-in entry so old
+  // links/bookmarks keep working without ever starting an MSAL login.
+  if (authProvider() === "workos") {
+    const target = returnTo
+      ? `/auth/sign-in?returnTo=${encodeURIComponent(returnTo)}`
+      : "/auth/sign-in";
+    return NextResponse.redirect(new URL(target, req.url));
+  }
 
   // Already signed in: land directly, no Entra round-trip needed.
   const session = await auth();

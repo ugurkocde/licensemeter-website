@@ -7,7 +7,7 @@ import {
   Terminal,
 } from "lucide-react";
 
-import { env, isDemoMode, siteUrl } from "~/env";
+import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
 import { RoiCalculator } from "~/components/RoiCalculator";
 import { SignInButtons } from "~/components/SignInButtons";
 import { HeroVisual } from "~/components/landing/HeroVisual";
@@ -149,11 +149,12 @@ const HOME_LD = {
 export const revalidate = 86400;
 
 export default async function LandingPage() {
-  const entraConfigured = Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID);
+  const signInOk = signInEnabled();
+  const signInHref = signInPath();
   const demoEnabled = isDemoMode();
   /* Build/ISR-time aggregate; null until the numbers are worth quoting. */
   const stats = await getScanStats();
-  const trialHref = entraConfigured ? "/auth/sign-in" : "#get-started";
+  const trialHref = signInOk ? signInHref : "#get-started";
   const month = new Date().toLocaleString("en-US", { month: "long" });
 
   return (
@@ -186,7 +187,8 @@ export default async function LandingPage() {
               </p>
               <div className="mt-6">
                 <SignInButtons
-                  entraConfigured={entraConfigured}
+                  signInEnabled={signInOk}
+                  signInHref={signInHref}
                   demoEnabled={demoEnabled}
                   showNote={false}
                 />
@@ -524,7 +526,8 @@ export default async function LandingPage() {
             </div>
             <div className="lg:max-w-md lg:shrink-0">
               <SignInButtons
-                entraConfigured={entraConfigured}
+                signInEnabled={signInOk}
+                signInHref={signInHref}
                 demoEnabled={demoEnabled}
                 showNote={false}
               />

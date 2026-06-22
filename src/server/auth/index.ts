@@ -15,8 +15,16 @@ import * as entra from "./session";
 import type { Session } from "./session";
 import * as workos from "./workos";
 
-export const auth = (): Promise<Session | null> =>
-  authProvider() === "workos" ? workos.auth() : entra.auth();
+export const auth = async (): Promise<Session | null> => {
+  if (authProvider() === "entra") return entra.auth();
+  const session = await workos.auth();
+  if (session) return session;
+  // The credentials-free sample tenant signs in by writing the entra-style
+  // session cookie even under workos auth; honor it, but only for demo sessions
+  // so a stale real entra cookie can never grant access in workos mode.
+  const demo = await entra.auth();
+  return demo?.user.isDemo ? demo : null;
+};
 
 export const clearSessionCookie = (): Promise<void> =>
   authProvider() === "workos"

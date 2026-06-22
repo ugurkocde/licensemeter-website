@@ -22,9 +22,11 @@ export const GET = async (req: NextRequest) => {
     return NextResponse.redirect(new URL(returnTo ?? "/app", req.url));
   }
 
-  // WorkOS supports state parameter to pass custom data through the auth flow
+  // returnTo must travel as `returnTo` (AuthKit seals it as returnPathname and
+  // the callback redirects there); the `state` option is customState, which the
+  // callback never uses for the post-login redirect, so it would be dropped.
   const signInUrl = await getSignInUrl({
-    state: returnTo ? JSON.stringify({ returnTo }) : undefined,
+    returnTo: returnTo ?? undefined,
   });
   return redirect(signInUrl);
 };

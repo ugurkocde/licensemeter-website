@@ -5,18 +5,18 @@ import {
 } from "next/server";
 import { authkitMiddleware } from "@workos-inc/authkit-nextjs";
 
-// AuthKit's middleware throws on every request unless WORKOS_COOKIE_PASSWORD
-// (>=32 chars) and a redirect URI are configured, so wiring it unconditionally
-// would 500 the whole site in entra mode (the default) on a deploy with no
-// WorkOS env vars. Gate it on the same AUTH_PROVIDER flag the auth layer uses:
-// in entra mode the middleware is a pass-through, keeping that path unchanged.
+// WorkOS AuthKit is the default sign-in, so its middleware runs on every
+// matched request. The one exception is the entra opt-out (AUTH_PROVIDER=entra),
+// where AuthKit isn't configured and its middleware would throw per-request
+// (it requires WORKOS_COOKIE_PASSWORD >=32 chars + a redirect URI); there it is
+// a pass-through. Gated on the same flag the auth layer uses.
 const workosMiddleware = authkitMiddleware();
 
 export default function middleware(
   request: NextRequest,
   event: NextFetchEvent,
 ) {
-  if (process.env.AUTH_PROVIDER !== "workos") return NextResponse.next();
+  if (process.env.AUTH_PROVIDER === "entra") return NextResponse.next();
   return workosMiddleware(request, event);
 }
 

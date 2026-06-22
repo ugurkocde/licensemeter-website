@@ -165,12 +165,28 @@ export const env = createEnv({
 export const isDemoMode = () => env.DEMO_MODE === "true";
 
 /**
- * Active login stack. Defaults to "entra" (original MSAL sign-in) so the
- * WorkOS path is strictly opt-in: flip AUTH_PROVIDER=workos once AuthKit is
- * configured. The connector / Graph access is independent of this flag.
+ * Active login stack. Defaults to "workos": sign-in is WorkOS-only (AuthKit
+ * multi-method). "entra" is a flag-only opt-out (AUTH_PROVIDER=entra) that
+ * restores the original MSAL sign-in. MSAL otherwise lives only in the
+ * Microsoft connector (admin-consent / BYO), never in user sign-in. The
+ * connector / Graph access is independent of this flag.
  */
 export const authProvider = () =>
-  env.AUTH_PROVIDER === "workos" ? "workos" : "entra";
+  env.AUTH_PROVIDER === "entra" ? "entra" : "workos";
+
+/**
+ * Whether sign-in is available, for wiring the marketing CTAs: WorkOS needs a
+ * client id; the entra opt-out needs the Entra app id. Hides the sign-in button
+ * on a deployment that has configured neither.
+ */
+export const signInEnabled = () =>
+  authProvider() === "workos"
+    ? Boolean(env.WORKOS_CLIENT_ID)
+    : Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID);
+
+/** Sign-in entry path for the active provider (WorkOS AuthKit by default). */
+export const signInPath = () =>
+  authProvider() === "workos" ? "/auth/sign-in" : "/api/auth/signin";
 
 /**
  * Whether the bring-your-own Microsoft app-registration path is exposed. Off by

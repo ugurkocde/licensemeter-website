@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { env, siteUrl, taxEnabled } from "~/env";
+import { signInEnabled, signInPath, siteUrl, taxEnabled } from "~/env";
 import { PricingTiers } from "~/components/pricing/PricingTiers";
 import {
   DEMO_ANNUAL_WASTE_ROUNDED,
@@ -105,9 +105,7 @@ export default function PricingPage() {
       </p>
 
       <div className="mt-12">
-        <PricingTiers
-          entraConfigured={Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID)}
-        />
+        <PricingTiers signInEnabled={signInEnabled()} signInHref={signInPath()} />
       </div>
 
       {taxEnabled() ? (

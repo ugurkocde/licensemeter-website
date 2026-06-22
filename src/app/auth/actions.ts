@@ -1,7 +1,12 @@
 "use server";
 
-import { signOut } from "@workos-inc/authkit-nextjs";
+import { redirect } from "next/navigation";
+
+import { clearSessionCookie } from "~/server/auth";
 
 export async function signOutAction() {
-  await signOut();
+  // WorkOS sign-out clears its cookie and redirects internally (NEXT_REDIRECT);
+  // the entra / demo path returns normally, so land it on the home page here.
+  await clearSessionCookie();
+  redirect("/");
 }
