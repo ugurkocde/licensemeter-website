@@ -179,7 +179,7 @@ export default function SecurityPage() {
         <p className="mt-4">
           No role with consent rights at hand today? The{" "}
           <a
-            href="/api/auth/signin?returnTo=%2Fapp%2Fconnect%2Fcsv"
+            href="/auth/sign-in?returnTo=%2Fapp%2Fconnect%2Fcsv"
             className="text-ink hover:text-brand-text font-medium underline underline-offset-4"
           >
             CSV trial

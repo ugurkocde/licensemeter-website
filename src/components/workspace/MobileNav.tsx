@@ -7,6 +7,7 @@ import { BrandMark } from "~/components/BrandMark";
 import { NavLinks } from "./NavLinks";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import type { WorkspaceSummary } from "~/server/access";
+import { signOutAction } from "~/app/auth/actions";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -147,7 +148,7 @@ export const MobileNav = ({
               {role}
             </div>
           </div>
-          <form action="/api/auth/signout" method="post">
+          <form action={signOutAction}>
             <button className="text-sidebar-soft hover:text-canvas inline-flex min-h-11 items-center text-xs underline-offset-4 transition hover:underline">
               Sign out
             </button>

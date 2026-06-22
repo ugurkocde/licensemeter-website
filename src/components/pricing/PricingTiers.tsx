@@ -36,7 +36,7 @@ export const PricingTiers = ({
               : priceEurosFor(plan.tier, "month");
           const annualTotal = priceEurosFor(plan.tier, "year");
           const ctaHref = entraConfigured
-            ? `/api/auth/signin?returnTo=${encodeURIComponent(
+            ? `/auth/sign-in?returnTo=${encodeURIComponent(
                 "/app/billing?plan=" + planString(plan.tier, interval),
               )}`
             : "/#get-started";

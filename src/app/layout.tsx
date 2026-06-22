@@ -4,6 +4,7 @@ import { type Metadata, type Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { Analytics } from "@vercel/analytics/react";
+import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 
 import { siteUrl } from "~/env";
 import { SITE_DEFINITION } from "~/lib/site";
@@ -97,7 +98,7 @@ export default function RootLayout({
       className={`${GeistSans.variable} ${GeistMono.variable}`}
     >
       <body className="font-sans antialiased">
-        {children}
+        <AuthKitProvider>{children}</AuthKitProvider>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{

@@ -44,7 +44,7 @@ export const SignInButtons = ({
     <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
       {entraConfigured ? (
         <a
-          href="/api/auth/signin"
+          href="/auth/sign-in"
           className={microsoftButtonClass}
           style={{ fontFamily: MS_FONT }}
         >

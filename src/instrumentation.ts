@@ -15,14 +15,23 @@ export const onRequestError = async (
   const message = err instanceof Error ? err.message : String(err);
   console.error(`[onRequestError] ${request.method} ${request.path}:`, err);
 
+  // Edge/middleware runtime doesn't have Node.js modules; skip ops notification.
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  // Send to ops webhook if configured. Inline fetch avoids importing the db
+  // module (postgres requires Node.js-only modules that break edge bundling).
+  const webhookUrl = process.env.OPS_WEBHOOK_URL;
+  if (!webhookUrl) return;
+
   try {
-    // Dynamic import: keeps instrumentation startup free of env/db loading.
-    const { notifyOps } = await import("~/server/ops");
-    await notifyOps(
-      `unhandled error on ${request.method} ${request.path}: ${message.slice(0, 300)}`,
-      { key: `crash:${request.method}:${request.path}`, cooldownMs: 30 * 60 * 1000 },
-    );
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: `unhandled error on ${request.method} ${request.path}: ${message.slice(0, 300)}`,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
   } catch {
     // alerting must never cascade
   }

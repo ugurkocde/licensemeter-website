@@ -153,7 +153,7 @@ export default async function LandingPage() {
   const demoEnabled = isDemoMode();
   /* Build/ISR-time aggregate; null until the numbers are worth quoting. */
   const stats = await getScanStats();
-  const trialHref = entraConfigured ? "/api/auth/signin" : "#get-started";
+  const trialHref = entraConfigured ? "/auth/sign-in" : "#get-started";
   const month = new Date().toLocaleString("en-US", { month: "long" });
 
   return (

@@ -50,3 +50,7 @@ yarn-error.log*
 
 # playwright artifacts
 .playwright-mcp/
+.playwright-cli/
+
+# local agent/screenshot output
+output/

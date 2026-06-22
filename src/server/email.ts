@@ -66,7 +66,7 @@ export const inviteHtml = (args: {
     but nobody uses, with read-only access to license metadata, never content.
   </p>
   <p style="margin:24px 0">
-    <a href="${args.appUrl}/api/auth/signin"
+    <a href="${args.appUrl}/auth/sign-in"
        style="font-family:Arial,sans-serif;font-size:14px;background:#1c1a16;color:#faf8f3;padding:12px 20px;text-decoration:none">
       Sign in with Microsoft
     </a>

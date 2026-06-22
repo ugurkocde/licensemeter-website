@@ -203,7 +203,7 @@ export default async function ConnectorGuidePage({
         </p>
         <div className="mt-6 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <a
-            href={`/api/auth/signin?returnTo=${encodeURIComponent(guide.settingsPath)}`}
+            href={`/auth/sign-in?returnTo=${encodeURIComponent(guide.settingsPath)}`}
             className={buttonClass("primary", "w-full sm:w-auto")}
           >
             Open the {guide.name} connector

@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { redirect } from "next/navigation";
-
 import { BrandMark } from "~/components/BrandMark";
 import { EntitlementBanner } from "~/components/workspace/EntitlementBanner";
 import { MobileNav } from "~/components/workspace/MobileNav";
 import { NavLinks } from "~/components/workspace/NavLinks";
 import { WorkspaceSwitcher } from "~/components/workspace/WorkspaceSwitcher";
 import { hasRole, requireAccess } from "~/server/access";
-import { clearSessionCookie } from "~/server/auth";
+import { signOutAction } from "~/app/auth/actions";
 
 /* Auth already gates these routes; noindex closes the gap robots.txt leaves
  * (Disallow stops crawling, not indexing of externally linked URLs). */
@@ -74,13 +72,7 @@ export default async function WorkspaceLayout({
           <div className="mt-0.5 text-[11px] tracking-wider text-sidebar-soft uppercase">
             {ctx.membership.role}
           </div>
-          <form
-            action={async () => {
-              "use server";
-              await clearSessionCookie();
-              redirect("/");
-            }}
-          >
+          <form action={signOutAction}>
             <button className="mt-1 inline-flex min-h-11 items-center text-xs text-sidebar-soft underline-offset-4 transition hover:text-canvas hover:underline">
               Sign out
             </button>
