@@ -79,6 +79,16 @@ export const submitCsvTrial = async (
   const session = await requireSession();
   const { oid, tid, upn, name, email } = session.user;
 
+  // Entra-only flow: it seeds a trial workspace keyed on the signer's own Entra
+  // tenant id. A WorkOS session carries no tid/oid, so reject it here rather
+  // than create a degenerate tid="" tenant (which would also collide on the
+  // tenants_tid unique index). WorkOS users onboard via the Microsoft connector.
+  if (!tid || !oid) {
+    return fail(
+      "The CSV trial needs a Microsoft work account. Use Connect Microsoft instead.",
+    );
+  }
+
   // --- Input guards (order: session, sizes, rate limit, parse) ------------
   const directoryFile = formData.get("directory");
   if (!(directoryFile instanceof File) || directoryFile.size === 0) {

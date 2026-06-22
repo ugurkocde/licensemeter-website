@@ -40,6 +40,24 @@ export const env = createEnv({
     CONNECTOR_CLIENT_SECRET: z.string().optional(),
 
     /**
+     * Which login stack is live. "entra" (default) keeps the original MSAL
+     * sign-in; "workos" routes auth through WorkOS AuthKit (multi-method login).
+     * The connector (app-only Graph access) is unaffected either way — it keys
+     * on the Entra tenant id stored on the tenant row, not on the login.
+     */
+    AUTH_PROVIDER: z.enum(["entra", "workos"]).optional(),
+
+    /**
+     * WorkOS AuthKit credentials, read by @workos-inc/authkit-nextjs. Optional
+     * here so entra-mode and demo builds need no WorkOS setup; authProvider()
+     * is the gate. NEXT_PUBLIC_WORKOS_REDIRECT_URI is consumed by the SDK
+     * directly from process.env and is intentionally not validated here.
+     */
+    WORKOS_API_KEY: z.string().optional(),
+    WORKOS_CLIENT_ID: z.string().optional(),
+    WORKOS_COOKIE_PASSWORD: z.string().optional(),
+
+    /**
      * Shared secret protecting /api/cron/* routes (Vercel Cron sends it as a
      * Bearer token). Required on Vercel builds so a deploy cannot silently
      * ship an unscheduled (or unprotected) cron; the route also fails closed
@@ -109,6 +127,10 @@ export const env = createEnv({
     AUTH_MICROSOFT_ENTRA_ID_SECRET: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
     CONNECTOR_CLIENT_ID: process.env.CONNECTOR_CLIENT_ID,
     CONNECTOR_CLIENT_SECRET: process.env.CONNECTOR_CLIENT_SECRET,
+    AUTH_PROVIDER: process.env.AUTH_PROVIDER,
+    WORKOS_API_KEY: process.env.WORKOS_API_KEY,
+    WORKOS_CLIENT_ID: process.env.WORKOS_CLIENT_ID,
+    WORKOS_COOKIE_PASSWORD: process.env.WORKOS_COOKIE_PASSWORD,
     CRON_SECRET: process.env.CRON_SECRET,
     DEMO_MODE: process.env.DEMO_MODE,
     APP_BASE_URL: process.env.APP_BASE_URL,
@@ -133,6 +155,14 @@ export const env = createEnv({
 });
 
 export const isDemoMode = () => env.DEMO_MODE === "true";
+
+/**
+ * Active login stack. Defaults to "entra" (original MSAL sign-in) so the
+ * WorkOS path is strictly opt-in: flip AUTH_PROVIDER=workos once AuthKit is
+ * configured. The connector / Graph access is independent of this flag.
+ */
+export const authProvider = () =>
+  env.AUTH_PROVIDER === "workos" ? "workos" : "entra";
 
 /**
  * Master billing flag. When false the entire Stripe subsystem no-ops and

@@ -22,15 +22,28 @@ const OAUTH_MAX_AGE = 10 * 60; // state+verifier live only for the redirect leg
 const key = new TextEncoder().encode(env.AUTH_SECRET);
 
 export type SessionUser = {
-  /** Entra object id (or the demo constant). */
+  /**
+   * Stable actor id. In entra mode: the Entra object id (or demo constant).
+   * In workos mode: empty here — the WorkOS identity travels in workosUserId,
+   * and the access layer projects it onto the actor id it returns.
+   */
   oid: string;
-  /** Entra tenant id (or the demo constant). */
+  /**
+   * Entra tenant id (or the demo constant) in entra mode. Empty in workos mode:
+   * the Microsoft tenant is a property of the connector, not of the login.
+   */
   tid: string;
-  /** UPN / preferred_username. */
+  /** UPN / preferred_username (entra) or email (workos). */
   upn: string;
   name: string;
   email: string | null;
   isDemo: boolean;
+  /** WorkOS user id, present only when AUTH_PROVIDER=workos. */
+  workosUserId?: string;
+  /** Active WorkOS Organization id, when the token carries one. */
+  workosOrgId?: string;
+  /** Whether WorkOS reports the email as verified (gates email-based linking). */
+  emailVerified?: boolean;
 };
 
 export type Session = { user: SessionUser };

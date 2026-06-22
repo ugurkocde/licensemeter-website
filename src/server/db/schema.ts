@@ -39,6 +39,12 @@ export const tenants = pgTable(
     tid: text("tid").notNull(),
     name: text("name"),
     currency: text("currency").notNull().default("EUR"),
+    /**
+     * WorkOS Organization that owns this workspace, when AUTH_PROVIDER=workos.
+     * Null for entra-mode tenants. Decouples the workspace identity from the
+     * Entra tenant id (tid), which stays the connector / Graph key.
+     */
+    workosOrgId: text("workos_org_id"),
     /** Capabilities discovered during sync; null until first sync. */
     concealedNames: boolean("concealed_names"),
     hasP1: boolean("has_p1"),
@@ -80,6 +86,10 @@ export const tenants = pgTable(
   },
   (t) => [
     uniqueIndex("tenants_tid_idx").on(t.tid),
+    // One workspace per WorkOS Organization (when workos auth is live).
+    uniqueIndex("tenants_workos_org_idx")
+      .on(t.workosOrgId)
+      .where(sql`${t.workosOrgId} is not null`),
     // One Stripe customer per tenant: a mismatched second customer is a DB
     // error, not a silent overwrite.
     uniqueIndex("tenants_stripe_customer_idx")
@@ -101,6 +111,13 @@ export const memberships = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     /** Entra object id; null until an invited email signs in for the first time. */
     oid: text("oid"),
+    /**
+     * WorkOS user id; the identity join key when AUTH_PROVIDER=workos. Set when
+     * a WorkOS-authenticated user first opens (or is linked by verified email
+     * to) this membership. Independent of oid so an entra-era membership can be
+     * linked to a WorkOS identity without losing its Entra oid.
+     */
+    workosUserId: text("workos_user_id"),
     email: text("email").notNull(),
     name: text("name"),
     role: text("role").$type<MembershipRole>().notNull().default("viewer"),
@@ -111,6 +128,7 @@ export const memberships = pgTable(
   (t) => [
     uniqueIndex("memberships_tenant_email_idx").on(t.tenantId, t.email),
     index("memberships_oid_idx").on(t.oid),
+    index("memberships_workos_user_idx").on(t.workosUserId),
     check("memberships_role_check", sql`${t.role} in ('viewer', 'admin', 'owner')`),
   ],
 );

@@ -1,12 +1,26 @@
 /**
- * Auth module: WorkOS AuthKit handles authentication. The WorkOS bridge
- * (see ./workos) maps WorkOS user data to the LicenseMeter Session shape.
+ * Auth entry point. Dispatches to one of two login stacks based on the
+ * AUTH_PROVIDER flag (default "entra"):
  *
- * For Microsoft sign-in, configure Microsoft as an SSO connection in WorkOS
- * to ensure Entra claims (oid, tid, upn) pass through rawAttributes.
+ * - entra  → original MSAL sign-in; session is the jose-signed lm_session
+ *   cookie ./session reads.
+ * - workos → WorkOS AuthKit; ./workos reads the sealed AuthKit session.
  *
- * Legacy MSAL-based sign-in preserved in ./msal for reference during
- * migration; the ./session module provides helper types and cookie utilities.
+ * Both produce the same Session shape, so the rest of the app is unaffected.
+ * The connector (app-only Graph access) is independent of this flag.
  */
-export { auth, clearSessionCookie } from "./workos";
+import { authProvider } from "~/env";
+
+import * as entra from "./session";
+import type { Session } from "./session";
+import * as workos from "./workos";
+
+export const auth = (): Promise<Session | null> =>
+  authProvider() === "workos" ? workos.auth() : entra.auth();
+
+export const clearSessionCookie = (): Promise<void> =>
+  authProvider() === "workos"
+    ? workos.clearSessionCookie()
+    : entra.clearSessionCookie();
+
 export type { Session, SessionUser } from "./session";

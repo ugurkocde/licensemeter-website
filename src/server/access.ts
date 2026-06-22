@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -66,7 +66,7 @@ export const hasRole = (ctx: AccessContext, minRole: MembershipRole) =>
  *
  * Same-tenant sign-in alone still grants nothing.
  */
-const resolveAccess = async (
+const resolveEntra = async (
   session: Session | null,
 ): Promise<AccessContext | null> => {
   if (!session?.user?.oid) return null;
@@ -145,10 +145,96 @@ const resolveAccess = async (
   };
 };
 
+/**
+ * WorkOS-mode resolution. Identity is the WorkOS user id; the workspace is
+ * matched either by a previously-linked membership (workos_user_id) or, for the
+ * user's own verified email, by the email column — which also lazily links that
+ * membership (claiming an invite or adopting an entra-era row) on first sign-in.
+ * There is no Entra tid here, so the home-tenant heuristic is dropped: active
+ * workspace is the cookie choice, else the first accessible one.
+ */
+const resolveWorkos = async (
+  session: Session,
+  workosUserId: string,
+): Promise<AccessContext | null> => {
+  const upn = session.user.upn;
+  const email = (session.user.email ?? "").toLowerCase();
+  const canLinkByEmail = session.user.emailVerified === true && email.length > 0;
+  const inviteCutoff = new Date(Date.now() - INVITE_TTL_DAYS * 86_400_000);
+
+  const rows = await db
+    .select({ membership: memberships, tenant: tenants })
+    .from(memberships)
+    .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
+    .where(
+      or(
+        eq(memberships.workosUserId, workosUserId),
+        // Link by the user's own verified email, but never resurrect a stale
+        // unclaimed invite: only rows not yet linked to a WorkOS user that are
+        // either an existing (entra-era, already-claimed) membership being
+        // migrated, or a still-fresh invite.
+        canLinkByEmail
+          ? and(
+              isNull(memberships.workosUserId),
+              or(
+                isNotNull(memberships.oid),
+                gt(memberships.createdAt, inviteCutoff),
+              ),
+              eq(sql`lower(${memberships.email})`, email),
+            )
+          : sql`false`,
+      ),
+    );
+  if (rows.length === 0) return null;
+
+  const cookieWs = (await cookies()).get(WORKSPACE_COOKIE)?.value;
+  const active = rows.find((r) => r.tenant.id === cookieWs) ?? rows[0]!;
+
+  // Link the active membership to this WorkOS identity on first touch.
+  if (active.membership.workosUserId !== workosUserId) {
+    await db
+      .update(memberships)
+      .set({
+        workosUserId,
+        name: session.user.name ?? active.membership.name,
+      })
+      .where(eq(memberships.id, active.membership.id));
+    active.membership.workosUserId = workosUserId;
+  }
+
+  return {
+    // Project the WorkOS user id onto the actor id used for audit/display.
+    user: { oid: workosUserId, tid: "", upn, name: session.user.name ?? "", isDemo: false },
+    tenant: active.tenant,
+    membership: active.membership,
+    workspaces: rows.map((r) => ({
+      id: r.tenant.id,
+      name: r.tenant.name ?? r.tenant.tid,
+      role: r.membership.role,
+      isDemo: r.tenant.isDemo,
+    })),
+    entitlement: entitlementOf(active.tenant, null, new Date(), !billingEnabled()),
+  };
+};
+
+/**
+ * Dispatches to the workos or entra resolver based on which identity the
+ * session carries, so both login stacks share every downstream consumer.
+ */
+const resolveAccess = (
+  session: Session | null,
+): Promise<AccessContext | null> => {
+  const workosUserId = session?.user?.workosUserId;
+  if (session && workosUserId) return resolveWorkos(session, workosUserId);
+  return resolveEntra(session);
+};
+
 /** For pages/layouts: redirects to landing when signed out. */
 export const requireSession = async (): Promise<Session> => {
   const session = await auth();
-  if (!session?.user?.oid) redirect("/");
+  if (!session?.user || (!session.user.oid && !session.user.workosUserId)) {
+    redirect("/");
+  }
   return session;
 };
 
