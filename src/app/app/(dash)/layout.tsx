@@ -6,6 +6,7 @@ import { EntitlementBanner } from "~/components/workspace/EntitlementBanner";
 import { MobileNav } from "~/components/workspace/MobileNav";
 import { NavLinks } from "~/components/workspace/NavLinks";
 import { WorkspaceSwitcher } from "~/components/workspace/WorkspaceSwitcher";
+import { authProvider } from "~/env";
 import { workspaceLabel } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
 import { signOutAction } from "~/app/auth/actions";
@@ -21,6 +22,8 @@ export default async function WorkspaceLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const ctx = await requireAccess("viewer");
   const tenantName = workspaceLabel(ctx.tenant);
+  // Self-service account page is WorkOS-only; entra users manage profile in Entra.
+  const accountEnabled = authProvider() === "workos";
 
   return (
     <div className="min-h-screen bg-canvas lg:flex">
@@ -35,6 +38,7 @@ export default async function WorkspaceLayout({
         isDemo={ctx.tenant.isDemo}
         userName={ctx.user.name}
         role={ctx.membership.role}
+        accountEnabled={accountEnabled}
         showPortfolio={ctx.workspaces.length > 1}
         workspaces={ctx.workspaces}
         activeId={ctx.tenant.id}
@@ -69,10 +73,29 @@ export default async function WorkspaceLayout({
         </div>
 
         <div className="border-t border-sidebar-line px-5 py-4">
-          <div className="truncate text-sm text-canvas">{ctx.user.name}</div>
-          <div className="mt-0.5 text-[11px] tracking-wider text-sidebar-soft uppercase">
-            {ctx.membership.role}
-          </div>
+          {accountEnabled ? (
+            <Link
+              href="/app/account"
+              className="group block"
+              aria-label="Account settings"
+            >
+              <div className="truncate text-sm text-canvas underline-offset-4 group-hover:underline">
+                {ctx.user.name}
+              </div>
+              <div className="mt-0.5 text-[11px] tracking-wider text-sidebar-soft uppercase">
+                {ctx.membership.role} · Account
+              </div>
+            </Link>
+          ) : (
+            <>
+              <div className="truncate text-sm text-canvas">
+                {ctx.user.name}
+              </div>
+              <div className="mt-0.5 text-[11px] tracking-wider text-sidebar-soft uppercase">
+                {ctx.membership.role}
+              </div>
+            </>
+          )}
           <form action={signOutAction}>
             <button className="mt-1 inline-flex min-h-11 items-center text-xs text-sidebar-soft underline-offset-4 transition hover:text-canvas hover:underline">
               Sign out

@@ -18,6 +18,7 @@ export const MobileNav = ({
   isDemo,
   userName,
   role,
+  accountEnabled = false,
   showPortfolio = false,
   workspaces,
   activeId,
@@ -26,6 +27,7 @@ export const MobileNav = ({
   isDemo: boolean;
   userName: string;
   role: string;
+  accountEnabled?: boolean;
   showPortfolio?: boolean;
   workspaces: WorkspaceSummary[];
   activeId: string;
@@ -143,10 +145,28 @@ export const MobileNav = ({
         />
         <div className="border-sidebar-line mt-3 flex items-center justify-between border-t px-4 pt-3">
           <div className="min-w-0">
-            <div className="text-canvas truncate text-sm">{userName}</div>
-            <div className="text-sidebar-soft text-[11px] tracking-wider uppercase">
-              {role}
-            </div>
+            {accountEnabled ? (
+              <Link
+                href="/app/account"
+                onClick={() => setOpen(false)}
+                className="group block"
+                aria-label="Account settings"
+              >
+                <div className="text-canvas truncate text-sm underline-offset-4 group-hover:underline">
+                  {userName}
+                </div>
+                <div className="text-sidebar-soft text-[11px] tracking-wider uppercase">
+                  {role} · Account
+                </div>
+              </Link>
+            ) : (
+              <>
+                <div className="text-canvas truncate text-sm">{userName}</div>
+                <div className="text-sidebar-soft text-[11px] tracking-wider uppercase">
+                  {role}
+                </div>
+              </>
+            )}
           </div>
           <form action={signOutAction}>
             <button className="text-sidebar-soft hover:text-canvas inline-flex min-h-11 items-center text-xs underline-offset-4 transition hover:underline">
