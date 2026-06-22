@@ -1,0 +1,288 @@
+- generic [ref=e2]:
+  - link "Skip to content" [ref=e3] [cursor=pointer]:
+    - /url: "#content"
+  - banner [ref=e4]:
+    - link "LicenseMeter" [ref=e5] [cursor=pointer]:
+      - /url: /
+      - img [ref=e6]
+      - generic [ref=e12]: LicenseMeter
+    - generic [ref=e13]:
+      - link "Free scan" [ref=e14] [cursor=pointer]:
+        - /url: /#get-started
+        - generic [ref=e15]: Free scan
+      - button "Open menu" [ref=e16] [cursor=pointer]:
+        - img [ref=e17]
+  - main [ref=e20]:
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - paragraph [ref=e26]: LicenseMeter command center
+        - heading "Find the paid seats that outlived their users." [level=1] [ref=e27]
+        - paragraph [ref=e28]:
+          - generic [ref=e29]: LicenseMeter cross-checks Microsoft 365 and SaaS seats against your directory, then prices every wasted seat in euros per month.
+          - text: Run a free, read-only scan and see the waste ledger finance can act on.
+        - generic [ref=e32]:
+          - button "See it on a live demo tenant" [ref=e34] [cursor=pointer]
+          - link "Run a free scan on your tenant" [ref=e35] [cursor=pointer]:
+            - /url: /api/auth/signin
+            - img [ref=e36]
+            - text: Run a free scan on your tenant
+        - list [ref=e41]:
+          - listitem [ref=e42]: Read-only Graph permissions/
+          - listitem [ref=e43]: No mailbox or file content/
+          - text: / /
+          - listitem [ref=e44]:
+            - link "Security overview" [ref=e45] [cursor=pointer]:
+              - /url: /security
+      - generic [ref=e46]:
+        - generic [ref=e47]:
+          - generic [ref=e48]:
+            - generic [ref=e49]: Demo tenant
+            - generic [ref=e50]:
+              - generic [ref=e51]: "155"
+              - generic [ref=e52]: users
+          - generic [ref=e53]:
+            - generic [ref=e54]: Findings
+            - generic [ref=e55]:
+              - generic [ref=e56]: "65"
+              - generic [ref=e57]: priced
+          - generic [ref=e58]:
+            - generic [ref=e59]: Rules
+            - generic [ref=e60]:
+              - generic [ref=e61]: "13"
+              - generic [ref=e62]: active
+        - generic [ref=e65]:
+          - generic [ref=e66]:
+            - paragraph [ref=e67]: Waste ledger · June
+            - generic [ref=e68]: € 2.979,86
+          - generic [ref=e69]:
+            - paragraph [ref=e70]: Meridian Industries GmbH
+            - paragraph [ref=e71]: about € 36.000 a year
+    - generic [ref=e73]:
+      - generic [ref=e74]:
+        - heading "Procurement sees the number" [level=2] [ref=e75]
+        - paragraph [ref=e76]: The demo tenant shows € 2.979,86/mo of recoverable spend before anyone exports a report.
+      - generic [ref=e77]:
+        - heading "IT keeps control" [level=2] [ref=e78]
+        - paragraph [ref=e79]: LicenseMeter asks for read-only access, shows the consent path first and leaves remediation in your tenant.
+      - generic [ref=e80]:
+        - heading "Finance gets proof" [level=2] [ref=e81]
+        - paragraph [ref=e82]: Every finding has a monthly euro impact, a category and an export path instead of a generic dashboard score.
+    - generic [ref=e83]:
+      - generic [ref=e84]:
+        - paragraph [ref=e85]: Product mechanics
+        - heading "A license ledger, not another vanity dashboard." [level=2] [ref=e86]
+        - paragraph [ref=e87]: "The workflow is built around evidence procurement and IT can both inspect: who owns the seat, why it is waste, what it costs and how to reclaim it."
+      - generic [ref=e88]:
+        - article [ref=e89]:
+          - generic [ref=e90]: "01"
+          - generic [ref=e91]:
+            - heading "Consent once" [level=3] [ref=e92]
+            - paragraph [ref=e93]: A Global Admin grants read-only application permissions. No agent, no write access, five minutes.
+        - article [ref=e94]:
+          - generic [ref=e95]: "02"
+          - generic [ref=e96]:
+            - heading "Join the evidence" [level=3] [ref=e97]
+            - paragraph [ref=e98]: Directory, license assignments, sign-in activity, usage reports and connected app seats are checked against who still works there.
+        - article [ref=e99]:
+          - generic [ref=e100]: "03"
+          - generic [ref=e101]:
+            - heading "Price every leak" [level=3] [ref=e102]
+            - paragraph [ref=e103]: 13 waste rules classify the finding and calculate the monthly impact in euros.
+        - article [ref=e104]:
+          - generic [ref=e105]: "04"
+          - generic [ref=e106]:
+            - heading "Reclaim with proof" [level=3] [ref=e107]
+            - paragraph [ref=e108]: Export the finance CSV or hand IT the generated PowerShell script for the seats you decide to remove.
+    - generic [ref=e109]:
+      - generic [ref=e110]:
+        - generic [ref=e111]:
+          - paragraph [ref=e112]: Connector coverage
+          - heading "Cross-check SaaS seats against the directory you already trust." [level=2] [ref=e113]
+        - link "View connector notes" [ref=e114] [cursor=pointer]:
+          - /url: /connectors
+      - generic [ref=e115]:
+        - 'link "Microsoft 365 Core The full scan: licenses, sign-in activity and usage reports." [ref=e116] [cursor=pointer]':
+          - /url: /security
+          - generic [ref=e117]:
+            - generic [ref=e118]: Microsoft 365
+            - generic [ref=e119]: Core
+          - paragraph [ref=e120]: "The full scan: licenses, sign-in activity and usage reports."
+        - link "Adobe Creative Cloud seats held by people who are disabled or gone." [ref=e121] [cursor=pointer]:
+          - /url: /connectors/adobe
+          - generic [ref=e123]: Adobe
+          - paragraph [ref=e124]: Creative Cloud seats held by people who are disabled or gone.
+        - link "Zoom Licensed seats nobody has opened since Teams took over." [ref=e125] [cursor=pointer]:
+          - /url: /connectors/zoom
+          - generic [ref=e127]: Zoom
+          - paragraph [ref=e128]: Licensed seats nobody has opened since Teams took over.
+        - link "Atlassian Jira and Confluence seats that outlived their users." [ref=e129] [cursor=pointer]:
+          - /url: /connectors/atlassian
+          - generic [ref=e131]: Atlassian
+          - paragraph [ref=e132]: Jira and Confluence seats that outlived their users.
+        - link "Salesforce CRM licenses, the most expensive seats to forget." [ref=e133] [cursor=pointer]:
+          - /url: /connectors/salesforce
+          - generic [ref=e135]: Salesforce
+          - paragraph [ref=e136]: CRM licenses, the most expensive seats to forget.
+        - link "OpenAI API spend by day, plus departed people still on the console." [ref=e137] [cursor=pointer]:
+          - /url: /connectors/openai
+          - generic [ref=e139]: OpenAI
+          - paragraph [ref=e140]: API spend by day, plus departed people still on the console.
+        - link "Anthropic Claude API costs tracked daily, console access cross-checked." [ref=e141] [cursor=pointer]:
+          - /url: /connectors/anthropic
+          - generic [ref=e143]: Anthropic
+          - paragraph [ref=e144]: Claude API costs tracked daily, console access cross-checked.
+        - link "ChatGPT Enterprise seats matched against your directory via CSV import." [ref=e145] [cursor=pointer]:
+          - /url: /connectors/chatgpt
+          - generic [ref=e147]: ChatGPT
+          - paragraph [ref=e148]: Enterprise seats matched against your directory via CSV import.
+        - link "Claude Team and Enterprise seats that outlived their users." [ref=e149] [cursor=pointer]:
+          - /url: /connectors/claude
+          - generic [ref=e151]: Claude
+          - paragraph [ref=e152]: Team and Enterprise seats that outlived their users.
+    - generic [ref=e153]:
+      - generic [ref=e154]:
+        - generic [ref=e155]:
+          - paragraph [ref=e156]: Published pricing
+          - heading "Sized by seats, not by how much waste we find." [level=2] [ref=e157]
+          - paragraph [ref=e158]: See your number free, compare it against the published plan and decide with your own tenant data.
+        - generic [ref=e159]:
+          - generic [ref=e160]:
+            - generic [ref=e161]:
+              - generic [ref=e162]: Starter
+              - generic [ref=e163]: up to 250 seats
+            - generic [ref=e164]:
+              - text: € 79
+              - generic [ref=e165]: / month
+          - generic [ref=e166]:
+            - generic [ref=e167]:
+              - generic [ref=e168]: Growth
+              - generic [ref=e169]: up to 1.000 seats
+            - generic [ref=e170]:
+              - text: € 199
+              - generic [ref=e171]: / month
+          - generic [ref=e172]:
+            - generic [ref=e173]:
+              - generic [ref=e174]: Scale
+              - generic [ref=e175]: up to 2.500 seats
+            - generic [ref=e176]:
+              - text: € 499
+              - generic [ref=e177]: / month
+        - link "See full pricing" [ref=e179] [cursor=pointer]:
+          - /url: /pricing
+      - generic [ref=e180]:
+        - heading "What does your tenant leak?" [level=2] [ref=e181]
+        - paragraph [ref=e182]: Your assumptions, your math. The scan replaces guesses with your actual number.
+        - generic [ref=e184]:
+          - generic [ref=e185]:
+            - generic [ref=e186]: Waste estimate · your assumptions
+            - generic [ref=e187]: No data leaves this page
+          - generic [ref=e188]:
+            - generic [ref=e189]:
+              - generic [ref=e190]:
+                - text: Paid seats
+                - spinbutton "Paid seats" [ref=e191]: "250"
+              - generic [ref=e192]:
+                - text: Average monthly cost per seat (EUR)
+                - spinbutton "Average monthly cost per seat (EUR)" [ref=e193]: "36.70"
+                - paragraph [ref=e194]: Prefilled with the Microsoft 365 E3 list price.
+              - generic [ref=e195]:
+                - generic [ref=e196]:
+                  - generic [ref=e197]: Assumed waste share
+                  - generic [ref=e198]: 8 %
+                - slider "Assumed waste share" [ref=e199] [cursor=pointer]: "8"
+                - paragraph [ref=e200]: Well-run tenants still leak single digits. For comparison, the live demo tenant runs at 43 percent.
+            - generic [ref=e201]:
+              - generic [ref=e202]:
+                - generic [ref=e203]: At your assumptions
+                - generic [ref=e204]: € 734,00
+                - generic [ref=e205]: wasted every month · € 8.808,00 a year
+                - paragraph [ref=e206]: At 250 seats that is the Starter plan at € 79/month, paid back at a fraction of this.
+              - link "Run the free scan instead →" [ref=e207] [cursor=pointer]:
+                - /url: "#get-started"
+    - generic [ref=e208]:
+      - generic [ref=e209]:
+        - heading "Built by Ugur Koc" [level=2] [ref=e210]
+        - paragraph [ref=e211]:
+          - text: I am a Microsoft MVP for Intune and Security Copilot, and I build
+          - link "open-source tools for Microsoft 365 admins" [ref=e212] [cursor=pointer]:
+            - /url: https://github.com/ugurkocde
+          - text: (IntuneAssignmentChecker, IntuneBrew, DeviceOffboardingManager). LicenseMeter asks for read-only access to your tenant, so you should know exactly who is behind it. I answer support myself.
+        - link "Read the security overview" [ref=e213] [cursor=pointer]:
+          - /url: /security
+      - generic [ref=e214]:
+        - heading "Need the one-pager first?" [level=2] [ref=e215]
+        - paragraph [ref=e216]: Leave your email and the security one-pager plus a getting-started guide for your first scan land in your inbox right away. One short note follows when billing starts. Unsubscribe any time.
+        - generic [ref=e218]:
+          - textbox "Email address" [ref=e219]:
+            - /placeholder: you@yourcompany.com
+          - button "Send me the guide" [ref=e220] [cursor=pointer]
+          - status [ref=e221]
+    - generic [ref=e225]:
+      - generic [ref=e226]:
+        - paragraph [ref=e227]: Free read-only scan
+        - heading "See the waste ledger before the next renewal conversation." [level=2] [ref=e228]
+        - paragraph [ref=e229]: Start on the live demo tenant, no account needed. When you are ready, run the same read-only scan on your own.
+      - generic [ref=e232]:
+        - button "See it on a live demo tenant" [ref=e234] [cursor=pointer]
+        - link "Run a free scan on your tenant" [ref=e235] [cursor=pointer]:
+          - /url: /api/auth/signin
+          - img [ref=e236]
+          - text: Run a free scan on your tenant
+  - contentinfo [ref=e241]:
+    - generic [ref=e242]:
+      - generic [ref=e243]:
+        - generic [ref=e244]:
+          - img [ref=e245]
+          - generic [ref=e251]: LicenseMeter
+        - paragraph [ref=e252]: License waste analytics for Microsoft 365, with Adobe, Zoom, Atlassian, Salesforce, OpenAI, Anthropic, ChatGPT and Claude connectors. Read-only, EU-hosted, built for IT and finance.
+      - generic [ref=e253]:
+        - heading "Product" [level=3] [ref=e254]
+        - list [ref=e255]:
+          - listitem [ref=e256]:
+            - link "Free waste scan" [ref=e257] [cursor=pointer]:
+              - /url: /#get-started
+          - listitem [ref=e258]:
+            - link "Pricing" [ref=e259] [cursor=pointer]:
+              - /url: /pricing
+          - listitem [ref=e260]:
+            - link "For MSPs" [ref=e261] [cursor=pointer]:
+              - /url: /msp
+          - listitem [ref=e262]:
+            - link "Connectors" [ref=e263] [cursor=pointer]:
+              - /url: /connectors
+          - listitem [ref=e264]:
+            - link "Security" [ref=e265] [cursor=pointer]:
+              - /url: /security
+          - listitem [ref=e266]:
+            - link "FAQ" [ref=e267] [cursor=pointer]:
+              - /url: /faq
+      - generic [ref=e268]:
+        - heading "Legal" [level=3] [ref=e269]
+        - list [ref=e270]:
+          - listitem [ref=e271]:
+            - link "Imprint" [ref=e272] [cursor=pointer]:
+              - /url: /impressum
+          - listitem [ref=e273]:
+            - link "Privacy" [ref=e274] [cursor=pointer]:
+              - /url: /privacy
+          - listitem [ref=e275]:
+            - link "Terms" [ref=e276] [cursor=pointer]:
+              - /url: /terms
+          - listitem [ref=e277]:
+            - link "Cookie policy" [ref=e278] [cursor=pointer]:
+              - /url: /cookies
+          - listitem [ref=e279]:
+            - link "DPA (on request)" [ref=e280] [cursor=pointer]:
+              - /url: /security#dpa
+      - generic [ref=e281]:
+        - heading "Contact" [level=3] [ref=e282]
+        - list [ref=e283]:
+          - listitem [ref=e284]:
+            - link "support@licensemeter.com" [ref=e285] [cursor=pointer]:
+              - /url: mailto:support@licensemeter.com
+          - listitem [ref=e286]:
+            - link "Subprocessors" [ref=e287] [cursor=pointer]:
+              - /url: /security#subprocessors
+    - generic [ref=e288]:
+      - generic [ref=e289]: LicenseMeter, built by Ugur Koc
+      - generic [ref=e290]: Independent tool, not affiliated with Microsoft, Adobe, Zoom, Atlassian, Salesforce, OpenAI or Anthropic. All product names are trademarks of their respective owners.
