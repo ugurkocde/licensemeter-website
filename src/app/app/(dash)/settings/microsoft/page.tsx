@@ -1,12 +1,14 @@
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 
+import { ConnectPoller } from "~/components/workspace/ConnectPoller";
 import {
   MicrosoftByoForm,
   MicrosoftDisconnectButton,
 } from "~/components/workspace/MicrosoftConnectForm";
-import { byoConnectorEnabled } from "~/env";
-import { Card, buttonClass } from "~/components/ui";
+import { byoConnectorEnabled, env } from "~/env";
+import { ButtonLink, Card, buttonClass } from "~/components/ui";
+import { connectErrorText } from "~/lib/connectErrors";
 import { MICROSOFT_CONNECTOR } from "~/lib/connectors";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
 import { fmtDate } from "~/lib/format";
@@ -33,17 +35,41 @@ const ScopeList = () => (
   </ul>
 );
 
-/** Managed one-click (default) + BYO behind an Advanced toggle (flag-gated). */
-const SetupOptions = ({ byoEnabled }: { byoEnabled: boolean }) => (
+/**
+ * Managed one-click (default) + BYO (Advanced) + the two no-consent fallbacks
+ * (instant scan, CSV). Managed needs the central connector app; the scan needs
+ * the Entra sign-in app — each is shown only when its env is configured so no
+ * option dead-ends.
+ */
+const SetupOptions = ({
+  byoEnabled,
+  connectorConfigured,
+  scanConfigured,
+}: {
+  byoEnabled: boolean;
+  connectorConfigured: boolean;
+  scanConfigured: boolean;
+}) => (
   <div className="flex flex-col gap-4">
     <div className="flex flex-col gap-3">
       <p className="text-sm text-ink-soft">{MICROSOFT_CONNECTOR.managedHint}</p>
       <ScopeList />
-      <div>
-        <a href="/api/connect/start" className={buttonClass("primary")}>
-          Grant admin consent
-        </a>
-      </div>
+      {connectorConfigured ? (
+        <div>
+          <a href="/api/connect/start" className={buttonClass("primary")}>
+            Grant admin consent
+          </a>
+        </div>
+      ) : (
+        <p className="text-sm text-ink-soft">
+          One-click managed consent is not enabled on this deployment. Use the
+          instant scan or CSV import below.
+        </p>
+      )}
+      <p className="text-xs text-ink-faint">
+        Not a Global Administrator? Forward this page to one — they complete the
+        Microsoft dialog and you become the workspace owner.
+      </p>
     </div>
 
     {byoEnabled && (
@@ -66,17 +92,56 @@ const SetupOptions = ({ byoEnabled }: { byoEnabled: boolean }) => (
         </div>
       </details>
     )}
+
+    {scanConfigured && (
+      <div className="border-t border-line pt-4">
+        <p className="text-sm font-medium text-ink">Run an instant scan</p>
+        <p className="mt-1 text-sm text-ink-soft">
+          One-time scan with the same read-only scopes, running with{" "}
+          <strong className="text-ink">your</strong> permissions while you are
+          signed in. No standing access, no stored tokens. Works for Application
+          and Cloud Application Administrators, who cannot grant the consent
+          above.
+        </p>
+        <div className="mt-3">
+          <a href="/api/scan/start" className={buttonClass("secondary")}>
+            Run an instant scan
+          </a>
+        </div>
+      </div>
+    )}
+
+    <div className="border-t border-line pt-4">
+      <p className="text-sm text-ink-soft">
+        No admin with consent rights at hand? Start with the CSV trial: two
+        admin-center exports, no consent at all.
+      </p>
+      <div className="mt-3">
+        <ButtonLink href="/app/connect/csv">Try it with CSV exports</ButtonLink>
+      </div>
+    </div>
   </div>
 );
 
-export default async function MicrosoftConnectorPage() {
+export default async function MicrosoftConnectorPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const ctx = await requireAccess("viewer");
   const isAdmin = hasRole(ctx, "admin");
+  const sp = await searchParams;
+  // Post-consent / post-scan redirects land here with ?status=syncing (poll the
+  // first sync) or ?error=<code>.
+  const status = typeof sp.status === "string" ? sp.status : null;
+  const error = typeof sp.error === "string" ? sp.error : null;
 
   const conn = await db.query.msConnections.findFirst({
     where: eq(msConnections.tenantId, ctx.tenant.id),
   });
   const byoEnabled = byoConnectorEnabled();
+  const connectorConfigured = Boolean(env.CONNECTOR_CLIENT_ID);
+  const scanConfigured = Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 pb-8">
@@ -104,7 +169,21 @@ export default async function MicrosoftConnectorPage() {
         </h1>
       </header>
 
-      <div className="rise rise-2 flex flex-col gap-6">
+      {error && (
+        <div className="rise rise-2 border border-danger-soft bg-danger-soft/50 p-4 text-sm text-danger-text">
+          {connectErrorText(error)}
+        </div>
+      )}
+
+      {status === "syncing" && (
+        <div className="rise rise-2">
+          <Card title="Tenant connected">
+            <ConnectPoller />
+          </Card>
+        </div>
+      )}
+
+      <div className="rise rise-3 flex flex-col gap-6">
         <Card title="Connection">
           {ctx.tenant.isDemo ? (
             <p className="text-sm text-ink-soft">
@@ -211,7 +290,11 @@ export default async function MicrosoftConnectorPage() {
               )}
             </div>
           ) : isAdmin ? (
-            <SetupOptions byoEnabled={byoEnabled} />
+            <SetupOptions
+              byoEnabled={byoEnabled}
+              connectorConfigured={connectorConfigured}
+              scanConfigured={scanConfigured}
+            />
           ) : (
             <p className="text-sm text-ink-soft">
               Not connected. A workspace admin can connect Microsoft 365 here.

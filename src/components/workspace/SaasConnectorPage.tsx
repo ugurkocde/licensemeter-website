@@ -102,7 +102,7 @@ export const SaasConnectorPage = async ({
               Connectors cross-check seats against your Microsoft 365
               directory, so{" "}
               <Link
-                href="/app/connect"
+                href="/app/settings/microsoft"
                 className="underline underline-offset-4 hover:text-ink"
               >
                 connect your tenant

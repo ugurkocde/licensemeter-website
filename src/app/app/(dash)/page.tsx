@@ -163,7 +163,7 @@ export default async function OverviewPage() {
                 and trends.
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                <ButtonLink variant="primary" href="/app/connect">
+                <ButtonLink variant="primary" href="/app/settings/microsoft">
                   Connect the read-only sync
                 </ButtonLink>
                 <ButtonAnchor href="/api/scan/start">

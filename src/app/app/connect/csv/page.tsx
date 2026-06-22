@@ -9,9 +9,10 @@ export const metadata = {
 };
 
 /**
- * Zero-consent entry point: any signed-in user (exactly the audience with
- * no workspace yet) turns two admin-center exports into a waste dashboard.
- * Producing the exports needs Reports Reader or Global Reader rights only.
+ * Zero-consent entry point: any signed-in user turns two admin-center exports
+ * into a waste dashboard. Producing the exports needs Reports Reader or Global
+ * Reader rights only. Standalone (outside the dash layout) so it is reachable
+ * even by an entra-mode user who has no workspace yet.
  */
 export default async function CsvTrialPage() {
   const session = await requireSession();
@@ -51,7 +52,7 @@ export default async function CsvTrialPage() {
       <p className="mt-8 text-xs text-ink-faint">
         Have consent rights?{" "}
         <Link
-          href="/app/connect"
+          href="/app/settings/microsoft"
           className="font-medium text-ink underline underline-offset-4 hover:text-brand-text"
         >
           Connect the read-only sync instead

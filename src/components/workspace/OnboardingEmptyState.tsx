@@ -59,7 +59,7 @@ export const OnboardingEmptyState = ({
 
     {/* Microsoft 365 — the highest-value source, featured but not required. */}
     <Link
-      href="/app/connect"
+      href="/app/settings/microsoft"
       className="rise rise-2 group mt-6 block border border-line bg-card p-5 transition hover:border-ink-soft"
     >
       <div className="flex items-start justify-between gap-4">
@@ -113,7 +113,7 @@ export const OnboardingEmptyState = ({
         <>
           <span className="text-ink-faint">·</span>
           <Link
-            href="/app/connect"
+            href="/app/settings/microsoft"
             className="font-medium text-ink underline-offset-4 hover:underline"
           >
             See the read-only permissions first

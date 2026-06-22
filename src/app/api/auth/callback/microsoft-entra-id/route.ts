@@ -38,7 +38,7 @@ const backToLanding = (req: NextRequest, reason: string) => {
 const backToConnect = (req: NextRequest, code: string, reason: string) => {
   console.error(`[scan] instant scan aborted (${code}): ${reason}`);
   const res = NextResponse.redirect(
-    new URL(`/app/connect?error=${code}`, req.url),
+    new URL(`/app/settings/microsoft?error=${code}`, req.url),
   );
   res.cookies.set(expiredOAuthCookie());
   return res;
@@ -147,7 +147,7 @@ const handleScanCallback = async (
   });
 
   const res = NextResponse.redirect(
-    new URL("/app/connect?status=syncing", req.url),
+    new URL("/app/settings/microsoft?status=syncing", req.url),
   );
   res.cookies.set(expiredOAuthCookie());
   // Make the scanned workspace the active one so the poller (and /app)

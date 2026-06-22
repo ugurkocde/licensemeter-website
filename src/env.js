@@ -199,11 +199,11 @@ export const signInPath = () =>
   authProvider() === "workos" ? "/auth/sign-in" : "/api/auth/signin";
 
 /**
- * Whether the bring-your-own Microsoft app-registration path is exposed. Off by
- * default so the managed one-click path is the only option until BYO is rolled
- * out; the managed flow is unaffected by this flag.
+ * Whether the bring-your-own Microsoft app-registration path is exposed. On by
+ * default (the Advanced option on the Microsoft connector page); set
+ * MS_BYO_ENABLED=false to hide it and offer managed one-click only.
  */
-export const byoConnectorEnabled = () => env.MS_BYO_ENABLED === "true";
+export const byoConnectorEnabled = () => env.MS_BYO_ENABLED !== "false";
 
 /**
  * Master billing flag. When false the entire Stripe subsystem no-ops and

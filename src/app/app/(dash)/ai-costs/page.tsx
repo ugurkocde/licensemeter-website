@@ -154,7 +154,7 @@ export default async function AiCostsPage() {
                     connectors.
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    <ButtonLink href="/app/connect">
+                    <ButtonLink href="/app/settings/microsoft">
                       Connect the read-only sync
                     </ButtonLink>
                   </div>

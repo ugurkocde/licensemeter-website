@@ -24,7 +24,8 @@ export const maxDuration = 300;
 
 const STATE_TTL_MS = 15 * 60 * 1000;
 
-const fail = (code: string): never => redirect(`/app/connect?error=${code}`);
+const fail = (code: string): never =>
+  redirect(`/app/settings/microsoft?error=${code}`);
 
 /**
  * Admin-consent return leg. Validates the state nonce, requires the granted
@@ -199,5 +200,5 @@ export const GET = async (req: NextRequest) => {
     await runSync(tenantId);
   });
 
-  redirect("/app/connect?status=syncing");
+  redirect("/app/settings/microsoft?status=syncing");
 };
