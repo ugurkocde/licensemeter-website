@@ -81,7 +81,11 @@ describe("entitlementOf precedence", () => {
 
   it("active status but paid horizon in the past (missed cancel webhook) => expired, not paid", () => {
     const e = entitlementOf(
-      tenant({ subscriptionStatus: "active", paidUntil: new Date("2026-06-20T00:00:00Z") }),
+      tenant({
+        subscriptionStatus: "active",
+        paidUntil: new Date("2026-06-20T00:00:00Z"),
+        trialStartedAt: new Date("2026-06-11T00:00:00Z"),
+      }),
       sub(),
       now,
       false,
@@ -111,7 +115,11 @@ describe("entitlementOf precedence", () => {
 
   it("canceled subscription with an elapsed trial => expired", () => {
     const e = entitlementOf(
-      tenant({ subscriptionStatus: "canceled", paidUntil: null }),
+      tenant({
+        subscriptionStatus: "canceled",
+        paidUntil: null,
+        trialStartedAt: new Date("2026-06-11T00:00:00Z"),
+      }),
       sub(),
       now,
       false,
@@ -130,8 +138,20 @@ describe("entitlementOf precedence", () => {
     expect(e.trialDaysLeft).toBeGreaterThan(0);
   });
 
-  it("no subscription, trial elapsed => expired (soft lock)", () => {
+  it("no subscription, trial not started (no connector yet) => full access", () => {
+    // trialStartedAt is null until the first service is connected; an empty
+    // workspace must not burn trial days while the user explores.
     const e = entitlementOf(tenant(), null, now, false);
+    expect(e).toMatchObject({ state: "trial", active: true, locked: false });
+  });
+
+  it("no subscription, trial started and elapsed => expired (soft lock)", () => {
+    const e = entitlementOf(
+      tenant({ trialStartedAt: new Date("2026-06-11T00:00:00Z") }),
+      null,
+      now,
+      false,
+    );
     expect(e).toMatchObject({ state: "expired", active: false, locked: true });
   });
 

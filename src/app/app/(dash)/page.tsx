@@ -4,12 +4,15 @@ import Link from "next/link";
 
 import { ButtonAnchor, ButtonLink, Card } from "~/components/ui";
 import { FindingChip } from "~/components/workspace/FindingChip";
+import { OnboardingEmptyState } from "~/components/workspace/OnboardingEmptyState";
 import { SyncNowButton } from "~/components/workspace/SyncNowButton";
 import { TrendChart } from "~/components/workspace/TrendChart";
+import { isDemoMode } from "~/env";
 import { fmtAgo, fmtDate, fmtMoney, fmtNumber } from "~/lib/format";
 import { ALL_RULES } from "~/lib/rules";
 import { requireAccess, hasRole } from "~/server/access";
 import { db } from "~/server/db";
+import { workspaceHasConnectorOrData } from "~/server/workspaceState";
 import { daysUntilDate } from "~/server/digestDelta";
 import {
   findings,
@@ -44,6 +47,13 @@ const UtilizationBar = ({ sku }: { sku: SkuRow }) => {
 export default async function OverviewPage() {
   const ctx = await requireAccess("viewer");
   const tenantId = ctx.tenant.id;
+
+  // Workspace-first onboarding: a workspace that has connected no service yet
+  // lands on the dashboard but sees the onboarding empty state (nudge to connect
+  // a first service) instead of a dashboard of zeros. Demo always has data.
+  if (!ctx.tenant.isDemo && !(await workspaceHasConnectorOrData(tenantId))) {
+    return <OnboardingEmptyState demoEnabled={isDemoMode()} />;
+  }
   const currency = ctx.tenant.currency;
   // Soft-locked workspaces keep the read-only dashboard but lose exports/sync.
   const locked = !ctx.entitlement.active;

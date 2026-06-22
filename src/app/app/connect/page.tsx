@@ -16,6 +16,12 @@ const ERROR_TEXT: Record<string, string> = {
   expired_state: "The consent link expired (15 minutes). Please retry.",
   consent_declined: "Consent was declined in the Microsoft dialog.",
   consent_incomplete: "Microsoft did not confirm the consent. Please retry.",
+  not_allowed:
+    "You need to be an admin or owner of this workspace to connect Microsoft. Ask a workspace owner to connect it.",
+  tenant_taken:
+    "That Microsoft tenant is already connected to another LicenseMeter workspace. Ask an admin there for an invite.",
+  already_connected:
+    "This workspace is already connected to a different Microsoft tenant. Disconnect it first in Settings, then retry.",
   scan_declined:
     "The Microsoft permissions dialog was cancelled or declined, so no scan was run. You can retry any time.",
   scan_needs_admin:

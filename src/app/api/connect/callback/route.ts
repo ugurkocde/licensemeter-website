@@ -1,7 +1,13 @@
-import { and, eq, isNull, lt } from "drizzle-orm";
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after, type NextRequest } from "next/server";
 
+import {
+  apiAccess,
+  WORKSPACE_COOKIE,
+  workspaceCookieOptions,
+} from "~/server/access";
 import { db } from "~/server/db";
 import {
   consentStates,
@@ -69,79 +75,119 @@ export const GET = async (req: NextRequest) => {
     .returning({ state: consentStates.state });
   if (consumed.length === 0) fail("invalid_state");
 
-  // Upsert the tenant, record the managed connection, and bind the initiator as
-  // owner in ONE transaction: a partial write could leave a consented tenant
-  // with no connection row or no owner membership. trialStartedAt is written
-  // once on insert and deliberately NOT on the reconnect UPDATE, so re-running
-  // admin consent cannot reset the 14-day trial clock.
+  // Managed connector reset applied on every (re)connect: clears any BYO
+  // credential columns so the sync uses the central env app.
+  const managedConnection = {
+    mode: "managed" as const,
+    tid: grantedTid!,
+    appClientId: null,
+    credType: null,
+    secretEnc: null,
+    certThumbprint: null,
+    secretExpiresAt: null,
+    lastVerifiedAt: new Date(),
+    lastVerifyError: null,
+  };
+
   const isWorkos = !!stateRow!.workosUserId;
-  let tenantId!: string;
-  await db.transaction(async (tx) => {
-    const existing = await tx.query.tenants.findFirst({
+  let tenantId: string;
+
+  if (isWorkos) {
+    // Workspace-first model: the user already has a workspace (auto-provisioned
+    // on sign-in). Microsoft attaches to THAT workspace as a connector instead
+    // of spawning a duplicate. The initiator must be an admin/owner of it.
+    const ctx = await apiAccess("admin");
+    if (!ctx) return fail("not_allowed");
+    if (ctx.membership.workosUserId !== stateRow!.workosUserId) {
+      return fail("not_allowed");
+    }
+    const target = ctx.tenant;
+    // One workspace per Microsoft tenant: refuse to steal a tid bound elsewhere.
+    const owner = await db.query.tenants.findFirst({
       where: eq(tenants.tid, grantedTid!),
     });
-    let id: string;
-    if (existing) {
-      id = existing.id;
+    if (owner && owner.id !== target.id) return fail("tenant_taken");
+    // Refuse to silently repoint a workspace already bound to another tenant.
+    if (target.tid && target.tid !== grantedTid) return fail("already_connected");
+
+    await db.transaction(async (tx) => {
       await tx
         .update(tenants)
-        .set({ consentedAt: new Date() })
-        .where(eq(tenants.id, id));
-    } else {
-      const [inserted] = await tx
-        .insert(tenants)
-        .values({
+        .set({
           tid: grantedTid!,
           consentedAt: new Date(),
-          trialStartedAt: new Date(),
+          // Trial starts on first connect; coalesce never resets it on reconnect.
+          trialStartedAt: sql`coalesce(${tenants.trialStartedAt}, now())`,
         })
-        .returning({ id: tenants.id });
-      id = inserted!.id;
-    }
-
-    // Record the Microsoft connection as a managed connector (mode='managed').
-    // Idempotent on reconnect; switching a BYO workspace back to managed clears
-    // the per-workspace credential columns so the sync uses the central env app.
-    await tx
-      .insert(msConnections)
-      .values({ tenantId: id, mode: "managed", tid: grantedTid! })
-      .onConflictDoUpdate({
-        target: msConnections.tenantId,
-        set: {
-          mode: "managed",
-          tid: grantedTid!,
-          appClientId: null,
-          credType: null,
-          secretEnc: null,
-          certThumbprint: null,
-          secretExpiresAt: null,
-          lastVerifiedAt: new Date(),
-          lastVerifyError: null,
-        },
+        .where(eq(tenants.id, target.id));
+      await tx
+        .insert(msConnections)
+        .values({ tenantId: target.id, ...managedConnection })
+        .onConflictDoUpdate({
+          target: msConnections.tenantId,
+          set: managedConnection,
+        });
+    });
+    tenantId = target.id;
+  } else {
+    // Entra mode: the login IS the Microsoft tenant, so the workspace is keyed
+    // by the granted tid (created on first consent) and the initiator is bound
+    // as its owner — all in one transaction so a partial write can't leave a
+    // consented tenant with no connection or owner. trialStartedAt is written
+    // once on insert and never on the reconnect update.
+    tenantId = await db.transaction(async (tx) => {
+      const existing = await tx.query.tenants.findFirst({
+        where: eq(tenants.tid, grantedTid!),
       });
+      let id: string;
+      if (existing) {
+        id = existing.id;
+        await tx
+          .update(tenants)
+          .set({
+            consentedAt: new Date(),
+            trialStartedAt: sql`coalesce(${tenants.trialStartedAt}, now())`,
+          })
+          .where(eq(tenants.id, id));
+      } else {
+        const [inserted] = await tx
+          .insert(tenants)
+          .values({
+            tid: grantedTid!,
+            consentedAt: new Date(),
+            trialStartedAt: new Date(),
+          })
+          .returning({ id: tenants.id });
+        id = inserted!.id;
+      }
+      await tx
+        .insert(msConnections)
+        .values({ tenantId: id, ...managedConnection })
+        .onConflictDoUpdate({
+          target: msConnections.tenantId,
+          set: managedConnection,
+        });
+      await tx
+        .insert(memberships)
+        .values({
+          tenantId: id,
+          oid: stateRow!.oid,
+          workosUserId: stateRow!.workosUserId,
+          email: stateRow!.email,
+          name: stateRow!.name,
+          role: "owner",
+        })
+        .onConflictDoUpdate({
+          target: [memberships.tenantId, memberships.email],
+          set: { oid: stateRow!.oid, role: "owner" },
+        });
+      return id;
+    });
+  }
 
-    // Bind the initiator as owner using whichever identity the nonce carries:
-    // workosUserId for WorkOS sign-ins, oid for entra. Only the matching column
-    // is updated on conflict, so re-consent never clobbers the other provider's id.
-    await tx
-      .insert(memberships)
-      .values({
-        tenantId: id,
-        oid: stateRow!.oid,
-        workosUserId: stateRow!.workosUserId,
-        email: stateRow!.email,
-        name: stateRow!.name,
-        role: "owner",
-      })
-      .onConflictDoUpdate({
-        target: [memberships.tenantId, memberships.email],
-        set: isWorkos
-          ? { workosUserId: stateRow!.workosUserId, role: "owner" }
-          : { oid: stateRow!.oid, role: "owner" },
-      });
-
-    tenantId = id;
-  });
+  // Make the connected workspace active so the user lands on it, not the empty
+  // one they may have started from.
+  (await cookies()).set(WORKSPACE_COOKIE, tenantId, workspaceCookieOptions());
 
   // The single most important founder signal there is.
   void notifyOps(

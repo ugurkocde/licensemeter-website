@@ -50,6 +50,18 @@ export const tenants = pgTable(
      * Entra tenant id (tid), which stays the connector / Graph key.
      */
     workosOrgId: text("workos_org_id"),
+    /**
+     * Verified corporate email domain that may auto-join this workspace
+     * (app-level domain JIT). Null for consumer/personal workspaces, so no one
+     * auto-joins them. Set when the first corporate-domain user provisions it.
+     */
+    domain: text("domain"),
+    /**
+     * Whether same-domain verified users auto-join this workspace on sign-in.
+     * Defaults off so only workspaces explicitly provisioned for a corporate
+     * domain are joinable; provisionWorkspace sets it true for those.
+     */
+    allowDomainJoin: boolean("allow_domain_join").notNull().default(false),
     /** Capabilities discovered during sync; null until first sync. */
     concealedNames: boolean("concealed_names"),
     hasP1: boolean("has_p1"),
@@ -99,6 +111,10 @@ export const tenants = pgTable(
     uniqueIndex("tenants_workos_org_idx")
       .on(t.workosOrgId)
       .where(sql`${t.workosOrgId} is not null`),
+    // Domain-JIT lookup: find the joinable workspace for a verified email domain.
+    index("tenants_domain_idx")
+      .on(t.domain)
+      .where(sql`${t.domain} is not null`),
     // One Stripe customer per tenant: a mismatched second customer is a DB
     // error, not a silent overwrite.
     uniqueIndex("tenants_stripe_customer_idx")

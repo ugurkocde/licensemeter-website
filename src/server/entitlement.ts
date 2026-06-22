@@ -74,10 +74,14 @@ export const trialDaysLeftAt = (anchor: Date, now: Date): number =>
 /**
  * Resolve a workspace's entitlement. Precedence (first match wins): demo ->
  * billing-disabled/comped -> active/trialing paid (within horizon) -> past_due
- * (grace until horizon) -> in-trial -> expired.
+ * (grace until horizon) -> trial-not-started -> in-trial -> expired.
  *
- * The active/trialing fast-path also requires the paid horizon so a missed
- * `customer.subscription.deleted` webhook can never grant access forever.
+ * The trial clock starts on first connector connect (trialStartedAt is stamped
+ * then). A workspace that has connected nothing has trialStartedAt = null and is
+ * treated as full-access "not started" — exploring an empty dashboard never
+ * burns trial days. The active/trialing fast-path also requires the paid horizon
+ * so a missed `customer.subscription.deleted` webhook can never grant access
+ * forever.
  */
 export function entitlementOf(
   tenant: TenantEntitlementInput,
@@ -85,7 +89,9 @@ export function entitlementOf(
   now: Date,
   billingDisabled: boolean,
 ): Entitlement {
-  const anchor = tenant.trialStartedAt ?? tenant.createdAt;
+  // No anchor yet (trial not started) -> measure a full window from now so the
+  // banner shows the full trial and nothing expires before they connect.
+  const anchor = tenant.trialStartedAt ?? now;
   const trialEndsAt = trialEndsAtFor(anchor);
   const trialDaysLeft = trialDaysLeftAt(anchor, now);
   const base = {
@@ -125,9 +131,13 @@ export function entitlementOf(
   // 4. Dunning grace: keep access while past_due until the period end passes.
   if (status === "past_due") return horizonOk ? full("past_due") : lock("past_due");
 
-  // 5. Still inside the app-managed (no-card) trial.
+  // 5. Trial not started: no service connected yet, so the clock hasn't begun.
+  //    Full access with no countdown (an empty workspace gates nothing anyway).
+  if (!tenant.trialStartedAt) return full("trial");
+
+  // 6. Still inside the app-managed (no-card) trial.
   if (now.getTime() < trialEndsAt.getTime()) return full("trial");
 
-  // 6. Trial elapsed with no active subscription -> soft lock.
+  // 7. Trial elapsed with no active subscription -> soft lock.
   return lock("expired");
 }

@@ -383,6 +383,9 @@ export const submitCsvTrial = async (
       copilotSignal: "none",
       usageAggregate: null,
       copilotAggregate: null,
+      // Start the trial on first connect; coalesce so a re-upload never resets it
+      // (and stamps it when reusing the auto-provisioned, never-connected workspace).
+      trialStartedAt: sql`coalesce(${tenants.trialStartedAt}, now())`,
     })
     .where(eq(tenants.id, tenantId));
 

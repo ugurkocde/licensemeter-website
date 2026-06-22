@@ -2,7 +2,7 @@
 
 import { X509Certificate } from "node:crypto";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -62,6 +62,19 @@ const fail = (error: string): ActionResult => ({ ok: false, error });
 const ok = (): ActionResult => ({ ok: true });
 
 const revalidateApp = () => revalidatePath("/app", "layout");
+
+/**
+ * Start the 14-day trial on first connector connect. Idempotent: stamps
+ * trialStartedAt only when still null, so the clock begins the moment the
+ * workspace gets its first service and reconnecting never resets it. An empty
+ * (never-connected) workspace keeps trialStartedAt null = full access.
+ */
+const startTrialOnFirstConnect = async (tenantId: string): Promise<void> => {
+  await db
+    .update(tenants)
+    .set({ trialStartedAt: new Date() })
+    .where(and(eq(tenants.id, tenantId), isNull(tenants.trialStartedAt)));
+};
 
 const chunk = <T>(arr: T[], size: number): T[][] => {
   const out: T[][] = [];
@@ -634,6 +647,7 @@ export const connectAdobe = async (
       },
     });
   await audit(ctx, "adobe_connected", { orgId });
+  await startTrialOnFirstConnect(ctx.tenant.id);
   // Sync after the response, not inline; see connectSaasConnector.
   after(() => runSync(ctx.tenant.id));
   revalidateApp();
@@ -734,6 +748,7 @@ export const connectSaasConnector = async (
       },
     });
   await audit(ctx, "connector_connected", { provider, orgRef });
+  await startTrialOnFirstConnect(ctx.tenant.id);
   // Credentials were validated above; the first sync (a full Graph pull plus
   // every connector) runs after the response rather than blocking it, so the
   // connect button is not held pending for the whole sync and cannot outlive
@@ -939,13 +954,14 @@ export const connectMicrosoftByo = async (
         });
 
       // Bind the Microsoft tenant to the workspace so tid-scoped paths resolve.
-      // consentedAt / trialStartedAt are stamped once, never reset on reconnect.
+      // consentedAt / trialStartedAt are stamped once, never reset on reconnect
+      // (coalesce is atomic DB-side, not dependent on a possibly-stale ctx read).
       await tx
         .update(tenants)
         .set({
           tid,
-          consentedAt: ctx.tenant.consentedAt ?? now,
-          trialStartedAt: ctx.tenant.trialStartedAt ?? now,
+          consentedAt: sql`coalesce(${tenants.consentedAt}, now())`,
+          trialStartedAt: sql`coalesce(${tenants.trialStartedAt}, now())`,
         })
         .where(eq(tenants.id, ctx.tenant.id));
     });
@@ -1097,6 +1113,7 @@ export const importSeats = async (
     imported: rows.length,
     invalid: parsed.invalid.length,
   });
+  await startTrialOnFirstConnect(ctx.tenant.id);
   await runAnalysis(ctx.tenant.id);
   revalidateApp();
   return { ok: true, imported: rows.length, invalid: parsed.invalid.length };

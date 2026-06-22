@@ -1,3 +1,70 @@
+# Workspace-first onboarding (2026-06-22) — IN PROGRESS
+
+Decouple sign-in from connecting a service. After WorkOS sign-in the user lands
+on the dashboard (never a forced connect gate); an empty workspace shows a
+polished onboarding empty state that nudges connecting the FIRST service (any
+connector, not just Microsoft). Trial starts on first connect. Colleagues from a
+verified corporate email domain auto-join the same workspace (app-level domain
+JIT; WorkOS-native domain JIT needs DNS-verified domains so it does not fit
+instant self-serve — reserve WorkOS Organizations for enterprise SSO later).
+
+## Deliverables
+- [ ] Auto-provision a workspace on first WorkOS sign-in (resolveWorkos: no
+      membership -> create personal workspace + owner membership, return its ctx).
+      Domain-JIT: verified corporate email -> join existing same-domain workspace
+      that allows domain-join; consumer/unverified domain -> personal workspace.
+- [ ] Remove the forced /app/connect redirect (auto-provision means ctx is never
+      null for a signed-in user). /app/connect stays as the Microsoft setup page.
+- [ ] Trial starts on FIRST connector connect, not sign-up: entitlement treats a
+      workspace with no trialStartedAt as full-access "not started"; the connect
+      actions (MS managed/BYO, scan, CSV, adobe, saas) stamp trialStartedAt once.
+- [ ] Microsoft becomes a connector ADDED to the current workspace (admin-consent
+      binds the granted tid to the workspace the user is in, not a new tenant),
+      with the unique-tid steal guard preserved.
+- [ ] Polished onboarding empty state on /app: connector grid (Microsoft featured,
+      Adobe/Zoom/Atlassian/Salesforce/ChatGPT/Claude + CSV + sample-data), value
+      prop, clear primary action. Shown when the workspace has no connector/data.
+- [ ] Schema: tenants.domain (claimable domain) + allow_domain_join flag for JIT;
+      apply to prod before deploy. Backfill domain for existing workspaces.
+- [ ] Trial-abuse guardrails on the personal-workspace path (consumer-domain list,
+      rate-limit provisioning).
+
+## Acceptance criteria
+- New user (gmail) signs in -> lands on /app dashboard empty state, NO forced
+  connect gate, NO trial countdown yet. Connects any one service -> data appears,
+  trial countdown begins (14 days from that moment).
+- Second user at the same verified corporate domain signs in -> joins the SAME
+  workspace as their colleague (not a new empty one). Consumer-domain users get
+  separate personal workspaces.
+- Connecting Microsoft adds it to the current workspace (no duplicate workspace);
+  unique-tid steal guard still blocks claiming another workspace's tenant.
+- Existing connected customers: unchanged (already have consentedAt/trialStartedAt).
+- Gates green (lint/tsc/tests/build) + independent review; prod schema migrated.
+
+## Decisions
+- Domain-JIT mechanism: app-level verified-email-domain match (not WorkOS DNS
+  domains) for instant self-serve. workos_org_id stays staged for future SSO.
+- Trial anchor: trialStartedAt set on first connect; null = not-started = full.
+
+## Status — DONE (pending PR), prod schema migrated
+All deliverables implemented + gates green + independent review (fixes applied:
+provisionWorkspace now transactional; allow_domain_join defaults off; BYO trial
+stamp uses DB coalesce). Prod migrated: tenants.domain + allow_domain_join
+(+ index, default off) via Supabase MCP (project tomugclophxlmnzrrcxp).
+
+### Deferred (low-severity, noted by review)
+- Consent callback resolves the current workspace from the WORKSPACE_COOKIE at
+  callback time, not consent-start: a multi-workspace user who SWITCHES workspace
+  mid-consent could bind Microsoft to the wrong (own) workspace. Fix later by
+  storing tenant_id on the consent_states nonce. (New users have one workspace =
+  no drift.)
+- Instant scan stamps trialStartedAt at workspace creation rather than on scan
+  success (other paths stamp on confirmed connect). Minor; retry-safe via coalesce.
+- Domain backfill for existing prod workspaces intentionally skipped (they stay
+  allow_domain_join=false / domain=null, so no surprise auto-joins).
+
+---
+
 # WorkOS auth + dual-path Microsoft connector (2026-06-22)
 
 ## Goal

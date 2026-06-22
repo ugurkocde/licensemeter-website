@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -147,10 +147,114 @@ const resolveEntra = async (
 };
 
 /**
+ * Public email providers: their domain is shared by strangers, so it must never
+ * trigger domain-JIT (a gmail.com user must not auto-join another gmail user's
+ * workspace). Everything else is treated as a corporate domain.
+ */
+const CONSUMER_EMAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com",
+  "msn.com", "yahoo.com", "yahoo.co.uk", "icloud.com", "me.com", "mac.com",
+  "aol.com", "proton.me", "protonmail.com", "pm.me", "gmx.com", "gmx.de",
+  "gmx.net", "web.de", "mail.com", "yandex.com", "zoho.com", "fastmail.com",
+  "hey.com", "qq.com", "163.com", "126.com",
+]);
+
+const domainOfEmail = (email: string): string | null => {
+  const d = email.split("@")[1]?.toLowerCase().trim();
+  return d?.includes(".") ? d : null;
+};
+
+/** A verified, non-consumer email domain eligible for workspace domain-JIT. */
+const corporateDomainOf = (
+  email: string,
+  emailVerified: boolean,
+): string | null => {
+  if (!emailVerified) return null;
+  const d = domainOfEmail(email);
+  return d && !CONSUMER_EMAIL_DOMAINS.has(d) ? d : null;
+};
+
+/**
+ * First WorkOS sign-in with no membership: provision access so the user lands on
+ * a dashboard instead of a dead end. Domain-JIT — a verified corporate-domain
+ * user joins the existing same-domain workspace that allows it (no duplicate
+ * empty workspaces for colleagues); everyone else gets a fresh personal
+ * workspace they own. The workspace carries NO tid/connector and NO
+ * trialStartedAt yet: the trial clock starts when they connect their first
+ * service. Returns true when a membership now exists for this user.
+ */
+const provisionWorkspace = async (
+  session: Session,
+  workosUserId: string,
+): Promise<boolean> => {
+  const email = (session.user.email ?? "").toLowerCase();
+  if (!email) return false;
+  const corp = corporateDomainOf(email, session.user.emailVerified === true);
+
+  // Domain-JIT: join the oldest joinable workspace for this corporate domain.
+  if (corp) {
+    const [joinable] = await db
+      .select({ id: tenants.id })
+      .from(tenants)
+      .where(
+        and(
+          eq(tenants.domain, corp),
+          eq(tenants.allowDomainJoin, true),
+          eq(tenants.isDemo, false),
+        ),
+      )
+      .orderBy(asc(tenants.createdAt))
+      .limit(1);
+    if (joinable) {
+      await db
+        .insert(memberships)
+        .values({
+          tenantId: joinable.id,
+          workosUserId,
+          email,
+          name: session.user.name ?? null,
+          role: "viewer",
+        })
+        .onConflictDoUpdate({
+          target: [memberships.tenantId, memberships.email],
+          set: { workosUserId },
+        });
+      return true;
+    }
+  }
+
+  // Otherwise create a personal workspace owned by this user, in one transaction
+  // so a crash can't leave a tenant with no owner. Corporate domains are recorded
+  // + joinable so the next colleague lands here; consumer domains are left null
+  // (unmatchable) so strangers never auto-join.
+  return db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(tenants)
+      .values({
+        name: corp ?? null,
+        domain: corp,
+        allowDomainJoin: corp !== null,
+      })
+      .returning({ id: tenants.id });
+    if (!created) return false;
+    await tx.insert(memberships).values({
+      tenantId: created.id,
+      workosUserId,
+      email,
+      name: session.user.name ?? null,
+      role: "owner",
+    });
+    return true;
+  });
+};
+
+/**
  * WorkOS-mode resolution. Identity is the WorkOS user id; the workspace is
  * matched either by a previously-linked membership (workos_user_id) or, for the
  * user's own verified email, by the email column — which also lazily links that
  * membership (claiming an invite or adopting an entra-era row) on first sign-in.
+ * A brand-new user with no membership is provisioned a workspace (domain-JIT or
+ * personal) so sign-in always lands on a dashboard, never a forced connect gate.
  * There is no Entra tid here, so the home-tenant heuristic is dropped: active
  * workspace is the cookie choice, else the first accessible one.
  */
@@ -163,30 +267,40 @@ const resolveWorkos = async (
   const canLinkByEmail = session.user.emailVerified === true && email.length > 0;
   const inviteCutoff = new Date(Date.now() - INVITE_TTL_DAYS * 86_400_000);
 
-  const rows = await db
-    .select({ membership: memberships, tenant: tenants })
-    .from(memberships)
-    .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
-    .where(
-      or(
-        eq(memberships.workosUserId, workosUserId),
-        // Link by the user's own verified email, but never resurrect a stale
-        // unclaimed invite: only rows not yet linked to a WorkOS user that are
-        // either an existing (entra-era, already-claimed) membership being
-        // migrated, or a still-fresh invite.
-        canLinkByEmail
-          ? and(
-              isNull(memberships.workosUserId),
-              or(
-                isNotNull(memberships.oid),
-                gt(memberships.createdAt, inviteCutoff),
-              ),
-              eq(sql`lower(${memberships.email})`, email),
-            )
-          : sql`false`,
-      ),
-    );
-  if (rows.length === 0) return null;
+  const accessible = () =>
+    db
+      .select({ membership: memberships, tenant: tenants })
+      .from(memberships)
+      .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
+      .where(
+        or(
+          eq(memberships.workosUserId, workosUserId),
+          // Link by the user's own verified email, but never resurrect a stale
+          // unclaimed invite: only rows not yet linked to a WorkOS user that are
+          // either an existing (entra-era, already-claimed) membership being
+          // migrated, or a still-fresh invite.
+          canLinkByEmail
+            ? and(
+                isNull(memberships.workosUserId),
+                or(
+                  isNotNull(memberships.oid),
+                  gt(memberships.createdAt, inviteCutoff),
+                ),
+                eq(sql`lower(${memberships.email})`, email),
+              )
+            : sql`false`,
+        ),
+      );
+
+  let rows = await accessible();
+  if (rows.length === 0) {
+    // First sign-in, no invite: provision a workspace (domain-JIT or personal)
+    // and re-read, so the user lands on a dashboard rather than a dead end.
+    const provisioned = await provisionWorkspace(session, workosUserId);
+    if (!provisioned) return null;
+    rows = await accessible();
+    if (rows.length === 0) return null;
+  }
 
   const cookieWs = (await cookies()).get(WORKSPACE_COOKIE)?.value;
   const active = rows.find((r) => r.tenant.id === cookieWs) ?? rows[0]!;
