@@ -22,8 +22,8 @@ export default async function WorkspaceLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const ctx = await requireAccess("viewer");
   const tenantName = workspaceLabel(ctx.tenant);
-  // Self-service account page is WorkOS-only; entra users manage profile in Entra.
-  const accountEnabled = authProvider() === "workos";
+  // Self-service account page is WorkOS-only; demo users have no WorkOS profile.
+  const accountEnabled = authProvider() === "workos" && !ctx.user.isDemo;
 
   return (
     <div className="min-h-screen bg-canvas lg:flex">

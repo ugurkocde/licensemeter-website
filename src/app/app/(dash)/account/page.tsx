@@ -13,9 +13,9 @@ export const metadata = { title: "Account" };
  */
 export default async function AccountPage() {
   // Same gate as the rest of /app (also keeps the sidebar/layout consistent).
-  await requireAccess("viewer");
+  const ctx = await requireAccess("viewer");
 
-  if (authProvider() !== "workos") {
+  if (authProvider() !== "workos" || ctx.user.isDemo) {
     return (
       <div className="mx-auto max-w-3xl">
         <h1 className="font-display text-3xl tracking-tight">Account</h1>
