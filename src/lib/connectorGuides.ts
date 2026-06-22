@@ -1,4 +1,4 @@
-import { CONNECTORS } from "~/lib/connectors";
+import { CONNECTORS, MICROSOFT_CONNECTOR } from "~/lib/connectors";
 
 /**
  * Public setup guides for every connector, rendered at /connectors/<slug>
@@ -34,6 +34,53 @@ const detectsOf = (provider: string): string[] =>
   CONNECTORS.find((c) => c.provider === provider)?.detects ?? [];
 
 export const CONNECTOR_GUIDES: ConnectorGuide[] = [
+  {
+    slug: "microsoft",
+    name: "Microsoft 365",
+    kind: "api",
+    summary:
+      "Connect your Microsoft 365 tenant read-only: one-click admin consent, or bring your own Entra app registration (client secret or certificate).",
+    intro:
+      "Microsoft 365 is the core directory LicenseMeter reads to find license waste. Most teams use the managed one-click path: a Global Administrator grants read-only application permissions once. If you prefer to own the app registration, the BYO path takes your own Entra app's credentials, stored encrypted and used only for the nightly read-only sync.",
+    steps: [
+      {
+        title: "Managed (recommended): one-click admin consent",
+        body: "On the Microsoft connector page, choose Grant admin consent. A Global Administrator approves LicenseMeter's read-only application permissions for your tenant in the Microsoft dialog. Nothing is stored on your side and nothing is ever written to your tenant. This is the default and needs no app registration.",
+      },
+      {
+        title: "BYO (advanced): create your own app registration",
+        body: "Prefer to own the credential? Run the setup-byo-connector.ps1 script (Microsoft.Graph PowerShell module required) as a Global Administrator of your tenant. It creates a single-tenant, read-only app registration with exactly the application permissions LicenseMeter requires, grants admin consent, and prints your Directory (tenant) ID, Application (client) ID and a client secret to paste. Add -UseCertificate to register a certificate instead.",
+        doc: {
+          label: "Register an application in Microsoft Entra ID",
+          href: "https://learn.microsoft.com/entra/identity-platform/quickstart-register-app",
+        },
+      },
+      {
+        title: "BYO manual route (portal)",
+        body: "If you cannot run the script: in Entra ID > App registrations, create an app (single tenant). Under API permissions add the exact application permissions LicenseMeter lists on the connector page (all read-only), then Grant admin consent. Under Certificates & secrets create a client secret (or upload a certificate). Paste the tenant ID, client ID and the secret (or the certificate private key and certificate, both PEM) into the connector's Advanced section. The least-privilege rationale: every permission is *.Read.All and scoped to directory, license and usage-report reads only — no write scopes, no mail or file content.",
+        doc: {
+          label: "Grant admin consent to an application",
+          href: "https://learn.microsoft.com/entra/identity/enterprise-apps/grant-admin-consent",
+        },
+      },
+      {
+        title: "Verify",
+        body: "On save, LicenseMeter acquires an app-only token and checks the token's roles claim contains every required permission, showing a green/red row per permission and blocking the save if any are missing. It also runs one live call against the usage Reports API. Switching between managed and BYO re-points the sync with no data loss.",
+      },
+    ],
+    reads: [
+      "Directory users: name, UPN, enabled state and assigned licenses",
+      "Subscribed SKUs: purchased vs assigned seat counts",
+      "Sign-in activity (with Entra ID P1) and usage / Copilot activity reports",
+      "Whether report display names are concealed (a tenant setting)",
+    ],
+    neverReads: [
+      "Mailbox, calendar, Teams, OneDrive or SharePoint content: no content scopes are requested",
+      "Anything writable: every permission is read-only (*.Read.All)",
+    ],
+    detects: MICROSOFT_CONNECTOR.detects.slice(),
+    settingsPath: "/app/settings/microsoft",
+  },
   {
     slug: "adobe",
     name: "Adobe",

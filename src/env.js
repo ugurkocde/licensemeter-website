@@ -48,6 +48,13 @@ export const env = createEnv({
     AUTH_PROVIDER: z.enum(["entra", "workos"]).optional(),
 
     /**
+     * Gates the "bring your own app registration" Microsoft connector path.
+     * Off by default: the managed one-click admin-consent path is unchanged and
+     * always available. Flip MS_BYO_ENABLED=true to expose the BYO form.
+     */
+    MS_BYO_ENABLED: z.enum(["true", "false"]).optional(),
+
+    /**
      * WorkOS AuthKit credentials, read by @workos-inc/authkit-nextjs. Optional
      * here so entra-mode and demo builds need no WorkOS setup; authProvider()
      * is the gate. NEXT_PUBLIC_WORKOS_REDIRECT_URI is consumed by the SDK
@@ -128,6 +135,7 @@ export const env = createEnv({
     CONNECTOR_CLIENT_ID: process.env.CONNECTOR_CLIENT_ID,
     CONNECTOR_CLIENT_SECRET: process.env.CONNECTOR_CLIENT_SECRET,
     AUTH_PROVIDER: process.env.AUTH_PROVIDER,
+    MS_BYO_ENABLED: process.env.MS_BYO_ENABLED,
     WORKOS_API_KEY: process.env.WORKOS_API_KEY,
     WORKOS_CLIENT_ID: process.env.WORKOS_CLIENT_ID,
     WORKOS_COOKIE_PASSWORD: process.env.WORKOS_COOKIE_PASSWORD,
@@ -163,6 +171,13 @@ export const isDemoMode = () => env.DEMO_MODE === "true";
  */
 export const authProvider = () =>
   env.AUTH_PROVIDER === "workos" ? "workos" : "entra";
+
+/**
+ * Whether the bring-your-own Microsoft app-registration path is exposed. Off by
+ * default so the managed one-click path is the only option until BYO is rolled
+ * out; the managed flow is unaffected by this flag.
+ */
+export const byoConnectorEnabled = () => env.MS_BYO_ENABLED === "true";
 
 /**
  * Master billing flag. When false the entire Stripe subsystem no-ops and

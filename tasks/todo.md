@@ -271,4 +271,181 @@ the membership by whichever the nonce holds — so a WorkOS user reaches their d
   required for onboarding to work (resolveWorkos keys on `workos_user_id`); layer in later. The
   `tenants.workos_org_id` column is staged and currently unused.
 
-### Phases C–F — pending
+### Phase C — DONE (2026-06-22)
+
+Dual-path Microsoft connector landed; `tenants.tid` is now nullable and the
+Microsoft connection lives in its own `msConnections` table.
+
+- **Schema:** `tenants.tid` nullable with a partial-unique index; new
+  `ms_connections` table (`mode` managed|byo, `tid`, BYO columns
+  `app_client_id`/`cred_type`/`secret_enc`/`cert_thumbprint`/`secret_expires_at`/
+  `last_verified_at`/`last_verify_error`), `mode` check + a unique index on `tid`
+  (one Microsoft tenant per workspace, the atomic backstop). `db:push` applied.
+- **Token branching:** `MsCredential` (managed / byo-secret / byo-cert) drives
+  `buildApp`/`acquireToken` in [msGraph.ts](src/server/graph/msGraph.ts); MSAL
+  apps are cached by a credential fingerprint so a rotated BYO secret never
+  reuses a stale client. `resolveMsCredential`/`msGraphClientForTenant`
+  ([msConnection.ts](src/server/graph/msConnection.ts)) resolve the per-workspace
+  credential (decrypting via the existing AUTH_SECRET AES-256-GCM helper) with a
+  managed fallback to `tenant.tid` for pre-Phase-C rows; `runSync` uses it.
+- **BYO path:** client secret AND certificate (paste PEM private key + cert;
+  thumbprint derived server-side via `X509Certificate`) from launch, both stored
+  AES-256-GCM in `secret_enc`. `connectMicrosoftByo` validates inputs, runs
+  test-connection, then writes the connection + tid binding in one transaction
+  (clean catch on the unique-tid steal). `disconnectMicrosoft` removes both in a
+  transaction. Managed admin-consent callback now writes an `mode='managed'` row.
+- **test-connection (roles claim):** `verifyMsCredential` acquires an app-only
+  token, base64url-decodes the JWT `roles` claim, and returns a per-permission
+  green/red checklist against [scopes.ts](src/lib/scopes.ts); the connect action
+  blocks save (with the missing scopes) when consent is incomplete and maps
+  AADSTS auth failures to clean, non-leaking messages.
+- **UI:** [settings/microsoft](src/app/app/(dash)/settings/microsoft/page.tsx)
+  tile with managed one-click as the default/recommended option and BYO behind an
+  "Advanced — bring your own app registration" toggle
+  ([MicrosoftConnectForm.tsx](src/components/workspace/MicrosoftConnectForm.tsx),
+  with the cred-type switch + checklist). Microsoft added to the Settings
+  connector list.
+- **Lokka end-to-end verification (global Graph rule):** confirmed against the
+  real "Ugur Koc Lab" tenant (tid ffc10f05-…) that an app-only client-credentials
+  token's `roles` claim reflects granted application permissions —
+  `get-auth-status` decoded roles = User.Read.All / AuditLog.Read.All /
+  Reports.Read.All / Directory.Read.All, with LicenseAssignment.Read.All and
+  ReportSettings.Read.All absent. Live probes proved the present→works /
+  absent→403 contract: `GET /subscribedSkus` → 200 (Directory.Read.All present),
+  `GET /admin/reportSettings` → 403 S2SUnauthorized (ReportSettings.Read.All
+  absent). This is exactly what `verifyMsCredential` keys on.
+- **Secret hygiene:** grep + review — secrets/keys stored only as
+  `encryptSecret(...)`; audit detail carries only `{ mode, credType }`; no
+  console/notifyOps logging of credentials; `verifyMsCredential` logs only
+  `err.message`; the action returns only `{ ok, error?, checklist }`.
+- **Gates:** `tsc` clean · `next lint` clean · 223/223 tests · `next build`
+  exit 0 (71/71 pages, /app/settings/microsoft present) · independent
+  `feature-dev:code-reviewer` pass (3 of 5 findings fixed: connect/disconnect now
+  transactional + unique-tid backstop, secret-safe logging; the cert-`x5c` and
+  "BYO tid differs" findings assessed as non-issues for standard cert auth /
+  intended switch behavior).
+- **Note (handoff to Phase D):** test-connection currently checks the roles claim
+  only; the live Reports-API probe, secret-expiry warnings, graceful per-scope
+  degradation at sync time, and nightly scheduled sync for both modes remain
+  Phase D. `last_verify_error` column is staged but only written on success/clear
+  so far.
+
+### Phase D — DONE (2026-06-22)
+
+Test-connection probe, secret lifecycle, and both-mode scheduled sync.
+
+- **Live Reports probe:** `verifyMsCredential` now also calls one real Reports
+  endpoint (`getOffice365ActiveUserDetail(period='D7')`) when Reports.Read.All is
+  granted, returning `reportsProbe` (the token's roles claim can't reveal Reports
+  quirks). A failed probe is surfaced as a non-blocking `warning` on connect, not
+  a block. **Lokka-verified:** the probe call returns 200 (CSV stream) app-only
+  on the real "Ugur Koc Lab" tenant.
+- **Graceful degradation extended:** the app-only `MsGraphClient.listUsers` now
+  degrades on 401/403 (e.g. revoked AuditLog.Read.All) the same way the non-P1
+  path does — drops sign-in data and falls back to usage reports rather than
+  failing the run. Reports/Copilot/reportSettings already degrade to warnings;
+  subscribedSkus + the users list stay correctly fatal (test-connection blocks
+  connect without those scopes anyway).
+- **Secret lifecycle:** a successful sync clears `lastVerifyError` and stamps
+  `lastVerifiedAt`; an app-only auth failure (`isAppAuthError`, AADSTS codes only
+  — not the bare word "certificate", per review) writes a clean, non-leaking
+  `lastVerifyError` marker without crashing the run (the nightly cron catches
+  per-tenant). The connector page shows a pre-expiry amber warning (≤14 days), an
+  expired/error red banner, and prompts a re-enter.
+- **Nightly sync, both modes:** the existing cron gates on `tenants.consentedAt`,
+  which both managed and BYO set, so both modes sync with no cron change.
+- **Acceptance:** missing scope → specific red row + blocked connect; wrong
+  secret → specific non-leaking error + `lastVerifyError`, no 500; expired-secret
+  nightly run marks the connection and continues.
+
+### Phase E — DONE (2026-06-22)
+
+- **App-reg script:** [scripts/setup-byo-connector.ps1](scripts/setup-byo-connector.ps1)
+  — customer-facing, creates a single-tenant read-only app with exactly the
+  required permissions, **grants admin consent**, and prints Tenant/Client ID +
+  secret (or registers a certificate with `-UseCertificate`).
+- **Docs:** new `microsoft` guide at `/connectors/microsoft`
+  ([connectorGuides.ts](src/lib/connectorGuides.ts)) covering managed one-click,
+  BYO via script, the manual portal route, the exact permission set, and the
+  least-privilege rationale; linked from the connector page's Advanced section.
+- **No drift:** [scopes.test.ts](src/lib/scopes.test.ts) asserts the script's
+  `$connectorRoles` equals `CONNECTOR_SCOPES` byte-for-byte (the in-app ScopeList
+  already renders from the same source).
+
+### Phase F — DONE (2026-06-22)
+
+- **Backfill:** [scripts/backfill-ms-connections.ts](scripts/backfill-ms-connections.ts)
+  inserts a `mode='managed'` row for every tenant with a tid and no row,
+  idempotent (`onConflictDoNothing`, counts only real writes). No-op for behavior
+  — `resolveMsCredential` already falls back to managed via `tenants.tid` — so no
+  customer re-consents.
+- **Feature flag:** `MS_BYO_ENABLED` + `byoConnectorEnabled()` ([env.js](src/env.js))
+  gate both the BYO server action and the Advanced UI; managed is always
+  available and unchanged when the flag is off. (WorkOS login stays gated by
+  `AUTH_PROVIDER` from Phase A.)
+- **DPA / subprocessors:** WorkOS added as a sub-processor in
+  [dpa.ts](src/lib/dpa.ts) (EN + DE) and the /security subset, plus an
+  encrypted-credential custody statement for BYO Graph secrets (EN + DE).
+  **Follow-up:** the pre-signed bilingual DPA PDFs must be regenerated from
+  dpa.ts and re-reviewed by counsel before publishing (see [[dpa-avv]]).
+- **Gates:** tsc clean · lint clean · 224/224 tests (incl. no-drift) · build
+  exit 0 (72 pages; /app/settings/microsoft + /connectors/microsoft present) ·
+  independent code-review pass (3 findings fixed: regex false-positive, misleading
+  P1 log line, backfill over-count).
+
+### Verification pass (2026-06-22) — pre-PR review + fixes
+
+Independent end-to-end verification of all phases before opening the PR to main.
+
+- **Gates re-run green:** `next lint` clean · `tsc --noEmit` clean · 224/224 tests ·
+  `next build` exit 0 (Middleware emitted, route table intact).
+- **Graph contract re-verified live via Lokka** (real "Ugur Koc Lab" tenant,
+  tid ffc10f05-…, app-only client_credentials): `get-auth-status` roles claim =
+  the granted application permissions; `GET /reports/getOffice365ActiveUserDetail(period='D7')`
+  → 200 (CSV/BOM) = the exact `probeReports` call; `GET /subscribedSkus` → 200
+  (fatal directory read works); `GET /admin/reportSettings` → 403 S2SUnauthorized
+  (ReportSettings.Read.All absent) = the absent→degrade contract. Confirms what
+  `verifyMsCredential` and the graceful-degradation paths key on.
+- **Independent `feature-dev:code-reviewer` pass.** Findings triaged and fixed:
+
+  1. **(Critical, fixed) WorkOS-mode workspaces got zero emails.** The leak-alert
+     ([runSync.ts](src/server/sync/runSync.ts)), weekly digest
+     ([digest/route.ts](src/app/api/cron/digest/route.ts)) and monthly report
+     ([report/route.ts](src/app/api/cron/report/route.ts)) recipient queries
+     filtered `isNotNull(memberships.oid)` to mean "has signed in". In WorkOS mode
+     the claimed-membership marker is `workosUserId`, not `oid`, so every owner/admin
+     was excluded and `to` was empty. Changed all three to
+     `or(isNotNull(oid), isNotNull(workosUserId))` — still excludes pending invites
+     (neither set).
+  2. **(Critical, fixed) Unconditional AuthKit middleware would 500 the site in
+     entra mode.** [middleware.ts](src/middleware.ts) wired `authkitMiddleware()`
+     on all non-static routes; `updateSessionMiddleware` throws on every request
+     unless `WORKOS_COOKIE_PASSWORD` (≥32 chars) + a redirect URI are set. An
+     entra-mode prod deploy without WorkOS env vars would have thrown on every
+     page (it only passed dev smoke because `.env.local` carries WorkOS creds).
+     Gated the middleware on `AUTH_PROVIDER`: entra mode now returns
+     `NextResponse.next()` before touching AuthKit, restoring "flag-off = byte-
+     identical entra path".
+  3. **(Non-issue) Entra `auth()` not forwarding WorkOS JWT fields** — the entra
+     and workos `auth()` read different cookies and are dispatched by flag; the
+     entra cookie never carries WorkOS fields, so this is unreachable dead-code
+     territory. Left as-is.
+- **Repo hygiene:** dropped 17 tracked build/screenshot artifacts
+  (`.playwright-cli/`, `output/`) that were accidentally committed and are already
+  in `.gitignore`.
+
+### Rollback runbook
+
+The whole feature is inert until flags flip; rollback is flag-only, no schema
+revert needed (the new column/table are additive and unused by the entra path).
+
+1. **BYO path:** unset `MS_BYO_ENABLED` (or set `false`). The Advanced UI and the
+   `connectMicrosoftByo` action disappear; existing BYO connections keep syncing
+   (resolveMsCredential still reads them). To fully revert a workspace, disconnect
+   it (clears the row + tid) — managed re-consent restores it.
+2. **WorkOS login:** unset `AUTH_PROVIDER` (back to `entra`); the MSAL login +
+   tid-bound connect flow are byte-identical to pre-migration.
+3. **Schema:** leave as-is. `tenants.tid` is nullable and `ms_connections` exists
+   but the entra path never requires either; no destructive migration to undo. If
+   a hard revert is ever required, drop `ms_connections` and re-add NOT NULL on
+   `tenants.tid` only after confirming every tenant has a tid.

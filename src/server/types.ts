@@ -142,6 +142,8 @@ export type AuditAction =
   | "currency_changed"
   | "adobe_connected"
   | "adobe_disconnected"
+  | "microsoft_connected"
+  | "microsoft_disconnected"
   | "connector_connected"
   | "connector_disconnected"
   | "workspace_switched"

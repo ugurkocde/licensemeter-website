@@ -189,3 +189,41 @@ export const connectorSpec = (provider: SaasProvider): ConnectorSpec => {
   if (!spec) throw new Error(`Unknown connector ${provider}`);
   return spec;
 };
+
+/**
+ * Microsoft 365 is the primary connector (the Graph data source itself), not a
+ * generic SaasProvider: it has two setup modes (managed one-click + BYO app
+ * registration) rather than a single credential form, so it lives outside the
+ * CONNECTORS array. Client-safe copy + BYO field placeholders only; the required
+ * application permissions are the single source of truth in ~/lib/scopes.
+ */
+export const MICROSOFT_CONNECTOR = {
+  label: "Microsoft 365",
+  seatNoun: "Microsoft 365 licenses",
+  managedHint:
+    "Recommended. A Global Administrator grants LicenseMeter read-only application permissions once. No credentials are stored on your side, and nothing is ever written to your tenant.",
+  byoHint:
+    "Advanced. Create your own Entra app registration with exactly the read-only permissions below, then paste its credentials. They are stored encrypted and used only for the nightly read-only sync.",
+  detects: [
+    "Licenses assigned to accounts that are disabled in Entra ID.",
+    "Licenses nobody has signed into for your inactivity threshold.",
+    "Overlapping plans and shelfware across your subscribed SKUs.",
+  ],
+  byo: {
+    idFields: [
+      {
+        name: "tid",
+        label: "Directory (tenant) ID",
+        placeholder: "ffc10f05-e837-4803-81b1-7c4dee678c2a",
+      },
+      {
+        name: "appClientId",
+        label: "Application (client) ID",
+        placeholder: "5c61d8c7-4fbf-4779-bbf8-68e37573bdcb",
+      },
+    ],
+    secretPlaceholder: "Client secret value (not the secret ID)",
+    privateKeyPlaceholder: "-----BEGIN PRIVATE KEY-----\n…",
+    certPlaceholder: "-----BEGIN CERTIFICATE-----\n…",
+  },
+} as const;

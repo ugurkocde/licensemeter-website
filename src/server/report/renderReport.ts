@@ -1,7 +1,7 @@
 import { renderToBuffer } from "@react-pdf/renderer";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
-import { fmtDate, fmtMoney } from "~/lib/format";
+import { fmtDate, fmtMoney, workspaceLabel } from "~/lib/format";
 import { RULE_META } from "~/lib/rules";
 import { db } from "~/server/db";
 import { findings, priceBook, tenants, tenantSkus } from "~/server/db/schema";
@@ -62,7 +62,7 @@ export const renderWasteReportPdf = async (
   const buffer = await renderToBuffer(
     WasteReport({
       data: {
-        tenantName: tenant.name ?? tenant.tid,
+        tenantName: workspaceLabel(tenant),
         generatedOn: fmtDate(new Date()),
         monthlySpend: fmtMoney(monthlySpend, currency),
         monthlyWaste: `${fmtMoney(monthlyWaste, currency)}/mo`,

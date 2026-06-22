@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { env, siteUrl } from "~/env";
-import { fmtDate } from "~/lib/format";
+import { fmtDate, workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
 import { memberships, type TenantRow } from "~/server/db/schema";
 import { makeBillingUnsubToken } from "~/server/billingUnsubToken";
@@ -61,7 +61,7 @@ export const sendTrialReminder = async (
   if (!emailEnabled() || !tenant.trialReminders) return false;
   const to = await recipients(tenant.id);
   if (to.length === 0) return false;
-  const name = tenant.name ?? tenant.tid;
+  const name = workspaceLabel(tenant);
   const unsub = billingUnsubscribeUrl(tenant.id);
   return sendEmail({
     to,
@@ -89,7 +89,7 @@ export const sendTrialExpired = async (
   if (!emailEnabled()) return false;
   const to = await recipients(tenant.id);
   if (to.length === 0) return false;
-  const name = tenant.name ?? tenant.tid;
+  const name = workspaceLabel(tenant);
   return sendEmail({
     to,
     from: BILLING_FROM,
@@ -106,7 +106,7 @@ export const sendPaymentFailed = async (
   if (!emailEnabled()) return false;
   const to = await recipients(tenant.id);
   if (to.length === 0) return false;
-  const name = tenant.name ?? tenant.tid;
+  const name = workspaceLabel(tenant);
   return sendEmail({
     to,
     from: BILLING_FROM,
@@ -128,7 +128,7 @@ export const sendSubscriptionConfirmed = async (
   if (!emailEnabled()) return false;
   const to = await recipients(tenant.id);
   if (to.length === 0) return false;
-  const name = tenant.name ?? tenant.tid;
+  const name = workspaceLabel(tenant);
   return sendEmail({
     to,
     from: BILLING_FROM,
@@ -157,7 +157,7 @@ export const sendSeatNudge = async (
   if (!emailEnabled() || !tenant.trialReminders) return false;
   const to = await recipients(tenant.id);
   if (to.length === 0) return false;
-  const name = tenant.name ?? tenant.tid;
+  const name = workspaceLabel(tenant);
   const unsub = billingUnsubscribeUrl(tenant.id);
   return sendEmail({
     to,

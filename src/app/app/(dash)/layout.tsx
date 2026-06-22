@@ -6,6 +6,7 @@ import { EntitlementBanner } from "~/components/workspace/EntitlementBanner";
 import { MobileNav } from "~/components/workspace/MobileNav";
 import { NavLinks } from "~/components/workspace/NavLinks";
 import { WorkspaceSwitcher } from "~/components/workspace/WorkspaceSwitcher";
+import { workspaceLabel } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
 import { signOutAction } from "~/app/auth/actions";
 
@@ -19,7 +20,7 @@ export default async function WorkspaceLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const ctx = await requireAccess("viewer");
-  const tenantName = ctx.tenant.name ?? ctx.tenant.tid;
+  const tenantName = workspaceLabel(ctx.tenant);
 
   return (
     <div className="min-h-screen bg-canvas lg:flex">

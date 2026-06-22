@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { billingEnabled, env } from "~/env";
+import { workspaceLabel } from "~/lib/format";
 import { auth, type Session } from "~/server/auth";
 import { cookieOptions } from "~/server/auth/session";
 import { db } from "~/server/db";
@@ -129,7 +130,7 @@ const resolveEntra = async (
     membership: active.membership,
     workspaces: rows.map((r) => ({
       id: r.tenant.id,
-      name: r.tenant.name ?? r.tenant.tid,
+      name: workspaceLabel(r.tenant),
       role: r.membership.role,
       isDemo: r.tenant.isDemo,
     })),
@@ -209,7 +210,7 @@ const resolveWorkos = async (
     membership: active.membership,
     workspaces: rows.map((r) => ({
       id: r.tenant.id,
-      name: r.tenant.name ?? r.tenant.tid,
+      name: workspaceLabel(r.tenant),
       role: r.membership.role,
       isDemo: r.tenant.isDemo,
     })),

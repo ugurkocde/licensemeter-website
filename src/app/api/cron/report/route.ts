@@ -1,10 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { env, siteUrl } from "~/env";
-import { fmtMoney } from "~/lib/format";
+import { fmtMoney, workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
 import { findings, memberships, tenants, tenantSkus } from "~/server/db/schema";
 import { emailEnabled, reportHtml, sendEmail } from "~/server/email";
@@ -48,7 +48,12 @@ export const GET = async (req: NextRequest) => {
           where: and(
             eq(memberships.tenantId, tenant.id),
             inArray(memberships.role, ["owner", "admin"]),
-            isNotNull(memberships.oid),
+            // Claimed via either provider (entra oid / workos workosUserId);
+            // pending invites have neither and are excluded.
+            or(
+              isNotNull(memberships.oid),
+              isNotNull(memberships.workosUserId),
+            ),
           ),
         }),
         // Cheap emptiness probes: never render a PDF of nothing but zeros.
@@ -79,7 +84,7 @@ export const GET = async (req: NextRequest) => {
         to,
         subject,
         html: reportHtml({
-          tenantName: tenant.name ?? tenant.tid,
+          tenantName: workspaceLabel(tenant),
           monthlySpend: fmtMoney(pdf.monthlySpendCents, tenant.currency),
           monthlyWaste: fmtMoney(pdf.monthlyWasteCents, tenant.currency),
           openFindings: pdf.openFindings,
@@ -92,7 +97,7 @@ export const GET = async (req: NextRequest) => {
       sent++;
     } catch (err) {
       void notifyOps(
-        `monthly report failed for tenant ${tenant.name ?? tenant.tid}: ${err instanceof Error ? err.message : String(err)}`,
+        `monthly report failed for tenant ${workspaceLabel(tenant)}: ${err instanceof Error ? err.message : String(err)}`,
         { key: `report:${tenant.id}`, cooldownMs: 60 * 60 * 1000 },
       );
     }

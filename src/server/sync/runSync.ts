@@ -1,7 +1,7 @@
-import { and, eq, inArray, isNotNull, lt, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, notInArray, or, sql } from "drizzle-orm";
 
 import { siteUrl } from "~/env";
-import { fmtMoney } from "~/lib/format";
+import { fmtMoney, workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
 import {
   adobeConnections,
@@ -9,6 +9,7 @@ import {
   aiSpendDaily,
   findings,
   memberships,
+  msConnections,
   priceBook,
   saasConnections,
   saasSeats as saasSeatsTable,
@@ -32,7 +33,7 @@ import {
 import { decryptSecret } from "~/server/crypto";
 import type { AdobeUser, SaasProvider, SaasSeat } from "~/server/types";
 import { DemoGraphClient } from "~/server/graph/demoGraph";
-import { MsGraphClient } from "~/server/graph/msGraph";
+import { msGraphClientForTenant } from "~/server/graph/msConnection";
 import { skuDefaultPriceCents, skuDisplayName } from "~/server/graph/skuCatalog";
 import {
   PremiumLicenseRequiredError,
@@ -160,7 +161,9 @@ export const runSync = async (
 
   const client: GraphClient =
     clientOverride ??
-    (tenant.isDemo ? new DemoGraphClient() : new MsGraphClient(tenant.tid));
+    (tenant.isDemo
+      ? new DemoGraphClient()
+      : await msGraphClientForTenant(tenant));
 
   // Fail runs stuck in "running" (crashed process) so the lock cannot
   // deadlock. Six minutes: every sync path runs under maxDuration 300s, so a
@@ -251,7 +254,7 @@ export const runSync = async (
             step: "signInActivity",
             status: "skipped",
             message:
-              "Tenant has no Entra ID P1/P2; falling back to usage reports",
+              "Sign-in activity unavailable (no Entra ID P1/P2, or AuditLog.Read.All not granted); falling back to usage reports",
           });
           graphUsers = await client.listUsers({ includeSignInActivity: false });
         } else {
@@ -834,9 +837,31 @@ export const runSync = async (
       .update(syncRuns)
       .set({ status, steps, finishedAt: new Date() })
       .where(eq(syncRuns.id, runId));
+    // The Microsoft connection authenticated and pulled data: clear any prior
+    // credential error and stamp the verification time (no-op for tenants
+    // without an msConnections row).
+    if (!tenant.isDemo) {
+      await db
+        .update(msConnections)
+        .set({ lastVerifiedAt: new Date(), lastVerifyError: null })
+        .where(eq(msConnections.tenantId, tenantId));
+    }
     return { runId, status, steps };
   } catch (err) {
     const message = errText(err);
+    // App-only auth failure (expired/revoked BYO secret or certificate, or
+    // managed re-consent needed): record a clean, non-leaking marker on the
+    // connection so the dashboard can prompt a re-enter, without crashing the
+    // run. The nightly cron catches per-tenant and continues.
+    if (!tenant.isDemo && isAppAuthError(message)) {
+      await db
+        .update(msConnections)
+        .set({
+          lastVerifyError:
+            "Microsoft rejected the stored credential (it may be expired or revoked). Re-enter it on the Microsoft connector page.",
+        })
+        .where(eq(msConnections.tenantId, tenantId));
+    }
     await db
       .update(syncRuns)
       .set({
@@ -847,12 +872,24 @@ export const runSync = async (
       })
       .where(eq(syncRuns.id, runId));
     void notifyOps(
-      `sync FAILED for tenant ${tenant.name ?? tenant.tid}: ${message}`,
+      `sync FAILED for tenant ${workspaceLabel(tenant)}: ${message}`,
       { key: `sync:${tenantId}`, cooldownMs: 30 * 60 * 1000 },
     );
     return { runId, status: "failed", steps };
   }
 };
+
+/**
+ * Whether a sync error is an app-only authentication failure (expired/revoked
+ * credential), not a data error. Matches MSAL/AADSTS token-acquisition codes
+ * only — deliberately not the bare word "certificate", which can appear in
+ * unrelated Graph error bodies (AADSTS700027 already covers cert-credential
+ * failures, "client assertion" the JWT-assertion path).
+ */
+const isAppAuthError = (message: string): boolean =>
+  /AADSTS7000215|AADSTS700027|AADSTS700016|AADSTS7000222|invalid_client|invalid client secret|client assertion|acquire app-only token/i.test(
+    message,
+  );
 
 /**
  * Re-runs the waste analysis from data already in the database, used after
@@ -1103,7 +1140,12 @@ const sendLeakAlert = async (
       where: and(
         eq(memberships.tenantId, tenant.id),
         inArray(memberships.role, ["owner", "admin"]),
-        isNotNull(memberships.oid),
+        // A claimed membership has signed in via either provider: entra sets
+        // oid, workos sets workosUserId. Pending invites have neither.
+        or(
+          isNotNull(memberships.oid),
+          isNotNull(memberships.workosUserId),
+        ),
       ),
     });
     const to = admins.map((m) => m.email).filter(Boolean);
@@ -1114,7 +1156,7 @@ const sendLeakAlert = async (
       to,
       subject: `LicenseMeter: ${leaks.length} new offboarding leak${leaks.length === 1 ? "" : "s"} in ${tenant.name ?? "your tenant"} (+${fmtMoney(totalCents, tenant.currency)}/mo)`,
       html: leakAlertHtml({
-        tenantName: tenant.name ?? tenant.tid,
+        tenantName: workspaceLabel(tenant),
         leakCount: leaks.length,
         totalImpact: fmtMoney(totalCents, tenant.currency),
         items: leaks.slice(0, 10).map((f) => ({
@@ -1126,7 +1168,7 @@ const sendLeakAlert = async (
     });
   } catch (err) {
     void notifyOps(
-      `leak alert failed for tenant ${tenant.name ?? tenant.tid}: ${err instanceof Error ? err.message : String(err)}`,
+      `leak alert failed for tenant ${workspaceLabel(tenant)}: ${err instanceof Error ? err.message : String(err)}`,
       { key: `leakAlert:${tenant.id}`, cooldownMs: 60 * 60 * 1000 },
     );
   }

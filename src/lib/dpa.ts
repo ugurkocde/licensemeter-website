@@ -90,7 +90,9 @@ export type DpaDoc = {
   };
 };
 
-const VERSION = "1.0";
+// 1.1: added WorkOS as a sub-processor (AuthKit sign-in) and the BYO
+// encrypted-credential custody statement to Annex 3.
+const VERSION = "1.1";
 const EFFECTIVE_EN = "22 June 2026";
 const EFFECTIVE_DE = "22. Juni 2026";
 
@@ -457,6 +459,12 @@ const EN: DpaDoc = {
             basis: "EU Standard Contractual Clauses (Microsoft Products and Services DPA)",
           },
           {
+            name: "WorkOS, Inc.",
+            purpose: "Authentication and user identity management (AuthKit sign-in), where enabled",
+            location: "US",
+            basis: "EU Standard Contractual Clauses (WorkOS DPA)",
+          },
+          {
             name: "Stripe (Stripe Payments Europe Ltd. / Stripe, Inc.)",
             purpose: "Billing and subscription management (for paid plans)",
             location: "EU and US",
@@ -472,7 +480,7 @@ const EN: DpaDoc = {
         note: [
           {
             kind: "p",
-            text: "To be distinguished from sub-processors are the optional source systems named in Annex 1 (Adobe, Zoom, Atlassian, Salesforce, OpenAI, Anthropic) and any member lists the Controller imports by CSV (ChatGPT, Claude). The Processor reads from these systems on the Controller's behalf on a read-only basis. They are data sources, not sub-processors of the Processor; no personal data is disclosed to them beyond the authenticated read request.",
+            text: "To be distinguished from sub-processors are the optional source systems named in Annex 1 (Adobe, Zoom, Atlassian, Salesforce, OpenAI, Anthropic) and any member lists the Controller imports by CSV (ChatGPT, Claude). The Processor reads from these systems on the Controller's behalf on a read-only basis. They are data sources, not sub-processors of the Processor; no personal data is disclosed to them beyond the authenticated read request. Where the Controller connects a Microsoft tenant using its own app registration ('bring your own'), the credentials supplied (client secret or certificate private key) are stored encrypted at rest (AES-256-GCM) and used solely to perform the read-only Microsoft Graph sync; they are never logged or disclosed.",
           },
         ],
       },
@@ -883,6 +891,12 @@ const DE: DpaDoc = {
             basis: "EU-Standardvertragsklauseln (Microsoft Products and Services DPA)",
           },
           {
+            name: "WorkOS, Inc.",
+            purpose: "Authentifizierung und Identitätsverwaltung (AuthKit-Anmeldung), soweit aktiviert",
+            location: "USA",
+            basis: "EU-Standardvertragsklauseln (WorkOS DPA)",
+          },
+          {
             name: "Stripe (Stripe Payments Europe Ltd. / Stripe, Inc.)",
             purpose: "Abrechnung und Abonnementverwaltung (bei kostenpflichtigen Plänen)",
             location: "EU und USA",
@@ -898,7 +912,7 @@ const DE: DpaDoc = {
         note: [
           {
             kind: "p",
-            text: "Von den Unterauftragsverarbeitern zu unterscheiden sind die in Anlage 1 genannten optionalen Quellsysteme (Adobe, Zoom, Atlassian, Salesforce, OpenAI, Anthropic) sowie etwaige per CSV importierte Mitgliederlisten (ChatGPT, Claude). Aus diesen Systemen liest der Auftragsverarbeiter im Auftrag des Verantwortlichen ausschließlich lesend. Es handelt sich um Datenquellen, nicht um Unterauftragsverarbeiter des Auftragsverarbeiters; über die authentifizierte Leseanfrage hinaus werden ihnen keine personenbezogenen Daten offengelegt.",
+            text: "Von den Unterauftragsverarbeitern zu unterscheiden sind die in Anlage 1 genannten optionalen Quellsysteme (Adobe, Zoom, Atlassian, Salesforce, OpenAI, Anthropic) sowie etwaige per CSV importierte Mitgliederlisten (ChatGPT, Claude). Aus diesen Systemen liest der Auftragsverarbeiter im Auftrag des Verantwortlichen ausschließlich lesend. Es handelt sich um Datenquellen, nicht um Unterauftragsverarbeiter des Auftragsverarbeiters; über die authentifizierte Leseanfrage hinaus werden ihnen keine personenbezogenen Daten offengelegt. Bindet der Verantwortliche einen Microsoft-Mandanten mit eigener App-Registrierung ein ('Bring your own'), werden die übergebenen Zugangsdaten (Client-Secret oder privater Schlüssel des Zertifikats) verschlüsselt gespeichert (AES-256-GCM) und ausschließlich zur Durchführung der nur lesenden Microsoft-Graph-Synchronisierung verwendet; sie werden niemals protokolliert oder offengelegt.",
           },
         ],
       },

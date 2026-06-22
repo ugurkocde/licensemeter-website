@@ -1,10 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { and, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, or } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { env, siteUrl } from "~/env";
-import { fmtMoney } from "~/lib/format";
+import { fmtMoney, workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
 import {
   aiSpendDaily,
@@ -74,7 +74,12 @@ export const GET = async (req: NextRequest) => {
             where: and(
               eq(memberships.tenantId, tenant.id),
               inArray(memberships.role, ["owner", "admin"]),
-              isNotNull(memberships.oid),
+              // Claimed via either provider (entra oid / workos workosUserId);
+              // pending invites have neither and are excluded.
+              or(
+                isNotNull(memberships.oid),
+                isNotNull(memberships.workosUserId),
+              ),
             ),
           }),
           db.query.findings.findMany({
@@ -131,7 +136,7 @@ export const GET = async (req: NextRequest) => {
         aiSpendLine = `AI API spend last 7 days: ${fmtMoney(last7Cents, "USD")}${vsPrior}, billed in USD.`;
       }
       const tenantLabel = tenant.name ?? "your tenant";
-      const tenantName = tenant.name ?? tenant.tid;
+      const tenantName = workspaceLabel(tenant);
 
       if (open.length === 0) {
         // All clear, but only for tenants that actually synced recently.
@@ -215,7 +220,7 @@ export const GET = async (req: NextRequest) => {
       sent++;
     } catch (err) {
       void notifyOps(
-        `digest failed for tenant ${tenant.name ?? tenant.tid}: ${err instanceof Error ? err.message : String(err)}`,
+        `digest failed for tenant ${workspaceLabel(tenant)}: ${err instanceof Error ? err.message : String(err)}`,
         { key: `digest:${tenant.id}`, cooldownMs: 60 * 60 * 1000 },
       );
     }

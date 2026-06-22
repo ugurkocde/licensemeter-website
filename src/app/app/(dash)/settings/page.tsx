@@ -11,7 +11,7 @@ import { RenewalDateForm } from "~/components/workspace/RenewalDateForm";
 import { TrialRemindersToggle } from "~/components/workspace/TrialRemindersToggle";
 import { RoleSelect } from "~/components/workspace/RoleSelect";
 import { Button, Card, Pill } from "~/components/ui";
-import { fmtDate, fmtDateTime } from "~/lib/format";
+import { fmtDate, fmtDateTime, workspaceLabel } from "~/lib/format";
 import { ROLE_DESCRIPTION } from "~/lib/roles";
 import { hasRole, inviteExpiry, requireAccess } from "~/server/access";
 import { setInactiveDays } from "~/server/actions";
@@ -20,6 +20,7 @@ import {
   adobeConnections,
   auditLog,
   memberships,
+  msConnections,
   saasConnections,
   saasSeats,
   syncRuns,
@@ -66,7 +67,7 @@ export default async function SettingsPage() {
   const isOwner = hasRole(ctx, "owner");
   const inviteEmailsActive = emailEnabled() && !ctx.tenant.isDemo;
 
-  const [members, runs, activity, adobeConn, saasConns, importedSeats] =
+  const [members, runs, activity, msConn, adobeConn, saasConns, importedSeats] =
     await Promise.all([
       db.query.memberships.findMany({
         where: eq(memberships.tenantId, ctx.tenant.id),
@@ -83,6 +84,9 @@ export default async function SettingsPage() {
             limit: 30,
           })
         : Promise.resolve([]),
+      db.query.msConnections.findFirst({
+        where: eq(msConnections.tenantId, ctx.tenant.id),
+      }),
       db.query.adobeConnections.findFirst({
         where: eq(adobeConnections.tenantId, ctx.tenant.id),
       }),
@@ -97,6 +101,7 @@ export default async function SettingsPage() {
         .groupBy(saasSeats.provider),
     ]);
 
+  const msConnected = Boolean(msConn);
   const statusOf = (connected: boolean) =>
     ctx.tenant.isDemo
       ? "Connected with demo data"
@@ -104,6 +109,12 @@ export default async function SettingsPage() {
         ? "Connected"
         : "Not connected";
   const connectorRows = [
+    {
+      label: "Microsoft 365",
+      href: "/app/settings/microsoft",
+      connected: msConnected,
+      status: statusOf(msConnected),
+    },
     {
       label: "Adobe",
       href: "/app/settings/adobe",
@@ -444,7 +455,7 @@ export default async function SettingsPage() {
 
         {isOwner && !ctx.tenant.isDemo && (
           <DangerZone
-            tenantName={ctx.tenant.name ?? ctx.tenant.tid}
+            tenantName={workspaceLabel(ctx.tenant)}
             activeSubscription={ctx.tenant.subscriptionStatus === "active"}
           />
         )}

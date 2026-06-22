@@ -35,8 +35,13 @@ export const tenants = pgTable(
   "tenants",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    /** Entra tenant id (tid claim). */
-    tid: text("tid").notNull(),
+    /**
+     * Entra tenant id (tid claim). Nullable since Phase C: a WorkOS-auth
+     * workspace exists (bills, adds non-Microsoft connectors) before any
+     * Microsoft tenant is connected. Set when an msConnections row is added
+     * (managed callback or BYO save); the Graph auth key, not the workspace key.
+     */
+    tid: text("tid"),
     name: text("name"),
     currency: text("currency").notNull().default("EUR"),
     /**
@@ -85,7 +90,11 @@ export const tenants = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("tenants_tid_idx").on(t.tid),
+    // Partial-unique: one workspace per connected Entra tenant, but many
+    // workspaces may have a null tid (not yet connected to Microsoft).
+    uniqueIndex("tenants_tid_idx")
+      .on(t.tid)
+      .where(sql`${t.tid} is not null`),
     // One workspace per WorkOS Organization (when workos auth is live).
     uniqueIndex("tenants_workos_org_idx")
       .on(t.workosOrgId)
@@ -100,6 +109,57 @@ export const tenants = pgTable(
 
 /** A full tenant row, for code that passes tenants around by value. */
 export type TenantRow = typeof tenants.$inferSelect;
+
+/**
+ * One row per workspace that has a Microsoft 365 connection. Decouples the
+ * Microsoft tenant (the Graph data connector) from the workspace identity:
+ *
+ *  - mode='managed': admin-consent to LicenseMeter's central multi-tenant app;
+ *    authenticates with the env CONNECTOR_CLIENT_ID/SECRET keyed by tid. No
+ *    per-workspace credentials are stored.
+ *  - mode='byo': the customer's own Entra app registration. The client secret
+ *    OR the certificate private key (PEM) is stored AES-256-GCM encrypted at
+ *    rest (same AUTH_SECRET-derived helper as adobe/saas connections).
+ *
+ * Both modes feed the same sync pipeline; appClientForTenant branches on mode.
+ */
+export const msConnections = pgTable(
+  "ms_connections",
+  {
+    tenantId: uuid("tenant_id")
+      .primaryKey()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    mode: text("mode").$type<"managed" | "byo">().notNull(),
+    /** Entra tenant id (tid) this connection authenticates against. */
+    tid: text("tid").notNull(),
+    /** BYO only: the customer's app (client) id. Null for managed (uses env). */
+    appClientId: text("app_client_id"),
+    /** BYO only: 'secret' or 'cert'. Null for managed. */
+    credType: text("cred_type").$type<"secret" | "cert">(),
+    /** BYO only: AES-256-GCM of the client secret OR certificate private key. */
+    secretEnc: text("secret_enc"),
+    /** BYO/cert only: certificate thumbprint (hex), needed by MSAL clientCertificate. */
+    certThumbprint: text("cert_thumbprint"),
+    /** BYO/secret only: client-secret expiry, for the pre-expiry warning. */
+    secretExpiresAt: timestamp("secret_expires_at", { withTimezone: true }),
+    /** Last successful test-connection (roles-claim check). */
+    lastVerifiedAt: timestamp("last_verified_at", { withTimezone: true }),
+    /** Last test-connection / app-only auth failure, redacted; null when healthy. */
+    lastVerifyError: text("last_verify_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check("ms_connections_mode_check", sql`${t.mode} in ('managed', 'byo')`),
+    // One Microsoft tenant belongs to at most one workspace: the atomic
+    // backstop behind the application-level steal guard in connectMicrosoftByo.
+    uniqueIndex("ms_connections_tid_idx").on(t.tid),
+  ],
+);
+
+/** A full Microsoft connection row, passed around by value. */
+export type MsConnectionRow = typeof msConnections.$inferSelect;
 
 /** Who may sign in to which tenant workspace, and as what. */
 export const memberships = pgTable(

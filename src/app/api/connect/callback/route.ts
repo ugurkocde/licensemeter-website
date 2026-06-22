@@ -3,7 +3,12 @@ import { redirect } from "next/navigation";
 import { after, type NextRequest } from "next/server";
 
 import { db } from "~/server/db";
-import { consentStates, memberships, tenants } from "~/server/db/schema";
+import {
+  consentStates,
+  memberships,
+  msConnections,
+  tenants,
+} from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
 import { runSync } from "~/server/sync/runSync";
 
@@ -83,6 +88,27 @@ export const GET = async (req: NextRequest) => {
       .set({ consentedAt: new Date() })
       .where(eq(tenants.id, tenantId));
   }
+
+  // Record the Microsoft connection as a managed connector (mode='managed').
+  // Idempotent on reconnect; switching a BYO workspace back to managed clears
+  // the per-workspace credential columns so the sync uses the central env app.
+  await db
+    .insert(msConnections)
+    .values({ tenantId, mode: "managed", tid: grantedTid! })
+    .onConflictDoUpdate({
+      target: msConnections.tenantId,
+      set: {
+        mode: "managed",
+        tid: grantedTid!,
+        appClientId: null,
+        credType: null,
+        secretEnc: null,
+        certThumbprint: null,
+        secretExpiresAt: null,
+        lastVerifiedAt: new Date(),
+        lastVerifyError: null,
+      },
+    });
 
   // Bind the initiator as owner using whichever identity the nonce carries:
   // workosUserId for WorkOS sign-ins, oid for entra. Only the matching column

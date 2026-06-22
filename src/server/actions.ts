@@ -1,5 +1,7 @@
 "use server";
 
+import { X509Certificate } from "node:crypto";
+
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
@@ -20,6 +22,7 @@ import {
   emailSignups,
   findings,
   memberships,
+  msConnections,
   priceBook,
   saasConnections,
   saasSeats,
@@ -31,6 +34,7 @@ import {
   parsePriceValue,
 } from "~/app/app/(dash)/licenses/parsePrices";
 import { UmapiClient } from "~/server/adobe/client";
+import { verifyMsCredential, type MsCredential } from "~/server/graph/msGraph";
 import {
   buildSaasClient,
   isImportProvider,
@@ -39,12 +43,13 @@ import {
 import { parseMembers } from "~/server/saas/parseMembers";
 import { normalizeSalesforceOrgRef } from "~/server/saas/salesforce";
 import { connectorSpec } from "~/lib/connectors";
+import { workspaceLabel } from "~/lib/format";
 import { encryptSecret } from "~/server/crypto";
 import { emailEnabled, inviteHtml, sendEmail } from "~/server/email";
 import { notifyOps } from "~/server/ops";
 import { clientIp, rateLimit } from "~/server/rateLimit";
 import { maybeSendWelcome } from "~/server/welcome";
-import { billingEnabled, siteUrl } from "~/env";
+import { billingEnabled, byoConnectorEnabled, siteUrl } from "~/env";
 import { teardownTenantBilling } from "~/server/stripe";
 import { runAnalysis, runSync } from "~/server/sync/runSync";
 import type { MembershipRole } from "~/server/types";
@@ -307,7 +312,7 @@ export const addMember = async (formData: FormData): Promise<ActionResult> => {
         subject: `${ctx.user.name || ctx.membership.email} invited you to LicenseMeter (${ctx.tenant.name ?? "workspace"})`,
         html: inviteHtml({
           inviterName: ctx.user.name || ctx.membership.email,
-          tenantName: ctx.tenant.name ?? ctx.tenant.tid,
+          tenantName: workspaceLabel(ctx.tenant),
           role,
           appUrl: siteUrl(),
         }),
@@ -358,7 +363,7 @@ export const resendInvite = async (
         subject: `${ctx.user.name || ctx.membership.email} invited you to LicenseMeter (${ctx.tenant.name ?? "workspace"})`,
         html: inviteHtml({
           inviterName: ctx.user.name || ctx.membership.email,
-          tenantName: ctx.tenant.name ?? ctx.tenant.tid,
+          tenantName: workspaceLabel(ctx.tenant),
           role: target.role,
           appUrl: siteUrl(),
         }),
@@ -769,6 +774,220 @@ export const disconnectSaasConnector = async (
       ),
     );
   await audit(ctx, "connector_disconnected", { provider });
+  await runAnalysis(ctx.tenant.id);
+  revalidateApp();
+  return ok();
+};
+
+/** GUID shape for tenant/app ids (lenient case). */
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type MsConnectResult =
+  | {
+      ok: true;
+      /** Non-blocking note, e.g. the live Reports API probe did not respond. */
+      warning?: string;
+    }
+  | {
+      ok: false;
+      error: string;
+      /** Per-permission red/green rows when consent is incomplete. */
+      checklist?: { scope: string; granted: boolean }[];
+    };
+
+/**
+ * BYO Microsoft connector: validate the customer's own Entra app registration
+ * credentials (client secret OR certificate), test-connection via the token's
+ * roles claim, and store them encrypted. The secret / certificate private key
+ * is never logged, returned, or echoed; only a clean message reaches the client.
+ */
+export const connectMicrosoftByo = async (
+  formData: FormData,
+): Promise<MsConnectResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return { ok: false, error: "Not allowed" };
+  if (!byoConnectorEnabled())
+    return { ok: false, error: "The bring-your-own connector path is not enabled." };
+  if (ctx.tenant.isDemo)
+    return { ok: false, error: "The demo workspace ships with demo Microsoft data" };
+
+  const read = (name: string) => {
+    const v = formData.get(name);
+    return typeof v === "string" ? v.trim() : "";
+  };
+  const tid = read("tid");
+  const appClientId = read("appClientId");
+  const credType = read("credType");
+  if (!tid || !appClientId)
+    return { ok: false, error: "Tenant ID and Application ID are required" };
+  if (!GUID.test(tid) || !GUID.test(appClientId))
+    return { ok: false, error: "Tenant ID and Application ID must be GUIDs" };
+  if (credType !== "secret" && credType !== "cert")
+    return { ok: false, error: "Choose a credential type" };
+
+  // A given Microsoft tenant belongs to exactly one workspace (the partial-
+  // unique tid index); refuse to silently steal it from another workspace.
+  const tidOwner = await db.query.tenants.findFirst({
+    where: eq(tenants.tid, tid),
+  });
+  if (tidOwner && tidOwner.id !== ctx.tenant.id)
+    return {
+      ok: false,
+      error: "That Microsoft tenant is already connected to another workspace.",
+    };
+
+  let cred: MsCredential;
+  let secretEnc: string;
+  let certThumbprint: string | null = null;
+  let secretExpiresAt: Date | null = null;
+
+  if (credType === "secret") {
+    const secret = read("secret");
+    if (!secret) return { ok: false, error: "Client secret is required" };
+    if (secret.length > 1000)
+      return { ok: false, error: "Client secret is too long" };
+    const expiry = read("secretExpiresAt");
+    if (expiry) {
+      const d = new Date(expiry);
+      if (!Number.isNaN(d.getTime())) secretExpiresAt = d;
+    }
+    cred = { mode: "byo", credType: "secret", tid, clientId: appClientId, secret };
+    secretEnc = encryptSecret(secret);
+  } else {
+    const privateKey = read("privateKey");
+    const certPem = read("cert");
+    if (!privateKey || !certPem)
+      return {
+        ok: false,
+        error: "Both the private key and the certificate (PEM) are required",
+      };
+    try {
+      const x = new X509Certificate(certPem);
+      certThumbprint = x.fingerprint.replace(/:/g, "").toLowerCase();
+      const validTo = new Date(x.validTo);
+      // Treat the cert's own expiry as the credential expiry for warnings.
+      if (!Number.isNaN(validTo.getTime())) secretExpiresAt = validTo;
+    } catch {
+      return { ok: false, error: "The certificate (PEM) could not be parsed" };
+    }
+    cred = {
+      mode: "byo",
+      credType: "cert",
+      tid,
+      clientId: appClientId,
+      privateKey,
+      thumbprint: certThumbprint,
+    };
+    secretEnc = encryptSecret(privateKey);
+  }
+
+  // Test-connection: acquire an app-only token and inspect its roles claim.
+  const verify = await verifyMsCredential(cred);
+  if (!verify.ok) return { ok: false, error: verify.error };
+  if (!verify.complete) {
+    const missing = verify.checklist
+      .filter((c) => !c.granted)
+      .map((c) => c.scope)
+      .join(", ");
+    return {
+      ok: false,
+      error: `Admin consent is missing for: ${missing}. Grant these application permissions and retry.`,
+      checklist: verify.checklist,
+    };
+  }
+
+  const now = new Date();
+  // The connection row and the tid binding move together: a partial write could
+  // leave a stale binding that re-enables sync. The unique indexes on
+  // ms_connections.tid / tenants.tid are the atomic backstop behind the
+  // application-level steal guard above (a concurrent connect to the same tid
+  // loses the race here rather than corrupting state).
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(msConnections)
+        .values({
+          tenantId: ctx.tenant.id,
+          mode: "byo",
+          tid,
+          appClientId,
+          credType,
+          secretEnc,
+          certThumbprint,
+          secretExpiresAt,
+          lastVerifiedAt: now,
+          lastVerifyError: null,
+        })
+        .onConflictDoUpdate({
+          target: msConnections.tenantId,
+          set: {
+            mode: "byo",
+            tid,
+            appClientId,
+            credType,
+            secretEnc,
+            certThumbprint,
+            secretExpiresAt,
+            lastVerifiedAt: now,
+            lastVerifyError: null,
+          },
+        });
+
+      // Bind the Microsoft tenant to the workspace so tid-scoped paths resolve.
+      // consentedAt / trialStartedAt are stamped once, never reset on reconnect.
+      await tx
+        .update(tenants)
+        .set({
+          tid,
+          consentedAt: ctx.tenant.consentedAt ?? now,
+          trialStartedAt: ctx.tenant.trialStartedAt ?? now,
+        })
+        .where(eq(tenants.id, ctx.tenant.id));
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/tid_idx|unique/i.test(message)) {
+      return {
+        ok: false,
+        error:
+          "That Microsoft tenant is already connected to another workspace.",
+      };
+    }
+    throw err;
+  }
+
+  await audit(ctx, "microsoft_connected", { mode: "byo", credType });
+  // First sync runs after the response, like the other connectors.
+  after(() => runSync(ctx.tenant.id));
+  revalidateApp();
+  const warning =
+    verify.reportsProbe && !verify.reportsProbe.ok
+      ? "Connected, but a live test of the usage Reports API did not respond. Usage-based inactivity findings may be limited until it does."
+      : undefined;
+  return { ok: true, warning };
+};
+
+/** Remove the Microsoft connection; the workspace reverts to not-connected. */
+export const disconnectMicrosoft = async (): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo)
+    return fail("The demo workspace ships with demo Microsoft data");
+
+  // Remove the connection and release the tid binding together: a partial
+  // delete that left tenants.tid set would let the managed fallback in
+  // resolveMsCredential silently re-enable sync. Findings auto-resolve on the
+  // next analysis.
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(msConnections)
+      .where(eq(msConnections.tenantId, ctx.tenant.id));
+    await tx
+      .update(tenants)
+      .set({ tid: null, consentedAt: null })
+      .where(eq(tenants.id, ctx.tenant.id));
+  });
+  await audit(ctx, "microsoft_disconnected", {});
   await runAnalysis(ctx.tenant.id);
   revalidateApp();
   return ok();

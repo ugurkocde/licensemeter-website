@@ -244,6 +244,10 @@ export default function SecurityPage() {
             ["Supabase Inc.", "Postgres database, EU (Frankfurt)"],
             ["Microsoft", "Identity platform (sign-in, consent) and Graph API"],
             [
+              "WorkOS, Inc.",
+              "Authentication and user identity (AuthKit sign-in), where enabled, US (EU Standard Contractual Clauses)",
+            ],
+            [
               "Stripe",
               "Billing and subscription management for paid plans, EU and US (EU Standard Contractual Clauses)",
             ],
