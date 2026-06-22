@@ -1,6 +1,13 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
+// WorkOS is the default sign-in; entra is the flag-only opt-out. Mirrors
+// authProvider() below, but evaluated here so the WorkOS credentials become
+// REQUIRED whenever WorkOS is the live provider — a misconfigured production
+// deploy then fails the build instead of 500-ing every page at runtime (the
+// AuthKit middleware throws without a >=32-char cookie password).
+const workosLogin = process.env.AUTH_PROVIDER !== "entra";
+
 export const env = createEnv({
   /**
    * Server-side environment variables schema. The app fails the build on invalid env.
@@ -40,10 +47,10 @@ export const env = createEnv({
     CONNECTOR_CLIENT_SECRET: z.string().optional(),
 
     /**
-     * Which login stack is live. "entra" (default) keeps the original MSAL
-     * sign-in; "workos" routes auth through WorkOS AuthKit (multi-method login).
-     * The connector (app-only Graph access) is unaffected either way — it keys
-     * on the Entra tenant id stored on the tenant row, not on the login.
+     * Which login stack is live. Defaults to "workos" (AuthKit multi-method
+     * sign-in); "entra" is a flag-only opt-out that restores the original MSAL
+     * sign-in. The connector (app-only Graph access) is unaffected either way —
+     * it keys on the Entra tenant id stored on the tenant row, not on the login.
      */
     AUTH_PROVIDER: z.enum(["entra", "workos"]).optional(),
 
@@ -55,14 +62,17 @@ export const env = createEnv({
     MS_BYO_ENABLED: z.enum(["true", "false"]).optional(),
 
     /**
-     * WorkOS AuthKit credentials, read by @workos-inc/authkit-nextjs. Optional
-     * here so entra-mode and demo builds need no WorkOS setup; authProvider()
-     * is the gate. NEXT_PUBLIC_WORKOS_REDIRECT_URI is consumed by the SDK
-     * directly from process.env and is intentionally not validated here.
+     * WorkOS AuthKit credentials, read by @workos-inc/authkit-nextjs. Required
+     * when WorkOS is the live provider (the default) so a deploy missing them
+     * fails fast; optional under the entra opt-out. The cookie password must be
+     * >=32 chars (AuthKit seals the session with it). NEXT_PUBLIC_WORKOS_REDIRECT_URI
+     * is consumed by the SDK directly from process.env and is not validated here.
      */
-    WORKOS_API_KEY: z.string().optional(),
-    WORKOS_CLIENT_ID: z.string().optional(),
-    WORKOS_COOKIE_PASSWORD: z.string().optional(),
+    WORKOS_API_KEY: workosLogin ? z.string().min(1) : z.string().optional(),
+    WORKOS_CLIENT_ID: workosLogin ? z.string().min(1) : z.string().optional(),
+    WORKOS_COOKIE_PASSWORD: workosLogin
+      ? z.string().min(32)
+      : z.string().min(32).optional(),
 
     /**
      * Shared secret protecting /api/cron/* routes (Vercel Cron sends it as a

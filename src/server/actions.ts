@@ -26,8 +26,10 @@ import {
   priceBook,
   saasConnections,
   saasSeats,
+  snapshots,
   tenants,
   tenantSkus,
+  tenantUsers,
 } from "~/server/db/schema";
 import {
   parsePrices,
@@ -283,7 +285,9 @@ export const addMember = async (formData: FormData): Promise<ActionResult> => {
       eq(sql`lower(${memberships.email})`, email),
     ),
   });
-  if (existing?.oid) {
+  // Claimed via either provider (entra oid / workos workosUserId) means the
+  // person has signed in; an invite must not re-role a signed-in member.
+  if (existing?.oid || existing?.workosUserId) {
     return fail("That address is already a member of this workspace");
   }
   if (existing?.role === "owner" && ctx.membership.role !== "owner") {
@@ -345,7 +349,8 @@ export const resendInvite = async (
     ),
   });
   if (!target) return fail("Invite not found");
-  if (target.oid) return fail("This member has already signed in");
+  if (target.oid || target.workosUserId)
+    return fail("This member has already signed in");
   if (!rateLimit(`resend:${ctx.tenant.id}`, 10, 60 * 60 * 1000)) {
     return fail("Too many resends this hour");
   }
@@ -974,7 +979,11 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
   if (ctx.tenant.isDemo)
     return fail("The demo workspace ships with demo Microsoft data");
 
-  // Remove the connection and release the tid binding together: a partial
+  // Remove the connection, release the tid binding, and purge the Microsoft
+  // dataset together. The user/SKU/snapshot rows are the Graph-sourced data the
+  // consent authorized; revoking the connection must remove that PII rather than
+  // leave it (mirrors disconnectAdobe/disconnectSaasConnector clearing their
+  // data). Customer-entered prices (priceBook) are deliberately kept. A partial
   // delete that left tenants.tid set would let the managed fallback in
   // resolveMsCredential silently re-enable sync. Findings auto-resolve on the
   // next analysis.
@@ -982,6 +991,9 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
     await tx
       .delete(msConnections)
       .where(eq(msConnections.tenantId, ctx.tenant.id));
+    await tx.delete(tenantUsers).where(eq(tenantUsers.tenantId, ctx.tenant.id));
+    await tx.delete(tenantSkus).where(eq(tenantSkus.tenantId, ctx.tenant.id));
+    await tx.delete(snapshots).where(eq(snapshots.tenantId, ctx.tenant.id));
     await tx
       .update(tenants)
       .set({ tid: null, consentedAt: null })

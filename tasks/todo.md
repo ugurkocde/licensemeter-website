@@ -465,6 +465,64 @@ the demo sample-tenant are kept and reworked to run under a WorkOS session.
       workos mode. `resolveScanTenant` re-parameterized (MS identity vs actor).
 - [ ] Gates green (lint/tsc/tests/build) + independent review; PR updated.
 
+### Pre-launch full-source audit + fixes (2026-06-22)
+
+Ran a five-area parallel review (auth, onboarding, billing, sync/cron, data
+lifecycle). Fixed the confirmed code bugs, the onboarding rework, and the
+atomicity hardening. Gates green (lint/tsc/224 tests/build) + independent
+re-review of the fixes (all six areas confirmed correct).
+
+**WorkOS oid-parity (the recurring class — Entra `oid` wrongly assumed to mark a
+claimed member):**
+- [billingEmail.ts](src/server/billingEmail.ts) recipients: `or(oid, workosUserId)`
+  — billing emails (trial reminder/expired, payment-failed, sub-confirmed, seat
+  nudge) now reach WorkOS-only tenants. (Earlier fix had covered digest/leak/report
+  but missed this file.)
+- [actions.ts](src/server/actions.ts) addMember/resendInvite "already signed in"
+  guards now check `oid || workosUserId` — a WorkOS member can no longer be
+  re-roled via re-invite.
+
+**Onboarding (WorkOS-default consequences):**
+- CSV trial ([csv/actions.ts](src/app/app/connect/csv/actions.ts)) reworked to
+  accept WorkOS users: resolves/creates the trial workspace by actor
+  (`workosUserId`, `tid` null) instead of requiring a Microsoft tid; rate-limit
+  keyed per-user for WorkOS; create wrapped in a transaction.
+- Connect page ([connect/page.tsx](src/app/app/connect/page.tsx)) gates the
+  "Grant admin consent" and "Run an instant scan" entries on
+  `CONNECTOR_CLIENT_ID` / `AUTH_MICROSOFT_ENTRA_ID_ID` being configured — no more
+  dead-end buttons.
+
+**Data lifecycle / hygiene:**
+- `disconnectMicrosoft` now purges `tenantUsers`/`tenantSkus`/`snapshots` in its
+  transaction (Microsoft PII removed when consent is revoked; prices kept).
+- `errText` ([runSync.ts](src/server/sync/runSync.ts)) logs only `err.message`
+  (no full MSAL error object → no credential leakage to logs).
+
+**Atomicity:**
+- Managed consent callback ([connect/callback](src/app/api/connect/callback/route.ts)):
+  nonce consumed atomically (`UPDATE … WHERE used_at IS NULL RETURNING`), and the
+  tenant + msConnections + membership writes wrapped in one transaction.
+- `resolveScanTenant` ([scan.ts](src/server/scan.ts)) create-branch and
+  `diffFindings` ([runSync.ts](src/server/sync/runSync.ts)) wrapped in transactions.
+
+**Config fail-fast:**
+- [env.js](src/env.js): `WORKOS_API_KEY`/`WORKOS_CLIENT_ID`/`WORKOS_COOKIE_PASSWORD`
+  (≥32) are now REQUIRED when WorkOS is the live provider (the default), so a
+  misconfigured deploy fails the build instead of 500-ing at runtime. Tests opt
+  out via `SKIP_ENV_VALIDATION` in vitest.config.ts.
+
+**Flagged to the user, not code-fixed (config/ops — handle at deploy):**
+- Stripe webhook endpoint API version must match the SDK (`2026-05-27`) or
+  `invoice.paid`/`payment_failed` silently no-op.
+- In-memory rate limiter resets per serverless instance → captureEmail/demo need
+  Vercel WAF or Redis for real protection.
+- `AUTH_SECRET` rotation invalidates all stored connector secrets + sessions —
+  needs an ops runbook.
+- Lower-priority noted: `past_due` + null `paidUntil` edge case; first-sync
+  consent-propagation retry can run long inside `after()`; `resolveWorkos`
+  bulk-links only the active membership; PII tables (`seenSignins`,
+  `consentStates`, `opsAlerts`) lack a TTL/erasure path.
+
 ### Rollback runbook
 
 The whole feature is inert until flags flip; rollback is flag-only, no schema

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { ConnectPoller } from "~/components/workspace/ConnectPoller";
 import { ButtonLink, buttonClass } from "~/components/ui";
+import { env } from "~/env";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
 import { getAccessContext, requireSession } from "~/server/access";
 
@@ -47,6 +48,11 @@ export default async function ConnectPage({
   const sp = await searchParams;
   const status = typeof sp.status === "string" ? sp.status : null;
   const error = typeof sp.error === "string" ? sp.error : null;
+  // Only offer the paths this deployment can actually complete: managed consent
+  // needs the central connector app; the instant scan needs the Entra sign-in
+  // app. The CSV trial is always available. Avoids buttons that dead-end.
+  const connectorConfigured = Boolean(env.CONNECTOR_CLIENT_ID);
+  const scanConfigured = Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID);
 
   // Already connected and syncing finished -> straight to the dashboard.
   // Trial workspaces (consentedAt null, instant scan or CSV) stay: this
@@ -115,10 +121,15 @@ export default async function ConnectPage({
               <Link href="/app" className={buttonClass("primary")}>
                 Back to the demo workspace
               </Link>
-            ) : (
+            ) : connectorConfigured ? (
               <a href="/api/connect/start" className={buttonClass("primary")}>
                 Grant admin consent
               </a>
+            ) : (
+              <span className="text-sm text-ink-soft">
+                One-click managed consent is not enabled on this deployment. Use
+                the instant scan or CSV import below.
+              </span>
             )}
             <span className="text-xs text-ink-faint">
               Signed in as {session.user.upn || session.user.email}
@@ -135,29 +146,31 @@ export default async function ConnectPage({
                 the workspace owner.
               </p>
 
-              <div className="mt-8 border border-line bg-card p-4">
-                <p className="text-sm font-medium text-ink">
-                  Run an instant scan
-                </p>
-                <p className="mt-1 text-sm text-ink-soft">
-                  One-time scan with the same read-only scopes, running with{" "}
-                  <strong className="text-ink">your</strong> permissions while
-                  you are signed in. No standing access, no stored tokens.
-                  Works for Application Administrators and Cloud Application
-                  Administrators, who cannot grant the consent above.
-                </p>
-                <p className="mt-2 text-xs text-ink-faint">
-                  Data quality note: usage-based inactivity detection needs a
-                  reports-capable role (Reports Reader, Global Reader).
-                  Without one, the scan still finds disabled accounts, guests,
-                  shelfware and license overlaps.
-                </p>
-                <div className="mt-3">
-                  <a href="/api/scan/start" className={buttonClass("secondary")}>
+              {scanConfigured && (
+                <div className="mt-8 border border-line bg-card p-4">
+                  <p className="text-sm font-medium text-ink">
                     Run an instant scan
-                  </a>
+                  </p>
+                  <p className="mt-1 text-sm text-ink-soft">
+                    One-time scan with the same read-only scopes, running with{" "}
+                    <strong className="text-ink">your</strong> permissions while
+                    you are signed in. No standing access, no stored tokens.
+                    Works for Application Administrators and Cloud Application
+                    Administrators, who cannot grant the consent above.
+                  </p>
+                  <p className="mt-2 text-xs text-ink-faint">
+                    Data quality note: usage-based inactivity detection needs a
+                    reports-capable role (Reports Reader, Global Reader).
+                    Without one, the scan still finds disabled accounts, guests,
+                    shelfware and license overlaps.
+                  </p>
+                  <div className="mt-3">
+                    <a href="/api/scan/start" className={buttonClass("secondary")}>
+                      Run an instant scan
+                    </a>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="mt-4 border border-line bg-card p-4">
                 <p className="text-sm text-ink-soft">

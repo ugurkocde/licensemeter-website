@@ -85,44 +85,49 @@ export const resolveScanTenant = async (
     return { ok: true, tenantId: existing.id };
   }
 
-  // onConflictDoNothing: two colleagues scanning at the same moment race on
-  // the tid unique index: the loser gets a message, not a 500.
-  const [inserted] = await db
-    .insert(tenants)
-    .values({
-      tid,
-      // Placeholder until the scan reads the real name from /organization.
-      name: ms.upn.split("@")[1] ?? null,
-      consentedAt: null,
-      // Trial clock starts the moment the workspace is created.
-      trialStartedAt: new Date(),
-      concealedNames: false,
-      hasP1: false,
-      activitySignal: "none",
-      copilotSignal: "none",
-    })
-    .onConflictDoNothing()
-    .returning({ id: tenants.id });
-  if (!inserted) return { ok: false, error: "scan_trial_invite" };
+  // The tenant and its owner membership are created together: a crash between
+  // them would leave a tid-bound workspace with no member, which the guard
+  // matrix above would then reject as "ask for an invite" — locking the creator
+  // out of their own workspace. onConflictDoNothing: two colleagues scanning at
+  // the same moment race on the tid unique index; the loser gets a message.
+  return db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(tenants)
+      .values({
+        tid,
+        // Placeholder until the scan reads the real name from /organization.
+        name: ms.upn.split("@")[1] ?? null,
+        consentedAt: null,
+        // Trial clock starts the moment the workspace is created.
+        trialStartedAt: new Date(),
+        concealedNames: false,
+        hasP1: false,
+        activitySignal: "none",
+        copilotSignal: "none",
+      })
+      .onConflictDoNothing()
+      .returning({ id: tenants.id });
+    if (!inserted) return { ok: false, error: "scan_trial_invite" } as const;
 
-  await db
-    .insert(memberships)
-    .values({
-      tenantId: inserted.id,
-      oid: actor.oid ?? null,
-      workosUserId: actor.workosUserId ?? null,
-      email: ms.email ?? ms.upn,
-      name: ms.name ?? null,
-      role: "owner",
-    })
-    .onConflictDoUpdate({
-      target: [memberships.tenantId, memberships.email],
-      set: actor.workosUserId
-        ? { workosUserId: actor.workosUserId, role: "owner" }
-        : { oid: actor.oid, role: "owner" },
-    });
+    await tx
+      .insert(memberships)
+      .values({
+        tenantId: inserted.id,
+        oid: actor.oid ?? null,
+        workosUserId: actor.workosUserId ?? null,
+        email: ms.email ?? ms.upn,
+        name: ms.name ?? null,
+        role: "owner",
+      })
+      .onConflictDoUpdate({
+        target: [memberships.tenantId, memberships.email],
+        set: actor.workosUserId
+          ? { workosUserId: actor.workosUserId, role: "owner" }
+          : { oid: actor.oid, role: "owner" },
+      });
 
-  return { ok: true, tenantId: inserted.id };
+    return { ok: true, tenantId: inserted.id } as const;
+  });
 };
 
 /**

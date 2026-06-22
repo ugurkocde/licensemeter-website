@@ -65,8 +65,10 @@ const chunk = <T>(arr: T[], size: number): T[][] => {
  * members): length-bounded, no stack traces. Full errors go to server logs.
  */
 const errText = (err: unknown): string => {
-  console.error("[sync]", err);
   const message = err instanceof Error ? err.message : String(err);
+  // Log only the message: MSAL/Graph error objects can carry request context
+  // (token request bodies, credentials) that must never reach the logs.
+  console.error("[sync]", message);
   return message.slice(0, 300);
 };
 
@@ -1061,65 +1063,69 @@ const diffFindings = async (
   newFindings: WasteFinding[],
   now: Date,
 ): Promise<InsertedFinding[]> => {
-  const existing = await db.query.findings.findMany({
-    where: eq(findings.tenantId, tenantId),
-  });
-  const existingByKey = new Map(existing.map((f) => [f.dedupeKey, f]));
-  const newByKey = new Map(newFindings.map((f) => [f.dedupeKey, f]));
+  // One transaction so a mid-loop failure can't leave findings half-diffed
+  // (some inserted/reopened, others never resolved) for the tenant.
+  return db.transaction(async (tx) => {
+    const existing = await tx.query.findings.findMany({
+      where: eq(findings.tenantId, tenantId),
+    });
+    const existingByKey = new Map(existing.map((f) => [f.dedupeKey, f]));
+    const newByKey = new Map(newFindings.map((f) => [f.dedupeKey, f]));
 
-  const toInsert = newFindings.filter((f) => !existingByKey.has(f.dedupeKey));
-  let inserted: InsertedFinding[] = [];
-  if (toInsert.length > 0) {
-    inserted = await db
-      .insert(findings)
-      .values(
-        toInsert.map((f) => ({
-          tenantId,
-          dedupeKey: f.dedupeKey,
-          rule: f.rule,
-          graphUserId: f.graphUserId,
-          skuId: f.skuId,
-          title: f.title,
-          detail: f.detail,
-          monthlyImpactCents: f.monthlyImpactCents,
-          status: "open" as const,
-          firstSeenAt: now,
-          lastSeenAt: now,
-        })),
-      )
-      .returning({
-        id: findings.id,
-        rule: findings.rule,
-        title: findings.title,
-        monthlyImpactCents: findings.monthlyImpactCents,
-      });
-  }
-
-  for (const f of existing) {
-    const fresh = newByKey.get(f.dedupeKey);
-    if (fresh) {
-      await db
-        .update(findings)
-        .set({
-          title: fresh.title,
-          detail: fresh.detail,
-          graphUserId: fresh.graphUserId,
-          monthlyImpactCents: fresh.monthlyImpactCents,
-          lastSeenAt: now,
-          ...(f.status === "resolved"
-            ? { status: "open" as const, resolvedAt: null }
-            : {}),
-        })
-        .where(eq(findings.id, f.id));
-    } else if (f.status !== "resolved") {
-      await db
-        .update(findings)
-        .set({ status: "resolved", resolvedAt: now })
-        .where(eq(findings.id, f.id));
+    const toInsert = newFindings.filter((f) => !existingByKey.has(f.dedupeKey));
+    let inserted: InsertedFinding[] = [];
+    if (toInsert.length > 0) {
+      inserted = await tx
+        .insert(findings)
+        .values(
+          toInsert.map((f) => ({
+            tenantId,
+            dedupeKey: f.dedupeKey,
+            rule: f.rule,
+            graphUserId: f.graphUserId,
+            skuId: f.skuId,
+            title: f.title,
+            detail: f.detail,
+            monthlyImpactCents: f.monthlyImpactCents,
+            status: "open" as const,
+            firstSeenAt: now,
+            lastSeenAt: now,
+          })),
+        )
+        .returning({
+          id: findings.id,
+          rule: findings.rule,
+          title: findings.title,
+          monthlyImpactCents: findings.monthlyImpactCents,
+        });
     }
-  }
 
-  return inserted;
+    for (const f of existing) {
+      const fresh = newByKey.get(f.dedupeKey);
+      if (fresh) {
+        await tx
+          .update(findings)
+          .set({
+            title: fresh.title,
+            detail: fresh.detail,
+            graphUserId: fresh.graphUserId,
+            monthlyImpactCents: fresh.monthlyImpactCents,
+            lastSeenAt: now,
+            ...(f.status === "resolved"
+              ? { status: "open" as const, resolvedAt: null }
+              : {}),
+          })
+          .where(eq(findings.id, f.id));
+      } else if (f.status !== "resolved") {
+        await tx
+          .update(findings)
+          .set({ status: "resolved", resolvedAt: now })
+          .where(eq(findings.id, f.id));
+      }
+    }
+
+    return inserted;
+  });
 };
 
 /**

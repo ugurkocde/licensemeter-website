@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 
 import { env, siteUrl } from "~/env";
 import { fmtDate, workspaceLabel } from "~/lib/format";
@@ -35,7 +35,9 @@ const recipients = async (tenantId: string): Promise<string[]> => {
     where: and(
       eq(memberships.tenantId, tenantId),
       inArray(memberships.role, ["owner", "admin"]),
-      isNotNull(memberships.oid),
+      // Claimed via either provider (entra oid / workos workosUserId); pending
+      // invites have neither and are excluded.
+      or(isNotNull(memberships.oid), isNotNull(memberships.workosUserId)),
     ),
     columns: { email: true },
   });

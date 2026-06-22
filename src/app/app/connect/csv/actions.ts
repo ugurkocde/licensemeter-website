@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -78,15 +78,14 @@ export const submitCsvTrial = async (
 ): Promise<CsvTrialResult> => {
   const session = await requireSession();
   const { oid, tid, upn, name, email } = session.user;
+  const workosUserId = session.user.workosUserId;
 
-  // Entra-only flow: it seeds a trial workspace keyed on the signer's own Entra
-  // tenant id. A WorkOS session carries no tid/oid, so reject it here rather
-  // than create a degenerate tid="" tenant (which would also collide on the
-  // tenants_tid unique index). WorkOS users onboard via the Microsoft connector.
-  if (!tid || !oid) {
-    return fail(
-      "The CSV trial needs a Microsoft work account. Use Connect Microsoft instead.",
-    );
+  // Either provider may run the CSV trial. entra keys the workspace on the
+  // signer's Microsoft tenant id (colleagues share one); workos has no Microsoft
+  // tenant, so the trial workspace is keyed on the WorkOS user (a personal
+  // trial — org sharing arrives later with WorkOS organizations).
+  if (!oid && !workosUserId) {
+    return fail("Please sign in again to start a CSV trial.");
   }
 
   // --- Input guards (order: session, sizes, rate limit, parse) ------------
@@ -100,9 +99,10 @@ export const submitCsvTrial = async (
     return fail("Each file must be 5 MB or smaller.");
   }
 
-  // Keyed by tenant, not IP: one organization gets 10 uploads per hour no
-  // matter how many colleagues try.
-  if (!rateLimit(`csvtrial:${tid}`, 10, 60 * 60 * 1000)) {
+  // Keyed by organization (entra tenant) or by user (workos): one uploader gets
+  // 10 uploads per hour either way.
+  const rlKey = tid ? `csvtrial:${tid}` : `csvtrial:ws:${workosUserId}`;
+  if (!rateLimit(rlKey, 10, 60 * 60 * 1000)) {
     return fail("Too many uploads for your organization. Please try again later.");
   }
 
@@ -132,10 +132,24 @@ export const submitCsvTrial = async (
   const typedName =
     typeof orgNameRaw === "string" ? orgNameRaw.trim().slice(0, 200) : "";
 
-  // --- Tenant resolution (tid comes from the session only) ----------------
-  const existing = await db.query.tenants.findFirst({
-    where: eq(tenants.tid, tid),
-  });
+  // --- Tenant resolution --------------------------------------------------
+  // The owner membership is matched/created by whichever identity the session
+  // carries. entra resolves the workspace by Microsoft tenant id (shared across
+  // colleagues); workos has none, so it resolves this user's own non-consented
+  // trial workspace, or creates a fresh tid-less one.
+  const matchActor = oid
+    ? eq(memberships.oid, oid)
+    : eq(memberships.workosUserId, workosUserId!);
+  const existing = tid
+    ? await db.query.tenants.findFirst({ where: eq(tenants.tid, tid) })
+    : (
+        await db
+          .select({ tenant: tenants })
+          .from(memberships)
+          .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
+          .where(and(matchActor, isNull(tenants.consentedAt)))
+          .limit(1)
+      )[0]?.tenant;
 
   // Typed name wins; a re-upload without one keeps the current name; new
   // workspaces default to the dominant UPN domain of the export.
@@ -152,10 +166,7 @@ export const submitCsvTrial = async (
       return fail("The CSV trial is not available for the demo workspace.");
     }
     const membership = await db.query.memberships.findFirst({
-      where: and(
-        eq(memberships.tenantId, existing.id),
-        eq(memberships.oid, oid),
-      ),
+      where: and(eq(memberships.tenantId, existing.id), matchActor),
     });
     if (existing.consentedAt) {
       return fail(
@@ -183,42 +194,50 @@ export const submitCsvTrial = async (
     await db.delete(tenantUsers).where(eq(tenantUsers.tenantId, tenantId));
     await db.delete(tenantSkus).where(eq(tenantSkus.tenantId, tenantId));
   } else {
-    // onConflictDoNothing: two colleagues uploading at the same moment race
-    // on the tid unique index: the loser gets a message, not a 500.
-    const [inserted] = await db
-      .insert(tenants)
-      .values({
-        tid,
-        name: orgName,
-        consentedAt: null,
-        // Trial clock starts the moment the workspace is created.
-        trialStartedAt: new Date(),
-        concealedNames: false,
-        hasP1: false,
-        activitySignal: hasUsage ? "full" : "none",
-        copilotSignal: "none",
-      })
-      .onConflictDoNothing()
-      .returning({ id: tenants.id });
-    if (!inserted) {
+    // Create the workspace and its owner membership together. onConflictDoNothing
+    // guards the entra race (two colleagues, same tid); workos rows have a null
+    // tid (partial-unique index ignores nulls) and never collide.
+    const created = await db.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(tenants)
+        .values({
+          tid: tid ?? null,
+          name: orgName,
+          consentedAt: null,
+          // Trial clock starts the moment the workspace is created.
+          trialStartedAt: new Date(),
+          concealedNames: false,
+          hasP1: false,
+          activitySignal: hasUsage ? "full" : "none",
+          copilotSignal: "none",
+        })
+        .onConflictDoNothing()
+        .returning({ id: tenants.id });
+      if (!inserted) return null;
+      await tx
+        .insert(memberships)
+        .values({
+          tenantId: inserted.id,
+          oid: oid ?? null,
+          workosUserId: workosUserId ?? null,
+          email: email ?? upn,
+          name: name || null,
+          role: "owner",
+        })
+        .onConflictDoUpdate({
+          target: [memberships.tenantId, memberships.email],
+          set: oid
+            ? { oid, role: "owner" }
+            : { workosUserId: workosUserId!, role: "owner" },
+        });
+      return inserted.id;
+    });
+    if (!created) {
       return fail(
         "Someone in your organization created this workspace just now. Ask them for an invite.",
       );
     }
-    tenantId = inserted.id;
-    await db
-      .insert(memberships)
-      .values({
-        tenantId,
-        oid,
-        email: email ?? upn,
-        name: name || null,
-        role: "owner",
-      })
-      .onConflictDoUpdate({
-        target: [memberships.tenantId, memberships.email],
-        set: { oid, role: "owner" },
-      });
+    tenantId = created;
   }
 
   // --- Build the stored shapes --------------------------------------------

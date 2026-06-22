@@ -58,78 +58,90 @@ export const GET = async (req: NextRequest) => {
   if (error) fail("consent_declined");
   if (adminConsent !== "True" || !grantedTid) fail("consent_incomplete");
 
-  await db
+  // Atomically consume the single-use nonce: a concurrent duplicate callback
+  // (double-submit / proxy retry) loses the race here instead of both binding
+  // ownership and starting two first syncs. Declined/expired consent returned
+  // above, so a retriable failure never burns the nonce.
+  const consumed = await db
     .update(consentStates)
     .set({ usedAt: new Date() })
-    .where(eq(consentStates.state, state!));
+    .where(and(eq(consentStates.state, state!), isNull(consentStates.usedAt)))
+    .returning({ state: consentStates.state });
+  if (consumed.length === 0) fail("invalid_state");
 
-  // Upsert the tenant and bind the initiator as owner.
-  const existing = await db.query.tenants.findFirst({
-    where: eq(tenants.tid, grantedTid!),
-  });
-  const tenantId =
-    existing?.id ??
-    (
-      await db
+  // Upsert the tenant, record the managed connection, and bind the initiator as
+  // owner in ONE transaction: a partial write could leave a consented tenant
+  // with no connection row or no owner membership. trialStartedAt is written
+  // once on insert and deliberately NOT on the reconnect UPDATE, so re-running
+  // admin consent cannot reset the 14-day trial clock.
+  const isWorkos = !!stateRow!.workosUserId;
+  let tenantId!: string;
+  await db.transaction(async (tx) => {
+    const existing = await tx.query.tenants.findFirst({
+      where: eq(tenants.tid, grantedTid!),
+    });
+    let id: string;
+    if (existing) {
+      id = existing.id;
+      await tx
+        .update(tenants)
+        .set({ consentedAt: new Date() })
+        .where(eq(tenants.id, id));
+    } else {
+      const [inserted] = await tx
         .insert(tenants)
-        // trialStartedAt is written once here and deliberately NOT on the
-        // reconnect UPDATE below, so re-running admin consent cannot reset the
-        // 14-day trial clock.
         .values({
           tid: grantedTid!,
           consentedAt: new Date(),
           trialStartedAt: new Date(),
         })
-        .returning({ id: tenants.id })
-    )[0]!.id;
-  if (existing) {
-    await db
-      .update(tenants)
-      .set({ consentedAt: new Date() })
-      .where(eq(tenants.id, tenantId));
-  }
+        .returning({ id: tenants.id });
+      id = inserted!.id;
+    }
 
-  // Record the Microsoft connection as a managed connector (mode='managed').
-  // Idempotent on reconnect; switching a BYO workspace back to managed clears
-  // the per-workspace credential columns so the sync uses the central env app.
-  await db
-    .insert(msConnections)
-    .values({ tenantId, mode: "managed", tid: grantedTid! })
-    .onConflictDoUpdate({
-      target: msConnections.tenantId,
-      set: {
-        mode: "managed",
-        tid: grantedTid!,
-        appClientId: null,
-        credType: null,
-        secretEnc: null,
-        certThumbprint: null,
-        secretExpiresAt: null,
-        lastVerifiedAt: new Date(),
-        lastVerifyError: null,
-      },
-    });
+    // Record the Microsoft connection as a managed connector (mode='managed').
+    // Idempotent on reconnect; switching a BYO workspace back to managed clears
+    // the per-workspace credential columns so the sync uses the central env app.
+    await tx
+      .insert(msConnections)
+      .values({ tenantId: id, mode: "managed", tid: grantedTid! })
+      .onConflictDoUpdate({
+        target: msConnections.tenantId,
+        set: {
+          mode: "managed",
+          tid: grantedTid!,
+          appClientId: null,
+          credType: null,
+          secretEnc: null,
+          certThumbprint: null,
+          secretExpiresAt: null,
+          lastVerifiedAt: new Date(),
+          lastVerifyError: null,
+        },
+      });
 
-  // Bind the initiator as owner using whichever identity the nonce carries:
-  // workosUserId for WorkOS sign-ins, oid for entra. Only the matching column
-  // is updated on conflict, so re-consent never clobbers the other provider's id.
-  const isWorkos = !!stateRow!.workosUserId;
-  await db
-    .insert(memberships)
-    .values({
-      tenantId,
-      oid: stateRow!.oid,
-      workosUserId: stateRow!.workosUserId,
-      email: stateRow!.email,
-      name: stateRow!.name,
-      role: "owner",
-    })
-    .onConflictDoUpdate({
-      target: [memberships.tenantId, memberships.email],
-      set: isWorkos
-        ? { workosUserId: stateRow!.workosUserId, role: "owner" }
-        : { oid: stateRow!.oid, role: "owner" },
-    });
+    // Bind the initiator as owner using whichever identity the nonce carries:
+    // workosUserId for WorkOS sign-ins, oid for entra. Only the matching column
+    // is updated on conflict, so re-consent never clobbers the other provider's id.
+    await tx
+      .insert(memberships)
+      .values({
+        tenantId: id,
+        oid: stateRow!.oid,
+        workosUserId: stateRow!.workosUserId,
+        email: stateRow!.email,
+        name: stateRow!.name,
+        role: "owner",
+      })
+      .onConflictDoUpdate({
+        target: [memberships.tenantId, memberships.email],
+        set: isWorkos
+          ? { workosUserId: stateRow!.workosUserId, role: "owner" }
+          : { oid: stateRow!.oid, role: "owner" },
+      });
+
+    tenantId = id;
+  });
 
   // The single most important founder signal there is.
   void notifyOps(
