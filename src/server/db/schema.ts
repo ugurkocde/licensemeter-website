@@ -300,7 +300,10 @@ export const priceBook = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.tenantId, t.skuId] })],
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.skuId] }),
+    check("price_book_monthly_price_nonneg", sql`${t.monthlyPriceCents} >= 0`),
+  ],
 );
 
 export const findings = pgTable(
@@ -330,6 +333,7 @@ export const findings = pgTable(
   (t) => [
     uniqueIndex("findings_tenant_dedupe_idx").on(t.tenantId, t.dedupeKey),
     index("findings_tenant_status_idx").on(t.tenantId, t.status),
+    check("findings_monthly_impact_nonneg", sql`${t.monthlyImpactCents} >= 0`),
   ],
 );
 
@@ -455,7 +459,10 @@ export const aiSpendDaily = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.tenantId, t.provider, t.day, t.category] })],
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.provider, t.day, t.category] }),
+    check("ai_spend_daily_amount_nonneg", sql`${t.amountCents} >= 0`),
+  ],
 );
 
 /** Who did what, per workspace. Cascade-deleted with the tenant (GDPR-clean). */
@@ -512,7 +519,11 @@ export const emailSignups = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [uniqueIndex("email_signups_email_idx").on(t.email)],
+  (t) => [
+    // Case-insensitive uniqueness: one signup per address regardless of the
+    // case it was typed in, so the case-insensitive unsubscribe matches it.
+    uniqueIndex("email_signups_email_idx").on(sql`lower(${t.email})`),
+  ],
 );
 
 /** One row per tenant per day for trend lines. */
@@ -533,7 +544,17 @@ export const snapshots = pgTable(
       .notNull()
       .default({}),
   },
-  (t) => [uniqueIndex("snapshots_tenant_day_idx").on(t.tenantId, t.day)],
+  (t) => [
+    uniqueIndex("snapshots_tenant_day_idx").on(t.tenantId, t.day),
+    check(
+      "snapshots_total_monthly_spend_nonneg",
+      sql`${t.totalMonthlySpendCents} >= 0`,
+    ),
+    check(
+      "snapshots_total_monthly_waste_nonneg",
+      sql`${t.totalMonthlyWasteCents} >= 0`,
+    ),
+  ],
 );
 
 /**
@@ -542,27 +563,41 @@ export const snapshots = pgTable(
  * read-fast mirror. tier/interval are nullable so an unmapped price is never
  * coerced to the cheapest tier.
  */
-export const subscriptions = pgTable("subscriptions", {
-  tenantId: uuid("tenant_id")
-    .primaryKey()
-    .references(() => tenants.id, { onDelete: "cascade" }),
-  stripeSubscriptionId: text("stripe_subscription_id").notNull(),
-  stripeCustomerId: text("stripe_customer_id").notNull(),
-  stripePriceId: text("stripe_price_id").notNull(),
-  tier: text("tier").$type<PlanTier>(),
-  interval: text("interval").$type<PlanInterval>(),
-  status: text("status").$type<SubscriptionStatus>().notNull(),
-  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
-  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
-  /** event.created of the last applied webhook; gates stale out-of-order writes. */
-  lastEventAt: timestamp("last_event_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    tenantId: uuid("tenant_id")
+      .primaryKey()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    stripeSubscriptionId: text("stripe_subscription_id").notNull(),
+    stripeCustomerId: text("stripe_customer_id").notNull(),
+    stripePriceId: text("stripe_price_id").notNull(),
+    tier: text("tier").$type<PlanTier>(),
+    interval: text("interval").$type<PlanInterval>(),
+    status: text("status").$type<SubscriptionStatus>().notNull(),
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    /** event.created of the last applied webhook; gates stale out-of-order writes. */
+    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // One subscriptions row per Stripe subscription: a second tenant pointing
+    // at the same sub is a webhook routing bug, not a silent duplicate. Both
+    // columns are NOT NULL, so a plain unique index suffices (no null collisions).
+    uniqueIndex("subscriptions_stripe_subscription_idx").on(
+      t.stripeSubscriptionId,
+    ),
+    // One Stripe customer maps to at most one subscriptions row, mirroring the
+    // tenants.stripeCustomerId guard.
+    uniqueIndex("subscriptions_stripe_customer_idx").on(t.stripeCustomerId),
+  ],
+);
 
 /**
  * Idempotency ledger for Stripe webhook deliveries. Insert-on-receipt inside

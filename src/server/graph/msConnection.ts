@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 
-import { decryptSecret } from "~/server/crypto";
+import { decryptSecret, secretAad } from "~/server/crypto";
 import { db } from "~/server/db";
 import { msConnections, type TenantRow } from "~/server/db/schema";
 import { MsGraphClient, type MsCredential } from "./msGraph";
@@ -41,7 +41,10 @@ export const resolveMsCredential = async (
       credType: "secret",
       tid: conn.tid,
       clientId: conn.appClientId,
-      secret: decryptSecret(conn.secretEnc),
+      secret: decryptSecret(
+        conn.secretEnc,
+        secretAad(conn.tenantId, "microsoft", "secretEnc"),
+      ),
     };
   }
   if (!conn.certThumbprint) {
@@ -54,7 +57,10 @@ export const resolveMsCredential = async (
     credType: "cert",
     tid: conn.tid,
     clientId: conn.appClientId,
-    privateKey: decryptSecret(conn.secretEnc),
+    privateKey: decryptSecret(
+      conn.secretEnc,
+      secretAad(conn.tenantId, "microsoft", "secretEnc"),
+    ),
     thumbprint: conn.certThumbprint,
   };
 };

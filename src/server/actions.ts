@@ -46,7 +46,7 @@ import { parseMembers } from "~/server/saas/parseMembers";
 import { normalizeSalesforceOrgRef } from "~/server/saas/salesforce";
 import { connectorSpec } from "~/lib/connectors";
 import { workspaceLabel } from "~/lib/format";
-import { encryptSecret } from "~/server/crypto";
+import { encryptSecret, secretAad } from "~/server/crypto";
 import { emailEnabled, inviteHtml, sendEmail } from "~/server/email";
 import { notifyOps } from "~/server/ops";
 import { clientIp, rateLimit } from "~/server/rateLimit";
@@ -628,20 +628,21 @@ export const connectAdobe = async (
     return fail(`Adobe rejected the credentials: ${message.slice(0, 120)}`);
   }
 
+  const adobeAad = secretAad(ctx.tenant.id, "adobe", "clientSecretEnc");
   await db
     .insert(adobeConnections)
     .values({
       tenantId: ctx.tenant.id,
       orgId,
       clientId,
-      clientSecretEnc: encryptSecret(clientSecret),
+      clientSecretEnc: encryptSecret(clientSecret, adobeAad),
     })
     .onConflictDoUpdate({
       target: adobeConnections.tenantId,
       set: {
         orgId,
         clientId,
-        clientSecretEnc: encryptSecret(clientSecret),
+        clientSecretEnc: encryptSecret(clientSecret, adobeAad),
         lastSyncStatus: null,
         lastSyncAt: null,
       },
@@ -728,6 +729,7 @@ export const connectSaasConnector = async (
     );
   }
 
+  const saasAad = secretAad(ctx.tenant.id, provider, "secretEnc");
   await db
     .insert(saasConnections)
     .values({
@@ -735,14 +737,14 @@ export const connectSaasConnector = async (
       provider,
       orgRef,
       clientId,
-      secretEnc: encryptSecret(secret),
+      secretEnc: encryptSecret(secret, saasAad),
     })
     .onConflictDoUpdate({
       target: [saasConnections.tenantId, saasConnections.provider],
       set: {
         orgRef,
         clientId,
-        secretEnc: encryptSecret(secret),
+        secretEnc: encryptSecret(secret, saasAad),
         lastSyncStatus: null,
         lastSyncAt: null,
       },
@@ -872,7 +874,10 @@ export const connectMicrosoftByo = async (
       if (!Number.isNaN(d.getTime())) secretExpiresAt = d;
     }
     cred = { mode: "byo", credType: "secret", tid, clientId: appClientId, secret };
-    secretEnc = encryptSecret(secret);
+    secretEnc = encryptSecret(
+      secret,
+      secretAad(ctx.tenant.id, "microsoft", "secretEnc"),
+    );
   } else {
     const privateKey = read("privateKey");
     const certPem = read("cert");
@@ -898,7 +903,10 @@ export const connectMicrosoftByo = async (
       privateKey,
       thumbprint: certThumbprint,
     };
-    secretEnc = encryptSecret(privateKey);
+    secretEnc = encryptSecret(
+      privateKey,
+      secretAad(ctx.tenant.id, "microsoft", "secretEnc"),
+    );
   }
 
   // Test-connection: acquire an app-only token and inspect its roles claim.

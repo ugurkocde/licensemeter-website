@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { type NextRequest } from "next/server";
 
 import { env } from "~/env";
@@ -84,10 +84,13 @@ export const GET = (req: NextRequest): Response => {
 export const POST = async (req: NextRequest): Promise<Response> => {
   const parsed = parse(req);
   if (!parsed) return invalid();
+  // Match case-insensitively: the HMAC token is computed over the lowercased
+  // email, but stored rows may carry mixed case, so a verbatim match would
+  // silently update 0 rows.
   await db
     .update(emailSignups)
     .set({ unsubscribedAt: new Date() })
-    .where(eq(emailSignups.email, parsed.email));
+    .where(sql`lower(${emailSignups.email}) = lower(${parsed.email})`);
   return page(
     "You are unsubscribed",
     `<p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">

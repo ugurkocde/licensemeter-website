@@ -30,7 +30,7 @@ import {
   SAAS_PROVIDERS,
   type AiSpendClient,
 } from "~/server/saas/registry";
-import { decryptSecret } from "~/server/crypto";
+import { decryptSecret, secretAad } from "~/server/crypto";
 import type { AdobeUser, SaasProvider, SaasSeat } from "~/server/types";
 import { DemoGraphClient } from "~/server/graph/demoGraph";
 import { msGraphClientForTenant } from "~/server/graph/msConnection";
@@ -311,7 +311,10 @@ export const runSync = async (
           : new UmapiClient({
               orgId: adobeConn!.orgId,
               clientId: adobeConn!.clientId,
-              clientSecret: decryptSecret(adobeConn!.clientSecretEnc),
+              clientSecret: decryptSecret(
+                adobeConn!.clientSecretEnc,
+                secretAad(adobeConn!.tenantId, "adobe", "clientSecretEnc"),
+              ),
             });
         adobeRows = await adobeClient.getUsers();
         steps.push({ step: "adobeUsers", status: "ok", count: adobeRows.length });
@@ -368,7 +371,10 @@ export const runSync = async (
           : await buildSaasClient(provider, {
               orgRef: conn!.orgRef,
               clientId: conn!.clientId,
-              secret: decryptSecret(conn!.secretEnc),
+              secret: decryptSecret(
+                conn!.secretEnc,
+                secretAad(conn!.tenantId, conn!.provider, "secretEnc"),
+              ),
             });
         const seats = await saasClient.getSeats();
         saasRows.set(provider, seats);

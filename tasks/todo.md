@@ -1,3 +1,43 @@
+# Review implementation (2026-06-23) — branch: harden/review-implementation — IN PROGRESS
+
+Implementing the full prioritized task list from the multi-agent review. Dependency-ordered
+waves; verify (typecheck + tests) between waves; commit per wave. Baseline (main): tsc clean,
+228/228 tests. Marketing/strategy content tasks (#2/#3/#16/#17) DEFERRED to the very end.
+
+NOTE — #8 RLS is ALREADY in prod via idempotent scripts/db-*.sql (deny-all + licensemeter_app
+app_all policy, loops every table). The review's "no RLS" flag was outdated (scanned only src/).
+Action: verify coverage + document; NOT rewiring the connection layer to per-tenant GUC RLS.
+
+## Wave 0 — Foundation — DONE (tsc + 234 tests green; db:push applied)
+- [x] #22 unique idx subscriptions.stripeSubscriptionId/Customer; `>=0` checks on 5 money cols
+- [x] #23 `lower(email)` expr index + lower() match in /api/unsubscribe
+- [x] #11 crypto AAD `tenantId:provider:column` on all encrypt/decrypt sites + crypto.test.ts (6 tests)
+- [x] #8 RLS verified: scripts/db-*.sql loop ALL public tables (pg_tables) -> new tables auto-covered; intentional app-layer isolation + deny-all backstop. No code change.
+
+## Wave 1 — Billing integrity & data lifecycle
+- [ ] #5 entitlement `incomplete` state -> re-pay CTA; #15 portal buttons + assert config id
+- [ ] #6 failed-teardown durability; #7 delete WorkOS org; #13 audit disconnectTenant
+- [ ] #10 getOrCreateCustomer race; #25 try/catch checkout/portal
+- [ ] #27 delete warning trialing/past_due; #30 notify members; #14 unsubscribe resubscribe; #29 seat-cap UX
+
+## Wave 2 — Connectors / sync / security
+- [ ] #12 salesforce nextRecordsUrl origin re-check; #26 runSync stale threshold; #24 cron observability
+- [ ] #20 connector UX unification; P3: getAllPages cap, Adobe orgId, grantedTid GUID, requireCronAuth, msalApps eviction
+
+## Wave 3 — UX / a11y
+- [ ] #18 SpendChart; #19 remediation rule filter; #28 a11y cluster; empty-state + error page
+
+## Wave 4 — Tests
+- [ ] #9 webhook money-path; verifyIdToken/origin; price round-trip
+
+## Wave 5 — Marketing/strategy (DEFERRED)
+- [ ] #2/#3/#16/#17/#21 + AI-connector distinction + TRIAL_DAYS-derived copy
+
+## Final gate
+- [ ] npm run check + test + build; separate code-reviewer pass
+
+---
+
 # Workspace-first onboarding (2026-06-22) — IN PROGRESS
 
 Decouple sign-in from connecting a service. After WorkOS sign-in the user lands
