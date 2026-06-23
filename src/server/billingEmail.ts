@@ -5,6 +5,7 @@ import { fmtDate, workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
 import { memberships, type TenantRow } from "~/server/db/schema";
 import { makeBillingUnsubToken } from "~/server/billingUnsubToken";
+import { SUPPORT_EMAIL } from "~/lib/support";
 import {
   emailEnabled,
   paymentFailedHtml,
@@ -13,6 +14,7 @@ import {
   subscriptionConfirmedHtml,
   trialExpiredHtml,
   trialReminderHtml,
+  workspaceDeletedHtml,
 } from "~/server/email";
 
 type Tenant = TenantRow;
@@ -30,6 +32,9 @@ export const billingUnsubscribeUrl = (tenantId: string): string => {
 };
 
 /** Owners + admins with a confirmed sign-in: the billing/email recipients. */
+export const workspaceAdminEmails = (tenantId: string): Promise<string[]> =>
+  recipients(tenantId);
+
 const recipients = async (tenantId: string): Promise<string[]> => {
   const rows = await db.query.memberships.findMany({
     where: and(
@@ -142,6 +147,30 @@ export const sendSubscriptionConfirmed = async (
       appUrl: siteUrl(),
       trialEndsAt: trialEndsAt ? fmtDate(trialEndsAt) : undefined,
     }),
+  });
+};
+
+/**
+ * Essential: tell the OTHER owners/admins their workspace was deleted. The
+ * recipient list MUST be resolved by the caller BEFORE the delete (the
+ * memberships cascade-delete with the tenant, so reading them here would come
+ * back empty) and with the actor already excluded. Best-effort by contract —
+ * the caller must not let a send failure block the deletion — so this only
+ * returns whether a send happened and never throws on an empty list.
+ */
+export const sendWorkspaceDeleted = async (
+  tenant: Tenant,
+  actor: string,
+  to: string[],
+): Promise<boolean> => {
+  if (!emailEnabled() || to.length === 0) return false;
+  const name = workspaceLabel(tenant);
+  return sendEmail({
+    to,
+    from: BILLING_FROM,
+    replyTo: SUPPORT_EMAIL,
+    subject: `Workspace deleted — ${name}`,
+    html: workspaceDeletedHtml({ tenantName: name, actor, appUrl: siteUrl() }),
   });
 };
 

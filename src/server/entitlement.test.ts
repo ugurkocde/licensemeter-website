@@ -138,6 +138,46 @@ describe("entitlementOf precedence", () => {
     expect(e.trialDaysLeft).toBeGreaterThan(0);
   });
 
+  it("incomplete status past the trial => incomplete (locked, not generic expired)", () => {
+    const e = entitlementOf(
+      tenant({
+        subscriptionStatus: "incomplete",
+        trialStartedAt: new Date("2026-06-11T00:00:00Z"),
+      }),
+      sub(),
+      now,
+      false,
+    );
+    expect(e).toMatchObject({ state: "incomplete", active: false, locked: true });
+  });
+
+  it("incomplete_expired status past the trial => incomplete (locked)", () => {
+    const e = entitlementOf(
+      tenant({
+        subscriptionStatus: "incomplete_expired",
+        trialStartedAt: new Date("2026-06-11T00:00:00Z"),
+      }),
+      sub(),
+      now,
+      false,
+    );
+    expect(e).toMatchObject({ state: "incomplete", active: false, locked: true });
+  });
+
+  it("incomplete status but still inside the trial => trial access wins", () => {
+    const e = entitlementOf(
+      tenant({
+        subscriptionStatus: "incomplete",
+        trialStartedAt: new Date("2026-06-28T00:00:00Z"),
+      }),
+      sub(),
+      now,
+      false,
+    );
+    expect(e).toMatchObject({ state: "trial", active: true, locked: false });
+    expect(e.trialDaysLeft).toBeGreaterThan(0);
+  });
+
   it("no subscription, trial not started (no connector yet) => full access", () => {
     // trialStartedAt is null until the first service is connected; an empty
     // workspace must not burn trial days while the user explores.

@@ -456,7 +456,9 @@ export default async function SettingsPage() {
         {isOwner && !ctx.tenant.isDemo && (
           <DangerZone
             tenantName={workspaceLabel(ctx.tenant)}
-            activeSubscription={ctx.tenant.subscriptionStatus === "active"}
+            activeSubscription={["active", "trialing", "past_due"].includes(
+              ctx.tenant.subscriptionStatus ?? "",
+            )}
           />
         )}
         {ctx.tenant.isDemo && (

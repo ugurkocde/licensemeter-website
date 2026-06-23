@@ -270,6 +270,36 @@ export const leakAlertHtml = (args: {
   </p>
 </div>`;
 
+/**
+ * Workspace-deleted notice to the remaining owners/admins. Essential
+ * transactional mail: no unsubscribe, sent once on an irreversible deletion so
+ * other admins are not surprised that the data is gone.
+ */
+export const workspaceDeletedHtml = (args: {
+  tenantName: string;
+  /** Who triggered the deletion; shown so admins know it was a human action. */
+  actor: string;
+  appUrl: string;
+}): string => `
+<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
+  ${emailWordmark(args.appUrl)}
+  <h1 style="font-size:22px;font-weight:normal">Workspace deleted: ${escapeHtml(args.tenantName)}</h1>
+  <p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+    The LicenseMeter workspace
+    <strong style="color:#1c1a16">${escapeHtml(args.tenantName)}</strong> was
+    deleted by <strong style="color:#1c1a16">${escapeHtml(args.actor)}</strong>.
+    Every synced record &mdash; users, findings, prices, history &mdash; has been
+    permanently removed and this cannot be undone. Any active subscription was
+    cancelled.
+  </p>
+  <p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+    If this was not expected, reply to this email and we will help.
+  </p>
+  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;margin-top:24px">
+    A required notice about your workspace. Not a marketing email.
+  </p>
+</div>`;
+
 /** Primary call-to-action button, matching the dark wordmark buttons. */
 const ctaButton = (href: string, label: string): string => `
   <p style="margin:24px 0">

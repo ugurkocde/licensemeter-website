@@ -14,11 +14,13 @@ Action: verify coverage + document; NOT rewiring the connection layer to per-ten
 - [x] #11 crypto AAD `tenantId:provider:column` on all encrypt/decrypt sites + crypto.test.ts (6 tests)
 - [x] #8 RLS verified: scripts/db-*.sql loop ALL public tables (pg_tables) -> new tables auto-covered; intentional app-layer isolation + deny-all backstop. No code change.
 
-## Wave 1 — Billing integrity & data lifecycle
-- [ ] #5 entitlement `incomplete` state -> re-pay CTA; #15 portal buttons + assert config id
-- [ ] #6 failed-teardown durability; #7 delete WorkOS org; #13 audit disconnectTenant
-- [ ] #10 getOrCreateCustomer race; #25 try/catch checkout/portal
-- [ ] #27 delete warning trialing/past_due; #30 notify members; #14 unsubscribe resubscribe; #29 seat-cap UX
+## Wave 1 — Billing integrity & data lifecycle — DONE (tsc + lint + 237 tests green)
+- [x] #5 entitlement `incomplete` state (real branch + tests) -> re-pay CTA in BillingActions/Banner/Paywall
+- [x] #15 collapsed dup portal buttons -> "Manage or cancel subscription"; portal route warns if config id unset
+- [x] #6 teardownTenantBilling returns {subscriptionCancelFailed}; disconnectTenant ABORTS delete on cancel failure
+- [x] #7 teardownTenantWorkosOrg (best-effort); #13 durable notifyOps audit (auditLog cascades)
+- [x] #10 getOrCreateCustomer conditional update + re-read; #25 try/catch -> stripe_unavailable 502 (+client copy)
+- [x] #27 delete warning now active/trialing/past_due; #30 sendWorkspaceDeleted to other admins; #14 fresh signup clears unsubscribedAt; #29 verified MspCard shows on 409
 
 ## Wave 2 — Connectors / sync / security
 - [ ] #12 salesforce nextRecordsUrl origin re-check; #26 runSync stale threshold; #24 cron observability

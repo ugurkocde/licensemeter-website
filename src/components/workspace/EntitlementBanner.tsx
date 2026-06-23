@@ -54,19 +54,28 @@ export const EntitlementBanner = ({
     );
   }
 
-  // Soft lock: expired trial or past-due with the grace period exhausted.
-  if (state === "expired" || (state === "past_due" && locked)) {
-    const expired = state === "expired";
+  // Soft lock: incomplete first payment, expired trial, or past-due with the
+  // grace period exhausted. Incomplete gets its own copy and a re-pay CTA so it
+  // never reads as a generic "trial ended".
+  if (state === "incomplete" || state === "expired" || (state === "past_due" && locked)) {
+    const message =
+      state === "incomplete"
+        ? "Your payment didn't complete. Finish paying to restore exports, nightly sync and alerts."
+        : state === "expired"
+          ? "Your trial has ended. Exports, nightly sync and alerts are paused."
+          : "Your payment is past due. Update your card to avoid interruption.";
+    const cta =
+      state === "incomplete"
+        ? "Complete payment"
+        : state === "expired"
+          ? "Subscribe now"
+          : "Update billing";
     return (
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-danger-soft px-5 py-4 text-danger-text">
-        <p className="text-sm font-medium">
-          {expired
-            ? "Your trial has ended. Exports, nightly sync and alerts are paused."
-            : "Your payment is past due. Update your card to avoid interruption."}
-        </p>
+        <p className="text-sm font-medium">{message}</p>
         <div className="flex items-center gap-3">
           {nonOwnerNote("Ask a workspace owner to upgrade.")}
-          {ownerCta(expired ? "Subscribe now" : "Update billing")}
+          {ownerCta(cta)}
         </div>
       </div>
     );

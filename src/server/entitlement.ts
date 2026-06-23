@@ -37,6 +37,7 @@ export type EntitlementState =
   | "paid"
   | "past_due"
   | "trial"
+  | "incomplete"
   | "expired";
 
 export type Entitlement = {
@@ -138,6 +139,14 @@ export function entitlementOf(
   // 6. Still inside the app-managed (no-card) trial.
   if (now.getTime() < trialEndsAt.getTime()) return full("trial");
 
-  // 7. Trial elapsed with no active subscription -> soft lock.
+  // 7. Subscribe attempted but the first payment never cleared. Distinct from a
+  //    plain expired trial so the UI can offer a re-pay path instead of a
+  //    generic "trial ended" message. Reached only past the trial horizon, so
+  //    an in-trial user keeps full access above.
+  if (status === "incomplete" || status === "incomplete_expired") {
+    return lock("incomplete");
+  }
+
+  // 8. Trial elapsed with no active subscription -> soft lock.
   return lock("expired");
 }

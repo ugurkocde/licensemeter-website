@@ -86,6 +86,9 @@ export const BillingActions = ({
         case "billing_disabled":
           setError("Billing is not available yet.");
           break;
+        case "stripe_unavailable":
+          setError("Billing is temporarily unavailable, please try again in a moment.");
+          break;
         case "seats_exceed_self_serve":
           setForcedMsp(true);
           break;
@@ -114,6 +117,11 @@ export const BillingActions = ({
       }
       // No subscription to manage: fall through to the plan picker below.
       if (data.error === "no_subscription") {
+        setBusy(false);
+        return;
+      }
+      if (data.error === "stripe_unavailable") {
+        setError("Billing is temporarily unavailable, please try again in a moment.");
         setBusy(false);
         return;
       }
@@ -159,6 +167,9 @@ export const BillingActions = ({
   if (autoStarting && busy) {
     body = <p className="text-sm text-ink-soft">Starting checkout…</p>;
   } else if (manageable) {
+    // One portal entry point: Stripe's customer portal already exposes plan
+    // changes and cancellation from its home, so a second button landing on the
+    // same place only confused owners.
     body = (
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -167,15 +178,7 @@ export const BillingActions = ({
           disabled={busy}
           className={buttonClass("primary")}
         >
-          Manage billing
-        </button>
-        <button
-          type="button"
-          onClick={openPortal}
-          disabled={busy}
-          className={buttonClass("secondary")}
-        >
-          Change plan
+          Manage or cancel subscription
         </button>
       </div>
     );
@@ -185,9 +188,25 @@ export const BillingActions = ({
     body = (
       <div className="flex flex-col gap-4">
         {state === "incomplete" && (
-          <p className="text-sm text-ink-soft">
-            Your last payment was not completed — choose a plan to try again.
-          </p>
+          <div className="flex flex-col gap-3 rounded-2xl bg-danger-soft px-4 py-3 text-danger-text">
+            <p className="text-sm font-medium">
+              Your payment didn&apos;t complete.
+            </p>
+            <p className="text-sm">
+              Finish paying in the billing portal, or pick a plan below to start
+              a fresh checkout.
+            </p>
+            <div>
+              <button
+                type="button"
+                onClick={openPortal}
+                disabled={busy}
+                className={buttonClass("primary")}
+              >
+                Complete payment
+              </button>
+            </div>
+          </div>
         )}
         {trialInfo && (
           <p className="text-sm text-ink-soft">

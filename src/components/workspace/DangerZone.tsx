@@ -9,8 +9,9 @@ import type { ActionResult } from "~/server/actions";
  * Owner-only workspace deletion behind a type-the-name confirmation: the delete
  * button stays disabled until the workspace name is typed exactly, the strongest
  * guard for an irreversible "delete everything" action. When the workspace has a
- * paid subscription, the copy warns that it is cancelled immediately with no
- * refund for the remaining period.
+ * live subscription (active, trialing or past_due — the same set teardown
+ * cancels), the copy warns that it is cancelled immediately with no refund for
+ * the remaining period.
  */
 export const DangerZone = ({
   tenantName,
@@ -42,7 +43,7 @@ export const DangerZone = ({
           {activeSubscription && (
             <span className="text-danger-text">
               {" "}
-              Your active subscription is cancelled immediately, with no refund
+              Your current subscription is cancelled immediately, with no refund
               for the remaining period.
             </span>
           )}

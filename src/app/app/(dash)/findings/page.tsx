@@ -156,7 +156,7 @@ export default async function FindingsPage({
 
       {locked && (
         <div className="rise rise-2 mt-8">
-          <PaywallCard isOwner={hasRole(ctx, "owner")} />
+          <PaywallCard isOwner={hasRole(ctx, "owner")} state={ctx.entitlement.state} />
         </div>
       )}
 

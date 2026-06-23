@@ -520,9 +520,11 @@ export const emailSignups = pgTable(
       .defaultNow(),
   },
   (t) => [
-    // Case-insensitive uniqueness: one signup per address regardless of the
-    // case it was typed in, so the case-insensitive unsubscribe matches it.
-    uniqueIndex("email_signups_email_idx").on(sql`lower(${t.email})`),
+    // One signup per address. Emails are normalized to lowercase on the only
+    // insert path (captureEmail), so a plain column index is equivalent to a
+    // lower(email) index while staying compatible with onConflict upserts; the
+    // unsubscribe route still matches on lower() to cover any legacy row.
+    uniqueIndex("email_signups_email_idx").on(t.email),
   ],
 );
 

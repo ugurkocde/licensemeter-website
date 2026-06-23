@@ -1,6 +1,6 @@
 import "server-only";
 
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import Stripe from "stripe";
 
 import { env, siteUrl } from "~/env";
@@ -88,12 +88,23 @@ export const getOrCreateCustomer = async (
     { idempotencyKey: `customer-create:${tenant.id}` },
   );
 
-  await db
+  // Race-safe claim: only write when the column is still null, so a concurrent
+  // first-checkout that already set it does not get clobbered. If no row is
+  // updated, that other checkout won the race; re-read and return its customer.
+  // The idempotencyKey above means both calls got the SAME Stripe customer, so
+  // the loser has no orphan to delete.
+  const claimed = await db
     .update(tenants)
     .set({ stripeCustomerId: customer.id })
-    .where(eq(tenants.id, tenant.id));
+    .where(and(eq(tenants.id, tenant.id), isNull(tenants.stripeCustomerId)))
+    .returning({ stripeCustomerId: tenants.stripeCustomerId });
+  if (claimed.length > 0) return customer.id;
 
-  return customer.id;
+  const current = await db.query.tenants.findFirst({
+    where: eq(tenants.id, tenant.id),
+    columns: { stripeCustomerId: true },
+  });
+  return current?.stripeCustomerId ?? customer.id;
 };
 
 /**
@@ -117,17 +128,26 @@ export const knownSeats = async (
 
 /**
  * GDPR teardown for a disconnecting tenant: cancel any live subscription, then
- * delete the Stripe Customer (PII erasure). Best-effort and non-throwing so a
- * Stripe outage never blocks the local data deletion; each failure is logged in
- * ALL environments (console.error) plus an ops alert. Stripe still retains the
- * immutable invoices it is legally required to keep for tax purposes.
+ * delete the Stripe Customer (PII erasure). Non-throwing; each failure is logged
+ * in ALL environments (console.error) plus an ops alert. Stripe still retains
+ * the immutable invoices it is legally required to keep for tax purposes.
+ *
+ * Returns { subscriptionCancelFailed } so the caller can DECIDE: a failed
+ * subscription cancel is a billing-continuation risk (the card keeps being
+ * charged) and must block the local delete, otherwise the row needed to retry
+ * via reconcileTenantSubscription is gone. The customer-PII delete failure stays
+ * best-effort — invoices are retained regardless, so it is not a reason to keep
+ * the workspace alive; it only ops-alerts.
  */
 export const teardownTenantBilling = async (
   tenant: typeof tenants.$inferSelect,
-): Promise<void> => {
-  if (tenant.isDemo || !tenant.stripeCustomerId) return;
+): Promise<{ subscriptionCancelFailed: boolean }> => {
+  if (tenant.isDemo || !tenant.stripeCustomerId) {
+    return { subscriptionCancelFailed: false };
+  }
   const customerId = tenant.stripeCustomerId;
 
+  let subscriptionCancelFailed = false;
   const sub = await db.query.subscriptions.findFirst({
     where: eq(subscriptions.tenantId, tenant.id),
     columns: { stripeSubscriptionId: true, status: true },
@@ -140,12 +160,16 @@ export const teardownTenantBilling = async (
     try {
       await stripe().subscriptions.cancel(sub.stripeSubscriptionId);
     } catch (err) {
+      subscriptionCancelFailed = true;
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`stripe teardown: cancel failed for tenant ${tenant.id}: ${msg}`);
       void notifyOps(`stripe teardown: cancel failed for tenant ${tenant.id}: ${msg}`, {
         key: `stripe-teardown:${tenant.id}`,
         cooldownMs: 3_600_000,
       });
+      // A live subscription is still billing: abort before erasing the customer
+      // so the ids the caller needs to retry the cancel survive.
+      return { subscriptionCancelFailed };
     }
   }
 
@@ -159,6 +183,8 @@ export const teardownTenantBilling = async (
       { key: `stripe-teardown-del:${tenant.id}`, cooldownMs: 3_600_000 },
     );
   }
+
+  return { subscriptionCancelFailed };
 };
 
 /**

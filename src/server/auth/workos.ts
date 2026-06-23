@@ -11,8 +11,13 @@
  * must keep its Entra meaning. No Directory Sync is required.
  */
 import { cookies } from "next/headers";
-import { withAuth, signOut as workosSignOut } from "@workos-inc/authkit-nextjs";
+import {
+  getWorkOS,
+  withAuth,
+  signOut as workosSignOut,
+} from "@workos-inc/authkit-nextjs";
 
+import { notifyOps } from "~/server/ops";
 import { expiredSessionCookie } from "./session";
 import type { Session, SessionUser } from "./session";
 
@@ -54,6 +59,27 @@ export const auth = async (): Promise<Session | null> => {
 export const clearSessionCookie = async (): Promise<void> => {
   (await cookies()).set(expiredSessionCookie());
   await workosSignOut();
+};
+
+/**
+ * GDPR teardown for a disconnecting tenant: delete its WorkOS Organization,
+ * which also removes the IdP/Directory records and memberships WorkOS holds for
+ * it. Best-effort and non-throwing (mirrors teardownTenantBilling): a WorkOS
+ * outage must NOT block the local data deletion — unlike a live subscription
+ * there is no ongoing charge — so a failure only logs and ops-alerts. Reuses the
+ * same lazy WorkOS client AuthKit constructs from WORKOS_API_KEY.
+ */
+export const teardownTenantWorkosOrg = async (orgId: string): Promise<void> => {
+  try {
+    await getWorkOS().organizations.deleteOrganization(orgId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`workos teardown: org delete failed for ${orgId}: ${msg}`);
+    void notifyOps(
+      `workos teardown: org delete failed for ${orgId} (orphaned IdP records): ${msg}`,
+      { key: `workos-teardown:${orgId}`, cooldownMs: 3_600_000 },
+    );
+  }
 };
 
 export type { Session, SessionUser };

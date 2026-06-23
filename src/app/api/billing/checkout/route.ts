@@ -6,6 +6,7 @@ import { MAX_SELF_SERVE_SEATS, parsePlanString } from "~/lib/plans";
 import { apiAccess } from "~/server/access";
 import { audit } from "~/server/audit";
 import { entitlementOf } from "~/server/entitlement";
+import { notifyOps } from "~/server/ops";
 import { getOrCreateCustomer, knownSeats, priceIdFor, stripe } from "~/server/stripe";
 
 export const runtime = "nodejs";
@@ -57,7 +58,18 @@ export const POST = async (req: NextRequest) => {
     );
   }
 
-  const customerId = await getOrCreateCustomer(ctx.tenant, ctx.membership.email);
+  let customerId: string;
+  try {
+    customerId = await getOrCreateCustomer(ctx.tenant, ctx.membership.email);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`stripe checkout: customer setup failed for tenant ${ctx.tenant.id}: ${msg}`);
+    void notifyOps(
+      `stripe checkout: customer setup failed for tenant ${ctx.tenant.id}: ${msg}`,
+      { key: `stripe-checkout:${ctx.tenant.id}`, cooldownMs: 3_600_000 },
+    );
+    return NextResponse.json({ error: "stripe_unavailable" }, { status: 502 });
+  }
   const base = appBaseUrl();
   const tax = taxEnabled();
 
@@ -111,13 +123,24 @@ export const POST = async (req: NextRequest) => {
     params.billing_address_collection = "required";
   }
 
-  const session = await stripe().checkout.sessions.create(params, {
-    // Per-minute bucket: dedupes a double-click / network retry into one
-    // session, but a genuine later retry gets a fresh checkout.
-    idempotencyKey: `checkout:${ctx.tenant.id}:${priceId}:${Math.floor(
-      Date.now() / 60_000,
-    )}`,
-  });
+  let session: Stripe.Checkout.Session;
+  try {
+    session = await stripe().checkout.sessions.create(params, {
+      // Per-minute bucket: dedupes a double-click / network retry into one
+      // session, but a genuine later retry gets a fresh checkout.
+      idempotencyKey: `checkout:${ctx.tenant.id}:${priceId}:${Math.floor(
+        Date.now() / 60_000,
+      )}`,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`stripe checkout: session create failed for tenant ${ctx.tenant.id}: ${msg}`);
+    void notifyOps(
+      `stripe checkout: session create failed for tenant ${ctx.tenant.id}: ${msg}`,
+      { key: `stripe-checkout:${ctx.tenant.id}`, cooldownMs: 3_600_000 },
+    );
+    return NextResponse.json({ error: "stripe_unavailable" }, { status: 502 });
+  }
 
   await audit(ctx, "checkout_started", {
     tier: parsed.tier,

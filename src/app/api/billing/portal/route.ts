@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { appBaseUrl, billingEnabled, env } from "~/env";
 import { apiAccess } from "~/server/access";
 import { audit } from "~/server/audit";
+import { notifyOps } from "~/server/ops";
 import { stripe } from "~/server/stripe";
 
 export const runtime = "nodejs";
@@ -32,11 +33,32 @@ export const POST = async () => {
     customer: ctx.tenant.stripeCustomerId,
     return_url: `${appBaseUrl()}/app/billing`,
   };
+  // The portal configuration MUST allow subscription cancellation for the
+  // self-serve cancel flow to work. When STRIPE_PORTAL_CONFIGURATION_ID is set
+  // it must point at a config with that feature enabled; when it is unset we
+  // fall back to Stripe's account-level default portal config (which may or may
+  // not expose cancel), so warn ops once but still proceed.
   if (env.STRIPE_PORTAL_CONFIGURATION_ID) {
     params.configuration = env.STRIPE_PORTAL_CONFIGURATION_ID;
+  } else {
+    void notifyOps(
+      "stripe portal: STRIPE_PORTAL_CONFIGURATION_ID is unset; falling back to the Stripe default portal config, which may not expose subscription cancellation",
+      { key: "stripe-portal:unconfigured", cooldownMs: 86_400_000 },
+    );
   }
 
-  const session = await stripe().billingPortal.sessions.create(params);
+  let session: Stripe.BillingPortal.Session;
+  try {
+    session = await stripe().billingPortal.sessions.create(params);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`stripe portal: session create failed for tenant ${ctx.tenant.id}: ${msg}`);
+    void notifyOps(
+      `stripe portal: session create failed for tenant ${ctx.tenant.id}: ${msg}`,
+      { key: `stripe-portal:${ctx.tenant.id}`, cooldownMs: 3_600_000 },
+    );
+    return NextResponse.json({ error: "stripe_unavailable" }, { status: 502 });
+  }
   await audit(ctx, "billing_portal_opened", {});
   return NextResponse.json({ url: session.url });
 };
