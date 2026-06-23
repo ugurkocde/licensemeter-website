@@ -22,8 +22,8 @@ export default async function WorkspaceLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const ctx = await requireAccess("viewer");
   const tenantName = workspaceLabel(ctx.tenant);
-  // Self-service account page is WorkOS-only; entra users manage profile in Entra.
-  const accountEnabled = authProvider() === "workos";
+  // Self-service account page is WorkOS-only; demo users have no WorkOS profile.
+  const accountEnabled = authProvider() === "workos" && !ctx.user.isDemo;
   // MSP nav appears only when MSP quantity-billing is configured (mirrors how
   // the route + checkout/portal gate on mspEnabled).
   const showMsp = mspEnabled();
