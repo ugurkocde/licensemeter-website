@@ -34,8 +34,10 @@ Action: verify coverage + document; NOT rewiring the connection layer to per-ten
 - [x] #28 progressbar on UtilizationBar; sr-only data tables on charts; WorkspaceSwitcher disabled; MobileNav inert; nav aria-labels; faq dl labelledby; sidebar-soft contrast; opacity-faint text fixed; error page danger treatment
 - [x] EmptyState primitive + applied to findings empty states
 
-## Wave 4 — Tests
-- [ ] #9 webhook money-path; verifyIdToken/origin; price round-trip
+## Wave 4 — Tests — DONE (tsc + lint + 283 tests + build green)
+- [x] #9 webhook money-path: 17 integration tests (in-mem PGlite + mocked stripe), no prod change
+- [x] verifyEntraIdToken (issuer/aud/alg pinning, jose mocked) + isSameOrigin tests
+- [x] priceIdFor<->planFromPriceId round-trip + parsePlanString rejection cases (34 tests total)
 
 ## Wave 5 — Marketing/strategy (DEFERRED)
 - [ ] #2/#3/#16/#17/#21 + AI-connector distinction + TRIAL_DAYS-derived copy
