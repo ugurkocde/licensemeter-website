@@ -1,9 +1,7 @@
-import { timingSafeEqual } from "node:crypto";
-
 import { desc, eq } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { billingEnabled, env } from "~/env";
+import { billingEnabled } from "~/env";
 import { fmtMoney } from "~/lib/format";
 import { planByTier, seatNudge } from "~/lib/plans";
 import {
@@ -18,18 +16,12 @@ import { entitlementOf, type Entitlement } from "~/server/entitlement";
 import { notifyOps } from "~/server/ops";
 import { reconcileTenantSubscription } from "~/server/stripe";
 import type { ReminderStage } from "~/server/types";
+import { requireCronAuth } from "~/server/cronAuth";
 
 export const maxDuration = 300;
 
 /** A paid tenant gets at most one seat-band nudge per tier this often. */
 const SEAT_NUDGE_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
-
-/** Constant-time bearer check; a length mismatch is false, never a throw. */
-const authorized = (req: NextRequest, secret: string): boolean => {
-  const given = Buffer.from(req.headers.get("authorization") ?? "");
-  const expected = Buffer.from(`Bearer ${secret}`);
-  return given.length === expected.length && timingSafeEqual(given, expected);
-};
 
 /** Which reminder, if any, is due today for this entitlement. */
 const stageFor = (e: Entitlement): ReminderStage | null => {
@@ -48,9 +40,8 @@ const stageFor = (e: Entitlement): ReminderStage | null => {
  * gets fresh reminders, and the row is written only after a successful send.
  */
 export const GET = async (req: NextRequest) => {
-  if (!env.CRON_SECRET || !authorized(req, env.CRON_SECRET)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const denied = requireCronAuth(req);
+  if (denied) return denied;
   if (!billingEnabled()) {
     return NextResponse.json({ skipped: "billing disabled" });
   }

@@ -10,6 +10,8 @@ import {
   SaasConnectForm,
   SaasDisconnectButton,
 } from "~/components/workspace/SaasConnectForm";
+import { ConnectPoller } from "~/components/workspace/ConnectPoller";
+import { SyncNowButton } from "~/components/workspace/SyncNowButton";
 import { Card } from "~/components/ui";
 import { connectorSpec } from "~/lib/connectors";
 import { fmtDate } from "~/lib/format";
@@ -134,31 +136,41 @@ export const SaasConnectorPage = async ({
               {isAdmin && <ImportSeatsForm spec={spec} />}
             </div>
           ) : conn ? (
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="text-sm">
-                <div className="font-medium">
-                  Connected: {seatCount} {spec.seatNoun}
-                </div>
-                <div className="mt-0.5 text-xs text-ink-soft">
-                  {showOrgRef && (
-                    <>
-                      <span className="break-all">{conn.orgRef}</span> ·{" "}
-                    </>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="text-sm">
+                  <div className="font-medium">
+                    Connected: {seatCount} {spec.seatNoun}
+                  </div>
+                  <div className="mt-0.5 text-xs text-ink-soft">
+                    {showOrgRef && (
+                      <>
+                        <span className="break-all">{conn.orgRef}</span> ·{" "}
+                      </>
+                    )}
+                    {conn.lastSyncAt
+                      ? `last sync ${fmtDate(conn.lastSyncAt)} (${conn.lastSyncStatus ?? "pending"})`
+                      : "first sync pending"}
+                  </div>
+                  {conn.lastSyncStatus === "failed" && (
+                    <p className="mt-2 max-w-md text-xs text-danger-text">
+                      The last sync could not reach {spec.label}. Findings are
+                      based on the previous snapshot. If the credentials were
+                      changed or revoked, disconnect and reconnect with fresh
+                      values.
+                    </p>
                   )}
-                  {conn.lastSyncAt
-                    ? `last sync ${fmtDate(conn.lastSyncAt)} (${conn.lastSyncStatus ?? "pending"})`
-                    : "first sync pending"}
                 </div>
-                {conn.lastSyncStatus === "failed" && (
-                  <p className="mt-2 max-w-md text-xs text-danger-text">
-                    The last sync could not reach {spec.label}. Findings are
-                    based on the previous snapshot. If the credentials were
-                    changed or revoked, disconnect and reconnect with fresh
-                    values.
-                  </p>
+                {isAdmin && (
+                  <div className="flex items-center gap-3">
+                    <SyncNowButton />
+                    <SaasDisconnectButton spec={spec} />
+                  </div>
                 )}
               </div>
-              {isAdmin && <SaasDisconnectButton spec={spec} />}
+              {/* First sync hasn't landed yet: poll until it does, matching the
+                  Microsoft connector's post-connect experience. */}
+              {!conn.lastSyncAt && <ConnectPoller />}
             </div>
           ) : isAdmin ? (
             <div className="flex flex-col gap-3">

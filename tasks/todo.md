@@ -22,9 +22,11 @@ Action: verify coverage + document; NOT rewiring the connection layer to per-ten
 - [x] #10 getOrCreateCustomer conditional update + re-read; #25 try/catch -> stripe_unavailable 502 (+client copy)
 - [x] #27 delete warning now active/trialing/past_due; #30 sendWorkspaceDeleted to other admins; #14 fresh signup clears unsubscribedAt; #29 verified MspCard shows on 409
 
-## Wave 2 — Connectors / sync / security
-- [ ] #12 salesforce nextRecordsUrl origin re-check; #26 runSync stale threshold; #24 cron observability
-- [ ] #20 connector UX unification; P3: getAllPages cap, Adobe orgId, grantedTid GUID, requireCronAuth, msalApps eviction
+## Wave 2 — Connectors / sync / security — DONE (tsc + lint + 237 tests green)
+- [x] #12 salesforce nextRecordsUrl origin re-check; #26 runSync STALE_RUN_MS 6->20min
+- [x] #24 cronAuth helper (notifyOps on unset secret, secure default) + cron/sync notifyOps parity
+- [x] #20 SaaS connector pages: SyncNowButton + ConnectPoller on first-sync-pending; guide-link consistent
+- [x] P3: getAllPages MAX_PAGES cap; msalApps LRU+TTL; Adobe orgId charset+encodeURIComponent; grantedTid GUID check
 
 ## Wave 3 — UX / a11y
 - [ ] #18 SpendChart; #19 remediation rule filter; #28 a11y cluster; empty-state + error page

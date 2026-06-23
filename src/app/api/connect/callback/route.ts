@@ -24,6 +24,13 @@ export const maxDuration = 300;
 
 const STATE_TTL_MS = 15 * 60 * 1000;
 
+// Microsoft tenant IDs are GUIDs. Pin the shape before grantedTid is persisted
+// or interpolated into the MSAL authority URL
+// (https://login.microsoftonline.com/${tid}), so a malformed `tenant` callback
+// param can never alter that authority.
+const GUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const fail = (code: string): never =>
   redirect(`/app/settings/microsoft?error=${code}`);
 
@@ -64,6 +71,9 @@ export const GET = async (req: NextRequest) => {
   // dialog IS the authorization; the initiator becomes the workspace owner.
   if (error) fail("consent_declined");
   if (adminConsent !== "True" || !grantedTid) fail("consent_incomplete");
+  // grantedTid is consumed below as the workspace tid and flows into the MSAL
+  // authority URL; reject anything that is not a well-formed GUID before then.
+  if (!GUID_PATTERN.test(grantedTid!)) fail("consent_incomplete");
 
   // Atomically consume the single-use nonce: a concurrent duplicate callback
   // (double-submit / proxy retry) loses the race here instead of both binding

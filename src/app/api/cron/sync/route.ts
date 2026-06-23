@@ -1,27 +1,18 @@
-import { timingSafeEqual } from "node:crypto";
-
 import { isNotNull } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { env } from "~/env";
 import { db } from "~/server/db";
 import { tenants } from "~/server/db/schema";
+import { notifyOps } from "~/server/ops";
 import { runSync } from "~/server/sync/runSync";
+import { requireCronAuth } from "~/server/cronAuth";
 
 export const maxDuration = 300;
 
-/** Constant-time bearer check; a length mismatch is false, never a throw. */
-const authorized = (req: NextRequest, secret: string): boolean => {
-  const given = Buffer.from(req.headers.get("authorization") ?? "");
-  const expected = Buffer.from(`Bearer ${secret}`);
-  return given.length === expected.length && timingSafeEqual(given, expected);
-};
-
 /** Nightly sync across all connected tenants. Protected by CRON_SECRET. */
 export const GET = async (req: NextRequest) => {
-  if (!env.CRON_SECRET || !authorized(req, env.CRON_SECRET)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const denied = requireCronAuth(req);
+  if (denied) return denied;
 
   // CSV-trial workspaces (consentedAt null) have no Graph access. Syncing
   // them could only fail. The demo tenant has consentedAt set by its seed.
@@ -41,7 +32,10 @@ export const GET = async (req: NextRequest) => {
         const result = await runSync(tenant.id);
         results.push({ tenantId: tenant.id, status: result.status });
       } catch (err) {
-        console.error(`[cron] sync failed for ${tenant.id}`, err);
+        void notifyOps(
+          `sync failed for tenant ${tenant.name ?? tenant.tid}: ${err instanceof Error ? err.message : String(err)}`,
+          { key: `sync:${tenant.id}`, cooldownMs: 60 * 60 * 1000 },
+        );
         results.push({ tenantId: tenant.id, status: "failed" });
       }
     }

@@ -27,6 +27,23 @@ type UmapiGroup = {
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Adobe organization IDs look like `XXXXXXXXXXXXXXXXXXXXXXXX@AdobeOrg` — a hex
+ * IMS id with an `@AdobeOrg` suffix. We pin a conservative charset (letters,
+ * digits, `@`, `.`, `_`, `-`) so a tampered/garbage orgId can never inject
+ * path segments (`/`, `..`), query, or fragment characters into the UMAPI URL.
+ * The orgId is still encodeURIComponent'd at each interpolation as defense in
+ * depth.
+ */
+const ORG_ID_PATTERN = /^[A-Za-z0-9@._-]+$/;
+
+const assertValidOrgId = (orgId: string): string => {
+  if (!ORG_ID_PATTERN.test(orgId)) {
+    throw new Error("Adobe organization ID has an invalid format");
+  }
+  return orgId;
+};
+
 const retryAfterMs = (value: string | null): number => {
   if (!value) return GROUP_RATE_LIMIT_RETRY_MS;
   const seconds = Number(value);
@@ -50,7 +67,10 @@ export class UmapiClient implements AdobeClient {
       clientSecret: string;
       sleep?: (ms: number) => Promise<void>;
     },
-  ) {}
+  ) {
+    // Reject a malformed orgId at construction so it can never reach a URL.
+    assertValidOrgId(cfg.orgId);
+  }
 
   private async getToken(): Promise<string> {
     const res = await fetch(IMS_TOKEN_URL, {
@@ -86,10 +106,13 @@ export class UmapiClient implements AdobeClient {
     retryBudget: { remainingMs: number },
   ): Promise<Response> {
     for (let attempt = 1; attempt <= MAX_GROUP_PAGE_ATTEMPTS; attempt++) {
-      const res = await fetch(`${UMAPI_BASE}/groups/${this.cfg.orgId}/${page}`, {
-        headers: this.requestHeaders(token),
-        signal: AbortSignal.timeout(30_000),
-      });
+      const res = await fetch(
+        `${UMAPI_BASE}/groups/${encodeURIComponent(this.cfg.orgId)}/${page}`,
+        {
+          headers: this.requestHeaders(token),
+          signal: AbortSignal.timeout(30_000),
+        },
+      );
       if (res.status !== 429 || attempt === MAX_GROUP_PAGE_ATTEMPTS) {
         return res;
       }
@@ -138,7 +161,7 @@ export class UmapiClient implements AdobeClient {
     const users: AdobeUser[] = [];
     for (let page = 0; page < 100; page++) {
       const params = new URLSearchParams({ directOnly: "false" });
-      const url = `${UMAPI_BASE}/users/${this.cfg.orgId}/${page}?${params.toString()}`;
+      const url = `${UMAPI_BASE}/users/${encodeURIComponent(this.cfg.orgId)}/${page}?${params.toString()}`;
       const res = await fetch(url, {
         headers: this.requestHeaders(token),
         signal: AbortSignal.timeout(30_000),

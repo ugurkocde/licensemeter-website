@@ -1,9 +1,7 @@
-import { timingSafeEqual } from "node:crypto";
-
 import { and, desc, eq, gte, inArray, isNotNull, or } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { env, siteUrl } from "~/env";
+import { siteUrl } from "~/env";
 import { fmtMoney, workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
 import {
@@ -28,18 +26,12 @@ import {
   sendEmail,
 } from "~/server/email";
 import { notifyOps } from "~/server/ops";
+import { requireCronAuth } from "~/server/cronAuth";
 
 export const maxDuration = 300;
 
 /** Only syncs this fresh keep a zero-findings tenant in the all-clear loop. */
 const RECENT_SYNC_MS = 8 * 24 * 60 * 60 * 1000;
-
-/** Constant-time bearer check; a length mismatch is false, never a throw. */
-const authorized = (req: NextRequest, secret: string): boolean => {
-  const given = Buffer.from(req.headers.get("authorization") ?? "");
-  const expected = Buffer.from(`Bearer ${secret}`);
-  return given.length === expected.length && timingSafeEqual(given, expected);
-};
 
 /**
  * Weekly digest to workspace owners/admins. No-op until Resend is configured.
@@ -48,9 +40,8 @@ const authorized = (req: NextRequest, secret: string): boolean => {
  * like the product stopped working, a churn signal).
  */
 export const GET = async (req: NextRequest) => {
-  if (!env.CRON_SECRET || !authorized(req, env.CRON_SECRET)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const denied = requireCronAuth(req);
+  if (denied) return denied;
   if (!emailEnabled()) {
     return NextResponse.json({ skipped: "email not configured" });
   }

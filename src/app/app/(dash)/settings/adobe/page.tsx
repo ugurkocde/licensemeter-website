@@ -6,6 +6,8 @@ import {
   AdobeConnectForm,
   AdobeDisconnectButton,
 } from "~/components/workspace/AdobeConnectForm";
+import { ConnectPoller } from "~/components/workspace/ConnectPoller";
+import { SyncNowButton } from "~/components/workspace/SyncNowButton";
 import { Card } from "~/components/ui";
 import { fmtDate } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
@@ -81,19 +83,29 @@ export default async function AdobeConnectorPage() {
               first.
             </p>
           ) : adobeConn ? (
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="text-sm">
-                <div className="font-medium">
-                  Connected: {adobeCount} Adobe seats
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="text-sm">
+                  <div className="font-medium">
+                    Connected: {adobeCount} Adobe seats
+                  </div>
+                  <div className="mt-0.5 text-xs text-ink-soft">
+                    Org {adobeConn.orgId} ·{" "}
+                    {adobeConn.lastSyncAt
+                      ? `last sync ${fmtDate(adobeConn.lastSyncAt)} (${adobeConn.lastSyncStatus ?? "pending"})`
+                      : "first sync pending"}
+                  </div>
                 </div>
-                <div className="mt-0.5 text-xs text-ink-soft">
-                  Org {adobeConn.orgId} ·{" "}
-                  {adobeConn.lastSyncAt
-                    ? `last sync ${fmtDate(adobeConn.lastSyncAt)} (${adobeConn.lastSyncStatus ?? "pending"})`
-                    : "first sync pending"}
-                </div>
+                {isAdmin && (
+                  <div className="flex items-center gap-3">
+                    <SyncNowButton />
+                    <AdobeDisconnectButton />
+                  </div>
+                )}
               </div>
-              {isAdmin && <AdobeDisconnectButton />}
+              {/* First sync hasn't landed yet: poll until it does, matching the
+                  Microsoft connector's post-connect experience. */}
+              {!adobeConn.lastSyncAt && <ConnectPoller />}
             </div>
           ) : isAdmin ? (
             <div className="flex flex-col gap-3">

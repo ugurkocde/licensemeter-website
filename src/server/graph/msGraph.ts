@@ -40,8 +40,48 @@ export type MsCredential =
       thumbprint: string;
     };
 
-/** One confidential client per credential; MSAL caches tokens internally. */
-const msalApps = new Map<string, ConfidentialClientApplication>();
+/**
+ * One confidential client per credential; MSAL caches tokens internally. The
+ * Map is bounded so it cannot grow without limit across many tenants, and
+ * entries expire so decrypted credential material is not retained indefinitely
+ * past a rotation. Eviction is LRU (re-inserting on hit moves a key to the end)
+ * plus a TTL; the cache key itself is unchanged, so rotating a credential still
+ * yields a fresh key and never reuses a stale client.
+ */
+const MSAL_CACHE_MAX = 256;
+const MSAL_CACHE_TTL_MS = 30 * 60 * 1000;
+const msalApps = new Map<
+  string,
+  { app: ConfidentialClientApplication; createdAt: number }
+>();
+
+const getCachedApp = (
+  cacheKey: string,
+): ConfidentialClientApplication | undefined => {
+  const entry = msalApps.get(cacheKey);
+  if (!entry) return undefined;
+  if (Date.now() - entry.createdAt > MSAL_CACHE_TTL_MS) {
+    msalApps.delete(cacheKey);
+    return undefined;
+  }
+  // LRU touch: re-insert so this key becomes the most-recently-used.
+  msalApps.delete(cacheKey);
+  msalApps.set(cacheKey, entry);
+  return entry.app;
+};
+
+const setCachedApp = (
+  cacheKey: string,
+  app: ConfidentialClientApplication,
+): void => {
+  msalApps.set(cacheKey, { app, createdAt: Date.now() });
+  // Evict the oldest entries (insertion order = LRU order) over the cap.
+  while (msalApps.size > MSAL_CACHE_MAX) {
+    const oldest = msalApps.keys().next().value;
+    if (oldest === undefined) break;
+    msalApps.delete(oldest);
+  }
+};
 
 /**
  * Right after admin consent, the freshly created service principal can take a
@@ -97,10 +137,10 @@ const buildApp = (cred: MsCredential): ConfidentialClientApplication => {
 
 const acquireToken = async (cred: MsCredential): Promise<string> => {
   const cacheKey = appCacheKey(cred);
-  let app = msalApps.get(cacheKey);
+  let app = getCachedApp(cacheKey);
   if (!app) {
     app = buildApp(cred);
-    msalApps.set(cacheKey, app);
+    setCachedApp(cacheKey, app);
   }
   for (let attempt = 0; ; attempt++) {
     try {
@@ -269,10 +309,25 @@ const graphFetch = async (token: string, url: string): Promise<Response> => {
   }
 };
 
+/**
+ * Upper bound on pages a single getAllPages call will follow. At $top=250 this
+ * is 250k rows — far beyond any real tenant — so it never trips a healthy sync,
+ * but stops a looping/duplicating @odata.nextLink from running to the 300s
+ * maxDuration timeout. Every SaaS paginator bounds its loop the same way.
+ */
+const MAX_PAGES = 1000;
+
 const getAllPages = async <T>(token: string, firstUrl: string): Promise<T[]> => {
   const items: T[] = [];
   let url: string | undefined = firstUrl;
-  while (url) {
+  for (let page = 0; url; page++) {
+    if (page >= MAX_PAGES) {
+      throw new GraphHttpError(
+        502,
+        "too_many_pages",
+        `Graph pagination exceeded ${MAX_PAGES} pages`,
+      );
+    }
     const res = await graphFetch(token, url);
     const body = (await res.json()) as { value: T[]; "@odata.nextLink"?: string };
     items.push(...body.value);

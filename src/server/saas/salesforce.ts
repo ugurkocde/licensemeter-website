@@ -129,8 +129,16 @@ export class SalesforceClient implements SaasClient {
       };
       seats.push(...mapSalesforceRecords(body.records ?? []));
       if (body.done !== false || !body.nextRecordsUrl) break;
-      // nextRecordsUrl is a path; keep it on the validated instance origin.
-      url = `${this.base()}${body.nextRecordsUrl}`;
+      // nextRecordsUrl is API-returned: resolve it against the validated
+      // instance origin and re-assert that origin before following it, so a
+      // tampered/absolute link can never redirect the authenticated request
+      // off the pinned Salesforce My Domain host (SSRF guard).
+      const base = this.base();
+      const next = new URL(body.nextRecordsUrl, base);
+      if (next.origin !== new URL(base).origin) {
+        throw new Error("Salesforce pagination link left the instance origin");
+      }
+      url = next.toString();
     }
     return seats;
   }

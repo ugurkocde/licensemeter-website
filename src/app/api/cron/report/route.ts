@@ -1,24 +1,16 @@
-import { timingSafeEqual } from "node:crypto";
-
 import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { env, siteUrl } from "~/env";
+import { siteUrl } from "~/env";
 import { fmtMoney, workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
 import { findings, memberships, tenants, tenantSkus } from "~/server/db/schema";
 import { emailEnabled, reportHtml, sendEmail } from "~/server/email";
 import { notifyOps } from "~/server/ops";
 import { renderWasteReportPdf } from "~/server/report/renderReport";
+import { requireCronAuth } from "~/server/cronAuth";
 
 export const maxDuration = 300;
-
-/** Constant-time bearer check; a length mismatch is false, never a throw. */
-const authorized = (req: NextRequest, secret: string): boolean => {
-  const given = Buffer.from(req.headers.get("authorization") ?? "");
-  const expected = Buffer.from(`Bearer ${secret}`);
-  return given.length === expected.length && timingSafeEqual(given, expected);
-};
 
 /**
  * Monthly PDF waste report to workspace owners/admins, for workspaces that
@@ -29,9 +21,8 @@ const authorized = (req: NextRequest, secret: string): boolean => {
  * No-op until Resend is configured.
  */
 export const GET = async (req: NextRequest) => {
-  if (!env.CRON_SECRET || !authorized(req, env.CRON_SECRET)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const denied = requireCronAuth(req);
+  if (denied) return denied;
   if (!emailEnabled()) {
     return NextResponse.json({ skipped: "email not configured" });
   }
