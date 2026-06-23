@@ -46,9 +46,18 @@ Action: verify coverage + document; NOT rewiring the connection layer to per-ten
 - [x] AI-connector distinction: "Connect via API" vs "CSV import" pills driven by connectors.ts `kind`
 - [x] TRIAL_DAYS moved to client-safe plans.ts; "14-day" copy derived everywhere in marketing/components
 
-## Wave 5b — MSP packaging (#16) + expansion (#17) — PLAN delivered, awaiting approval before build
-- [ ] #16 MSP: ~EUR50/tenant flat model + architecture (parent MSP account, quantity billing) — see plan
-- [ ] #17 expansion lever recommendation — see plan
+## Wave 5b — MSP packaging (#16) — Phase 1 done + Phase 2 foundation (inert); #17 held
+Decisions: EUR50/tenant flat + >1.000-seat guardrail; Phase 1 + start Phase 2; #17 hold.
+- [x] #16 P1: pricing published on /msp + /pricing (EUR50/tenant, EUR500/yr, >1.000-seat guardrail), from plans.ts constants
+- [x] #16 P2 foundation (INERT, flag-gated via mspEnabled()): mspAccounts table + tenants.mspAccountId;
+      STRIPE_PRICE_MSP_TENANT env; pure mspEntitlementOf + tests; access.ts inherits entitlement when mspAccountId set
+      (single-tenant path byte-identical, verified). 292 tests, tsc/lint/build green.
+- [ ] #16 P2 REMAINING (next tranche, needs owner's Stripe quantity Price id): MSP account creation + cross-workspace
+      membership; Stripe quantity sub create + qty sync on connect/disconnect; webhook mirroring to mspAccounts;
+      MSP portfolio/billing UI.
+- [ ] #17 expansion: RECOMMENDED an "AI Cost Visibility" add-on (held by owner; on record, not built).
+
+## Status: branch harden/review-implementation — 9 commits, all gates green, NOT pushed.
 
 ## Final gate
 - [ ] npm run check + test + build; separate code-reviewer pass

@@ -4,6 +4,11 @@ import Link from "next/link";
 import { isDemoMode, siteUrl } from "~/env";
 import { buttonClass } from "~/components/ui";
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
+import {
+  MSP_LARGE_TENANT_SEATS,
+  MSP_PRICE_ANNUAL_EUR,
+  MSP_PRICE_EUR,
+} from "~/lib/plans";
 import { SUPPORT_MAILTO } from "~/lib/support";
 
 export const metadata: Metadata = {
@@ -57,6 +62,12 @@ const TRUST_ITEMS = [
 ] as const;
 
 const BASE = siteUrl();
+
+/* Large-tenant guardrail seat count, German thousands separator (1.000) to
+ * match the rest of the site's number formatting. */
+const MSP_LARGE_TENANT_SEATS_LABEL = new Intl.NumberFormat("de-DE").format(
+  MSP_LARGE_TENANT_SEATS,
+);
 
 /* Static breadcrumb; "<" escaped so nothing can terminate the script. */
 const MSP_LD = {
@@ -186,6 +197,42 @@ export default function MspPage() {
           lists every granted scope and what is stored. It is written to be
           forwarded to the client&rsquo;s security team as is.
         </p>
+      </section>
+
+      <section className="mt-14">
+        <h2 className="font-display text-2xl tracking-tight">
+          Simple, predictable per-tenant pricing.
+        </h2>
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-soft">
+          One flat price for each connected client tenant, billed across your
+          whole portfolio on a single subscription. No seat math for normal
+          client tenants, no surprises between QBRs.
+        </p>
+        <div className="mt-8 border border-line bg-card px-6 py-6">
+          <p className="font-display text-3xl tracking-tight">
+            <span className="tnum font-mono">€ {MSP_PRICE_EUR}</span>{" "}
+            <span className="text-lg text-ink-soft">
+              per connected client tenant / month
+            </span>
+          </p>
+          <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+            Or{" "}
+            <span className="tnum font-mono">€ {MSP_PRICE_ANNUAL_EUR}</span> per
+            tenant a year &mdash; two months free. Billed by quantity across
+            your whole portfolio, not per workspace.
+          </p>
+          <p className="mt-4 border-t border-line pt-4 text-sm leading-relaxed text-ink-soft">
+            Client tenants over{" "}
+            <span className="tnum font-mono">
+              {MSP_LARGE_TENANT_SEATS_LABEL}
+            </span>{" "}
+            seats are rare enterprise outliers, priced separately &mdash; talk
+            to us.
+          </p>
+        </div>
+        <div className="mt-8">
+          <Ctas demoEnabled={demoEnabled} />
+        </div>
       </section>
 
       <section className="mt-14 border-t border-line pt-10">

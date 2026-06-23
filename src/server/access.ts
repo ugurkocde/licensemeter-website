@@ -7,9 +7,13 @@ import { workspaceLabel } from "~/lib/format";
 import { auth, type Session } from "~/server/auth";
 import { cookieOptions } from "~/server/auth/session";
 import { db } from "~/server/db";
-import { memberships, tenants } from "~/server/db/schema";
+import { memberships, mspAccounts, tenants } from "~/server/db/schema";
 import { ensureDemoWorkspace } from "~/server/demo/seed";
-import { entitlementOf, type Entitlement } from "~/server/entitlement";
+import {
+  entitlementOf,
+  mspEntitlementOf,
+  type Entitlement,
+} from "~/server/entitlement";
 import type { MembershipRole } from "~/server/types";
 
 // __Host- prefix in production locks the workspace cookie to this exact host
@@ -52,6 +56,31 @@ const ROLE_RANK: Record<MembershipRole, number> = {
 
 export const hasRole = (ctx: AccessContext, minRole: MembershipRole) =>
   ROLE_RANK[ctx.membership.role] >= ROLE_RANK[minRole];
+
+/**
+ * Resolve the active workspace's billing entitlement. Default (self-serve) path
+ * is byte-identical to the old inline entitlementOf call: cached tenant columns,
+ * no extra query. Only when a workspace is attached to an MSP account
+ * (tenant.mspAccountId set — never true today) do we load that account row and
+ * resolve from the MSP's single quantity subscription instead. Inert until an
+ * MSP portfolio exists, and zero added cost for normal tenants.
+ */
+const resolveEntitlement = async (
+  tenant: typeof tenants.$inferSelect,
+): Promise<Entitlement> => {
+  const billingDisabled = !billingEnabled();
+  if (tenant.mspAccountId) {
+    const [account] = await db
+      .select()
+      .from(mspAccounts)
+      .where(eq(mspAccounts.id, tenant.mspAccountId))
+      .limit(1);
+    // A dangling reference (account deleted out from under the tenant) falls
+    // back to the standalone path rather than locking the workspace out.
+    if (account) return mspEntitlementOf(account, new Date(), billingDisabled);
+  }
+  return entitlementOf(tenant, null, new Date(), billingDisabled);
+};
 
 /**
  * Resolves every workspace the signed-in user may open, then the active one.
@@ -135,14 +164,10 @@ const resolveEntra = async (
       isDemo: r.tenant.isDemo,
     })),
     // Cached-column fast path: status/paidUntil live on the tenant row, so the
-    // banner and gates need no extra query. The full subscription row (plan,
-    // cancel date) is loaded only on the billing page.
-    entitlement: entitlementOf(
-      active.tenant,
-      null,
-      new Date(),
-      !billingEnabled(),
-    ),
+    // banner and gates need no extra query (the MSP branch only loads a row when
+    // mspAccountId is set). The full subscription row (plan, cancel date) is
+    // loaded only on the billing page.
+    entitlement: await resolveEntitlement(active.tenant),
   };
 };
 
@@ -328,7 +353,7 @@ const resolveWorkos = async (
       role: r.membership.role,
       isDemo: r.tenant.isDemo,
     })),
-    entitlement: entitlementOf(active.tenant, null, new Date(), !billingEnabled()),
+    entitlement: await resolveEntitlement(active.tenant),
   };
 };
 

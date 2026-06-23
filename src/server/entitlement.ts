@@ -1,5 +1,5 @@
 import { TRIAL_DAYS } from "~/lib/plans";
-import type { subscriptions, tenants } from "~/server/db/schema";
+import type { mspAccounts, subscriptions, tenants } from "~/server/db/schema";
 import type { PlanTier, SubscriptionStatus } from "~/server/types";
 
 /**
@@ -32,6 +32,14 @@ type TenantEntitlementInput = Pick<
 
 /** Only the subscription fields entitlement actually reads (UI detail). */
 type SubEntitlementInput = Pick<SubRow, "tier" | "cancelAtPeriodEnd"> | null;
+
+type MspAccountRow = typeof mspAccounts.$inferSelect;
+
+/** Only the MSP-account fields entitlement actually reads. */
+type MspEntitlementInput = Pick<
+  MspAccountRow,
+  "compedAt" | "subscriptionStatus" | "paidUntil"
+>;
 
 export type EntitlementState =
   | "demo"
@@ -150,5 +158,68 @@ export function entitlementOf(
   }
 
   // 8. Trial elapsed with no active subscription -> soft lock.
+  return lock("expired");
+}
+
+/**
+ * Entitlement for a workspace billed under an MSP account (tenants.mspAccountId
+ * set). The MSP account is the billing entity — there is NO per-tenant trial:
+ * a client workspace's access tracks the MSP's single quantity subscription, so
+ * this resolver reads only the account's subscriptionStatus/paidUntil/compedAt.
+ *
+ * Precedence (first match wins): billing-disabled/comped -> active/trialing paid
+ * (within horizon) -> past_due (grace until horizon, else lock) -> lock
+ * ("expired"). No demo/trial/incomplete states apply (those are workspace-level
+ * concepts that never reach an MSP-managed tenant). The active/trialing fast-path
+ * still requires the paid horizon so a missed cancel webhook can't grant access
+ * forever — same guard as entitlementOf.
+ *
+ * Returns the existing Entitlement shape so every downstream consumer is
+ * unchanged; the trial fields are zeroed (no trial) and plan is null (the MSP
+ * sub is quantity-based, not tiered). INERT until mspEnabled() AND a tenant is
+ * attached to an account, neither of which is true today.
+ */
+export function mspEntitlementOf(
+  account: MspEntitlementInput,
+  now: Date,
+  billingDisabled: boolean,
+): Entitlement {
+  // No per-tenant trial: the account is the billing entity, so there is no
+  // trial countdown to surface. Zero the trial fields (trialEndsAt anchored at
+  // now) and leave plan null (the MSP sub is quantity-based, not tiered).
+  const base = {
+    trialEndsAt: trialEndsAtFor(now),
+    trialDaysLeft: 0,
+    plan: null,
+    cancelAtPeriodEnd: false,
+  };
+  const full = (state: EntitlementState): Entitlement => ({
+    state,
+    active: true,
+    locked: false,
+    ...base,
+  });
+  const lock = (state: EntitlementState): Entitlement => ({
+    state,
+    active: false,
+    locked: true,
+    ...base,
+  });
+
+  // 1. Master flag off (Stripe unconfigured) or comped account: full access,
+  //    no billing pressure. comped_at is never written by the webhook.
+  if (billingDisabled || account.compedAt) return full("comped");
+
+  const status = account.subscriptionStatus;
+  const paidUntil = account.paidUntil;
+  const horizonOk = !paidUntil || paidUntil.getTime() > now.getTime();
+
+  // 2. Active/trialing quantity subscription, within the paid horizon.
+  if (status && ENTITLED_STATUS.has(status) && horizonOk) return full("paid");
+
+  // 3. Dunning grace: keep access while past_due until the period end passes.
+  if (status === "past_due") return horizonOk ? full("past_due") : lock("past_due");
+
+  // 4. No active MSP subscription (canceled / unpaid / never subscribed) -> lock.
   return lock("expired");
 }

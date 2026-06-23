@@ -30,6 +30,47 @@ import type {
   WorkloadActivity,
 } from "~/server/types";
 
+/**
+ * One row per MSP account: the billing entity for a managed-service provider
+ * that owns many client workspaces (tenants). Billed by ONE quantity-based
+ * Stripe subscription (unit = MSP_PRICE_EUR per connected client tenant), so
+ * the subscription columns mirror the relevant tenant billing fields. INERT
+ * until mspEnabled(): no tenant carries an mspAccountId today, so this table is
+ * never read on the live single-tenant path.
+ *
+ * TODO(phase-2): MSP account creation + cross-workspace membership; the Stripe
+ * quantity-subscription create/sync (on tenant connect/disconnect) and the
+ * webhook handling that mirrors subscriptionStatus/paidUntil onto this row.
+ */
+export const mspAccounts = pgTable(
+  "msp_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name"),
+    /** Stripe customer id (cus_…) for the MSP quantity subscription. */
+    stripeCustomerId: text("stripe_customer_id"),
+    /** Cached subscription status, mirrored from the webhook (same shape as tenants'). */
+    subscriptionStatus: text("subscription_status").$type<SubscriptionStatus>(),
+    /** Cached current_period_end; the paid-access horizon. Null on trial. */
+    paidUntil: timestamp("paid_until", { withTimezone: true }),
+    /** Comp / grandfather flag, NEVER written by the webhook. Set => always entitled. */
+    compedAt: timestamp("comped_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // One Stripe customer per MSP account: a mismatched second customer is a DB
+    // error, not a silent overwrite (mirrors tenants.stripeCustomerId).
+    uniqueIndex("msp_accounts_stripe_customer_idx")
+      .on(t.stripeCustomerId)
+      .where(sql`${t.stripeCustomerId} is not null`),
+  ],
+);
+
+/** A full MSP account row, passed around by value. */
+export type MspAccountRow = typeof mspAccounts.$inferSelect;
+
 /** One row per connected Microsoft 365 tenant (the unit of isolation everywhere). */
 export const tenants = pgTable(
   "tenants",
@@ -97,6 +138,18 @@ export const tenants = pgTable(
     compedAt: timestamp("comped_at", { withTimezone: true }),
     /** Suppressible trial-reminder nudges to owners/admins (one-click unsubscribe). */
     trialReminders: boolean("trial_reminders").notNull().default(true),
+    /**
+     * Owning MSP account, when this workspace is billed under an MSP's single
+     * quantity subscription instead of its own per-workspace subscription. Null
+     * for every self-serve workspace (the default), so the existing single-tenant
+     * billing/entitlement path is unchanged. onDelete "set null" so deleting an
+     * MSP account drops its client tenants back to the standalone path rather
+     * than cascading them away. TODO(phase-2): stamped when a tenant is attached
+     * to an MSP portfolio (+ Stripe quantity sync on attach/detach).
+     */
+    mspAccountId: uuid("msp_account_id").references(() => mspAccounts.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -120,6 +173,10 @@ export const tenants = pgTable(
     uniqueIndex("tenants_stripe_customer_idx")
       .on(t.stripeCustomerId)
       .where(sql`${t.stripeCustomerId} is not null`),
+    // Portfolio lookup: find every client workspace owned by an MSP account.
+    index("tenants_msp_account_idx")
+      .on(t.mspAccountId)
+      .where(sql`${t.mspAccountId} is not null`),
   ],
 );
 

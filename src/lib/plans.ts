@@ -38,6 +38,18 @@ export const PLANS: Plan[] = [
 /** Largest self-serve seat count; above this -> contact sales (MSP). */
 export const MAX_SELF_SERVE_SEATS = 2500;
 
+/**
+ * MSP packaging: a flat price per connected client tenant, billed by quantity on
+ * one MSP-account subscription (not per-workspace). Annual is 10x (two months
+ * free), matching the self-serve convention. The flat price holds for normal
+ * SMB-sized client tenants; a client tenant above MSP_LARGE_TENANT_SEATS is a
+ * rare enterprise outlier priced separately (contact us) so one large tenant is
+ * never underpriced at the flat rate.
+ */
+export const MSP_PRICE_EUR = 50;
+export const MSP_PRICE_ANNUAL_EUR = 500;
+export const MSP_LARGE_TENANT_SEATS = 1000;
+
 export const planByTier = (tier: PlanTier): Plan =>
   PLANS.find((p) => p.tier === tier)!;
 

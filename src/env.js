@@ -127,6 +127,12 @@ export const env = createEnv({
     STRIPE_PRICE_SCALE_MONTHLY: z.string().optional(),
     STRIPE_PRICE_SCALE_ANNUAL: z.string().optional(),
     /**
+     * Quantity Price id for the MSP per-tenant subscription (unit = one connected
+     * client tenant). Optional and gated behind mspEnabled(): until the owner sets
+     * it the MSP packaging is fully inert. Set later from scripts/setup-stripe.ts.
+     */
+    STRIPE_PRICE_MSP_TENANT: z.string().optional(),
+    /**
      * "true" turns on Stripe Tax (automatic_tax) + VAT-id collection + the
      * VAT-aware pricing copy. Off at launch; flip on once VAT-registered. No
      * code change required.
@@ -165,6 +171,7 @@ export const env = createEnv({
     STRIPE_PRICE_GROWTH_ANNUAL: process.env.STRIPE_PRICE_GROWTH_ANNUAL,
     STRIPE_PRICE_SCALE_MONTHLY: process.env.STRIPE_PRICE_SCALE_MONTHLY,
     STRIPE_PRICE_SCALE_ANNUAL: process.env.STRIPE_PRICE_SCALE_ANNUAL,
+    STRIPE_PRICE_MSP_TENANT: process.env.STRIPE_PRICE_MSP_TENANT,
     STRIPE_TAX_ENABLED: process.env.STRIPE_TAX_ENABLED,
   },
 
@@ -212,6 +219,15 @@ export const byoConnectorEnabled = () => env.MS_BYO_ENABLED !== "false";
  */
 export const billingEnabled = () =>
   Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET);
+
+/**
+ * Whether MSP quantity-billing is live. Requires billing to be on AND the MSP
+ * quantity Price id to be set, so the whole MSP subsystem (account billing,
+ * entitlement inheritance) stays inert until the owner configures the price —
+ * mirrors how billingEnabled() gates the per-workspace Stripe path.
+ */
+export const mspEnabled = () =>
+  billingEnabled() && Boolean(env.STRIPE_PRICE_MSP_TENANT);
 
 /**
  * Whether to collect VAT via Stripe Tax. Off at launch (sell flat prices, no
