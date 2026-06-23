@@ -31,6 +31,7 @@ export const WorkspaceSwitcher = ({
     <select
       value={current}
       aria-busy={pending || undefined}
+      disabled={pending}
       aria-label="Active workspace"
       onChange={(e) => {
         const next = e.target.value;

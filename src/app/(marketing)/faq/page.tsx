@@ -81,8 +81,8 @@ export default function FaqPage() {
         The questions that come before consent.
       </h1>
 
-      <h2 className="sr-only">Questions</h2>
-      <dl className="mt-10 border border-line bg-card">
+      <h2 id="faq-list-heading" className="sr-only">Questions</h2>
+      <dl aria-labelledby="faq-list-heading" className="mt-10 border border-line bg-card">
         {FAQS.map((item) => (
           <div
             key={item.q}

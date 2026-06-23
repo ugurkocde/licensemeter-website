@@ -106,6 +106,29 @@ export const TrendChart = ({
             {fmtAxisDate(last.day)}
           </text>
         </svg>
+        {/* The chart is a finance figure: a screen reader needs the per-day
+            numbers, not just the headline summary on the SVG. */}
+        <table className="sr-only">
+          <caption>
+            Monthly spend and waste per day over {points.length} days.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Monthly spend</th>
+              <th scope="col">Monthly waste</th>
+            </tr>
+          </thead>
+          <tbody>
+            {points.map((p) => (
+              <tr key={p.day}>
+                <th scope="row">{fmtAxisDate(p.day)}</th>
+                <td>{fmtMoney(p.spendCents, currency)}</td>
+                <td>{fmtMoney(p.wasteCents, currency)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
         <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-ink-soft">
           <span className="font-mono sm:hidden">
             {fmtAxisDate(first.day)} → {fmtAxisDate(last.day)}

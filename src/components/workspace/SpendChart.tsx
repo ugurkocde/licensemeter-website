@@ -63,6 +63,10 @@ export const SpendChart = ({ series }: { series: SpendSeries[] }) => {
 
   const firstDay = days[0]!;
   const lastDay = days[days.length - 1]!;
+  // Per-series day → cents lookup for the screen-reader data table below.
+  const centsBySeries = series.map(
+    (s) => new Map(s.points.map((p) => [p.day, p.cents])),
+  );
   const latestParts = series
     .filter((s) => s.points.length > 0)
     .map(
@@ -127,6 +131,35 @@ export const SpendChart = ({ series }: { series: SpendSeries[] }) => {
             {fmtAxisDate(lastDay)}
           </text>
         </svg>
+        {/* The chart is a finance figure: a screen reader needs the per-day
+            numbers, not just the headline summary on the SVG. */}
+        <table className="sr-only">
+          <caption>
+            Daily API spend per provider over {days.length} days.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              {series.map((s) => (
+                <th key={s.label} scope="col">
+                  {s.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {days.map((day) => (
+              <tr key={day}>
+                <th scope="row">{fmtAxisDate(day)}</th>
+                {centsBySeries.map((map, i) => (
+                  <td key={series[i]!.label}>
+                    {map.has(day) ? fmtMoney(map.get(day)!, "USD") : "—"}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
         <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-ink-soft">
           <span className="font-mono sm:hidden">
             {fmtAxisDate(firstDay)} → {fmtAxisDate(lastDay)}

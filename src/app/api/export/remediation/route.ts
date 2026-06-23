@@ -5,17 +5,8 @@ import { apiAccess } from "~/server/access";
 import { audit } from "~/server/audit";
 import { db } from "~/server/db";
 import { findings } from "~/server/db/schema";
+import { isWasteRule } from "~/lib/rules";
 import { generateRemediationScript } from "~/server/waste/remediation";
-import type { WasteRuleId } from "~/server/types";
-
-const RULES: WasteRuleId[] = [
-  "disabled_account_with_license",
-  "never_active",
-  "inactive_90d",
-  "shelfware",
-  "copilot_unused",
-  "licensed_guest",
-];
 
 /** Generated PowerShell remediation script for open findings (optionally one rule). */
 export const GET = async (req: NextRequest) => {
@@ -24,8 +15,10 @@ export const GET = async (req: NextRequest) => {
   if (!ctx.entitlement.active)
     return NextResponse.json({ error: "upgrade_required" }, { status: 402 });
 
+  // Validate the requested rule against the canonical allow-list (lib/rules);
+  // an unknown ?rule= is ignored and the script covers every applicable rule.
   const ruleParam = req.nextUrl.searchParams.get("rule");
-  const rule = RULES.find((r) => r === ruleParam);
+  const rule = ruleParam && isWasteRule(ruleParam) ? ruleParam : undefined;
 
   const rows = await db.query.findings.findMany({
     where: and(

@@ -253,7 +253,7 @@ export default async function LandingPage() {
                 </span>
               )}
             </div>
-            <p className="text-ink-faint/70 mx-auto mt-6 max-w-2xl text-center text-xs leading-relaxed">
+            <p className="text-ink-faint mx-auto mt-6 max-w-2xl text-center text-xs leading-relaxed">
               All product names are trademarks of their respective owners.
               LicenseMeter is not affiliated with or endorsed by them.
             </p>

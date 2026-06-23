@@ -45,16 +45,19 @@ const inSection = (pathname: string, href: string) =>
 export const NavLinks = ({
   onNavigate,
   showPortfolio = false,
+  navLabel = "Workspace navigation",
 }: {
   onNavigate?: () => void;
   showPortfolio?: boolean;
+  /** Distinguishes the two render sites (desktop rail vs mobile drawer). */
+  navLabel?: string;
 }) => {
   const pathname = usePathname();
   const items = showPortfolio
     ? [...ITEMS.slice(0, 1), PORTFOLIO_ITEM, ...ITEMS.slice(1)]
     : ITEMS;
   return (
-    <nav aria-label="Workspace" className="flex flex-col gap-0.5">
+    <nav aria-label={navLabel} className="flex flex-col gap-0.5">
       {items.map((item) => {
         const sectionActive =
           item.href === "/app"

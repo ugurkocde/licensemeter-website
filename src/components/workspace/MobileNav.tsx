@@ -116,15 +116,17 @@ export const MobileNav = ({
         </button>
       </div>
 
-      {/* Stays mounted so the burger's aria-controls always resolves;
-          Tailwind preflight gives [hidden] display:none !important.
-          Capped below the 3.75rem top bar and scrollable so Sign out
-          stays reachable on short viewports. */}
+      {/* Stays mounted so the burger's aria-controls always resolves; inert
+          when closed removes it from tab order and pointer/AT interaction
+          (matching Drawer.tsx), and hidden collapses it from layout. Capped
+          below the 3.75rem top bar and scrollable so Sign out stays reachable
+          on short viewports. */}
       <div
         id="mobile-nav-drawer"
         ref={drawerRef}
         tabIndex={-1}
         hidden={!open}
+        inert={!open}
         className="border-sidebar-line flex max-h-[calc(100dvh-3.75rem)] flex-col overflow-y-auto overscroll-contain border-t pb-4 focus:outline-none"
       >
         <div className="px-4 py-3">
@@ -142,6 +144,7 @@ export const MobileNav = ({
         <NavLinks
           onNavigate={() => setOpen(false)}
           showPortfolio={showPortfolio}
+          navLabel="Mobile workspace navigation"
         />
         <div className="border-sidebar-line mt-3 flex items-center justify-between border-t px-4 pt-3">
           <div className="min-w-0">

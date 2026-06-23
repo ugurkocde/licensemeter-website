@@ -146,7 +146,7 @@ export const HeroVisual = ({ month }: { month: string }) => {
                 <li key={line.label}>
                   <div className="flex items-baseline justify-between gap-4">
                     <span
-                      className={found ? "text-ink-soft text-sm" : "text-ink-faint/60 text-sm"}
+                      className={found ? "text-ink-soft text-sm" : "text-ink-faint text-sm italic"}
                     >
                       {line.label}
                     </span>
@@ -157,7 +157,7 @@ export const HeroVisual = ({ month }: { month: string }) => {
                           <span className="text-ink-faint">/mo</span>
                         </span>
                       ) : (
-                        <span className="text-ink-faint/40">-</span>
+                        <span className="text-ink-faint">-</span>
                       )}
                     </span>
                   </div>

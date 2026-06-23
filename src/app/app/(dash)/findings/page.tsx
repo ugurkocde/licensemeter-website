@@ -1,8 +1,10 @@
 import { desc, eq } from "drizzle-orm";
+import { CircleCheck, SearchX } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
 import { CopyScriptButton } from "~/components/workspace/CopyScriptButton";
+import { EmptyState } from "~/components/workspace/EmptyState";
 import { FindingChip } from "~/components/workspace/FindingChip";
 import {
   CheckboxHitArea,
@@ -118,11 +120,15 @@ export default async function FindingsPage({
     (rule) => (totalByRule.get(rule)?.count ?? 0) > 0 || rule === ruleParam,
   );
 
-  const emptyMessage = showResolved
-    ? "No resolved findings yet."
+  const empty = showResolved
+    ? { icon: CircleCheck, heading: "No resolved findings yet." }
     : ruleParam
-      ? "No findings match this filter."
-      : "No open findings. Nothing to reclaim right now.";
+      ? { icon: SearchX, heading: "No findings match this filter." }
+      : {
+          icon: CircleCheck,
+          heading: "No open findings.",
+          subtext: "Nothing to reclaim right now.",
+        };
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -297,11 +303,10 @@ export default async function FindingsPage({
             })}
             {rows.length === 0 && (
               <tr>
-                <td
-                  colSpan={isAdmin && !showResolved ? 7 : 5}
-                  className="px-4 py-10 text-center text-ink-soft"
-                >
-                  {emptyMessage}
+                <td colSpan={isAdmin && !showResolved ? 7 : 5}>
+                  <EmptyState icon={empty.icon} heading={empty.heading}>
+                    {empty.subtext}
+                  </EmptyState>
                 </td>
               </tr>
             )}
@@ -345,8 +350,10 @@ export default async function FindingsPage({
           );
         })}
         {rows.length === 0 && (
-          <li className="border border-line bg-card px-4 py-10 text-center text-sm text-ink-soft">
-            {emptyMessage}
+          <li className="border border-line bg-card">
+            <EmptyState icon={empty.icon} heading={empty.heading}>
+              {empty.subtext}
+            </EmptyState>
           </li>
         )}
       </ul>

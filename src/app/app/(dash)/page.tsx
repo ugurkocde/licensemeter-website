@@ -39,9 +39,17 @@ const UtilizationBar = ({ sku }: { sku: SkuRow }) => {
     sku.prepaidEnabled > 0
       ? Math.min((sku.consumedUnits / sku.prepaidEnabled) * 100, 100)
       : 0;
+  const rounded = Math.round(util);
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 w-24 bg-line">
+      <div
+        className="h-1.5 w-24 bg-line"
+        role="progressbar"
+        aria-valuenow={rounded}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${sku.displayName ?? sku.skuPartNumber} seat utilization`}
+      >
         <div className="h-1.5 bg-ink-soft" style={{ width: `${util}%` }} />
       </div>
       <span className="tnum font-mono text-xs text-ink-soft">

@@ -28,8 +28,11 @@ Action: verify coverage + document; NOT rewiring the connection layer to per-ten
 - [x] #20 SaaS connector pages: SyncNowButton + ConnectPoller on first-sync-pending; guide-link consistent
 - [x] P3: getAllPages MAX_PAGES cap; msalApps LRU+TTL; Adobe orgId charset+encodeURIComponent; grantedTid GUID check
 
-## Wave 3 — UX / a11y
-- [ ] #18 SpendChart; #19 remediation rule filter; #28 a11y cluster; empty-state + error page
+## Wave 3 — UX / a11y — DONE (tsc + lint + 237 tests green)
+- [x] #19 remediation export honors ?rule= (was hardcoded 6/13; real bug) -> isWasteRule allow-list
+- [x] #18 SpendChart NOT dead (already rendered in ai-costs/page.tsx) -> only added a11y
+- [x] #28 progressbar on UtilizationBar; sr-only data tables on charts; WorkspaceSwitcher disabled; MobileNav inert; nav aria-labels; faq dl labelledby; sidebar-soft contrast; opacity-faint text fixed; error page danger treatment
+- [x] EmptyState primitive + applied to findings empty states
 
 ## Wave 4 — Tests
 - [ ] #9 webhook money-path; verifyIdToken/origin; price round-trip
