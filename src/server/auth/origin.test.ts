@@ -77,8 +77,8 @@ describe("isSameOrigin", () => {
     expect(isSameOrigin(reqWith({ host: "app.licensemeter.com" }))).toBe(true);
   });
 
-  it("is true when Host is absent (nothing to compare against)", () => {
-    expect(isSameOrigin(reqWith({ origin: "https://evil.example" }))).toBe(true);
+  it("is false when an Origin is present but Host is absent (can't prove same-origin)", () => {
+    expect(isSameOrigin(reqWith({ origin: "https://evil.example" }))).toBe(false);
   });
 
   it("is true when both headers are absent", () => {
