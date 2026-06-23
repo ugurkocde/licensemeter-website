@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { buttonClass } from "~/components/ui";
+import { TRIAL_DAYS } from "~/lib/plans";
 
 /**
  * Shown on the dashboard when a workspace has connected no service yet. Sign-in
@@ -53,7 +54,7 @@ export const OnboardingEmptyState = ({
       <p className="text-ink-soft mt-2 max-w-xl text-sm leading-relaxed">
         LicenseMeter reads your seats read-only and prices every wasted, inactive
         or orphaned license in euros. Connect one service to see your numbers —
-        your 14-day trial only starts once you do.
+        your {TRIAL_DAYS}-day trial only starts once you do.
       </p>
     </header>
 

@@ -39,8 +39,16 @@ Action: verify coverage + document; NOT rewiring the connection layer to per-ten
 - [x] verifyEntraIdToken (issuer/aud/alg pinning, jose mocked) + isSameOrigin tests
 - [x] priceIdFor<->planFromPriceId round-trip + parsePlanString rejection cases (34 tests total)
 
-## Wave 5 — Marketing/strategy (DEFERRED)
-- [ ] #2/#3/#16/#17/#21 + AI-connector distinction + TRIAL_DAYS-derived copy
+## Wave 5a — Marketing (implemented) — DONE (tsc + lint + 283 tests + build green)
+- [x] #2 hero repositioned around cross-vendor offboarding leak (MS = connection method); demo figures only
+- [x] #3 removed customer-count social-proof stat (deleted marketingStats.ts); trust rests on real signals; no founder
+- [x] #21 finance front door: secondary "upload a license CSV" CTA into the existing zero-consent path
+- [x] AI-connector distinction: "Connect via API" vs "CSV import" pills driven by connectors.ts `kind`
+- [x] TRIAL_DAYS moved to client-safe plans.ts; "14-day" copy derived everywhere in marketing/components
+
+## Wave 5b — MSP packaging (#16) + expansion (#17) — PLAN delivered, awaiting approval before build
+- [ ] #16 MSP: ~EUR50/tenant flat model + architecture (parent MSP account, quantity billing) — see plan
+- [ ] #17 expansion lever recommendation — see plan
 
 ## Final gate
 - [ ] npm run check + test + build; separate code-reviewer pass

@@ -1,4 +1,5 @@
 import { buttonClass } from "~/components/ui";
+import { TRIAL_DAYS } from "~/lib/plans";
 
 /**
  * Sign-in CTA hierarchy: the primary action is sign-in (WorkOS AuthKit, which
@@ -56,8 +57,8 @@ export const SignInButtons = ({
     </div>
     {showNote && (
       <p className="text-ink-faint mt-3 text-xs">
-        Start free with a 14-day trial. No credit card, read-only access. The
-        sample tenant needs no account.
+        Start free with a {TRIAL_DAYS}-day trial. No credit card, read-only
+        access. The sample tenant needs no account.
       </p>
     )}
   </div>

@@ -1,3 +1,4 @@
+import { TRIAL_DAYS } from "~/lib/plans";
 import type { subscriptions, tenants } from "~/server/db/schema";
 import type { PlanTier, SubscriptionStatus } from "~/server/types";
 
@@ -8,7 +9,8 @@ import type { PlanTier, SubscriptionStatus } from "~/server/types";
  * cron, dashboard banner and API gates all agree.
  */
 
-export const TRIAL_DAYS = 14;
+/** Re-exported from the client-safe plan catalog so server imports keep working. */
+export { TRIAL_DAYS };
 const DAY_MS = 86_400_000;
 
 /** Stripe statuses that grant access while the paid horizon still holds. */

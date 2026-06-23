@@ -1,6 +1,14 @@
 import type { PlanInterval, PlanTier } from "~/server/types";
 
 /**
+ * Length of the no-card trial in days. Lives here (client-safe) rather than in
+ * the server entitlement module so marketing copy can derive "${TRIAL_DAYS}-day"
+ * without pulling a server module into the client bundle; entitlement.ts
+ * re-exports it so existing server imports keep working.
+ */
+export const TRIAL_DAYS = 14;
+
+/**
  * Shared, secret-free plan catalog used by the marketing pricing page, the
  * dashboard billing UI, and the server-side price/seat mapping. Prices are in
  * whole euros; annual is 10x monthly (two months free). The Stripe Price ids

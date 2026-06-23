@@ -63,13 +63,19 @@ export default function ConnectorsIndexPage() {
               <span className="font-display text-xl tracking-tight group-hover:underline group-hover:underline-offset-4">
                 {g.name}
               </span>
-              <Pill tone="gold">
-                {g.kind === "api" ? "API connector" : "CSV import"}
+              <Pill tone={g.kind === "api" ? "brand" : "slate"}>
+                {g.kind === "api" ? "Connect via API" : "CSV import"}
               </Pill>
             </div>
             <p className="mt-2 text-sm leading-relaxed text-ink-soft">
               {g.summary}
             </p>
+            {g.kind === "import" && (
+              <p className="mt-2 text-xs leading-relaxed text-ink-faint">
+                No API: you paste an exported member list, matched against your
+                directory. Re-import to refresh.
+              </p>
+            )}
           </Link>
         ))}
       </section>

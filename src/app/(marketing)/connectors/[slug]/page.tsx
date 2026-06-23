@@ -79,10 +79,17 @@ export default async function ConnectorGuidePage({
         <h1 className="font-display text-4xl tracking-tight text-balance">
           Connect {guide.name} to LicenseMeter.
         </h1>
-        <Pill tone="gold">
-          {guide.kind === "api" ? "API connector" : "CSV import"}
+        <Pill tone={guide.kind === "api" ? "brand" : "slate"}>
+          {guide.kind === "api" ? "Connect via API" : "CSV import"}
         </Pill>
       </div>
+      {guide.kind === "import" && (
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-faint">
+          This is a CSV import, not an API connection: {guide.name} has no
+          members API to read, so you paste an exported member list and
+          LicenseMeter matches it against your directory. Re-import to refresh.
+        </p>
+      )}
       <p className="mt-4 max-w-2xl text-lg leading-relaxed text-ink-soft">
         {guide.intro}
       </p>

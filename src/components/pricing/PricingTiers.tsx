@@ -6,6 +6,7 @@ import { IntervalToggle } from "~/components/pricing/IntervalToggle";
 import { buttonClass } from "~/components/ui";
 import {
   PLANS,
+  TRIAL_DAYS,
   annualPerMonth,
   planString,
   priceEurosFor,
@@ -85,7 +86,7 @@ export const PricingTiers = ({
                     "w-full",
                   )}
                 >
-                  {signInEnabled ? "Start 14-day trial" : "Start free"}
+                  {signInEnabled ? `Start ${TRIAL_DAYS}-day trial` : "Start free"}
                 </a>
               </div>
             </div>

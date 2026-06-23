@@ -14,10 +14,9 @@ import { HeroVisual } from "~/components/landing/HeroVisual";
 import { Reveal } from "~/components/landing/Reveal";
 import { buttonClass } from "~/components/ui";
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
-import { PLANS } from "~/lib/plans";
+import { PLANS, TRIAL_DAYS } from "~/lib/plans";
 import { ALL_RULES } from "~/lib/rules";
 import { SITE_DEFINITION } from "~/lib/site";
-import { getScanStats } from "~/server/marketingStats";
 
 const GITHUB_URL = "https://github.com/ugurkocde/licensemeter";
 
@@ -30,10 +29,6 @@ const GRAPH_SCOPES = [
   "LicenseAssignment.Read.All",
   "ReportSettings.Read.All",
 ] as const;
-
-/** "12,4": German decimal convention, matching the euro figures around it. */
-const fmtPct = (n: number): string =>
-  new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(n);
 
 /* Plain-text names by design: referencing compatibility is nominative use;
  * official logos would need each vendor's permission (see footer notice). */
@@ -86,9 +81,9 @@ const STEPS = [
 ] as const;
 
 const HERO_TRUST = [
-  "Read-only",
-  "No mailbox or files",
-  "EU-hosted",
+  "Read-only consent, exact scopes shown up front",
+  "Never reads mailbox, files or content",
+  "EU data residency (Frankfurt)",
   "Disconnect deletes everything",
 ] as const;
 
@@ -152,9 +147,12 @@ export default async function LandingPage() {
   const signInOk = signInEnabled();
   const signInHref = signInPath();
   const demoEnabled = isDemoMode();
-  /* Build/ISR-time aggregate; null until the numbers are worth quoting. */
-  const stats = await getScanStats();
   const trialHref = signInOk ? signInHref : "#get-started";
+  /* Finance/CFO front door: route into sign-in, then straight to the existing
+   * zero-consent CSV trial. Same returnTo pattern the pricing cards use. */
+  const csvTrialHref = signInOk
+    ? `${signInHref}?returnTo=${encodeURIComponent("/app/connect/csv")}`
+    : "#get-started";
   const month = new Date().toLocaleString("en-US", { month: "long" });
 
   return (
@@ -166,24 +164,28 @@ export default async function LandingPage() {
           <div className="grid gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
             <div className="rise rise-1">
               <p className="text-brand-text text-xs font-medium tracking-[0.12em] uppercase">
-                Microsoft 365 license waste, priced in euros
+                The seats that leave when people do
               </p>
               <h1 className="font-display mt-4 text-4xl leading-[1.05] font-semibold tracking-tight text-balance md:text-5xl xl:text-[4rem]">
-                See what your unused licenses really cost you.
+                Departed employees keep their paid seats. You keep paying.
               </h1>
               <p className="text-ink-soft mt-5 max-w-xl text-base leading-relaxed lg:text-lg">
-                LicenseMeter connects to Microsoft 365 read-only and shows IT and
-                finance exactly which seats are wasted, priced in euros, before
-                your next renewal.{" "}
+                Offboarding disables the account, but the Adobe, Zoom, Atlassian,
+                Salesforce, ChatGPT and Claude seats keep billing. LicenseMeter
+                connects to Microsoft 365 read-only and cross-checks every one of
+                those seats against your directory, so the leak surfaces priced in
+                euros.{" "}
                 <span className="text-brand-text font-semibold">
                   The first scan is free.
                 </span>
               </p>
               <p className="text-ink-faint mt-4 max-w-xl text-sm leading-relaxed">
-                LicenseMeter is a SaaS license optimization tool that connects
-                read-only to Microsoft 365, cross-checks Adobe, Zoom, Atlassian,
-                Salesforce, ChatGPT and Claude seats against your directory, and
-                prices every leaked, unused or forgotten seat in euros per month.
+                The live demo tenant shows the pattern: {DEMO_FIGURES.leaverCount}{" "}
+                ex-employees still licensed, {DEMO_FIGURES.crossVendorLeaverCount}{" "}
+                of them still holding seats in connected apps — €{" "}
+                {demoEuros(DEMO_FIGURES.byCategory.leavers)} a month for people who
+                already left. Microsoft 365 is how you connect; the cross-vendor
+                offboarding leak is what you find.
               </p>
               <div className="mt-6">
                 <SignInButtons
@@ -193,8 +195,22 @@ export default async function LandingPage() {
                   showNote={false}
                 />
                 <p className="text-ink-faint mt-3 text-xs">
-                  Start free with a 14-day trial. No credit card, read-only
-                  access.
+                  Start free with a {TRIAL_DAYS}-day trial. No credit card,
+                  read-only access.
+                </p>
+                <p className="text-ink-soft mt-4 text-sm leading-relaxed">
+                  No Microsoft admin access?{" "}
+                  <a
+                    href={csvTrialHref}
+                    className="text-brand-text font-medium underline underline-offset-4 hover:opacity-80"
+                  >
+                    Upload a license CSV and see priced waste →
+                  </a>
+                  <br />
+                  <span className="text-ink-faint text-xs">
+                    For finance and procurement: two admin-center exports, no
+                    admin consent.
+                  </span>
                 </p>
               </div>
             </div>
@@ -246,12 +262,6 @@ export default async function LandingPage() {
               >
                 See all connectors →
               </Link>
-              {stats && (
-                <span className="text-ink-faint">
-                  {fmtPct(stats.avgWastePct)}% average waste across{" "}
-                  {stats.tenants} connected tenants
-                </span>
-              )}
             </div>
             <p className="text-ink-faint mx-auto mt-6 max-w-2xl text-center text-xs leading-relaxed">
               All product names are trademarks of their respective owners.
@@ -404,7 +414,7 @@ export default async function LandingPage() {
           </p>
           <div className="bg-brand-soft text-brand-deep mt-5 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium">
             <Check className="size-4 shrink-0" />
-            Every plan starts with a 14-day free trial, no card required
+            Every plan starts with a {TRIAL_DAYS}-day free trial, no card required
           </div>
         </div>
 
@@ -444,7 +454,8 @@ export default async function LandingPage() {
                 Start free — no card
               </a>
               <p className="text-ink-faint mt-3 text-xs">
-                First scan free, then free for 14 days, then € {p.monthly}/month.
+                First scan free, then free for {TRIAL_DAYS} days, then €{" "}
+                {p.monthly}/month.
               </p>
             </article>
           ))}
@@ -532,8 +543,8 @@ export default async function LandingPage() {
                 showNote={false}
               />
               <p className="text-ink-faint mt-3 text-xs">
-                Start free with a 14-day trial. No credit card, read-only
-                access.
+                Start free with a {TRIAL_DAYS}-day trial. No credit card,
+                read-only access.
               </p>
             </div>
           </div>
