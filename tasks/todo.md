@@ -52,10 +52,19 @@ Decisions: EUR50/tenant flat + >1.000-seat guardrail; Phase 1 + start Phase 2; #
 - [x] #16 P2 foundation (INERT, flag-gated via mspEnabled()): mspAccounts table + tenants.mspAccountId;
       STRIPE_PRICE_MSP_TENANT env; pure mspEntitlementOf + tests; access.ts inherits entitlement when mspAccountId set
       (single-tenant path byte-identical, verified). 292 tests, tsc/lint/build green.
-- [ ] #16 P2 REMAINING (next tranche, needs owner's Stripe quantity Price id): MSP account creation + cross-workspace
-      membership; Stripe quantity sub create + qty sync on connect/disconnect; webhook mirroring to mspAccounts;
-      MSP portfolio/billing UI.
+- [x] #16 P2 FULLY IMPLEMENTED (2026-06-23): MSP account lifecycle (create/attach/detach, owner-identity gated,
+      one-account-per-owner DB-unique backstop), Stripe quantity subscription (checkout/portal routes + qty sync on
+      attach/detach), webhook MSP branch (mirrors to mspAccounts, tenant path byte-identical), entitlement inheritance,
+      /app/msp portfolio UI + nav. Live Stripe prices created (prod_Ul73xkc5hlFxy8: monthly price_1TlapF…, annual
+      price_1TlapG…); env vars STRIPE_PRICE_MSP_TENANT_MONTHLY/_ANNUAL set locally (set in Vercel prod too).
+      Independent review done; 5 findings fixed (owner-unique, webhook quantity ownership, mspEnabled guards,
+      customer-match before cancel, fresh account read). tsc+lint+303 tests+build green.
 - [ ] #17 expansion: RECOMMENDED an "AI Cost Visibility" add-on (held by owner; on record, not built).
+
+## MSP deploy steps (owner)
+- Set STRIPE_PRICE_MSP_TENANT_MONTHLY + STRIPE_PRICE_MSP_TENANT_ANNUAL in Vercel prod env (the live price ids above).
+- Apply the schema to prod (db:push): mspAccounts new columns + owner-unique indexes + tenants.mspAccountId.
+- The existing Stripe webhook endpoint already handles MSP events on the same URL (discriminated by metadata.mspAccountId) — no new endpoint needed.
 
 ## Status: branch harden/review-implementation — 9 commits, all gates green, NOT pushed.
 

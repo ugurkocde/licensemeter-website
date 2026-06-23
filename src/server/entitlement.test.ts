@@ -308,6 +308,17 @@ describe("mspEntitlementOf precedence", () => {
     expect(e).toMatchObject({ state: "expired", active: false, locked: true });
   });
 
+  it("unpaid subscription (dunning exhausted) => expired (locked)", () => {
+    // unpaid is neither an entitled status nor past_due, so it falls through to
+    // the terminal lock just like canceled.
+    const e = mspEntitlementOf(
+      account({ subscriptionStatus: "unpaid" }),
+      now,
+      false,
+    );
+    expect(e).toMatchObject({ state: "expired", active: false, locked: true });
+  });
+
   it("no subscription at all => expired (no per-tenant trial fallback)", () => {
     // Unlike a self-serve tenant, an MSP-managed workspace has no trial: a
     // missing/unsubscribed account locks immediately.

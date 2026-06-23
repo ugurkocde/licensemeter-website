@@ -37,6 +37,7 @@ const ITEMS: NavItem[] = [
 ];
 
 const PORTFOLIO_ITEM: NavItem = { href: "/app/portfolio", label: "Portfolio" };
+const MSP_ITEM: NavItem = { href: "/app/msp", label: "MSP" };
 
 /** True for the route itself and its children, never for sibling prefixes. */
 const inSection = (pathname: string, href: string) =>
@@ -45,17 +46,21 @@ const inSection = (pathname: string, href: string) =>
 export const NavLinks = ({
   onNavigate,
   showPortfolio = false,
+  showMsp = false,
   navLabel = "Workspace navigation",
 }: {
   onNavigate?: () => void;
   showPortfolio?: boolean;
+  /** MSP portfolio link, gated on mspEnabled() from the layout. */
+  showMsp?: boolean;
   /** Distinguishes the two render sites (desktop rail vs mobile drawer). */
   navLabel?: string;
 }) => {
   const pathname = usePathname();
+  const base = showMsp ? [...ITEMS, MSP_ITEM] : ITEMS;
   const items = showPortfolio
-    ? [...ITEMS.slice(0, 1), PORTFOLIO_ITEM, ...ITEMS.slice(1)]
-    : ITEMS;
+    ? [...base.slice(0, 1), PORTFOLIO_ITEM, ...base.slice(1)]
+    : base;
   return (
     <nav aria-label={navLabel} className="flex flex-col gap-0.5">
       {items.map((item) => {

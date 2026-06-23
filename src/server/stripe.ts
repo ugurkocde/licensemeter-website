@@ -5,7 +5,7 @@ import Stripe from "stripe";
 
 import { env, siteUrl } from "~/env";
 import { db } from "~/server/db";
-import { snapshots, subscriptions, tenants } from "~/server/db/schema";
+import { mspAccounts, snapshots, subscriptions, tenants } from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
 import type { PlanInterval, PlanTier } from "~/server/types";
 
@@ -48,6 +48,16 @@ export const priceIdFor = (
   tier: PlanTier,
   interval: PlanInterval,
 ): string | null => PRICE_ENV[tier][interval] ?? null;
+
+/** Quantity Price ids per interval for the MSP per-tenant subscription. */
+const MSP_PRICE_ENV: Record<PlanInterval, string | undefined> = {
+  month: env.STRIPE_PRICE_MSP_TENANT_MONTHLY,
+  year: env.STRIPE_PRICE_MSP_TENANT_ANNUAL,
+};
+
+/** MSP quantity Price id for an interval, sourced from env (null when unconfigured). */
+export const mspPriceIdFor = (interval: PlanInterval): string | null =>
+  MSP_PRICE_ENV[interval] ?? null;
 
 /**
  * Reverse map a Stripe price id back to a plan. Returns null for an unmapped
@@ -102,6 +112,46 @@ export const getOrCreateCustomer = async (
 
   const current = await db.query.tenants.findFirst({
     where: eq(tenants.id, tenant.id),
+    columns: { stripeCustomerId: true },
+  });
+  return current?.stripeCustomerId ?? customer.id;
+};
+
+/**
+ * One Stripe Customer per MSP account, reused across the lifetime of its single
+ * quantity subscription. Same race-safe pattern as getOrCreateCustomer: an
+ * idempotency key collapses concurrent first-creates onto one Stripe customer,
+ * and the conditional update (WHERE stripe_customer_id IS NULL) plus the partial
+ * unique index on msp_accounts.stripe_customer_id make a genuinely different
+ * second customer a DB error rather than a silent overwrite. The loser of the
+ * race re-reads and returns the winner's id.
+ */
+export const getOrCreateMspCustomer = async (
+  account: typeof mspAccounts.$inferSelect,
+  email: string | null,
+): Promise<string> => {
+  if (account.stripeCustomerId) return account.stripeCustomerId;
+
+  const customer = await stripe().customers.create(
+    {
+      email: email ?? undefined,
+      name: account.name ?? undefined,
+      metadata: { mspAccountId: account.id },
+    },
+    { idempotencyKey: `msp-customer-create:${account.id}` },
+  );
+
+  const claimed = await db
+    .update(mspAccounts)
+    .set({ stripeCustomerId: customer.id })
+    .where(
+      and(eq(mspAccounts.id, account.id), isNull(mspAccounts.stripeCustomerId)),
+    )
+    .returning({ stripeCustomerId: mspAccounts.stripeCustomerId });
+  if (claimed.length > 0) return customer.id;
+
+  const current = await db.query.mspAccounts.findFirst({
+    where: eq(mspAccounts.id, account.id),
     columns: { stripeCustomerId: true },
   });
   return current?.stripeCustomerId ?? customer.id;

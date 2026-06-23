@@ -6,7 +6,7 @@ import { EntitlementBanner } from "~/components/workspace/EntitlementBanner";
 import { MobileNav } from "~/components/workspace/MobileNav";
 import { NavLinks } from "~/components/workspace/NavLinks";
 import { WorkspaceSwitcher } from "~/components/workspace/WorkspaceSwitcher";
-import { authProvider } from "~/env";
+import { authProvider, mspEnabled } from "~/env";
 import { workspaceLabel } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
 import { signOutAction } from "~/app/auth/actions";
@@ -24,6 +24,9 @@ export default async function WorkspaceLayout({
   const tenantName = workspaceLabel(ctx.tenant);
   // Self-service account page is WorkOS-only; entra users manage profile in Entra.
   const accountEnabled = authProvider() === "workos";
+  // MSP nav appears only when MSP quantity-billing is configured (mirrors how
+  // the route + checkout/portal gate on mspEnabled).
+  const showMsp = mspEnabled();
 
   return (
     <div className="min-h-screen bg-canvas lg:flex">
@@ -40,6 +43,7 @@ export default async function WorkspaceLayout({
         role={ctx.membership.role}
         accountEnabled={accountEnabled}
         showPortfolio={ctx.workspaces.length > 1}
+        showMsp={showMsp}
         workspaces={ctx.workspaces}
         activeId={ctx.tenant.id}
       />
@@ -69,7 +73,7 @@ export default async function WorkspaceLayout({
         </div>
 
         <div className="mt-4 flex-1">
-          <NavLinks showPortfolio={ctx.workspaces.length > 1} />
+          <NavLinks showPortfolio={ctx.workspaces.length > 1} showMsp={showMsp} />
         </div>
 
         <div className="border-t border-sidebar-line px-5 py-4">

@@ -11,12 +11,14 @@ import {
 import { db } from "~/server/db";
 import {
   auditLog,
+  mspAccounts,
   stripeEvents,
   subscriptions,
   tenants,
 } from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
 import { planFromPriceId, stripe } from "~/server/stripe";
+import type { PlanInterval } from "~/server/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -191,17 +193,183 @@ async function handleCheckoutCompleted(
   }
 }
 
+// --- MSP quantity-subscription path -----------------------------------------
+//
+// An MSP account is billed by ONE quantity-based subscription (unit = connected
+// client tenant). The webhook mirrors the same money-path guards as the tenant
+// path above, but onto the mspAccounts row keyed by metadata.mspAccountId. MSP
+// packaging is flat (no tier mapping); the interval is read from the price's
+// recurring.interval, falling back to subscription metadata.interval. No
+// confirmation email yet (out of scope), so the MSP handlers return nothing.
+
+/** True when the subscription/session carries an MSP account id in metadata. */
+const mspIdOfSub = (sub: Stripe.Subscription): string | null =>
+  sub.metadata?.mspAccountId ?? null;
+
+/** Stripe recurring interval -> our PlanInterval, or null when unmapped. */
+const intervalOf = (sub: Stripe.Subscription): PlanInterval | null => {
+  const recurring = sub.items.data[0]?.price.recurring?.interval;
+  if (recurring === "month") return "month";
+  if (recurring === "year") return "year";
+  const meta = sub.metadata?.interval;
+  if (meta === "month" || meta === "year") return meta;
+  return null;
+};
+
+/**
+ * Write the authoritative subscription state for an MSP account. Mirrors
+ * upsertSubscription, but onto the mspAccounts row keyed by metadata.mspAccountId:
+ * same customer-match guard and same stale-event guard. No tier mapping (MSP is
+ * flat); the interval comes from the price's recurring.interval (or metadata).
+ * quantity is intentionally NOT mirrored here — it is the local attached-tenant
+ * count owned by syncMspQuantity (see the note at the update below).
+ */
+async function upsertMspSubscription(
+  tx: Tx,
+  sub: Stripe.Subscription,
+  eventCreatedSec: number,
+): Promise<void> {
+  const mspAccountId = mspIdOfSub(sub);
+  if (!mspAccountId) return;
+
+  const account = await tx.query.mspAccounts.findFirst({
+    where: eq(mspAccounts.id, mspAccountId),
+  });
+  if (!account) return; // post-delete events: nothing to write
+
+  // Unconditional customer-match guard: never write on an unverifiable (null)
+  // or mismatched customer. metadata.mspAccountId is untrusted; the customer
+  // binding (set only at checkout.session.completed) is the gate.
+  const customerId = customerIdOf(sub.customer);
+  if (!account.stripeCustomerId || account.stripeCustomerId !== customerId) {
+    void notifyOps(
+      `stripe webhook: customer mismatch for msp account ${mspAccountId} (sub ${sub.id})`,
+      { key: `stripe-msp-cust:${mspAccountId}`, cooldownMs: 3_600_000 },
+    );
+    return;
+  }
+
+  const eventCreatedAt = new Date(eventCreatedSec * 1000);
+  // Stale-event guard: do not let an older event overwrite newer state.
+  if (account.lastEventAt && account.lastEventAt > eventCreatedAt) return;
+
+  const item = sub.items.data[0];
+  const priceId = item?.price.id ?? "";
+  const status = sub.status;
+  const periodEnd = item?.current_period_end
+    ? new Date(item.current_period_end * 1000)
+    : null;
+  const entitled = status === "active" || status === "trialing";
+  // Paid horizon also backs the past_due grace window.
+  const paidUntil = entitled || status === "past_due" ? periodEnd : null;
+
+  await tx
+    .update(mspAccounts)
+    .set({
+      stripeSubscriptionId: sub.id,
+      stripePriceId: priceId,
+      interval: intervalOf(sub),
+      subscriptionStatus: status,
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: sub.cancel_at_period_end,
+      // NOTE: quantity is NOT written here. mspAccounts.quantity is the local
+      // attached-tenant count owned exclusively by syncMspQuantity (which floors
+      // the Stripe item to max(count,1) but keeps the true count locally).
+      // Mirroring Stripe's floored item quantity back would clobber that source
+      // of truth (e.g. snap 0 attached -> 1).
+      paidUntil,
+      lastEventAt: eventCreatedAt,
+    })
+    .where(eq(mspAccounts.id, mspAccountId));
+
+  // No MSP audit row: auditLog.tenantId is a NOT-NULL FK to tenants, and an MSP
+  // account is not a tenant — writing its id there would violate the constraint
+  // and roll the whole transaction back. MSP auditing is out of scope here.
+}
+
+/** Bind the customer to the MSP account (the ONLY place this happens) + first upsert. */
+async function handleMspCheckoutCompleted(
+  tx: Tx,
+  session: Stripe.Checkout.Session,
+  eventCreatedSec: number,
+): Promise<void> {
+  const mspAccountId =
+    session.metadata?.mspAccountId ?? session.client_reference_id;
+  const customerId = customerIdOf(session.customer);
+  if (!mspAccountId || !customerId) return;
+
+  const account = await tx.query.mspAccounts.findFirst({
+    where: eq(mspAccounts.id, mspAccountId),
+  });
+  if (!account) return;
+
+  if (!account.stripeCustomerId) {
+    await tx
+      .update(mspAccounts)
+      .set({ stripeCustomerId: customerId })
+      .where(
+        and(
+          eq(mspAccounts.id, mspAccountId),
+          isNull(mspAccounts.stripeCustomerId),
+        ),
+      );
+    const after = await tx.query.mspAccounts.findFirst({
+      where: eq(mspAccounts.id, mspAccountId),
+      columns: { stripeCustomerId: true },
+    });
+    if (after?.stripeCustomerId !== customerId) {
+      void notifyOps(
+        `stripe webhook: customer bind conflict for msp account ${mspAccountId}`,
+        { key: `stripe-msp-bind:${mspAccountId}`, cooldownMs: 3_600_000 },
+      );
+      return;
+    }
+  } else if (account.stripeCustomerId !== customerId) {
+    void notifyOps(
+      `stripe webhook: checkout customer mismatch for msp account ${mspAccountId}`,
+      { key: `stripe-msp-bind:${mspAccountId}`, cooldownMs: 3_600_000 },
+    );
+    return;
+  }
+
+  // Process the subscription now so a lost subscription.created cannot strand a
+  // paying MSP account.
+  if (session.subscription) {
+    const subId =
+      typeof session.subscription === "string"
+        ? session.subscription
+        : session.subscription.id;
+    const live = await stripe().subscriptions.retrieve(subId);
+    await upsertMspSubscription(tx, live, eventCreatedSec);
+  }
+}
+
 /** Returns email jobs to run after commit. */
 async function handleEvent(tx: Tx, event: Stripe.Event): Promise<EmailJob[]> {
   switch (event.type) {
     case "checkout.session.completed": {
-      await handleCheckoutCompleted(tx, event.data.object, event.created);
+      const session = event.data.object;
+      // MSP detection: the account id rides on session.metadata.mspAccountId.
+      // (client_reference_id is also set by tenant checkouts to the tenant id,
+      // so the explicit metadata key is the unambiguous discriminator.) When
+      // present this is an MSP checkout; otherwise the tenant path is unchanged.
+      if (session.metadata?.mspAccountId) {
+        await handleMspCheckoutCompleted(tx, session, event.created);
+        return [];
+      }
+      await handleCheckoutCompleted(tx, session, event.created);
       return [];
     }
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
       const live = await stripe().subscriptions.retrieve(event.data.object.id);
+      // MSP events carry mspAccountId on the subscription metadata; route them
+      // to the MSP handler and leave the tenant path untouched.
+      if (mspIdOfSub(live)) {
+        await upsertMspSubscription(tx, live, event.created);
+        return [];
+      }
       await upsertSubscription(tx, live, event.created);
       return [];
     }
@@ -213,6 +381,12 @@ async function handleEvent(tx: Tx, event: Stripe.Event): Promise<EmailJob[]> {
       const live = await stripe().subscriptions.retrieve(
         typeof subId === "string" ? subId : subId.id,
       );
+      // MSP invoices: mirror the subscription state, but no confirmation/failure
+      // email yet (out of scope), so return no jobs.
+      if (mspIdOfSub(live)) {
+        await upsertMspSubscription(tx, live, event.created);
+        return [];
+      }
       const res = await upsertSubscription(tx, live, event.created);
       if (!res) return [];
       const invoiceUrl = invoice.hosted_invoice_url ?? undefined;

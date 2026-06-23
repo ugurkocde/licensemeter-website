@@ -20,6 +20,7 @@ export const MobileNav = ({
   role,
   accountEnabled = false,
   showPortfolio = false,
+  showMsp = false,
   workspaces,
   activeId,
 }: {
@@ -29,6 +30,7 @@ export const MobileNav = ({
   role: string;
   accountEnabled?: boolean;
   showPortfolio?: boolean;
+  showMsp?: boolean;
   workspaces: WorkspaceSummary[];
   activeId: string;
 }) => {
@@ -144,6 +146,7 @@ export const MobileNav = ({
         <NavLinks
           onNavigate={() => setOpen(false)}
           showPortfolio={showPortfolio}
+          showMsp={showMsp}
           navLabel="Mobile workspace navigation"
         />
         <div className="border-sidebar-line mt-3 flex items-center justify-between border-t px-4 pt-3">

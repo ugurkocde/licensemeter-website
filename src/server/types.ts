@@ -163,7 +163,15 @@ export type AuditAction =
   | "subscription_updated"
   | "subscription_canceled"
   | "billing_portal_opened"
-  | "trial_reminders_changed";
+  | "trial_reminders_changed"
+  | "msp_account_created"
+  | "msp_workspace_attached"
+  | "msp_workspace_detached"
+  | "msp_checkout_started"
+  | "msp_billing_portal_opened"
+  | "msp_subscription_activated"
+  | "msp_subscription_updated"
+  | "msp_subscription_canceled";
 
 /** Aggregate counts captured when user identities are concealed in usage reports. */
 export type AggregateUsage = {

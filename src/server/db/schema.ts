@@ -47,6 +47,14 @@ export const mspAccounts = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name"),
+    /**
+     * The creator who manages this MSP account (v1 has no membership table, so
+     * the account is owned outright by whoever created it). Dual identity like
+     * memberships/tenants: workosUserId is the join key under WorkOS auth, oid
+     * under the entra opt-out. Exactly one is populated at creation.
+     */
+    ownerWorkosUserId: text("owner_workos_user_id"),
+    ownerOid: text("owner_oid"),
     /** Stripe customer id (cus_…) for the MSP quantity subscription. */
     stripeCustomerId: text("stripe_customer_id"),
     /** Cached subscription status, mirrored from the webhook (same shape as tenants'). */
@@ -55,6 +63,19 @@ export const mspAccounts = pgTable(
     paidUntil: timestamp("paid_until", { withTimezone: true }),
     /** Comp / grandfather flag, NEVER written by the webhook. Set => always entitled. */
     compedAt: timestamp("comped_at", { withTimezone: true }),
+    /** The MSP quantity subscription id (sub_…); mirrors subscriptions.stripeSubscriptionId. */
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    /** Cached Price id of the quantity subscription; null until first subscribed. */
+    stripePriceId: text("stripe_price_id"),
+    /** Billing interval of the quantity subscription; nullable so an unmapped price is never coerced. */
+    interval: text("interval").$type<PlanInterval>(),
+    /** Cached current_period_end of the quantity subscription, mirrored from the webhook. */
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    /** Connected client tenants billed = subscription quantity, mirrored from the webhook. */
+    quantity: integer("quantity").notNull().default(0),
+    /** event.created of the last applied webhook; gates stale out-of-order writes. */
+    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -65,6 +86,25 @@ export const mspAccounts = pgTable(
     uniqueIndex("msp_accounts_stripe_customer_idx")
       .on(t.stripeCustomerId)
       .where(sql`${t.stripeCustomerId} is not null`),
+    // One MSP account per Stripe subscription: a second account pointing at the
+    // same sub is a webhook routing bug, not a silent duplicate (mirrors the
+    // self-serve subscriptions_stripe_subscription guard; partial since the
+    // column is null until first subscribed).
+    uniqueIndex("msp_accounts_stripe_subscription_idx")
+      .on(t.stripeSubscriptionId)
+      .where(sql`${t.stripeSubscriptionId} is not null`),
+    // One MSP account per owner (by either identity): the application enforces
+    // "one account per owner" via onConflictDoNothing + re-read, but a unique
+    // index is the DB backstop so a concurrent double-create can't slip two
+    // accounts past the read-then-insert race. Partial since each column is null
+    // for the other identity kind.
+    uniqueIndex("msp_accounts_owner_workos_user_idx")
+      .on(t.ownerWorkosUserId)
+      .where(sql`${t.ownerWorkosUserId} is not null`),
+    uniqueIndex("msp_accounts_owner_oid_idx")
+      .on(t.ownerOid)
+      .where(sql`${t.ownerOid} is not null`),
+    check("msp_accounts_quantity_nonneg", sql`${t.quantity} >= 0`),
   ],
 );
 

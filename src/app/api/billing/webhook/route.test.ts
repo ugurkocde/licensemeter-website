@@ -106,6 +106,12 @@ const CUSTOMER_ID = "cus_test_123";
 const SUB_ID = "sub_test_123";
 const PERIOD_END = 1_900_000_000; // far-future unix seconds
 
+// MSP fixtures: a separate account, customer and subscription so a test can
+// prove the tenant and MSP paths never touch each other's rows.
+const MSP_ACCOUNT_ID = "22222222-2222-2222-2222-222222222222";
+const MSP_CUSTOMER_ID = "cus_msp_123";
+const MSP_SUB_ID = "sub_msp_123";
+
 /** Insert a tenant; overrides patch the defaults. */
 async function seedTenant(
   db: ReturnType<typeof makeDb>,
@@ -131,6 +137,44 @@ function makeSubscription(
         {
           price: { id: "price_growth_monthly" },
           current_period_end: PERIOD_END,
+        },
+      ],
+    },
+    ...over,
+  } as unknown as Stripe.Subscription;
+}
+
+/** Insert an MSP account; overrides patch the defaults. */
+async function seedMspAccount(
+  db: ReturnType<typeof makeDb>,
+  overrides: Partial<typeof schema.mspAccounts.$inferInsert> = {},
+): Promise<void> {
+  await db
+    .insert(schema.mspAccounts)
+    .values({ id: MSP_ACCOUNT_ID, name: "Contoso MSP", ...overrides });
+}
+
+/**
+ * A live Stripe.Subscription carrying an MSP account id in metadata. Unlike the
+ * tenant fixture, this has a quantity and a price.recurring.interval (the MSP
+ * path mirrors those, not a tier).
+ */
+function makeMspSubscription(
+  over: Partial<Stripe.Subscription> = {},
+): Stripe.Subscription {
+  return {
+    id: MSP_SUB_ID,
+    customer: MSP_CUSTOMER_ID,
+    status: "active",
+    cancel_at_period_end: false,
+    trial_end: null,
+    metadata: { mspAccountId: MSP_ACCOUNT_ID },
+    items: {
+      data: [
+        {
+          price: { id: "price_msp_monthly", recurring: { interval: "month" } },
+          current_period_end: PERIOD_END,
+          quantity: 3,
         },
       ],
     },
@@ -170,6 +214,10 @@ const getSub = (db: ReturnType<typeof makeDb>) =>
   });
 const countEvents = async (db: ReturnType<typeof makeDb>) =>
   (await db.select().from(schema.stripeEvents)).length;
+const getMspAccount = (db: ReturnType<typeof makeDb>) =>
+  db.query.mspAccounts.findFirst({
+    where: eq(schema.mspAccounts.id, MSP_ACCOUNT_ID),
+  });
 
 // --- per-test setup ----------------------------------------------------------
 
@@ -492,6 +540,238 @@ describe("POST /api/billing/webhook", () => {
 
       expect(res.status).toBe(200);
       expect(sendSubscriptionConfirmedMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // --- MSP quantity-subscription path (M5) ----------------------------------
+  //
+  // An MSP account is billed by one quantity subscription keyed by
+  // metadata.mspAccountId. The dispatcher routes any event whose live
+  // subscription/session carries that key to the MSP handlers, which mirror the
+  // money-path guards onto the mspAccounts row and never touch the tenant tables.
+  describe("MSP quantity subscription", () => {
+    const subEvent = (over: Partial<Stripe.Event> = {}): Stripe.Event =>
+      makeEvent({
+        id: "evt_msp_sub_1",
+        type: "customer.subscription.updated",
+        data: { object: { id: MSP_SUB_ID } } as unknown as Stripe.Event["data"],
+        ...over,
+      } as Partial<Stripe.Event>);
+
+    const mspCheckoutEvent = (
+      session: Partial<Stripe.Checkout.Session>,
+    ): Stripe.Event =>
+      makeEvent({
+        id: "evt_msp_checkout_1",
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            metadata: { mspAccountId: MSP_ACCOUNT_ID },
+            customer: MSP_CUSTOMER_ID,
+            subscription: MSP_SUB_ID,
+            ...session,
+          },
+        } as unknown as Stripe.Event["data"],
+      } as Partial<Stripe.Event>);
+
+    it("subscription.updated writes the mspAccounts row, tenant tables untouched", async () => {
+      await seedMspAccount(currentDb, { stripeCustomerId: MSP_CUSTOMER_ID });
+      stripeClient.subscriptions.retrieve.mockResolvedValue(
+        makeMspSubscription(),
+      );
+      withEvent(subEvent());
+
+      const res = await POST(makeRequest());
+
+      expect(res.status).toBe(200);
+      const account = await getMspAccount(currentDb);
+      expect(account?.subscriptionStatus).toBe("active");
+      expect(account?.stripeSubscriptionId).toBe(MSP_SUB_ID);
+      expect(account?.stripePriceId).toBe("price_msp_monthly");
+      expect(account?.interval).toBe("month"); // from price.recurring.interval
+      // quantity is NOT written by the webhook (owned by syncMspQuantity); it
+      // stays at the seeded default.
+      expect(account?.quantity).toBe(0);
+      expect(account?.paidUntil?.getTime()).toBe(PERIOD_END * 1000);
+      expect(account?.currentPeriodEnd?.getTime()).toBe(PERIOD_END * 1000);
+      // The tenant money path was never entered: no subscriptions row exists.
+      expect(await getSub(currentDb)).toBeUndefined();
+    });
+
+    it("subscription.created writes the mspAccounts row (created path)", async () => {
+      await seedMspAccount(currentDb, { stripeCustomerId: MSP_CUSTOMER_ID });
+      stripeClient.subscriptions.retrieve.mockResolvedValue(
+        makeMspSubscription(),
+      );
+      withEvent(
+        subEvent({ id: "evt_msp_created", type: "customer.subscription.created" }),
+      );
+
+      const res = await POST(makeRequest());
+
+      expect(res.status).toBe(200);
+      const account = await getMspAccount(currentDb);
+      expect(account?.subscriptionStatus).toBe("active");
+      expect(account?.stripeSubscriptionId).toBe(MSP_SUB_ID);
+    });
+
+    it("checkout.session.completed binds the customer to the MSP account + first upsert", async () => {
+      await seedMspAccount(currentDb); // customer not yet bound (null)
+      stripeClient.subscriptions.retrieve.mockResolvedValue(
+        makeMspSubscription(),
+      );
+      withEvent(mspCheckoutEvent({}));
+
+      const res = await POST(makeRequest());
+
+      expect(res.status).toBe(200);
+      const account = await getMspAccount(currentDb);
+      expect(account?.stripeCustomerId).toBe(MSP_CUSTOMER_ID);
+      // Binding succeeded so the first upsert wrote the subscription state.
+      expect(account?.subscriptionStatus).toBe("active");
+      expect(account?.quantity).toBe(0); // webhook doesn't write quantity
+    });
+
+    it("checkout bind conflict (already bound to another customer) -> rejected, not overwritten", async () => {
+      await seedMspAccount(currentDb, {
+        stripeCustomerId: "cus_msp_already_bound",
+      });
+      withEvent(mspCheckoutEvent({}));
+
+      const res = await POST(makeRequest());
+
+      expect(res.status).toBe(200);
+      // Existing binding is preserved.
+      expect((await getMspAccount(currentDb))?.stripeCustomerId).toBe(
+        "cus_msp_already_bound",
+      );
+      // Returned before processing the subscription: no retrieve, no state.
+      expect(stripeClient.subscriptions.retrieve).not.toHaveBeenCalled();
+      expect((await getMspAccount(currentDb))?.subscriptionStatus).toBeNull();
+      expect(notifyOpsMock).toHaveBeenCalled();
+    });
+
+    it("customer mismatch (event customer != account customer) -> rejected, no write", async () => {
+      // Account bound to a DIFFERENT customer than the event's subscription.
+      await seedMspAccount(currentDb, {
+        stripeCustomerId: "cus_msp_someone_else",
+      });
+      stripeClient.subscriptions.retrieve.mockResolvedValue(
+        makeMspSubscription(), // customer = MSP_CUSTOMER_ID
+      );
+      withEvent(subEvent());
+
+      const res = await POST(makeRequest());
+
+      expect(res.status).toBe(200);
+      const account = await getMspAccount(currentDb);
+      // No entitlement columns written.
+      expect(account?.subscriptionStatus).toBeNull();
+      expect(account?.paidUntil).toBeNull();
+      expect(account?.stripeSubscriptionId).toBeNull();
+      // The dedup row is committed (event processed and rejected cleanly).
+      expect(await countEvents(currentDb)).toBe(1);
+      expect(notifyOpsMock).toHaveBeenCalled();
+    });
+
+    it("unverifiable (null) customer on account -> rejected", async () => {
+      await seedMspAccount(currentDb); // stripeCustomerId stays null
+      stripeClient.subscriptions.retrieve.mockResolvedValue(
+        makeMspSubscription(),
+      );
+      withEvent(subEvent());
+
+      const res = await POST(makeRequest());
+
+      expect(res.status).toBe(200);
+      expect((await getMspAccount(currentDb))?.subscriptionStatus).toBeNull();
+    });
+
+    it("stale event (older than stored lastEventAt) -> no overwrite", async () => {
+      const newer = new Date(2_000_000_000 * 1000);
+      await seedMspAccount(currentDb, {
+        stripeCustomerId: MSP_CUSTOMER_ID,
+        subscriptionStatus: "active",
+        quantity: 3,
+        lastEventAt: newer,
+      });
+      // Event is OLDER than the stored lastEventAt and reports a canceled state.
+      withEvent(subEvent({ created: 1_000_000_000 }));
+      stripeClient.subscriptions.retrieve.mockResolvedValue(
+        makeMspSubscription({ status: "canceled" }),
+      );
+
+      const res = await POST(makeRequest());
+
+      expect(res.status).toBe(200);
+      const account = await getMspAccount(currentDb);
+      expect(account?.subscriptionStatus).toBe("active"); // unchanged
+      expect(account?.quantity).toBe(3);
+      expect(account?.lastEventAt?.getTime()).toBe(newer.getTime());
+    });
+
+    it("canceled MSP subscription clears the paid horizon", async () => {
+      await seedMspAccount(currentDb, { stripeCustomerId: MSP_CUSTOMER_ID });
+      stripeClient.subscriptions.retrieve.mockResolvedValue(
+        makeMspSubscription({ status: "canceled" }),
+      );
+      withEvent(subEvent({ id: "evt_msp_canceled" }));
+
+      const res = await POST(makeRequest());
+
+      expect(res.status).toBe(200);
+      const account = await getMspAccount(currentDb);
+      expect(account?.subscriptionStatus).toBe("canceled");
+      expect(account?.paidUntil).toBeNull();
+    });
+
+    // CRITICAL dispatcher-discrimination guard: the tenant and MSP paths are
+    // routed solely by the presence of mspAccountId in metadata. These two tests
+    // prove neither path ever writes the other's tables (no cross-contamination).
+    describe("cross-contamination guard", () => {
+      it("a tenant event (tenantId, NO mspAccountId) writes tenant tables and leaves mspAccounts untouched", async () => {
+        await seedTenant(currentDb, { stripeCustomerId: CUSTOMER_ID });
+        await seedMspAccount(currentDb, { stripeCustomerId: MSP_CUSTOMER_ID });
+        // Default retrieve stub returns the tenant subscription (metadata.tenantId).
+        stripeClient.subscriptions.retrieve.mockResolvedValue(
+          makeSubscription(),
+        );
+        withEvent(makeEvent({ id: "evt_tenant_only" }));
+
+        const res = await POST(makeRequest());
+
+        expect(res.status).toBe(200);
+        // Tenant path wrote.
+        expect((await getTenant(currentDb))?.subscriptionStatus).toBe("active");
+        expect(await getSub(currentDb)).toBeDefined();
+        // MSP row is pristine: only the seeded customer binding, no sub state.
+        const account = await getMspAccount(currentDb);
+        expect(account?.subscriptionStatus).toBeNull();
+        expect(account?.stripeSubscriptionId).toBeNull();
+        expect(account?.quantity).toBe(0); // schema default, never written
+        expect(account?.lastEventAt).toBeNull();
+      });
+
+      it("an MSP event (mspAccountId) writes mspAccounts and leaves the tenant tables untouched", async () => {
+        await seedTenant(currentDb, { stripeCustomerId: CUSTOMER_ID });
+        await seedMspAccount(currentDb, { stripeCustomerId: MSP_CUSTOMER_ID });
+        stripeClient.subscriptions.retrieve.mockResolvedValue(
+          makeMspSubscription(),
+        );
+        withEvent(subEvent({ id: "evt_msp_only" }));
+
+        const res = await POST(makeRequest());
+
+        expect(res.status).toBe(200);
+        // MSP row wrote.
+        const account = await getMspAccount(currentDb);
+        expect(account?.subscriptionStatus).toBe("active");
+        expect(account?.quantity).toBe(0); // webhook doesn't write quantity
+        // Tenant tables are pristine: no subscriptions row, status never set.
+        expect(await getSub(currentDb)).toBeUndefined();
+        expect((await getTenant(currentDb))?.subscriptionStatus).toBeNull();
+        expect((await getTenant(currentDb))?.paidUntil).toBeNull();
+      });
     });
   });
 });

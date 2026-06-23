@@ -102,6 +102,10 @@ export const annualPerMonth = (plan: Plan): number => Math.round(plan.annual / 1
 export const priceEurosFor = (tier: PlanTier, interval: PlanInterval): number =>
   interval === "year" ? planByTier(tier).annual : planByTier(tier).monthly;
 
+/** MSP per-tenant unit price in whole euros for an interval (annual = 10x monthly). */
+export const mspPriceEurosFor = (interval: PlanInterval): number =>
+  interval === "year" ? MSP_PRICE_ANNUAL_EUR : MSP_PRICE_EUR;
+
 /** URL/checkout plan token, e.g. "growth:annual". */
 export const planString = (tier: PlanTier, interval: PlanInterval): string =>
   `${tier}:${interval === "year" ? "annual" : "monthly"}`;
