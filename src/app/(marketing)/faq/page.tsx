@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { siteUrl } from "~/env";
+import { MSP_PRICE_EUR } from "~/lib/plans";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
 import { SUPPORT_MAILTO } from "~/lib/support";
 
@@ -58,7 +59,7 @@ const FAQS = [
   },
   {
     q: "We are an MSP. Can we manage several client tenants?",
-    a: "Yes. Each client tenant becomes its own workspace: you start the connect flow, the client's Global Admin completes Microsoft's consent dialog, and the workspace binds to you, with no shared credentials. A portfolio view sorts all your workspaces by monthly waste, each with its own price book and a PDF waste report for the QBR. See the MSP page for details.",
+    a: `Yes. Each client tenant becomes its own workspace: you start the connect flow, the client's Global Admin completes Microsoft's consent dialog, and the workspace binds to you, with no shared credentials. You group those workspaces under one MSP account and a portfolio view sorts them by monthly waste, each with its own price book and a PDF waste report for the QBR. Billing is self-serve: one subscription across your portfolio at €${MSP_PRICE_EUR} per connected tenant per month. See the MSP page for details.`,
   },
 ] as const;
 

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { isDemoMode, siteUrl } from "~/env";
+import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
 import { buttonClass } from "~/components/ui";
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
 import {
@@ -13,8 +13,7 @@ import { SUPPORT_MAILTO } from "~/lib/support";
 
 export const metadata: Metadata = {
   title: "For MSPs",
-  description:
-    "LicenseMeter for Microsoft-centric MSPs: a portfolio of client tenants sorted by waste, admin consent without shared credentials, per-client price books and a PDF waste report for every QBR.",
+  description: `LicenseMeter for Microsoft-centric MSPs: a self-serve portfolio of client tenants sorted by waste, admin consent without shared credentials, per-client price books and a PDF waste report for every QBR. Flat €${MSP_PRICE_EUR} per connected tenant.`,
 };
 
 const STEPS = [
@@ -84,11 +83,30 @@ const MSP_LD = {
   ],
 };
 
-const Ctas = ({ demoEnabled }: { demoEnabled: boolean }) => (
+const Ctas = ({
+  demoEnabled,
+  startHref,
+}: {
+  demoEnabled: boolean;
+  startHref: string | null;
+}) => (
   <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+    {startHref && (
+      <a
+        href={startHref}
+        className={buttonClass("primary", "w-full sm:w-auto")}
+      >
+        Start your MSP portfolio
+      </a>
+    )}
     {demoEnabled && (
       <form action="/api/auth/demo" method="post">
-        <button className={buttonClass("primary", "w-full sm:w-auto")}>
+        <button
+          className={buttonClass(
+            startHref ? "secondary" : "primary",
+            "w-full sm:w-auto",
+          )}
+        >
           Open the live demo
         </button>
       </form>
@@ -96,7 +114,7 @@ const Ctas = ({ demoEnabled }: { demoEnabled: boolean }) => (
     <a
       href={SUPPORT_MAILTO}
       className={buttonClass(
-        demoEnabled ? "secondary" : "primary",
+        startHref || demoEnabled ? "secondary" : "primary",
         "w-full sm:w-auto",
       )}
     >
@@ -107,6 +125,12 @@ const Ctas = ({ demoEnabled }: { demoEnabled: boolean }) => (
 
 export default function MspPage() {
   const demoEnabled = isDemoMode();
+  // Self-serve entry: sign in, then land on the MSP portfolio to create the
+  // account and attach client workspaces. Null when sign-in is disabled, in
+  // which case the demo / "Talk to us" CTAs take over as primary.
+  const startHref = signInEnabled()
+    ? `${signInPath()}?returnTo=${encodeURIComponent("/app/msp")}`
+    : null;
 
   return (
     <main className="mx-auto max-w-5xl px-6 pt-6 pb-24">
@@ -119,16 +143,24 @@ export default function MspPage() {
       <p className="mt-4 max-w-2xl text-lg leading-relaxed text-ink-soft">
         You run Microsoft 365 for five, twenty, fifty clients. LicenseMeter
         gives every client tenant its own read-only workspace, and gives you
-        one portfolio, sorted by what each client wastes per month.
+        one portfolio, sorted by what each client wastes per month. It&rsquo;s
+        self-serve: connect each client, then pay{" "}
+        <span className="tnum font-mono">€ {MSP_PRICE_EUR}</span> per connected
+        tenant on a single subscription.
       </p>
       <div className="mt-8">
-        <Ctas demoEnabled={demoEnabled} />
+        <Ctas demoEnabled={demoEnabled} startHref={startHref} />
       </div>
 
       <section className="mt-14">
         <h2 className="font-display text-2xl tracking-tight">
           Connecting a client takes one consent.
         </h2>
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-soft">
+          You create one MSP portfolio, then attach the client workspaces you
+          own. Connecting each client is a single read-only consent &mdash; no
+          shared credentials:
+        </p>
         <div className="mt-8 grid gap-10 md:grid-cols-3">
           {STEPS.map((step) => (
             <div key={step.n}>
@@ -231,7 +263,7 @@ export default function MspPage() {
           </p>
         </div>
         <div className="mt-8">
-          <Ctas demoEnabled={demoEnabled} />
+          <Ctas demoEnabled={demoEnabled} startHref={startHref} />
         </div>
       </section>
 
@@ -245,7 +277,7 @@ export default function MspPage() {
           consent.
         </p>
         <div className="mt-8">
-          <Ctas demoEnabled={demoEnabled} />
+          <Ctas demoEnabled={demoEnabled} startHref={startHref} />
         </div>
       </section>
 

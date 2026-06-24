@@ -14,7 +14,7 @@ import { HeroVisual } from "~/components/landing/HeroVisual";
 import { Reveal } from "~/components/landing/Reveal";
 import { buttonClass } from "~/components/ui";
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
-import { PLANS, TRIAL_DAYS } from "~/lib/plans";
+import { MSP_PRICE_EUR, PLANS, TRIAL_DAYS } from "~/lib/plans";
 import { ALL_RULES } from "~/lib/rules";
 import { SITE_DEFINITION } from "~/lib/site";
 
@@ -170,22 +170,23 @@ export default async function LandingPage() {
                 Departed employees keep their paid seats. You keep paying.
               </h1>
               <p className="text-ink-soft mt-5 max-w-xl text-base leading-relaxed lg:text-lg">
-                Offboarding disables the account, but the Adobe, Zoom, Atlassian,
-                Salesforce, ChatGPT and Claude seats keep billing. LicenseMeter
-                connects to Microsoft 365 read-only and cross-checks every one of
-                those seats against your directory, so the leak surfaces priced in
-                euros.{" "}
+                Offboarding disables the account, but the seats in Adobe,
+                Salesforce, Zoom and your AI tools keep billing. LicenseMeter
+                connects to Microsoft 365 read-only and cross-checks every seat
+                against your directory, so the leak surfaces priced in euros.{" "}
                 <span className="text-brand-text font-semibold">
                   The first scan is free.
                 </span>
               </p>
-              <p className="text-ink-faint mt-4 max-w-xl text-sm leading-relaxed">
-                The live demo tenant shows the pattern: {DEMO_FIGURES.leaverCount}{" "}
-                ex-employees still licensed, {DEMO_FIGURES.crossVendorLeaverCount}{" "}
-                of them still holding seats in connected apps — €{" "}
-                {demoEuros(DEMO_FIGURES.byCategory.leavers)} a month for people who
-                already left. Microsoft 365 is how you connect; the cross-vendor
-                offboarding leak is what you find.
+              <p className="mt-6 max-w-xl">
+                <span className="text-ink font-display text-2xl font-semibold tracking-tight md:text-3xl">
+                  €{demoEuros(DEMO_FIGURES.byCategory.leavers)}/month wasted
+                </span>{" "}
+                <span className="text-ink-soft text-base leading-relaxed">
+                  on {DEMO_FIGURES.leaverCount} ex-employees who already left —{" "}
+                  {DEMO_FIGURES.crossVendorLeaverCount} still holding seats in
+                  connected apps, in the live demo tenant.
+                </span>
               </p>
               <div className="mt-6">
                 <SignInButtons
@@ -477,12 +478,14 @@ export default async function LandingPage() {
 
         <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-ink-soft text-sm">
-            Over 2.500 seats, or an MSP managing many tenants?{" "}
+            Running client tenants as an MSP?{" "}
+            <span className="tnum font-mono">€ {MSP_PRICE_EUR}</span> per tenant,
+            self-serve across your portfolio.{" "}
             <Link
               href="/msp"
               className="text-brand-text font-medium underline underline-offset-4 hover:opacity-80"
             >
-              Talk to us →
+              See the MSP page →
             </Link>
           </p>
           <Link
