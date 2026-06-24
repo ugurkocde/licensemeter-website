@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 
 import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
-import { RoiCalculator } from "~/components/RoiCalculator";
 import { SignInButtons } from "~/components/SignInButtons";
 import { HeroVisual } from "~/components/landing/HeroVisual";
 import { Reveal } from "~/components/landing/Reveal";
@@ -372,26 +371,7 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* 5 — ROI calculator */}
-      <section className="mx-auto max-w-6xl px-6 py-16 lg:py-24">
-        <div className="max-w-2xl">
-          <p className="text-brand-text text-xs font-medium tracking-[0.12em] uppercase">
-            Estimate your own waste
-          </p>
-          <h2 className="font-display mt-3 text-3xl font-semibold tracking-tight text-balance lg:text-4xl">
-            Put your own numbers in before you connect.
-          </h2>
-          <p className="text-ink-soft mt-3 leading-relaxed">
-            The estimate runs entirely in your browser. No data leaves this page,
-            and your free scan replaces every assumption with real tenant data.
-          </p>
-        </div>
-        <div className="mt-10">
-          <RoiCalculator />
-        </div>
-      </section>
-
-      {/* 6 — Pricing */}
+      {/* 5 — Pricing */}
       <section id="pricing" className="mx-auto max-w-6xl px-6 py-16 lg:py-24">
         <div className="max-w-2xl">
           <p className="text-brand-text text-xs font-medium tracking-[0.12em] uppercase">
