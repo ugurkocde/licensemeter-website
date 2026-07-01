@@ -3,8 +3,11 @@ import {
   Calculator,
   Check,
   Download,
+  PiggyBank,
   Receipt,
+  Search,
   Terminal,
+  TrendingDown,
 } from "lucide-react";
 
 import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
@@ -12,6 +15,11 @@ import { SignInButtons } from "~/components/SignInButtons";
 import { HeroVisual } from "~/components/landing/HeroVisual";
 import { Reveal } from "~/components/landing/Reveal";
 import { buttonClass } from "~/components/ui";
+import {
+  DEMO_ANNUAL_WASTE_ROUNDED,
+  DEMO_FIGURES,
+  demoEuros,
+} from "~/lib/demoFigures";
 import { MSP_PRICE_EUR, PLANS, TRIAL_DAYS } from "~/lib/plans";
 import { SITE_DEFINITION } from "~/lib/site";
 import { SUPPORT_MAILTO } from "~/lib/support";
@@ -43,6 +51,36 @@ const VALUE_CARDS = [
     Icon: Download,
     title: "Reclaim, don't just report",
     body: "Export a finance CSV or a ready-to-run PowerShell script to remove the seats you choose.",
+  },
+] as const;
+
+/* We don't yet have an aggregate "average customer" figure to quote honestly,
+ * so the savings band pairs a sourced industry benchmark with the one number
+ * we can stand behind today: the live demo tenant (see demoFigures.ts). Swap
+ * in a real cross-tenant average once enough paying tenants make that an
+ * honest claim rather than a guess. */
+const SAVINGS_STATS = [
+  {
+    Icon: TrendingDown,
+    value: "36%",
+    label: "of purchased SaaS seats sit unused",
+    detail: "Industry-wide average across organizations, every vendor.",
+    source: "Zylo, 2026 SaaS Management Index",
+  },
+  {
+    Icon: PiggyBank,
+    value: `€ ${demoEuros(DEMO_FIGURES.monthlyWasteCents)}`,
+    unit: "/mo",
+    label: "found in our live demo tenant",
+    detail: `${DEMO_FIGURES.users} seats, real rules — about € ${DEMO_ANNUAL_WASTE_ROUNDED}/yr.`,
+    source: "Sample tenant below, not an average customer",
+  },
+  {
+    Icon: Search,
+    value: "€ 0",
+    label: "to find your own number",
+    detail: `Free scan, then ${TRIAL_DAYS} days of monitoring, free.`,
+    source: "No credit card, read-only access",
   },
 ] as const;
 
@@ -191,7 +229,49 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* 3 — Value cards */}
+      {/* 3 — Savings stats */}
+      <section className="mx-auto max-w-6xl px-6 py-16 lg:py-20">
+        <div className="max-w-2xl">
+          <p className="text-brand-text text-xs font-medium tracking-[0.12em] uppercase">
+            How much is on the table
+          </p>
+          <h2 className="font-display mt-3 text-3xl font-semibold tracking-tight text-balance lg:text-4xl">
+            Most teams are overpaying without knowing the number.
+          </h2>
+        </div>
+        <div className="mt-10 grid gap-5 md:grid-cols-3">
+          {SAVINGS_STATS.map((stat) => (
+            <article
+              key={stat.label}
+              className="border-line bg-card shadow-card h-full rounded-2xl border p-6"
+            >
+              <span className="bg-waste-soft text-waste-text ring-waste/10 inline-flex size-12 items-center justify-center rounded-2xl ring-1">
+                <stat.Icon className="size-6" strokeWidth={1.75} />
+              </span>
+              <div className="font-display tnum mt-4 text-3xl font-semibold tracking-tight whitespace-nowrap">
+                {stat.value}
+                {"unit" in stat && (
+                  <span className="text-ink-faint text-base font-normal">
+                    {stat.unit}
+                  </span>
+                )}
+              </div>
+              <p className="text-ink mt-2 text-sm font-medium">{stat.label}</p>
+              <p className="text-ink-soft mt-1.5 text-sm leading-relaxed">
+                {stat.detail}
+              </p>
+              <p className="text-ink-faint mt-3 text-xs">{stat.source}</p>
+            </article>
+          ))}
+        </div>
+        <p className="text-ink-faint mt-6 text-xs leading-relaxed">
+          Figures above are an industry benchmark and one worked example, not a
+          guarantee &mdash; what your tenant recovers depends on how it&rsquo;s
+          actually licensed. Run the free scan to see your own number.
+        </p>
+      </section>
+
+      {/* 4 — Value cards */}
       <section className="mx-auto max-w-6xl px-6 py-16 lg:py-24">
         <div className="max-w-2xl">
           <h2 className="font-display text-3xl font-semibold tracking-tight text-balance lg:text-4xl">
@@ -232,7 +312,8 @@ export default async function LandingPage() {
           </p>
           <div className="bg-brand-soft text-brand-deep mt-5 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium">
             <Check className="size-4 shrink-0" />
-            Every plan starts with a {TRIAL_DAYS}-day free trial, no card required
+            Every plan starts with a {TRIAL_DAYS}-day free trial, no card
+            required
           </div>
         </div>
 
