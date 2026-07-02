@@ -39,13 +39,21 @@ exposure plus defense-in-depth hardening. Codex CLI implements F1-F11; a reviewe
       bind a guarded update (SET msp_account_id WHERE id = :tenant AND msp_account_id IS NULL) and
       fail if 0 rows changed.
 
-## Follow-ups requiring a product/infra decision (NOT Codex scope)
-- [ ] AUTH_SECRET blast radius: dedicated DATA_ENCRYPTION_KEY for crypto.ts (needs env + re-encrypt plan).
-- [ ] Durable rate limiting: back abuse-prone paths with KV/Redis or Vercel WAF (rateLimit.ts is
-      per-instance in-memory).
-- [ ] Demo workspace write-guards: anonymous demo owners can mutate shared settings/prices/finding
-      status (actions.ts). Product call on demo interactivity vs read-only.
-- [ ] Domain-JIT auto-join audit event (access.ts joins on email-domain match with no audit entry).
+## Follow-ups (F12-F14 DONE this session; F15 still open)
+- [x] F12 AUTH_SECRET blast radius: added optional DATA_ENCRYPTION_KEY (src/env.js). crypto.ts derives
+      the AES key from it when set, else AUTH_SECRET (byte-identical when unset, zero migration).
+      decryptSecret tries the primary key then a legacy AUTH_SECRET-derived key so a rotation to a
+      DISTINCT key is zero-downtime (old rows decrypt via fallback, re-encrypt lazily). Rotation test
+      added. To actually reduce blast radius: set a distinct DATA_ENCRYPTION_KEY in prod env.
+- [x] F13 Durable rate limiting: new rate_limits table + rateLimitDurable (Postgres atomic fixed-window
+      upsert, fails open on DB error). Replaced the in-memory limiter on all abuse-prone paths
+      (captureEmail, invite, resend, CSV trial, demo, sync); removed the dead in-memory limiter. Tests
+      added. PROD: run npm run db:push (adds rate_limits); prod RLS script loops all public tables so
+      the app_all policy auto-covers it on next run.
+- [x] F14 Demo workspace write-guards: added isDemo guards to setFindingStatus, bulkSetFindingStatus,
+      updatePrice, importPrices, setInactiveDays, setRenewalDate, setLeakAlerts, setMonthlyReport,
+      setTrialReminders, setCurrency, triggerSync (shared DEMO_READONLY message).
+- [ ] F15 Domain-JIT auto-join audit event (access.ts joins on email-domain match with no audit entry).
 
 ## Acceptance criteria
 1. F1-F11 implemented exactly as scoped; every changed line traces to a listed item.

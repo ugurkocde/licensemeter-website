@@ -26,7 +26,7 @@ import {
   type UsageRow,
 } from "~/server/csvTrial";
 import { skuDefaultPriceCents } from "~/server/graph/skuCatalog";
-import { rateLimit } from "~/server/rateLimit";
+import { rateLimitDurable } from "~/server/rateLimit";
 import { runAnalysis } from "~/server/sync/runSync";
 import type { UserLicense, WorkloadActivity } from "~/server/types";
 
@@ -105,7 +105,7 @@ export const submitCsvTrial = async (
   // Keyed by organization (entra tenant) or by user (workos): one uploader gets
   // 10 uploads per hour either way.
   const rlKey = tid ? `csvtrial:${tid}` : `csvtrial:ws:${workosUserId}`;
-  if (!rateLimit(rlKey, 10, 60 * 60 * 1000)) {
+  if (!(await rateLimitDurable(rlKey, 10, 60 * 60 * 1000))) {
     return fail("Too many uploads for your organization. Please try again later.");
   }
 

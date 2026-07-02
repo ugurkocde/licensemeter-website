@@ -33,6 +33,21 @@ export const env = createEnv({
         : z.string().min(10),
 
     /**
+     * Dedicated key for encrypting stored connector credentials at rest
+     * (crypto.ts). Optional: when unset the encryption key falls back to
+     * AUTH_SECRET so existing deployments and ciphertext keep working with no
+     * migration. Set a DISTINCT value to separate the data-at-rest key from the
+     * session/token signing secret, so a leak of one no longer compromises the
+     * other and AUTH_SECRET can be rotated without invalidating stored secrets.
+     * Rotating to a new distinct value requires re-encrypting existing rows;
+     * crypto.ts keeps an AUTH_SECRET decrypt fallback to make that lazy.
+     */
+    DATA_ENCRYPTION_KEY:
+      process.env.NODE_ENV === "production"
+        ? z.string().min(32).optional()
+        : z.string().min(10).optional(),
+
+    /**
      * Sign-in app registration (delegated, multi-tenant, openid/profile/email only).
      * Optional so the demo mode works without any Entra setup.
      */
@@ -148,6 +163,7 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     DATABASE_URL: process.env.DATABASE_URL,
     AUTH_SECRET: process.env.AUTH_SECRET,
+    DATA_ENCRYPTION_KEY: process.env.DATA_ENCRYPTION_KEY,
     AUTH_MICROSOFT_ENTRA_ID_ID: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
     AUTH_MICROSOFT_ENTRA_ID_SECRET: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
     CONNECTOR_CLIENT_ID: process.env.CONNECTOR_CLIENT_ID,

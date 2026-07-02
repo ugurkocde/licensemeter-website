@@ -49,7 +49,7 @@ import { workspaceLabel } from "~/lib/format";
 import { encryptSecret, secretAad } from "~/server/crypto";
 import { emailEnabled, inviteHtml, sendEmail } from "~/server/email";
 import { notifyOps } from "~/server/ops";
-import { clientIp, rateLimit } from "~/server/rateLimit";
+import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import { maybeSendWelcome } from "~/server/welcome";
 import { sendWorkspaceDeleted, workspaceAdminEmails } from "~/server/billingEmail";
 import { teardownTenantWorkosOrg } from "~/server/auth/workos";
@@ -84,6 +84,15 @@ const chunk = <T>(arr: T[], size: number): T[][] => {
   return out;
 };
 
+/**
+ * Shared refusal for the public demo workspace: every anonymous visitor is an
+ * owner of one shared demo tenant, so the mutating settings/price/finding/sync
+ * actions below must not let a visitor vandalize shared state (member/connector
+ * actions already refuse this way).
+ */
+const DEMO_READONLY =
+  "The demo workspace is read-only. Connect your own workspace to change this.";
+
 /** Acknowledge / reopen a finding. */
 export const setFindingStatus = async (
   findingId: string,
@@ -91,6 +100,7 @@ export const setFindingStatus = async (
 ): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
 
   const updated = await db
     .update(findings)
@@ -109,6 +119,7 @@ export const bulkSetFindingStatus = async (
 ): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
 
   const status = formData.get("status") === "open" ? "open" : "acknowledged";
   const ids = formData
@@ -134,6 +145,7 @@ export const updatePrice = async (
 ): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
 
   // Strict parse (shared with the bulk import): "14.90" or German "14,90",
   // 0..100000. Saving 0 keeps marking the row as unpriced, exactly as before.
@@ -181,6 +193,7 @@ export const importPrices = async (
   });
   const ctx = await apiAccess("admin");
   if (!ctx) return none(fail("Not allowed"));
+  if (ctx.tenant.isDemo) return none(fail(DEMO_READONLY));
 
   const raw = formData.get("csv");
   const text = typeof raw === "string" ? raw : "";
@@ -286,7 +299,7 @@ export const addMember = async (formData: FormData): Promise<ActionResult> => {
   if (role === "owner" && ctx.membership.role !== "owner") {
     return fail("Only owners can add owners");
   }
-  if (!rateLimit(`invite:${ctx.tenant.id}`, 20, 60 * 60 * 1000)) {
+  if (!(await rateLimitDurable(`invite:${ctx.tenant.id}`, 20, 60 * 60 * 1000))) {
     return fail("Too many invites this hour, please try again later");
   }
 
@@ -366,7 +379,7 @@ export const resendInvite = async (
   if (!target) return fail("Invite not found");
   if (target.oid || target.workosUserId)
     return fail("This member has already signed in");
-  if (!rateLimit(`resend:${ctx.tenant.id}`, 10, 60 * 60 * 1000)) {
+  if (!(await rateLimitDurable(`resend:${ctx.tenant.id}`, 10, 60 * 60 * 1000))) {
     return fail("Too many resends this hour");
   }
 
@@ -485,6 +498,7 @@ export const setInactiveDays = async (
 ): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   const raw = formData.get("days");
   const days = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
   if (!Number.isInteger(days) || days < 7 || days > 365) {
@@ -506,6 +520,7 @@ export const setRenewalDate = async (
 ): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   const raw = formData.get("date");
   const value = typeof raw === "string" ? raw.trim() : "";
   if (value !== "") {
@@ -537,6 +552,7 @@ export const setLeakAlerts = async (
 ): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   await db
     .update(tenants)
     .set({ leakAlerts: enabled === true })
@@ -552,6 +568,7 @@ export const setMonthlyReport = async (
 ): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   await db
     .update(tenants)
     .set({ monthlyReport: enabled === true })
@@ -566,6 +583,7 @@ export const setTrialReminders = async (
 ): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   await db
     .update(tenants)
     .set({ trialReminders: enabled === true })
@@ -578,6 +596,7 @@ export const setTrialReminders = async (
 export const setCurrency = async (currency: string): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   if (!["EUR", "USD", "GBP", "CHF"].includes(currency)) {
     return fail("Unsupported currency");
   }
@@ -594,6 +613,7 @@ export const setCurrency = async (currency: string): Promise<ActionResult> => {
 export const triggerSync = async (): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   if (!ctx.entitlement.active)
     return fail("Your trial has ended. Upgrade to run a sync.");
   await audit(ctx, "sync_triggered", {});
@@ -1179,7 +1199,7 @@ export const captureEmail = async (
 ): Promise<ActionResult> => {
   if (formData.get("website")) return ok(); // honeypot: pretend success to bots
   const ip = clientIp(await headers());
-  if (!rateLimit(`capture:${ip}`, 5, 60 * 60 * 1000)) {
+  if (!(await rateLimitDurable(`capture:${ip}`, 5, 60 * 60 * 1000))) {
     return fail("Too many attempts, please try again later");
   }
   const raw = formData.get("email");

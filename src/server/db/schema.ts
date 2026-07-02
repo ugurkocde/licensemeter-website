@@ -597,6 +597,18 @@ export const opsAlerts = pgTable("ops_alerts", {
   suppressedCount: integer("suppressed_count").notNull().default(0),
 });
 
+/**
+ * Durable fixed-window rate-limit counters (see rateLimitDurable). One row per
+ * limiter key (e.g. "capture:<ip>", "invite:<tenant>"); count is the hits in the
+ * current window, resetAt when it rolls over. Backs the abuse-prone paths that
+ * must hold across serverless instances/cold starts, unlike the in-memory limiter.
+ */
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull().default(0),
+  resetAt: timestamp("reset_at", { withTimezone: true }).notNull(),
+});
+
 /** Every Microsoft identity that ever signed in. Powers first-sign-in alerts. */
 export const seenSignins = pgTable("seen_signins", {
   oid: text("oid").primaryKey(),

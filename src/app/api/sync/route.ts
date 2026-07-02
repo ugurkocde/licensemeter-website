@@ -7,7 +7,7 @@ import { audit } from "~/server/audit";
 import { isSameOrigin } from "~/server/auth/origin";
 import { db } from "~/server/db";
 import { syncRuns } from "~/server/db/schema";
-import { rateLimit } from "~/server/rateLimit";
+import { rateLimitDurable } from "~/server/rateLimit";
 import { runSync } from "~/server/sync/runSync";
 
 export const maxDuration = 300;
@@ -46,7 +46,7 @@ export const POST = async (req: Request) => {
     return NextResponse.json({ error: "upgrade_required" }, { status: 402 });
   // runSync holds its own concurrency lock; this only blunts hammering the
   // endpoint with costly Graph pulls.
-  if (!rateLimit(`sync:${ctx.tenant.id}`, 3, 10 * 60 * 1000)) {
+  if (!(await rateLimitDurable(`sync:${ctx.tenant.id}`, 3, 10 * 60 * 1000))) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 

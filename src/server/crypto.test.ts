@@ -1,8 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { decryptSecret, encryptSecret, secretAad } from "./crypto";
 
 const aad = secretAad("tenant-1", "adobe", "clientSecretEnc");
+
+// A fresh crypto module bound to a specific env, for the rotation test below.
+const cryptoWithEnv = async (envValues: {
+  AUTH_SECRET: string;
+  DATA_ENCRYPTION_KEY?: string;
+}) => {
+  vi.resetModules();
+  vi.doMock("~/env", () => ({ env: envValues }));
+  return import("./crypto");
+};
+
+const OLD = "auth-secret-old-auth-secret-old-auth-secret-old";
+const NEW = "data-key-new-data-key-new-data-key-new-data-key";
 
 describe("encryptSecret/decryptSecret with AAD", () => {
   it("round-trips with the same AAD", () => {
@@ -46,5 +59,33 @@ describe("encryptSecret/decryptSecret with AAD", () => {
 
   it("builds the canonical AAD string", () => {
     expect(secretAad("t", "p", "c")).toBe("t:p:c");
+  });
+});
+
+describe("DATA_ENCRYPTION_KEY rotation", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("~/env");
+  });
+
+  it("decrypts legacy AUTH_SECRET ciphertext after rotating to a distinct key", async () => {
+    // Before rotation: no DATA_ENCRYPTION_KEY, so writes use AUTH_SECRET.
+    const before = await cryptoWithEnv({ AUTH_SECRET: OLD });
+    const legacyEnc = before.encryptSecret("rotate-me", aad);
+
+    // After rotation: distinct DATA_ENCRYPTION_KEY. New writes use the new key,
+    // but the legacy AUTH_SECRET ciphertext must still decrypt (fallback path).
+    const after = await cryptoWithEnv({ AUTH_SECRET: OLD, DATA_ENCRYPTION_KEY: NEW });
+    expect(after.decryptSecret(legacyEnc, aad)).toBe("rotate-me");
+
+    const newEnc = after.encryptSecret("new-write", aad);
+    expect(after.decryptSecret(newEnc, aad)).toBe("new-write");
+
+    // A deploy that later drops AUTH_SECRET back-compat (no legacy key) can no
+    // longer read the new-key ciphertext, confirming new writes use the new key.
+    const newOnly = await cryptoWithEnv({ AUTH_SECRET: NEW });
+    expect(newOnly.decryptSecret(newEnc, aad)).toBe("new-write");
+    const legacyOnly = await cryptoWithEnv({ AUTH_SECRET: OLD });
+    expect(() => legacyOnly.decryptSecret(newEnc, aad)).toThrow();
   });
 });
