@@ -303,7 +303,7 @@ export const workspaceDeletedHtml = (args: {
 /** Primary call-to-action button, matching the dark wordmark buttons. */
 const ctaButton = (href: string, label: string): string => `
   <p style="margin:24px 0">
-    <a href="${href}"
+    <a href="${escapeHtml(href)}"
        style="font-family:Arial,sans-serif;font-size:14px;background:#1c1a16;color:#faf8f3;padding:12px 20px;text-decoration:none">
       ${escapeHtml(label)}
     </a>
@@ -429,7 +429,7 @@ export const subscriptionConfirmedHtml = (args: {
   </p>
   ${
     args.invoiceUrl
-      ? `<p style="font-family:Arial,sans-serif;font-size:13px;margin-top:8px"><a href="${args.invoiceUrl}" style="color:#1c1a16">View your invoice &rarr;</a></p>`
+      ? `<p style="font-family:Arial,sans-serif;font-size:13px;margin-top:8px"><a href="${escapeHtml(args.invoiceUrl)}" style="color:#1c1a16">View your invoice &rarr;</a></p>`
       : ""
   }`
   }

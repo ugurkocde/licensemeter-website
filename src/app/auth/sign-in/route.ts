@@ -2,16 +2,7 @@ import { getSignInUrl, withAuth } from "@workos-inc/authkit-nextjs";
 import { NextResponse, type NextRequest } from "next/server";
 import { redirect } from "next/navigation";
 
-/**
- * Validates returnTo paths: must start with /app and not contain
- * protocol-relative, absolute, or dangerous characters.
- */
-const validateReturnTo = (value: string | null): string | null => {
-  if (!value) return null;
-  if (!value.startsWith("/app") || value.startsWith("//")) return null;
-  if (value.includes("://") || /[\\\r\n]/.test(value)) return null;
-  return value;
-};
+import { validateReturnTo } from "~/server/auth/session";
 
 export const GET = async (req: NextRequest) => {
   const returnTo = validateReturnTo(req.nextUrl.searchParams.get("returnTo"));

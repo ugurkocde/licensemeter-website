@@ -4,7 +4,8 @@ export const escapeHtml = (s: string): string =>
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 
 /**
  * Email header lockup: the brand mark as a hosted PNG (email clients strip

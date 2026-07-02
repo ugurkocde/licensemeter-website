@@ -24,10 +24,11 @@ export const rateLimit = (
   return bucket.count <= max;
 };
 
-/** Client IP from Vercel's trusted header chain. */
+/**
+ * Client IP from Vercel's trusted x-real-ip header. x-forwarded-for is
+ * intentionally not trusted because clients can spoof it.
+ */
 export const clientIp = (headerStore: {
   get(name: string): string | null;
 }): string =>
-  headerStore.get("x-real-ip") ??
-  headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-  "unknown";
+  headerStore.get("x-real-ip") ?? "unknown";

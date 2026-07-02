@@ -1,3 +1,80 @@
+# Security review + fix plan (2026-07-02) - DONE (uncommitted, awaiting owner commit)
+
+Four parallel security reviewers covered: (A) auth/API routes, (B) server actions & data
+access, (C) integrations/crypto/tokens, (D) web layer & config. No critical or high-severity
+exploitable defects were found; the codebase is well hardened (signed `__Host-` cookies,
+per-tenant scoping on every query, constant-time token compares, Stripe webhook signature +
+customer-match, AES-256-GCM with per-tenant AAD, SSRF host pinning). Items below are one medium
+exposure plus defense-in-depth hardening. Codex CLI implements F1-F11; a reviewer agent verifies.
+
+## Fixes to apply now (Codex scope)
+- [ ] F1 (Medium) Unauthenticated server action `syncMspQuantity`. src/server/msp.ts:459 exports it
+      from a "use server" module (=> public HTTP endpoint) with no identity check; only ever called
+      internally by attachWorkspace/detachWorkspace. Remove `export` so it is module-private.
+- [ ] F2 (Medium) Client-controllable IP fallback. src/server/rateLimit.ts:28 clientIp falls back to
+      the left-most (client-supplied) x-forwarded-for entry. Trust only x-real-ip (Vercel-injected),
+      else "unknown". Remove the duplicated inline IP derivation in src/app/api/auth/demo/route.ts
+      and use the shared helper.
+- [ ] F3 (Medium) Missing Content-Security-Policy. Add to next.config.js headers():
+      default-src 'self'; script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com;
+      style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;
+      connect-src 'self' https://va.vercel-scripts.com https://vitals.vercel-insights.com;
+      frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'.
+      ('unsafe-inline' in script-src is required for App Router inline hydration; JSON-LD is data.)
+      Verify the app renders and Vercel Analytics loads with no functionality-breaking CSP violations.
+- [ ] F4 (Low) Tenant exports lack no-store. Add `Cache-Control: private, no-store` to csvResponse
+      (src/server/csv.ts:16), the PDF response (export/report/route.ts), and the PowerShell response
+      (export/remediation/route.ts). Leave the static DPA export's public,max-age=3600 as is.
+- [ ] F5 (Low) escapeHtml misses single quotes. src/lib/html.ts:2 add .replaceAll("'", "&#39;").
+- [ ] F6 (Low) Unescaped hrefs in billing email. src/server/email.ts wrap args.invoiceUrl (~432) and
+      the ctaButton href (~306) in escapeHtml(...), matching welcomeEmail.ts.
+- [ ] F7 (Low) HSTS lacks preload. next.config.js append `; preload` to Strict-Transport-Security.
+- [ ] F8 (Low) .gitignore misses .env.* variants. Replace `.env` + `.env*.local` with `.env*` plus
+      `!.env.example`.
+- [ ] F9 (Low) Duplicated validateReturnTo. src/app/auth/sign-in/route.ts:9 import the shared
+      validateReturnTo from ~/server/auth/session and delete the local copy.
+- [ ] F10 (Low) connectAdobe echoes provider error text. src/server/actions.ts (~628) use the same
+      generic message pattern as connectSaasConnector.
+- [ ] F11 (Low) attachWorkspace TOCTOU on tenants.mspAccountId. src/server/msp.ts (~393) make the
+      bind a guarded update (SET msp_account_id WHERE id = :tenant AND msp_account_id IS NULL) and
+      fail if 0 rows changed.
+
+## Follow-ups requiring a product/infra decision (NOT Codex scope)
+- [ ] AUTH_SECRET blast radius: dedicated DATA_ENCRYPTION_KEY for crypto.ts (needs env + re-encrypt plan).
+- [ ] Durable rate limiting: back abuse-prone paths with KV/Redis or Vercel WAF (rateLimit.ts is
+      per-instance in-memory).
+- [ ] Demo workspace write-guards: anonymous demo owners can mutate shared settings/prices/finding
+      status (actions.ts). Product call on demo interactivity vs read-only.
+- [ ] Domain-JIT auto-join audit event (access.ts joins on email-domain match with no audit entry).
+
+## Acceptance criteria
+1. F1-F11 implemented exactly as scoped; every changed line traces to a listed item.
+2. npm run test passes and npx tsc --noEmit is clean.
+3. npm run build succeeds; app renders + Vercel Analytics loads under the CSP.
+4. syncMspQuantity no longer exported; attach/detach still compile and call it.
+5. No secrets committed; .gitignore blocks all .env* except .env.example.
+6. Separate code-reviewer agent confirms each fix is correct with no regressions.
+
+## Review section - DONE (uncommitted, awaiting owner commit)
+- 4 parallel reviewers found no critical/high exploitable defects. Codex CLI (codex-cli 0.142.5,
+  sandbox workspace-write) implemented F1-F11. Codex's own tsc/test run failed on a macOS keychain
+  sandbox error (SecItemCopyMatching -50), so gates were re-run outside the sandbox.
+- Gates GREEN: npx tsc --noEmit clean; vitest 322/322 passing; next build exit 0 (80 pages,
+  middleware emitted). Live header check on `npm run start`: CSP, HSTS(+preload), X-Frame-Options,
+  nosniff, Referrer-Policy, Permissions-Policy all served; homepage renders under the CSP.
+- Independent feature-dev:code-reviewer verdict: all 11 fixes CORRECT and complete, zero new
+  regressions. Specifically stress-tested clientIp caller compatibility, CSP vs inline scripts /
+  Vercel Analytics / self-hosted geist fonts, attachWorkspace transaction atomicity + rollback,
+  and that nothing external imports the now-private syncMspQuantity.
+- Files changed (12): .gitignore, next.config.js, src/app/api/auth/demo/route.ts,
+  src/app/api/export/remediation/route.ts, src/app/api/export/report/route.ts,
+  src/app/auth/sign-in/route.ts, src/lib/html.ts, src/server/actions.ts, src/server/csv.ts,
+  src/server/email.ts, src/server/msp.ts, src/server/rateLimit.ts.
+- Not committed (repo workflow: owner commits). The 4 follow-ups above (AUTH_SECRET split, durable
+  rate limiting, demo write-guards, JIT-join audit) remain open, needing a product/infra decision.
+
+---
+
 # Hardening + content wave (2026-07-02) - DONE (pushed 34757b0..ec8a4e4; live-verified)
 # ms_connections_mode_columns_check applied to prod Supabase (project tomugclophxlmnzrrcxp)
 # via MCP migration add_ms_connections_mode_columns_check on 2026-07-02; verified in

@@ -20,6 +20,7 @@ export const GET = async () => {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": 'attachment; filename="licensemeter-waste-report.pdf"',
+      "Cache-Control": "private, no-store",
     },
   });
 };

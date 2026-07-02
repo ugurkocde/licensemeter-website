@@ -625,9 +625,10 @@ export const connectAdobe = async (
   // Validate against Adobe before storing anything.
   try {
     await new UmapiClient({ orgId, clientId, clientSecret }).getUsers();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return fail(`Adobe rejected the credentials: ${message.slice(0, 120)}`);
+  } catch {
+    return fail(
+      "Adobe rejected the credentials. Check the values and try again",
+    );
   }
 
   const adobeAad = secretAad(ctx.tenant.id, "adobe", "clientSecretEnc");

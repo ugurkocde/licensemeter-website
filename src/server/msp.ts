@@ -1,6 +1,6 @@
 "use server";
 
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { mspEnabled } from "~/env";
@@ -390,21 +390,32 @@ export const attachWorkspace = async (
 
   // Local stamp only after the cancel succeeded: clear the tenant's billing
   // fields + subscriptions row and bind it to the MSP account, atomically.
-  await db.transaction(async (tx) => {
-    if (own) {
-      await tx
-        .delete(subscriptions)
-        .where(eq(subscriptions.tenantId, tenantId));
+  const attachRaceMessage =
+    "This workspace was just attached to another MSP account";
+  try {
+    await db.transaction(async (tx) => {
+      if (own) {
+        await tx
+          .delete(subscriptions)
+          .where(eq(subscriptions.tenantId, tenantId));
+      }
+      const [updated] = await tx
+        .update(tenants)
+        .set({
+          mspAccountId: account.id,
+          subscriptionStatus: null,
+          paidUntil: null,
+        })
+        .where(and(eq(tenants.id, tenantId), isNull(tenants.mspAccountId)))
+        .returning({ id: tenants.id });
+      if (!updated) throw new Error(attachRaceMessage);
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message === attachRaceMessage) {
+      return fail(attachRaceMessage);
     }
-    await tx
-      .update(tenants)
-      .set({
-        mspAccountId: account.id,
-        subscriptionStatus: null,
-        paidUntil: null,
-      })
-      .where(eq(tenants.id, tenantId));
-  });
+    throw err;
+  }
 
   await syncMspQuantity(account);
   void notifyOps(
@@ -456,7 +467,7 @@ export const detachWorkspace = async (
  * reconcile path heals the cached fields; the count is the source of truth for
  * the next checkout).
  */
-export const syncMspQuantity = async (
+const syncMspQuantity = async (
   account: typeof mspAccounts.$inferSelect,
 ): Promise<ActionResult> => {
   const [counted] = await db

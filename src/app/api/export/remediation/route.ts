@@ -35,6 +35,7 @@ export const GET = async (req: NextRequest) => {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Content-Disposition": `attachment; filename="licensemeter-remediation${rule ? `-${rule}` : ""}.ps1"`,
+      "Cache-Control": "private, no-store",
     },
   });
 };
