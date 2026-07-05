@@ -301,6 +301,8 @@ export const memberships = pgTable(
     email: text("email").notNull(),
     name: text("name"),
     role: text("role").$type<MembershipRole>().notNull().default("viewer"),
+    welcomeTourAt: timestamp("welcome_tour_at", { withTimezone: true }),
+    dataTourAt: timestamp("data_tour_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

@@ -93,6 +93,15 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Highlight ring for the active tour anchor. Drawn as a fixed overlay element
+ * (see Tour.tsx), not as a class on the anchor itself, so it always paints
+ * above the tour backdrop regardless of the anchor's stacking context. */
+.tour-highlight {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-brand) 18%, transparent);
+}
+
 /* Hero waste total: a negative, danger-red figure with a soft static glow so
  * it instantly reads as money bleeding out. No animation, so it is inherently
  * reduced-motion-safe. */

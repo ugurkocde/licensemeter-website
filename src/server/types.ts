@@ -158,6 +158,8 @@ export type AuditAction =
   | "renewal_date_changed"
   | "leak_alerts_changed"
   | "monthly_report_changed"
+  | "tour_done"
+  | "tour_reset"
   | "checkout_started"
   | "subscription_activated"
   | "subscription_updated"

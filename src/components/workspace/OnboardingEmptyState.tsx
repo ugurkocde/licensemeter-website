@@ -57,6 +57,7 @@ export const OnboardingEmptyState = () => (
     {/* Microsoft 365 — the highest-value source, featured but not required. */}
     <Link
       href="/app/settings/microsoft"
+      data-tour="connect-cta"
       className="rise rise-2 group mt-6 block border border-line bg-card p-5 transition hover:border-ink-soft"
     >
       <div className="flex items-start justify-between gap-4">

@@ -47,7 +47,7 @@ export const TrendChart = ({
   // visible and sets the expectation that trends fill in over time.
   if (points.length < 3) {
     return (
-      <section className="rise rise-3 mt-10">
+      <section data-tour="trend" className="rise rise-3 mt-10">
         <h2 className="text-xs font-medium tracking-[0.18em] text-ink-faint uppercase">
           Trend
         </h2>
@@ -65,7 +65,7 @@ export const TrendChart = ({
   const last = points[points.length - 1]!;
 
   return (
-    <section className="rise rise-3 mt-10">
+    <section data-tour="trend" className="rise rise-3 mt-10">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-xs font-medium tracking-[0.18em] text-ink-faint uppercase">
           Trend ({points.length} days)

@@ -8,6 +8,7 @@ import { InviteForm } from "~/components/workspace/InviteForm";
 import { LeakAlertsToggle } from "~/components/workspace/LeakAlertsToggle";
 import { MemberActions } from "~/components/workspace/MemberActions";
 import { MonthlyReportToggle } from "~/components/workspace/MonthlyReportToggle";
+import { ReplayTourButton } from "~/components/workspace/ReplayTourButton";
 import { RenewalDateForm } from "~/components/workspace/RenewalDateForm";
 import { TrialRemindersToggle } from "~/components/workspace/TrialRemindersToggle";
 import { RoleSelect } from "~/components/workspace/RoleSelect";
@@ -234,6 +235,12 @@ export default async function SettingsPage() {
                 ) : (
                   "Off"
                 )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-ink-faint">Product tour</dt>
+              <dd className="mt-0.5">
+                <ReplayTourButton />
               </dd>
             </div>
           </dl>

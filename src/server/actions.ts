@@ -593,6 +593,41 @@ export const setTrialReminders = async (
   return ok();
 };
 
+/** Mark one phase of the per-user dashboard tour complete. */
+export const markTourDone = async (
+  phase: "welcome" | "data",
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("viewer");
+  if (!ctx) return fail("Not allowed");
+  if (phase !== "welcome" && phase !== "data") return fail("Unknown tour");
+
+  await db
+    .update(memberships)
+    .set(
+      phase === "welcome"
+        ? { welcomeTourAt: new Date() }
+        : { dataTourAt: new Date() },
+    )
+    .where(eq(memberships.id, ctx.membership.id));
+  await audit(ctx, "tour_done", { phase });
+  revalidateApp();
+  return ok();
+};
+
+/** Reset the caller's tour state so the dashboard tour can be replayed. */
+export const resetTour = async (): Promise<ActionResult> => {
+  const ctx = await apiAccess("viewer");
+  if (!ctx) return fail("Not allowed");
+
+  await db
+    .update(memberships)
+    .set({ welcomeTourAt: null, dataTourAt: null })
+    .where(eq(memberships.id, ctx.membership.id));
+  await audit(ctx, "tour_reset");
+  revalidateApp();
+  return ok();
+};
+
 export const setCurrency = async (currency: string): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");

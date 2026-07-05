@@ -14,6 +14,11 @@ import { OnboardingEmptyState } from "~/components/workspace/OnboardingEmptyStat
 import { PriceAccuracyCard } from "~/components/workspace/PriceAccuracyCard";
 import { SyncNowButton } from "~/components/workspace/SyncNowButton";
 import { TrendChart } from "~/components/workspace/TrendChart";
+import { Tour } from "~/components/workspace/Tour";
+import {
+  dataTourSteps,
+  welcomeTourSteps,
+} from "~/components/workspace/tourSteps";
 import { fmtAgo, fmtDate, fmtMoney, fmtNumber } from "~/lib/format";
 import { ALL_RULES, RULE_META } from "~/lib/rules";
 import type { WasteRuleId } from "~/server/types";
@@ -40,8 +45,21 @@ export default async function OverviewPage() {
   // Workspace-first onboarding: a workspace that has connected no service yet
   // lands on the dashboard but sees the onboarding empty state (nudge to connect
   // a first service) instead of a dashboard of zeros. Demo always has data.
-  if (!ctx.tenant.isDemo && !(await workspaceHasConnectorOrData(tenantId))) {
-    return <OnboardingEmptyState />;
+  const hasConnectorOrData =
+    ctx.tenant.isDemo || (await workspaceHasConnectorOrData(tenantId));
+  if (!hasConnectorOrData) {
+    return (
+      <>
+        <OnboardingEmptyState />
+        {ctx.membership.welcomeTourAt === null && (
+          <Tour
+            phase="welcome"
+            steps={welcomeTourSteps}
+            finalButtonLabel="Got it"
+          />
+        )}
+      </>
+    );
   }
   const currency = ctx.tenant.currency;
   // Soft-locked workspaces keep the read-only dashboard but lose exports/sync.
@@ -307,6 +325,9 @@ export default async function OverviewPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
+      {ctx.membership.dataTourAt === null && (
+        <Tour phase="data" steps={dataTourSteps} finalButtonLabel="Done" />
+      )}
       <header className="rise rise-1 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl tracking-tight">Overview</h1>

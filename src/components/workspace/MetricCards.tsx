@@ -51,16 +51,19 @@ const InfoButton = ({
   explainer,
   label,
   onOpen,
+  tourAnchor,
 }: {
   explainer: string;
   label: string;
   onOpen: () => void;
+  tourAnchor?: string;
 }) => {
   const tipId = useId();
   return (
     <span className="group/info relative inline-flex">
       <button
         type="button"
+        data-tour={tourAnchor}
         onClick={onOpen}
         aria-label={`${label}: what this means`}
         aria-describedby={tipId}
@@ -87,7 +90,11 @@ export const MetricCards = ({ cards }: { cards: MetricCardData[] }) => {
     <>
       <section className="rise rise-2 mt-8 grid gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => (
-          <div key={card.key} className="bg-card p-5">
+          <div
+            key={card.key}
+            data-tour={card.key === "waste" ? "waste-card" : undefined}
+            className="bg-card p-5"
+          >
             <div className="flex w-full items-center justify-between gap-2">
               <button
                 type="button"
@@ -102,6 +109,7 @@ export const MetricCards = ({ cards }: { cards: MetricCardData[] }) => {
                 explainer={card.explainer}
                 label={card.label}
                 onOpen={() => setOpenKey(card.key)}
+                tourAnchor={card.key === "waste" ? "metric-info" : undefined}
               />
             </div>
             <button

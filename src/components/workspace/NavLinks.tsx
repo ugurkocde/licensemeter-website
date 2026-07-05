@@ -69,6 +69,14 @@ export const NavLinks = ({
             ? pathname === "/app"
             : inSection(pathname, item.href) ||
               (item.also ?? []).some((href) => inSection(pathname, href));
+        const tourAnchor =
+          navLabel === "Workspace navigation"
+            ? item.href === "/app/findings"
+              ? "nav-findings"
+              : item.href === "/app/settings"
+                ? "nav-settings"
+                : undefined
+            : undefined;
         // The parent is the current page only when no child is.
         const childCurrent = (item.children ?? []).find((c) =>
           inSection(pathname, c.href),
@@ -78,6 +86,7 @@ export const NavLinks = ({
           <div key={item.href} className="flex flex-col gap-0.5">
             <Link
               href={item.href}
+              data-tour={tourAnchor}
               onClick={onNavigate}
               aria-current={parentCurrent ? "page" : undefined}
               className={`border-l-2 px-[18px] py-2.5 text-sm transition ${
