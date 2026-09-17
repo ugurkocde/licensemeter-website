@@ -61,7 +61,7 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-test("desktop bell shows unread count, opens an anchored panel, and marks updates read", async ({
+test("desktop bell shows unread count, opens a right-side sheet, and marks updates read", async ({
   page,
 }) => {
   const requests = await mockFeed(page);
@@ -81,30 +81,38 @@ test("desktop bell shows unread count, opens an anchored panel, and marks update
   ).toBeFocused();
   await expect(page.locator("body")).toHaveCSS("overflow", "hidden");
 
-  // Anchored under the bell on desktop, not full screen.
+  // Full-height sheet docked to the right edge on desktop, not full screen.
   const box = await dialog.boundingBox();
-  const triggerBox = await trigger.boundingBox();
+  const viewport = page.viewportSize()!;
   expect(box).not.toBeNull();
   expect(box!.width).toBe(400);
-  expect(box!.y).toBeGreaterThan(triggerBox!.y + triggerBox!.height);
-  expect(
-    Math.abs(box!.x + box!.width - (triggerBox!.x + triggerBox!.width)),
-  ).toBeLessThanOrEqual(1);
+  expect(box!.x + box!.width).toBe(viewport.width - 12);
+  expect(box!.y).toBe(12);
+  expect(box!.height).toBe(viewport.height - 24);
+  await expect(
+    dialog.getByText("News and improvements from LicenseMeter."),
+  ).toBeVisible();
 
   // Date, title, summary, and links; no change-type labels anywhere.
   await expect(dialog.getByText("12 Sept 2026")).toBeVisible();
   await expect(
-    dialog.getByRole("link", { name: "Bulk actions for findings" }),
-  ).toHaveAttribute(
-    "href",
-    "https://changelog.ugurlabs.com/?product=licensemeter#change-11111111-aaaa-4aaa-8aaa-111111111111",
-  );
+    dialog.getByRole("heading", { name: "Bulk actions for findings" }),
+  ).toBeVisible();
   await expect(
     dialog.getByText("Acknowledge or export many findings at once."),
   ).toBeVisible();
-  await expect(dialog.getByRole("link", { name: "Read more" })).toHaveCount(1);
+  const readLinks = dialog.getByRole("link", { name: "Read update" });
+  await expect(readLinks).toHaveCount(2);
+  await expect(readLinks.first()).toHaveAttribute(
+    "href",
+    "https://www.licensemeter.com/connectors",
+  );
+  await expect(readLinks.last()).toHaveAttribute(
+    "href",
+    "https://changelog.ugurlabs.com/?product=licensemeter#change-22222222-bbbb-4bbb-8bbb-222222222222",
+  );
   await expect(
-    dialog.getByRole("link", { name: "All updates" }),
+    dialog.getByRole("link", { name: "View all LicenseMeter updates" }),
   ).toHaveAttribute(
     "href",
     "https://changelog.ugurlabs.com/?product=licensemeter",
@@ -136,7 +144,7 @@ test("desktop bell shows unread count, opens an anchored panel, and marks update
   expect(requests()).toBe(2);
 });
 
-test("mobile panel fills the screen, scrolls, and closes from the footer", async ({
+test("mobile panel fills the screen, scrolls, and closes from the header", async ({
   page,
 }) => {
   await mockFeed(page, {
@@ -174,10 +182,10 @@ test("mobile panel fills the screen, scrolls, and closes from the footer", async
   );
   expect(scrollable).toBe(true);
   await expect(
-    dialog.getByRole("link", { name: "All updates" }),
+    dialog.getByRole("link", { name: "View all LicenseMeter updates" }),
   ).toBeInViewport();
 
-  await dialog.getByRole("button", { name: "Close updates" }).last().click();
+  await dialog.getByRole("button", { name: "Close updates" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(trigger).toBeFocused();
   await expect(trigger).toHaveAccessibleName("Product updates");
@@ -229,7 +237,7 @@ test("panel reports failures, retries, and rejects another product's feed", asyn
   );
   await dialog.getByRole("button", { name: "Retry" }).click();
   await expect(
-    dialog.getByRole("link", { name: "Bulk actions for findings" }),
+    dialog.getByRole("heading", { name: "Bulk actions for findings" }),
   ).toBeVisible();
   expect(attempts).toBe(3);
 });
@@ -247,7 +255,7 @@ test("empty feed renders a friendly state and German pages localize the bell", a
     "Noch keine Neuigkeiten",
   );
   await expect(
-    dialog.getByRole("link", { name: "Alle Neuigkeiten" }),
+    dialog.getByRole("link", { name: "Alle Neuigkeiten von LicenseMeter" }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -292,9 +300,8 @@ test("dashboard bells share one request and open from sidebar and mobile bar", a
   const dialog = page.getByRole("dialog", { name: "What's new" });
   await expect(dialog).toBeVisible();
   const box = await dialog.boundingBox();
-  const asideBox = await aside.boundingBox();
-  expect(box!.x).toBeGreaterThanOrEqual(asideBox!.x);
-  expect(box!.x + box!.width).toBeLessThanOrEqual(1280);
+  expect(box!.x + box!.width).toBe(page.viewportSize()!.width - 12);
+  expect(box!.width).toBe(400);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(desktopBell).toHaveAccessibleName("Product updates");
