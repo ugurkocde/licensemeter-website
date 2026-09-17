@@ -32,20 +32,20 @@ export const HeaderAuthCta = () => {
   }, []);
 
   /* Always visible: on mobile the nav links live in the burger drawer, so
-     the action keeps its header slot. The compact labels below 341px keep
-     brand + CTA + burger on one line through the 320px reflow target. */
+     the action keeps its header slot. The compact labels below 400px keep
+     brand + bell + burger + CTA on one line through the 320px reflow target. */
   return signedIn ? (
     <ButtonLink href="/app" variant="ink">
-      <span className="min-[341px]:hidden">App</span>
-      <span className="hidden min-[341px]:inline sm:hidden">Dashboard</span>
+      <span className="min-[400px]:hidden">App</span>
+      <span className="hidden min-[400px]:inline sm:hidden">Dashboard</span>
       <span className="hidden sm:inline">
         {german ? "Dashboard öffnen" : "Open dashboard"}
       </span>
     </ButtonLink>
   ) : (
     <ButtonLink href="/#get-started" variant="ink">
-      <span className="min-[341px]:hidden">Start</span>
-      <span className="hidden min-[341px]:inline">
+      <span className="min-[400px]:hidden">Start</span>
+      <span className="hidden min-[400px]:inline">
         {german ? "Kostenlos starten" : "Start free"}
       </span>
     </ButtonLink>

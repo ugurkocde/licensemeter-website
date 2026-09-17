@@ -1,0 +1,7 @@
+{
+  "title": "See what changed from inside LicenseMeter",
+  "summary": "A bell in the navigation now lists recent product updates, on the public site and inside the dashboard. Unread updates are counted on the bell, and the list opens full screen on phones.",
+  "type": "new",
+  "publishedOn": "2026-09-18",
+  "idempotencyKey": "licensemeter:2026-09-18-product-updates-bell"
+}

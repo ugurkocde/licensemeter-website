@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { BrandMark } from "~/components/BrandMark";
+import { ChangelogBell } from "~/components/changelog/ChangelogBell";
 import { MobileNav } from "~/components/workspace/MobileNav";
 import { NavLinks } from "~/components/workspace/NavLinks";
 import { WorkspaceSwitcher } from "~/components/workspace/WorkspaceSwitcher";
@@ -44,12 +45,15 @@ export default async function WorkspaceLayout({
       />
 
       <aside className="bg-sidebar border-line sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r lg:flex">
-        <Link href="/app" className="flex items-center gap-2 px-5 pt-6 pb-7">
-          <BrandMark size={20} tone="light" />
-          <span className="font-display text-ink text-lg tracking-tight">
-            License<span className="text-brand-text">Meter</span>
-          </span>
-        </Link>
+        <div className="flex items-center justify-between pt-6 pr-3 pb-7 pl-5">
+          <Link href="/app" className="flex items-center gap-2">
+            <BrandMark size={20} tone="light" />
+            <span className="font-display text-ink text-lg tracking-tight">
+              License<span className="text-brand-text">Meter</span>
+            </span>
+          </Link>
+          <ChangelogBell />
+        </div>
 
         <div className="border-sidebar-line border-y px-5 py-3">
           {ctx.workspaces.length > 1 ? (

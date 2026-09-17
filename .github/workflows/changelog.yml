@@ -1,0 +1,38 @@
+name: Changelog
+
+# Publishes reviewed entry files to the central Ugurlabs changelog after they
+# land on main (direct push or merged PR). Registration and publication are
+# idempotent, so re-runs never duplicate entries. Deploys are not awaited: an
+# entry can appear up to a minute before the matching Vercel deploy finishes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "changelog/entries/**"
+      - ".ugurlabs/changelog.json"
+      - "scripts/changelog-publish.mjs"
+      - ".github/workflows/changelog.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changelog-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Validate entries
+        run: node scripts/changelog-publish.mjs --check
+      - name: Register product and publish entries
+        env:
+          CHANGELOG_PUBLISH_TOKEN: ${{ secrets.CHANGELOG_PUBLISH_TOKEN }}
+        run: node scripts/changelog-publish.mjs

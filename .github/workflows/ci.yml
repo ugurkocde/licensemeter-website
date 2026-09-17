@@ -35,6 +35,8 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run test:docker
+      - run: node --test scripts/changelog-publish.test.mjs
+      - run: node scripts/changelog-publish.mjs --check
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run build
       - run: npx playwright install --with-deps chromium

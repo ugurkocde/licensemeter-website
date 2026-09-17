@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { BrandMark } from "~/components/BrandMark";
+import { ChangelogBell } from "~/components/changelog/ChangelogBell";
 import { NavLinks } from "./NavLinks";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import type { WorkspaceSummary } from "~/server/access";
@@ -93,32 +94,35 @@ export const MobileNav = ({
             License<span className="text-brand-text">Meter</span>
           </span>
         </Link>
-        <button
-          ref={burgerRef}
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          aria-controls="mobile-nav-drawer"
-          aria-label={open ? "Close menu" : "Open menu"}
-          className="text-ink -my-1 flex size-11 items-center justify-center"
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-            {open ? (
-              <path
-                d="M5 5l10 10M15 5L5 15"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            ) : (
-              <path
-                d="M3 6h14M3 10h14M3 14h14"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            )}
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          <ChangelogBell />
+          <button
+            ref={burgerRef}
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-controls="mobile-nav-drawer"
+            aria-label={open ? "Close menu" : "Open menu"}
+            className="text-ink -my-1 flex size-11 items-center justify-center"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+              {open ? (
+                <path
+                  d="M5 5l10 10M15 5L5 15"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              ) : (
+                <path
+                  d="M3 6h14M3 10h14M3 14h14"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              )}
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Stays mounted so the burger's aria-controls always resolves; inert
