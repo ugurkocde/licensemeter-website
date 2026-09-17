@@ -33,7 +33,7 @@ async function seedSchema(client: PGlite): Promise<void> {
 }
 
 // Imported after the mock is registered (top-level vi.mock is hoisted).
-const { rateLimitDurable, RateLimitUnavailableError } =
+const { rateLimitDurable, RateLimitUnavailableError, clientIp } =
   await import("./rateLimit");
 
 beforeEach(async () => {
@@ -102,5 +102,24 @@ describe("rateLimitDurable", () => {
     expect(await rateLimitDurable("test:a", 1, 60_000)).toBe(false);
     // A different key has its own fresh window.
     expect(await rateLimitDurable("test:b", 1, 60_000)).toBe(true);
+  });
+});
+
+describe("clientIp", () => {
+  const headersWith = (value: string | null) => ({
+    get: (name: string) => (name === "x-real-ip" ? value : null),
+  });
+
+  it("returns a valid IPv4 or IPv6 address", () => {
+    expect(clientIp(headersWith("203.0.113.9"))).toBe("203.0.113.9");
+    expect(clientIp(headersWith(" 2001:db8::1 "))).toBe("2001:db8::1");
+  });
+
+  it("falls back to unknown when the header is missing or not an IP", () => {
+    expect(clientIp(headersWith(null))).toBe("unknown");
+    expect(clientIp(headersWith(""))).toBe("unknown");
+    expect(clientIp(headersWith("evil.example"))).toBe("unknown");
+    expect(clientIp(headersWith("203.0.113.9, 10.0.0.1"))).toBe("unknown");
+    expect(clientIp(headersWith("' or 1=1"))).toBe("unknown");
   });
 });

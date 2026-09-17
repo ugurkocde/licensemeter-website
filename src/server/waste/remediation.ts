@@ -3,6 +3,9 @@ import type { findings } from "~/server/db/schema";
 
 type FindingRow = typeof findings.$inferSelect;
 
+/** Allow-list for sku ids before they are interpolated into PowerShell. */
+const SKU_ID_PATTERN = /^[0-9a-f-]+$/i;
+
 type LicenseDetail = {
   skuId: string;
   name?: string;
@@ -111,7 +114,7 @@ export const generateRemediationScript = (rows: FindingRow[]): string => {
       if (f.rule === "overlapping_licenses" && detail.upn) {
         const upn = oneLine(detail.upn).replaceAll("'", "''");
         const redundant = (detail.redundantSkuIds ?? []).filter((id) =>
-          /^[0-9a-f-]+$/i.test(id),
+          SKU_ID_PATTERN.test(id),
         );
         lines.push(`# ${oneLine(f.title)}`);
         if (redundant.length > 0) {
@@ -144,7 +147,11 @@ export const generateRemediationScript = (rows: FindingRow[]): string => {
 
       const licenses: LicenseDetail[] =
         detail.licenses ?? (f.skuId ? [{ skuId: f.skuId }] : []);
-      const direct = licenses.filter((l) => !l.assignedByGroup);
+      // Sku ids come from stored finding detail; only GUID-shaped values may
+      // be interpolated into the generated PowerShell.
+      const direct = licenses.filter(
+        (l) => !l.assignedByGroup && SKU_ID_PATTERN.test(l.skuId),
+      );
       const viaGroup = licenses.filter((l) => l.assignedByGroup);
 
       if (direct.length > 0) {

@@ -479,7 +479,12 @@ export const addMember = async (formData: FormData): Promise<ActionResult> => {
     return fail("Only owners can add owners");
   }
   if (
-    !(await rateLimitDurable(`invite:${ctx.tenant.id}`, 20, 60 * 60 * 1000))
+    !(await rateLimitDurable(
+      `invite:${ctx.tenant.id}`,
+      20,
+      60 * 60 * 1000,
+      "deny",
+    ))
   ) {
     return fail("Too many invites this hour, please try again later");
   }
@@ -561,7 +566,12 @@ export const resendInvite = async (
   if (target.oid || target.workosUserId)
     return fail("This member has already signed in");
   if (
-    !(await rateLimitDurable(`resend:${ctx.tenant.id}`, 10, 60 * 60 * 1000))
+    !(await rateLimitDurable(
+      `resend:${ctx.tenant.id}`,
+      10,
+      60 * 60 * 1000,
+      "deny",
+    ))
   ) {
     return fail("Too many resends this hour");
   }
@@ -1093,6 +1103,8 @@ export const disconnectSaasConnector = async (
 
 /** GUID shape for tenant/app ids (lenient case). */
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Upper bound for a pasted PEM (key or certificate); real ones are a few KB. */
+const PEM_MAX_LENGTH = 16384;
 
 export type MsConnectResult =
   | {
@@ -1142,6 +1154,14 @@ export const connectMicrosoftByo = async (
     return { ok: false, error: "Tenant ID and Application ID must be GUIDs" };
   if (credType !== "secret" && credType !== "cert")
     return { ok: false, error: "Choose a credential type" };
+  // Refuse to silently repoint a workspace already bound to another tenant
+  // (mirrors the managed consent callback's already_connected check).
+  if (ctx.tenant.tid && ctx.tenant.tid !== tid)
+    return {
+      ok: false,
+      error:
+        "This workspace is already connected to a different Microsoft tenant. Disconnect it first.",
+    };
 
   // A given Microsoft tenant belongs to exactly one workspace (the partial-
   // unique tid index); refuse to silently steal it from another workspace.
@@ -1187,6 +1207,11 @@ export const connectMicrosoftByo = async (
       return {
         ok: false,
         error: "Both the private key and the certificate (PEM) are required",
+      };
+    if (privateKey.length > PEM_MAX_LENGTH || certPem.length > PEM_MAX_LENGTH)
+      return {
+        ok: false,
+        error: `The private key and certificate must each be under ${PEM_MAX_LENGTH} characters`,
       };
     try {
       const x = new X509Certificate(certPem);
@@ -1286,7 +1311,11 @@ export const connectMicrosoftByo = async (
     throw err;
   }
 
-  await audit(ctx, "microsoft_connected", { mode: "byo", credType });
+  await audit(ctx, "microsoft_connected", {
+    mode: "byo",
+    credType,
+    previousTid: ctx.tenant.tid ?? null,
+  });
   // First sync runs after the response, like the other connectors.
   after(() => runSync(ctx.tenant.id));
   revalidateApp();
@@ -1480,7 +1509,7 @@ export const captureEmail = async (
 ): Promise<ActionResult> => {
   if (formData.get("website")) return ok(); // honeypot: pretend success to bots
   const ip = clientIp(await headers());
-  if (!(await rateLimitDurable(`capture:${ip}`, 5, 60 * 60 * 1000))) {
+  if (!(await rateLimitDurable(`capture:${ip}`, 5, 60 * 60 * 1000, "deny"))) {
     return fail("Too many attempts, please try again later");
   }
   const raw = formData.get("email");

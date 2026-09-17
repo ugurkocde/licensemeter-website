@@ -77,7 +77,7 @@ export const RULE_META: Record<
 export const ALL_RULES = Object.keys(RULE_META) as WasteRuleId[];
 
 export const isWasteRule = (value: string): value is WasteRuleId =>
-  value in RULE_META;
+  Object.hasOwn(RULE_META, value);
 
 /** Chip suffix per generic SaaS rule, prefixed with the provider name when known. */
 const SAAS_CHIP_SUFFIX: Partial<Record<WasteRuleId, string>> = {
@@ -87,7 +87,7 @@ const SAAS_CHIP_SUFFIX: Partial<Record<WasteRuleId, string>> = {
 };
 
 const isSaasProvider = (value: unknown): value is SaasProvider =>
-  typeof value === "string" && value in CONNECTOR_LABELS;
+  typeof value === "string" && Object.hasOwn(CONNECTOR_LABELS, value);
 
 /**
  * Chip text for a concrete finding row. The generic SaaS rules store the

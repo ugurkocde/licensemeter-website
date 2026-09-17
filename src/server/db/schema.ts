@@ -333,6 +333,10 @@ export const consentStates = pgTable("consent_states", {
   tid: text("tid"),
   /** WorkOS user id of the initiator (workos mode). */
   workosUserId: text("workos_user_id"),
+  /** Workspace the consent was started from (workos mode); checked on callback. */
+  tenantId: uuid("tenant_id").references(() => tenants.id, {
+    onDelete: "cascade",
+  }),
   email: text("email").notNull(),
   name: text("name"),
   createdAt: timestamp("created_at", { withTimezone: true })
