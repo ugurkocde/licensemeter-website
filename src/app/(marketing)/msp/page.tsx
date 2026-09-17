@@ -9,52 +9,51 @@ import { SUPPORT_MAILTO } from "~/lib/support";
 export const metadata: Metadata = {
   title: "For MSPs",
   description:
-    "LicenseMeter for Microsoft-centric MSPs: a portfolio of client tenants sorted by waste, admin consent without shared credentials, per-client price books and a PDF waste report for every QBR.",
+    "LicenseMeter for Microsoft 365 MSPs: every client tenant in one portfolio sorted by monthly waste, connected through admin consent instead of shared credentials, with per-client price books and a PDF waste report for every QBR.",
 };
 
 const STEPS = [
   {
     n: "01",
-    title: "You start the flow",
-    body: "Sign in with your own account and start the connect flow for the client tenant. No client credentials change hands at any point.",
+    title: "You start the connection",
+    body: "Sign in with your own account and open a connect link for the client tenant. No client passwords, no shared admin accounts, no partner delegation to set up.",
   },
   {
     n: "02",
-    title:
-      "Their Global Administrator (or Privileged Role Administrator) consents",
-    body: "The client's admin completes Microsoft's standard admin-consent dialog: read-only application permissions, recorded in their audit log.",
+    title: "Their admin grants consent",
+    body: "A Global Administrator or Privileged Role Administrator on the client side approves Microsoft's standard admin-consent dialog. The permissions are read-only, and the grant lands in their audit log.",
   },
   {
     n: "03",
-    title: "You own the workspace",
-    body: "The workspace binds to you the moment consent lands, and the first sync starts. The client can revoke the enterprise app in Entra ID at any time.",
+    title: "The workspace is yours",
+    body: "The workspace binds to your account the moment consent lands, and the first sync starts. The client keeps control: they can revoke the enterprise app in Entra ID at any time.",
   },
 ] as const;
 
 const FEATURES = [
   {
-    title: "Portfolio, sorted by waste",
-    body: "Seats, spend, monthly waste, open findings and sync health for every client workspace in one table, sorted by waste so you open the right tenant first.",
+    title: "One portfolio, sorted by waste",
+    body: "Seats, spend, monthly waste, open findings and sync health for every client in a single table. It sorts by waste, so the tenant that needs attention this week is always at the top.",
   },
   {
     title: "A price book per client",
-    body: "Each workspace carries its own prices and currency: list-price estimates prefilled, the client's negotiated rates editable per SKU. Findings are priced in their numbers, not ours.",
+    body: "Each workspace has its own currency and prices. Microsoft list prices are prefilled, and you overwrite them per SKU with the client's negotiated rates. Every finding is priced in their numbers.",
   },
   {
-    title: "The QBR deliverable",
-    body: "A branded PDF waste report per tenant: spend, waste and every finding with its monthly cost. Plus CSV exports for finance and generated PowerShell scripts the client's IT reviews and runs.",
+    title: "The QBR deliverable, already written",
+    body: "A PDF waste report per tenant covers spend, waste and every finding with its monthly cost. CSV exports go to the client's finance team, and generated PowerShell scripts go to their IT team to review and run.",
   },
   {
-    title: "A digest that does the chasing",
-    body: "Each workspace emails its owners and admins a weekly digest with the waste number and the largest open findings. Clients see progress between QBRs without logging in.",
+    title: "A weekly digest, sent for you",
+    body: "Every workspace emails its owners and admins a weekly digest with the current waste number and the largest open findings. Invite the client's IT lead as a member and they see progress between QBRs without logging in.",
   },
 ] as const;
 
 const TRUST_ITEMS = [
-  "Read-only application permissions (no write scope exists)",
-  "Remediation ships as PowerShell scripts, run by the client's IT",
-  "EU data residency (Postgres, Frankfurt)",
-  "Disconnecting a workspace deletes everything",
+  "Read-only application permissions. No write scope exists.",
+  "Nothing changes in the client tenant unless their IT team reviews and runs the generated script themselves.",
+  "Data stays in the EU (Postgres, Frankfurt).",
+  "Disconnecting a workspace deletes its data immediately.",
 ] as const;
 
 const BASE = siteUrl();
@@ -93,7 +92,7 @@ const Ctas = ({
         href={startHref}
         className={buttonClass("primary", "w-full sm:w-auto")}
       >
-        Start free
+        Connect your first client
       </a>
     ) : (
       <a
@@ -134,12 +133,14 @@ export default function MspPage() {
         For managed service providers
       </p>
       <h1 className="font-display mt-4 text-4xl tracking-tight text-balance">
-        Every client tenant. One waste ledger.
+        Every client tenant. One portfolio, sorted by waste.
       </h1>
       <p className="text-ink-soft mt-4 max-w-2xl text-lg leading-relaxed">
         You run Microsoft 365 for five, twenty, fifty clients. LicenseMeter
-        gives every client tenant its own read-only workspace, and gives you one
-        portfolio, sorted by what each client wastes per month.
+        gives each of them a read-only workspace and gives you one view across
+        all of them, ranked by what every client wastes per month. Open the
+        highest-waste tenant first, and walk into the next QBR with the number
+        already in hand.
       </p>
       <div className="mt-8">
         <Ctas
@@ -149,16 +150,16 @@ export default function MspPage() {
         />
         {signInOk && (
           <p className="text-ink-faint mt-3 text-xs">
-            Sign in, connect your first client read-only, and see their waste
-            number free. Add client tenants as you go, with no charge and no
-            credit card.
+            Sign in, connect the first client read-only, and see their waste
+            number after the first sync. There is no tenant limit, and every
+            further client is one consent link away.
           </p>
         )}
       </div>
 
       <section className="mt-14">
         <h2 className="font-display text-2xl tracking-tight">
-          Connecting a client takes one consent.
+          Connecting a client takes one admin consent.
         </h2>
         <div className="mt-8 grid gap-10 md:grid-cols-3">
           {STEPS.map((step) => (
@@ -180,13 +181,15 @@ export default function MspPage() {
           The finding your clients pay you to catch
         </h2>
         <p className="text-ink-soft mt-3 max-w-3xl text-sm leading-relaxed">
-          Offboarding is where client money leaks. LicenseMeter cross-checks
-          every Adobe, Zoom, Atlassian, Salesforce, OpenAI, Anthropic, ChatGPT
-          and Claude seat against the client&rsquo;s directory, so the account
-          you disabled months ago surfaces with the paid seats it still holds.
-          The live demo tenant shows the pattern: {DEMO_FIGURES.leaverCount}{" "}
-          ex-employees still licensed, {DEMO_FIGURES.crossVendorLeaverCount} of
-          them in connected apps. That&rsquo;s{" "}
+          Offboarding is where client money leaks. Disabling the Entra account
+          is the easy part. The Adobe, Zoom, Atlassian, Salesforce, OpenAI and
+          Anthropic seats behind it keep billing until someone notices.
+          LicenseMeter cross-checks every connected vendor seat against the
+          client&rsquo;s directory, so the account you disabled months ago
+          surfaces with the paid seats it still holds. The demo tenant shows the
+          pattern: {DEMO_FIGURES.leaverCount} ex-employees still licensed,{" "}
+          {DEMO_FIGURES.crossVendorLeaverCount} of them in connected apps.
+          That&rsquo;s{" "}
           <span className="tnum text-waste-text font-mono">
             € {demoEuros(DEMO_FIGURES.byCategory.leavers)}
           </span>{" "}
@@ -207,8 +210,12 @@ export default function MspPage() {
 
       <section className="mt-14">
         <h2 className="font-display text-2xl tracking-tight">
-          Built to pass your client&rsquo;s security review.
+          Answers for your client&rsquo;s security review.
         </h2>
+        <p className="text-ink-soft mt-3 max-w-2xl text-sm leading-relaxed">
+          Your clients will ask what you just connected to their tenant. The
+          answers are short.
+        </p>
         <ul className="text-ink-soft mt-4 flex flex-col gap-2 text-sm">
           {TRUST_ITEMS.map((item) => (
             <li key={item} className="flex gap-3">
@@ -227,37 +234,19 @@ export default function MspPage() {
           >
             security overview
           </Link>{" "}
-          lists every granted scope and what is stored. It is written to be
-          forwarded to the client&rsquo;s security team as is.
+          lists every granted scope and what is stored. Forward it to the
+          client&rsquo;s security team as is.
         </p>
-      </section>
-
-      <section className="mt-14">
-        <h2 className="font-display text-2xl tracking-tight">
-          Every client tenant, free.
-        </h2>
-        <p className="text-ink-soft mt-3 max-w-2xl text-sm leading-relaxed">
-          Connect your client tenants, switch between their workspaces and
-          review your portfolio in one place. Monitoring, reports and exports
-          are included for every connected workspace.
-        </p>
-        <div className="mt-8">
-          <Ctas
-            demoEnabled={demoEnabled}
-            signInOk={signInOk}
-            startHref={startHref}
-          />
-        </div>
       </section>
 
       <section className="border-line mt-14 border-t pt-10">
         <h2 className="font-display text-3xl tracking-tight text-balance">
-          Bring your worst tenant.
+          Start with the client you think wastes the most.
         </h2>
         <p className="text-ink-soft mt-3 max-w-xl leading-relaxed">
-          Walk through the demo workspace first, then connect the client you
-          suspect most. The first scan is free, read-only, and takes one
-          consent.
+          Connect the tenant you already have a hunch about, or walk through the
+          demo workspace first. The connection is read-only, takes one admin
+          consent, and the waste number is on screen after the first sync.
         </p>
         <div className="mt-8">
           <Ctas
