@@ -38,6 +38,16 @@ const SECONDARY: Tile[] = [
     href: "/app/connectors/salesforce",
   },
   {
+    name: "OpenAI",
+    blurb: "API spend and organization members",
+    href: "/app/connectors/openai",
+  },
+  {
+    name: "Anthropic",
+    blurb: "Claude API costs and console members",
+    href: "/app/connectors/anthropic",
+  },
+  {
     name: "ChatGPT",
     blurb: "Workspace seats (CSV)",
     href: "/app/connectors/chatgpt",
@@ -87,7 +97,7 @@ export const OnboardingEmptyState = () => (
           <div>
             <p className="text-ink font-medium">Microsoft 365</p>
             <p className="text-ink-soft mt-0.5 text-sm">
-              Directory, license assignments and usage — usually the biggest
+              Directory, license assignments and usage, usually the biggest
               source of waste. Read-only, one-time admin consent.
             </p>
           </div>

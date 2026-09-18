@@ -23,6 +23,10 @@ export type GraphUser = {
   id: string;
   displayName: string | null;
   userPrincipalName: string;
+  /** Primary SMTP address; may differ from the UPN or be null. */
+  mail?: string | null;
+  /** "smtp:alias@..." entries (uppercase SMTP marks the primary). */
+  proxyAddresses?: string[] | null;
   accountEnabled: boolean;
   userType: string | null;
   createdDateTime: string | null;
@@ -87,5 +91,6 @@ export interface GraphClient {
   getCopilotUsage(period: "D90"): Promise<CopilotUsageRow[]>;
 }
 
-/** Concealed report rows carry an MD5 hash instead of a UPN. */
-export const isConcealedUpn = (upn: string): boolean => !upn.includes("@");
+/** Concealed report rows carry a 32-hex MD5 hash instead of a UPN. */
+export const isConcealedUpn = (upn: string): boolean =>
+  /^[0-9a-f]{32}$/i.test(upn);

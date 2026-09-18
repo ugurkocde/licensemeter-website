@@ -5,8 +5,8 @@ import { refreshSession } from "@workos-inc/authkit-nextjs";
 import { authProvider } from "~/env";
 
 /**
- * Re-seal the AuthKit session cookie from WorkOS so server components — notably
- * the signed-in name in the workspace sidebar — pick up profile edits made
+ * Re-seal the AuthKit session cookie from WorkOS so server components (notably
+ * the signed-in name in the workspace sidebar) pick up profile edits made
  * through the WorkOS account widgets.
  *
  * withAuth() reads the sealed cookie, which is a login-time snapshot of the
@@ -21,7 +21,7 @@ export async function refreshUserSession() {
   try {
     await refreshSession();
   } catch {
-    // No active session, or the refresh token is gone — nothing to sync. The
+    // No active session, or the refresh token is gone: nothing to sync. The
     // next navigation or sign-in reconciles; surfacing an error here helps no one.
   }
 }

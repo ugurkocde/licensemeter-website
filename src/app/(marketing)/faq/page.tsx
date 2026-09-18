@@ -53,12 +53,12 @@ const FAQS = [
     a: "Yes. LicenseMeter acts as a data processor under Art. 28 GDPR; a signed DPA is included for every workspace and available before you connect production data.",
   },
   {
-    q: "What exactly do you charge for?",
-    a: "LicenseMeter is free to use, including continuous monitoring, nightly syncs, new findings as people join and leave, exports and remediation scripts. There is no subscription, time limit or credit card requirement.",
+    q: "Is LicenseMeter really free? What is the catch?",
+    a: "There is no catch. LicenseMeter is free to use, including continuous monitoring, nightly syncs, new findings as people join and leave, exports and remediation scripts. No subscription, no time limit, no credit card.",
   },
   {
     q: "We are an MSP. Can we manage several client tenants?",
-    a: `Yes. Each client tenant becomes its own workspace: you start the connect flow, the client's Global Admin completes Microsoft's consent dialog, and the workspace binds to you, with no shared credentials. A portfolio view sorts all your workspaces by monthly waste, each with its own price book and a PDF waste report for the QBR. Every client workspace and the portfolio are free. See the MSP page for details.`,
+    a: `Yes. Each client tenant is its own workspace, and the client's Global Admin completes Microsoft's consent dialog, so there are no shared credentials. Once you belong to two or more workspaces, because clients invited you or because you connected them yourself, a portfolio view sorts them by monthly waste, each with its own price book and a PDF waste report for the QBR. Every client workspace and the portfolio are free. See the MSP page for details.`,
   },
 ] as const;
 

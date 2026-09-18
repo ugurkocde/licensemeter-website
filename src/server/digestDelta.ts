@@ -145,7 +145,7 @@ export const renewalDigestLine = (
   const contract = next.renewal.contractName.trim();
   const label = contract.toLowerCase().includes(vendor.toLowerCase())
     ? contract
-    : `${vendor} — ${contract}`;
+    : `${vendor}: ${contract}`;
   const renewalTiming = upcomingTiming(next.renewalDays);
   return next.noticeDays > 0
     ? `${label}: cancellation notice deadline ${deadlineTiming(next.actionDays)}; renewal ${renewalTiming}`

@@ -28,7 +28,7 @@ const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Adobe organization IDs look like `XXXXXXXXXXXXXXXXXXXXXXXX@AdobeOrg` — a hex
+ * Adobe organization IDs look like `XXXXXXXXXXXXXXXXXXXXXXXX@AdobeOrg`, a hex
  * IMS id with an `@AdobeOrg` suffix. We pin a conservative charset (letters,
  * digits, `@`, `.`, `_`, `-`) so a tampered/garbage orgId can never inject
  * path segments (`/`, `..`), query, or fragment characters into the UMAPI URL.
@@ -101,39 +101,46 @@ export class UmapiClient implements AdobeClient {
     };
   }
 
-  private async fetchGroupPage(
+  /**
+   * One UMAPI page (groups or users) with 429 back-off honoring Retry-After,
+   * bounded by a per-call attempt count and a per-sync wait budget shared
+   * across pages.
+   */
+  private async fetchUmapiPage(
+    resource: "groups" | "users",
     token: string,
     page: number,
     retryBudget: { remainingMs: number },
+    query = "",
   ): Promise<Response> {
+    const url = `${UMAPI_BASE}/${resource}/${encodeURIComponent(this.cfg.orgId)}/${page}${query}`;
     for (let attempt = 1; attempt <= MAX_GROUP_PAGE_ATTEMPTS; attempt++) {
-      const res = await fetch(
-        `${UMAPI_BASE}/groups/${encodeURIComponent(this.cfg.orgId)}/${page}`,
-        {
-          headers: this.requestHeaders(token),
-          signal: AbortSignal.timeout(30_000),
-        },
-      );
+      const res = await fetch(url, {
+        headers: this.requestHeaders(token),
+        signal: AbortSignal.timeout(30_000),
+      });
       if (res.status !== 429 || attempt === MAX_GROUP_PAGE_ATTEMPTS) {
         return res;
       }
       const waitMs = retryAfterMs(res.headers.get("Retry-After"));
       if (waitMs > retryBudget.remainingMs) {
         throw new Error(
-          "Adobe UMAPI groups request exceeded the rate-limit retry budget; try again later",
+          `Adobe UMAPI ${resource} request exceeded the rate-limit retry budget; try again later`,
         );
       }
       retryBudget.remainingMs -= waitMs;
       await (this.cfg.sleep ?? sleep)(waitMs);
     }
-    throw new Error("Adobe UMAPI groups request failed (HTTP 429)");
+    throw new Error(`Adobe UMAPI ${resource} request failed (HTTP 429)`);
   }
 
-  private async getProductProfileNames(token: string): Promise<Set<string>> {
+  private async getProductProfileNames(
+    token: string,
+    retryBudget: { remainingMs: number },
+  ): Promise<Set<string>> {
     const names = new Set<string>();
-    const retryBudget = { remainingMs: MAX_GROUP_RATE_LIMIT_WAIT_MS };
     for (let page = 0; page < MAX_GROUP_CATALOG_PAGES; page++) {
-      const res = await this.fetchGroupPage(token, page, retryBudget);
+      const res = await this.fetchUmapiPage("groups", token, page, retryBudget);
       if (!res.ok) {
         throw new Error(`Adobe UMAPI groups request failed (${res.status})`);
       }
@@ -158,15 +165,21 @@ export class UmapiClient implements AdobeClient {
 
   async getUsers(): Promise<AdobeUser[]> {
     const token = await this.getToken();
-    const productProfileNames = await this.getProductProfileNames(token);
+    const retryBudget = { remainingMs: MAX_GROUP_RATE_LIMIT_WAIT_MS };
+    const productProfileNames = await this.getProductProfileNames(
+      token,
+      retryBudget,
+    );
     const users: AdobeUser[] = [];
+    const params = new URLSearchParams({ directOnly: "false" });
     for (let page = 0; page < 100; page++) {
-      const params = new URLSearchParams({ directOnly: "false" });
-      const url = `${UMAPI_BASE}/users/${encodeURIComponent(this.cfg.orgId)}/${page}?${params.toString()}`;
-      const res = await fetch(url, {
-        headers: this.requestHeaders(token),
-        signal: AbortSignal.timeout(30_000),
-      });
+      const res = await this.fetchUmapiPage(
+        "users",
+        token,
+        page,
+        retryBudget,
+        `?${params.toString()}`,
+      );
       if (!res.ok) {
         throw new Error(`Adobe UMAPI request failed (${res.status})`);
       }

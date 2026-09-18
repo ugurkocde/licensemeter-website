@@ -127,13 +127,22 @@ export default function ExcelLicenseTrackingComparePage() {
           <table className="w-full min-w-[640px] border-collapse text-sm">
             <thead>
               <tr className="border-line bg-card border-b text-left">
-                <th className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase">
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
+                >
                   Dimension
                 </th>
-                <th className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase">
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
+                >
                   License spreadsheet
                 </th>
-                <th className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase">
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
+                >
                   LicenseMeter
                 </th>
               </tr>
@@ -247,9 +256,9 @@ export default function ExcelLicenseTrackingComparePage() {
             CSV import
           </a>{" "}
           computes your waste number from two Microsoft 365 admin center
-          exports, with no consent at all. The link signs you in with Microsoft
-          first. If the number justifies it, connect read-only afterwards and
-          let the nightly sync take over from the uploads.
+          exports, with no consent at all. The link asks you to sign in first.
+          If the number justifies it, connect read-only afterwards and let the
+          nightly sync take over from the uploads.
         </p>
       </section>
 

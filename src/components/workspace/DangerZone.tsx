@@ -51,7 +51,7 @@ export const DangerZone = ({ tenantName }: { tenantName: string }) => {
               if (e.key === "Enter" && !confirmed) e.preventDefault();
             }}
             placeholder={`Type "${tenantName}" to confirm`}
-            className="border-line bg-card focus:border-danger min-h-11 w-full border px-3 py-2 text-sm sm:max-w-xs"
+            className="border-line-input bg-card focus:border-danger min-h-11 w-full border px-3 py-2 text-sm sm:max-w-xs"
           />
           <button
             type="submit"

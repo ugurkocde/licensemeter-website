@@ -4,7 +4,7 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button, buttonClass } from "~/components/ui";
-import { fmtMoney } from "~/lib/format";
+import { fmtDate, fmtMoney } from "~/lib/format";
 import { deleteVendorRenewal, saveVendorRenewal } from "~/server/actions";
 import type { ActionResult } from "~/server/actions";
 
@@ -19,18 +19,13 @@ export type RenewalView = {
   notes: string | null;
 };
 
+/* Anchor the calendar day at UTC noon so the shared formatter shows the same
+ * date on the server and in any client timezone. */
 const renewalDateLabel = (value: string) =>
-  new Intl.DateTimeFormat(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${value}T00:00:00Z`));
+  fmtDate(new Date(`${value}T12:00:00Z`));
 
-const daysUntil = (value: string) =>
-  Math.ceil(
-    (new Date(`${value}T00:00:00Z`).getTime() - Date.now()) / 86_400_000,
-  );
+const daysUntil = (value: string, nowMs: number) =>
+  Math.ceil((new Date(`${value}T00:00:00Z`).getTime() - nowMs) / 86_400_000);
 
 type MemberOption = { id: string; label: string };
 
@@ -65,7 +60,7 @@ const RenewalForm = ({
           defaultValue={initial?.vendor ?? ""}
           autoComplete="organization"
           placeholder="Microsoft 365…"
-          className="border-line bg-card min-h-11 border px-3 py-2 text-sm font-normal"
+          className="border-line-input bg-card min-h-11 border px-3 py-2 text-sm font-normal"
         />
       </label>
       <label className="flex flex-col gap-1 text-xs font-medium">
@@ -77,7 +72,7 @@ const RenewalForm = ({
           defaultValue={initial?.contractName ?? ""}
           autoComplete="off"
           placeholder="Enterprise agreement…"
-          className="border-line bg-card min-h-11 border px-3 py-2 text-sm font-normal"
+          className="border-line-input bg-card min-h-11 border px-3 py-2 text-sm font-normal"
         />
       </label>
       <label className="flex flex-col gap-1 text-xs font-medium">
@@ -88,7 +83,7 @@ const RenewalForm = ({
           required
           defaultValue={initial?.renewalDate ?? ""}
           autoComplete="off"
-          className="border-line bg-card min-h-11 border px-3 py-2 text-sm font-normal"
+          className="border-line-input bg-card min-h-11 border px-3 py-2 text-sm font-normal"
         />
       </label>
       <label className="flex flex-col gap-1 text-xs font-medium">
@@ -101,7 +96,7 @@ const RenewalForm = ({
           required
           defaultValue={initial?.noticeDays ?? 30}
           autoComplete="off"
-          className="border-line bg-card min-h-11 border px-3 py-2 text-sm font-normal"
+          className="border-line-input bg-card min-h-11 border px-3 py-2 text-sm font-normal"
         />
       </label>
       <label className="flex flex-col gap-1 text-xs font-medium">
@@ -113,7 +108,7 @@ const RenewalForm = ({
             initial ? (initial.annualValueCents / 100).toFixed(2) : "0.00"
           }
           autoComplete="off"
-          className="tnum border-line bg-card min-h-11 border px-3 py-2 text-sm font-normal"
+          className="tnum border-line-input bg-card min-h-11 border px-3 py-2 text-sm font-normal"
         />
       </label>
       <label className="flex flex-col gap-1 text-xs font-medium">
@@ -122,7 +117,7 @@ const RenewalForm = ({
           name="ownerMembershipId"
           defaultValue={initial?.ownerMembershipId ?? ""}
           autoComplete="off"
-          className="border-line bg-card min-h-11 border px-3 py-2 text-sm font-normal"
+          className="border-line-input bg-card min-h-11 border px-3 py-2 text-sm font-normal"
         >
           <option value="">Unassigned</option>
           {members.map((member) => (
@@ -141,7 +136,7 @@ const RenewalForm = ({
           defaultValue={initial?.notes ?? ""}
           autoComplete="off"
           placeholder="Notice terms, negotiation context or procurement owner…"
-          className="border-line bg-card border px-3 py-2 text-sm font-normal"
+          className="border-line-input bg-card border px-3 py-2 text-sm font-normal"
         />
       </label>
       <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
@@ -224,11 +219,14 @@ export const RenewalManager = ({
   members,
   currency,
   canEdit,
+  nowMs,
 }: {
   renewals: RenewalView[];
   members: MemberOption[];
   currency: string;
   canEdit: boolean;
+  /** Server clock at render time, so day counts hydrate without mismatch. */
+  nowMs: number;
 }) => {
   const router = useRouter();
   return (
@@ -264,7 +262,7 @@ export const RenewalManager = ({
         ) : (
           <ul className="mt-3 flex flex-col gap-3">
             {renewals.map((renewal) => {
-              const remaining = daysUntil(renewal.renewalDate);
+              const remaining = daysUntil(renewal.renewalDate, nowMs);
               const noticeDeadline = remaining - renewal.noticeDays;
               return (
                 <li key={renewal.id} className="border-line bg-card border p-5">

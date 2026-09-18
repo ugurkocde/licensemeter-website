@@ -8,6 +8,9 @@ import { CONNECTOR_GUIDES } from "~/lib/connectorGuides";
 /** Legal pages: indexable but low priority, they rarely change. */
 const LOW_PRIORITY = new Set(["/impressum", "/privacy", "/dpa", "/de/dpa"]);
 
+/** Pages with an English and a German edition; both list each other. */
+const LOCALIZED = ["/security", "/trust-center", "/dpa"];
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (process.env.SELF_HOSTED === "true") {
     await connection();
@@ -37,9 +40,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/privacy",
     "/dpa",
     "/de/dpa",
-  ].map((path) => ({
-    url: `${base}${path}`,
-    changeFrequency: "weekly",
-    priority: path === "" ? 1 : LOW_PRIORITY.has(path) ? 0.3 : 0.7,
-  }));
+  ].map((path) => {
+    const englishPath = path.startsWith("/de/") ? path.slice(3) : path;
+    const localized = LOCALIZED.includes(englishPath);
+    return {
+      url: `${base}${path}`,
+      changeFrequency: LOW_PRIORITY.has(path) ? "yearly" : "weekly",
+      priority: path === "" ? 1 : LOW_PRIORITY.has(path) ? 0.3 : 0.7,
+      ...(localized && {
+        alternates: {
+          languages: {
+            en: `${base}${englishPath}`,
+            de: `${base}/de${englishPath}`,
+          },
+        },
+      }),
+    };
+  });
 }

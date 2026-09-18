@@ -13,7 +13,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
  *    jose mock enforce them exactly as the real verifier would).
  *
  * The cryptographic signature verification against the real Microsoft JWKS is
- * deliberately NOT tested here — it requires a live network fetch and a real
+ * deliberately NOT tested here; it requires a live network fetch and a real
  * Microsoft-signed token, which would be flaky and non-deterministic. We assert
  * the options we hand jose instead, which is the contract this module owns.
  */
@@ -64,7 +64,7 @@ beforeEach(() => {
   jwtVerifyMock.mockClear();
 });
 
-describe("verifyEntraIdToken — happy path", () => {
+describe("verifyEntraIdToken: happy path", () => {
   it("returns mapped claims for a valid token and pins audience + RS256", async () => {
     const result = await verifyEntraIdToken(makeToken(validClaims), AUD);
     expect(result).toEqual({
@@ -96,7 +96,7 @@ describe("verifyEntraIdToken — happy path", () => {
   });
 });
 
-describe("verifyEntraIdToken — issuer pinning", () => {
+describe("verifyEntraIdToken: issuer pinning", () => {
   it("rejects a token whose iss does not match its tid", async () => {
     const claims = {
       ...validClaims,
@@ -115,7 +115,7 @@ describe("verifyEntraIdToken — issuer pinning", () => {
   });
 });
 
-describe("verifyEntraIdToken — audience pinning (enforced by jose)", () => {
+describe("verifyEntraIdToken: audience pinning (enforced by jose)", () => {
   it("rejects a token minted for a different audience", async () => {
     await expect(
       verifyEntraIdToken(
@@ -126,7 +126,7 @@ describe("verifyEntraIdToken — audience pinning (enforced by jose)", () => {
   });
 });
 
-describe("verifyEntraIdToken — algorithm pinning (enforced by jose)", () => {
+describe("verifyEntraIdToken: algorithm pinning (enforced by jose)", () => {
   it("rejects a token signed with a disallowed algorithm", async () => {
     // An HS256 / alg-confusion token must never pass RS256-only verification.
     await expect(
@@ -138,7 +138,7 @@ describe("verifyEntraIdToken — algorithm pinning (enforced by jose)", () => {
   });
 });
 
-describe("verifyEntraIdToken — required claims", () => {
+describe("verifyEntraIdToken: required claims", () => {
   it("rejects when oid or tid is missing", async () => {
     await expect(
       verifyEntraIdToken(

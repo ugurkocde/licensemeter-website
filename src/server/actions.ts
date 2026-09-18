@@ -47,6 +47,7 @@ import {
 import { parseMembers } from "~/server/saas/parseMembers";
 import { normalizeSalesforceOrgRef } from "~/server/saas/salesforce";
 import { connectorSpec } from "~/lib/connectors";
+import { MICROSOFT_RULES } from "~/lib/rules";
 import { isSupportedCurrency } from "~/lib/currency";
 import { rateBetween } from "~/lib/exchangeRates";
 import { workspaceLabel } from "~/lib/format";
@@ -1339,12 +1340,21 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
   // leave it (mirrors disconnectAdobe/disconnectSaasConnector clearing their
   // data). Customer-entered prices (priceBook) are deliberately kept. A partial
   // delete that left tenants.tid set would let the managed fallback in
-  // resolveMsCredential silently re-enable sync. Findings auto-resolve on the
-  // next analysis.
+  // resolveMsCredential silently re-enable sync. Findings from the Microsoft
+  // rules carry directory names (UPNs, display names) and are deleted with
+  // the dataset; connector findings stay and re-evaluate on the next analysis.
   await db.transaction(async (tx) => {
     await tx
       .delete(msConnections)
       .where(eq(msConnections.tenantId, ctx.tenant.id));
+    await tx
+      .delete(findings)
+      .where(
+        and(
+          eq(findings.tenantId, ctx.tenant.id),
+          inArray(findings.rule, MICROSOFT_RULES),
+        ),
+      );
     await tx.delete(tenantUsers).where(eq(tenantUsers.tenantId, ctx.tenant.id));
     await tx.delete(tenantSkus).where(eq(tenantSkus.tenantId, ctx.tenant.id));
     await tx.delete(snapshots).where(eq(snapshots.tenantId, ctx.tenant.id));
@@ -1553,7 +1563,7 @@ export const disconnectTenant = async (): Promise<ActionResult> => {
 
   const actor = ctx.membership.name ?? ctx.membership.email;
   // Resolve the OTHER admins/owners NOW, while the memberships still exist (they
-  // cascade-delete with the tenant). Exclude the actor — they triggered it. The
+  // cascade-delete with the tenant). Exclude the actor; they triggered it. The
   // send itself is deferred to after() and best-effort: a failure must not block
   // the deletion.
   if (emailEnabled()) {

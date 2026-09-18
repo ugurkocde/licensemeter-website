@@ -83,6 +83,7 @@ export const welcomeHtml = (args: {
   const securityUrl = `${args.baseUrl}/security?${UTM}`;
   const homeUrl = `${args.baseUrl}/?${UTM}`;
   const csvImportUrl = `${args.baseUrl}/app/connect/csv?${UTM}`;
+  const dpaUrl = `${args.baseUrl}/dpa?${UTM}`;
   const demoWaste = `€ ${demoEuros(DEMO_FIGURES.monthlyWasteCents)}`;
 
   return `
@@ -102,7 +103,7 @@ export const welcomeHtml = (args: {
   </p>
 
   <table style="width:100%;border-collapse:collapse;margin:0 0 24px">
-    ${step("01", "Sign in with Microsoft: any work account, no setup and nothing installed.")}
+    ${step("01", "Sign in: any work account, no setup and nothing installed.")}
     ${step("02", `Your Global Administrator (or Privileged Role Administrator) approves <strong>read-only</strong> access once. Not the admin yourself? Forward this email; the one-pager below answers what they will ask.`)}
     ${step("03", "The first sync takes about two minutes. You get every unused, leaked or forgotten seat priced in euros per month, plus PowerShell scripts to reclaim them.")}
   </table>
@@ -116,7 +117,7 @@ export const welcomeHtml = (args: {
   <p style="${sans};font-size:13px;color:#6b665d;line-height:1.55;margin:0 0 32px">
     Want to poke around first? The
     <a href="${escapeHtml(homeUrl)}" style="color:#1c1a16">live demo</a> is a
-    155-person tenant wasting ${demoWaste} a month. One click, no account.
+    ${DEMO_FIGURES.users}-person tenant wasting ${demoWaste} a month. One click, no account.
     No admin with consent rights at hand? Start with the
     <a href="${escapeHtml(csvImportUrl)}" style="color:#1c1a16">CSV import</a>:
     your number from two admin-center exports, no consent at all.
@@ -155,7 +156,7 @@ export const welcomeHtml = (args: {
     </p>
     <p style="${sans};font-size:13px;margin:14px 0 0">
       <a href="${escapeHtml(securityUrl)}" style="color:#1c1a16">Full security overview →</a>
-      <span style="color:#a39d8f">&nbsp;·&nbsp; A signed AVV (DPA) is available on request.</span>
+      <span style="color:#a39d8f">&nbsp;·&nbsp; The pre-signed AVV (DPA) is available at <a href="${escapeHtml(dpaUrl)}" style="color:#a39d8f">licensemeter.com/dpa</a>.</span>
     </p>
   </div>
 

@@ -164,6 +164,68 @@ describe("UmapiClient", () => {
     ]);
   });
 
+  it("backs off and retries a rate-limited Adobe users page", async () => {
+    const sleepMock = vi.fn(() => Promise.resolve());
+    let userPageAttempts = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = fetchUrl(input);
+      if (url === "https://ims-na1.adobelogin.com/ims/token/v3") {
+        return Response.json({ access_token: "token" });
+      }
+      if (
+        url ===
+        "https://usermanagement.adobe.io/v2/usermanagement/groups/org-123/0"
+      ) {
+        return Response.json({
+          lastPage: true,
+          groups: [{ type: "PRODUCT_PROFILE", groupName: "Acrobat Pro" }],
+        });
+      }
+      if (
+        url ===
+        "https://usermanagement.adobe.io/v2/usermanagement/users/org-123/0?directOnly=false"
+      ) {
+        userPageAttempts++;
+        if (userPageAttempts === 1) {
+          return new Response(null, {
+            status: 429,
+            headers: { "Retry-After": "5" },
+          });
+        }
+        return Response.json({
+          lastPage: true,
+          users: [
+            {
+              email: "retried@example.com",
+              status: "active",
+              groups: ["Acrobat Pro"],
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const users = await new UmapiClient({
+      orgId: "org-123",
+      clientId: "client-id",
+      clientSecret: "secret",
+      sleep: sleepMock,
+    }).getUsers();
+
+    expect(sleepMock).toHaveBeenCalledTimes(1);
+    expect(sleepMock).toHaveBeenCalledWith(5000);
+    expect(userPageAttempts).toBe(2);
+    expect(users).toEqual([
+      {
+        email: "retried@example.com",
+        status: "active",
+        products: ["Acrobat Pro"],
+      },
+    ]);
+  });
+
   it("fails before user import when the Adobe group catalog exceeds the safe page limit", async () => {
     const groupPagePattern =
       /^https:\/\/usermanagement\.adobe\.io\/v2\/usermanagement\/groups\/org-123\/(\d+)$/;

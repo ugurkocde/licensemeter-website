@@ -183,7 +183,7 @@ const SignBox = ({ label, lines }: { label: string; lines: string[] }) => (
 
 export const DpaDocument = ({ lang }: { lang: DpaLang }) => {
   const doc = DPA[lang];
-  const footerLeft = `LicenseMeter ${lang === "de" ? "AVV" : "DPA"} v${doc.version} - UgurLabs UG`;
+  const footerLeft = `LicenseMeter ${lang === "de" ? "AVV" : "DPA"} v${doc.version} - Ugurlabs UG`;
 
   return (
     <Document title={`${doc.docTitle} - LicenseMeter`} author="LicenseMeter">

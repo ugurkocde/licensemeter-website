@@ -46,14 +46,14 @@ export const InviteForm = ({
         aria-label="Email address to invite"
         placeholder="colleague@yourcompany.com"
         defaultValue={result && !result.ok ? result.email : undefined}
-        className="border-line bg-card focus:border-ink min-w-56 flex-1 border px-3 py-2 text-sm"
+        className="border-line-input bg-card focus:border-ink min-w-56 flex-1 border px-3 py-2 text-sm"
       />
       <select
         name="role"
         value={role}
         onChange={(e) => setRole(e.target.value as MembershipRole)}
         aria-label="Role for the invited member"
-        className="border-line bg-card focus:border-ink border px-2 py-2 text-sm"
+        className="border-line-input bg-card focus:border-ink border px-2 py-2 text-sm"
       >
         {ROLE_ORDER.filter((r) => r !== "owner" || allowOwner).map((r) => (
           <option key={r} value={r}>

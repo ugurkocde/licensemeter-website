@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await page.route("https://client.crisp.chat/l.js", (route) =>
@@ -129,7 +129,7 @@ test("feature tabs support arrow keys and the modal restores focus", async ({
   await expect(activeVideo).not.toHaveAttribute("autoplay", "");
 
   const trigger = page.getByRole("button", {
-    name: /Product demo.*Enlarge: Act on findings in bulk/,
+    name: /Product demo: Act on findings in bulk, enlarge/,
   });
   await trigger.click();
   await expect(page.getByRole("dialog")).toBeVisible();

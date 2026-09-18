@@ -62,9 +62,15 @@ export default function CookiesPage() {
           <table className="w-full text-left text-xs">
             <thead className="text-ink-faint">
               <tr className="border-line border-b">
-                <th className="px-4 py-2 font-medium">Cookie</th>
-                <th className="px-4 py-2 font-medium">Purpose</th>
-                <th className="px-4 py-2 font-medium">Retention</th>
+                <th scope="col" className="px-4 py-2 font-medium">
+                  Cookie
+                </th>
+                <th scope="col" className="px-4 py-2 font-medium">
+                  Purpose
+                </th>
+                <th scope="col" className="px-4 py-2 font-medium">
+                  Retention
+                </th>
               </tr>
             </thead>
             <tbody className="text-ink-soft">

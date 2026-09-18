@@ -60,7 +60,7 @@ const UtilizationBar = ({
     <div className="flex items-center gap-2">
       <div
         className="bg-line h-1.5 w-24"
-        role="progressbar"
+        role="meter"
         aria-valuenow={rounded}
         aria-valuemin={0}
         aria-valuemax={100}

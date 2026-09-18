@@ -24,8 +24,8 @@ export const AccountWidgets = ({ accessToken }: { accessToken: string }) => (
       <div className="flex flex-col gap-2">
         <p className="text-ink-soft text-sm">
           You can sign in with a connected account (like Google) or your
-          password — both reach the same account, and either keeps working on
-          its own.
+          password. Both reach the same account, and either keeps working on its
+          own.
         </p>
         <UserSecurity authToken={accessToken} />
       </div>

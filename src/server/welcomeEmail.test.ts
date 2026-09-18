@@ -50,6 +50,11 @@ describe("welcomeHtml", () => {
   it("links connect, security and home with the campaign tag, and unsubscribe", () => {
     expect(html).toContain("/app/connect?utm_source=welcome_email");
     expect(html).toContain("/security?utm_source=welcome_email");
+    expect(html).toContain("/dpa?utm_source=welcome_email");
+    expect(html).toContain("pre-signed AVV (DPA)");
+    expect(html).not.toContain("available on request");
+    expect(html).not.toContain("Sign in with Microsoft");
+    expect(html).toContain("Sign in: any work account");
     expect(html).toContain("/?utm_source=welcome_email");
     // URLs land in href attributes entity-escaped.
     expect(html).toContain("utm_source=welcome_email&amp;utm_medium=email");
@@ -75,6 +80,7 @@ describe("welcomeHtml", () => {
 
   it("quotes the demo figure and the read-only promise", () => {
     expect(html).toContain(`€ ${demoEuros(DEMO_FIGURES.monthlyWasteCents)}`);
+    expect(html).toContain(`${DEMO_FIGURES.users}-person tenant`);
     expect(html).toContain("No write access, ever.");
   });
 
