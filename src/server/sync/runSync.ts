@@ -59,7 +59,11 @@ import { emailEnabled, leakAlertHtml, sendEmail } from "~/server/email";
 import { pickLeakFindings } from "~/server/leakAlerts";
 import { notifyOps } from "~/server/ops";
 import { aiSpendSinceDay } from "~/server/sync/aiSpendWindow";
-import { entraIdentitiesOf, joinSignals } from "~/server/sync/join";
+import {
+  entraIdentitiesOf,
+  joinSignals,
+  storedIdentitiesOf,
+} from "~/server/sync/join";
 import type { SyncRunStatus, SyncStep, WasteRuleId } from "~/server/types";
 import {
   analyzeWaste,
@@ -831,7 +835,19 @@ export const runSync = async (
     // Every sign-in name plus mail alias of each directory user, so connector
     // seats registered under an alias still match (in-memory only; the
     // tenant_users table keeps the UPN alone).
-    const entraIdentities = entraIdentitiesOf(graphUsers);
+    // No Graph pull this run (Microsoft not connected, or an empty result that
+    // left the stored inventory alone): correlate against the stored directory
+    // instead, which a CSV import fills without any Microsoft connection.
+    // Dropping it here would resolve the leak findings runAnalysis creates and
+    // recreate them on the next analysis.
+    const entraIdentities =
+      graphUsers.length > 0
+        ? entraIdentitiesOf(graphUsers)
+        : storedIdentitiesOf(
+            await db.query.tenantUsers.findMany({
+              where: eq(tenantUsers.tenantId, tenantId),
+            }),
+          );
     const adobeFindings = analyzeAdobeWaste(adobeRows, entraIdentities, prices);
     const saasFindings = [...saasRows.entries()].flatMap(([provider, seats]) =>
       analyzeSaasWaste(provider, seats, entraIdentities, prices, {
@@ -1067,12 +1083,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     inactiveDays: tenant.inactiveDays,
   });
 
-  const entraIdentities = userRows.map((r) => ({
-    graphId: r.graphId,
-    upn: r.upn,
-    displayName: r.displayName,
-    accountEnabled: r.accountEnabled,
-  }));
+  const entraIdentities = storedIdentitiesOf(userRows);
   const adobeFindings = analyzeAdobeWaste(
     adobeRows.map((r) => ({
       email: r.email,

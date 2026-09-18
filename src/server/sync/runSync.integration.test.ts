@@ -36,6 +36,8 @@ import type { SaasSeat } from "~/server/types";
  *    survives)
  *  - a workspace without any Microsoft credential but with a SaaS connection
  *    syncs: Microsoft steps skipped, seats persisted, run not failed
+ *  - the same workspace with a CSV-imported directory: the leak rules use the
+ *    stored users and the findings stay stable across repeated syncs
  *  - disconnectTenant during a running sync: the delete SUCCEEDS and the
  *    running run cascades away regardless of historical payment state
  */
@@ -494,6 +496,95 @@ describe("runSync without a Microsoft connection", () => {
     const [run] = await getRuns();
     expect(run?.status).toBe("success");
     expect(notifyOpsMock).not.toHaveBeenCalled();
+  });
+
+  it("correlates connector seats against a CSV-imported directory and keeps the findings stable", async () => {
+    await seedTenant({ tid: null, consentedAt: null });
+    await currentDb.insert(schema.saasConnections).values({
+      tenantId: TENANT_ID,
+      provider: "zoom",
+      orgRef: "acct-1",
+      clientId: "client",
+      secretEnc: "enc",
+    });
+    // A CSV import fills tenant_users without any Microsoft connection.
+    await currentDb.insert(schema.tenantUsers).values([
+      {
+        tenantId: TENANT_ID,
+        graphId: "csv-user-1",
+        upn: "zoe@contoso.test",
+        displayName: "Zoe",
+        accountEnabled: true,
+      },
+      {
+        tenantId: TENANT_ID,
+        graphId: "csv-user-2",
+        upn: "dana@contoso.test",
+        displayName: "Dana",
+        accountEnabled: false,
+      },
+    ]);
+    // All three seats were active recently, so inactivity never applies and
+    // only the leak rules can produce findings.
+    const recent = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const getSeats = vi.fn(() =>
+      Promise.resolve(
+        (
+          [
+            "Zoe@contoso.test",
+            "dana@contoso.test",
+            "ghost@contoso.test",
+          ] as const
+        ).map(
+          (email): SaasSeat => ({
+            email,
+            displayName: null,
+            status: "active",
+            products: ["Licensed"],
+            lastActiveAt: recent,
+          }),
+        ),
+      ),
+    );
+    buildSaasClientMock.mockImplementation(() => Promise.resolve({ getSeats }));
+
+    const first = await runSync(TENANT_ID);
+
+    expect(first.status).toBe("success");
+    const byStep = new Map(first.steps.map((s) => [s.step, s]));
+    for (const step of [
+      "subscribedSkus",
+      "reportSettings",
+      "users",
+      "usageReports",
+      "copilotUsage",
+    ] as const) {
+      expect(byStep.get(step)?.status).toBe("skipped");
+    }
+    const afterFirst = await currentDb.select().from(schema.findings);
+    expect(
+      afterFirst.map((f) => [f.rule, f.dedupeKey, f.status]).sort(),
+    ).toEqual([
+      [
+        "saas_disabled_in_entra",
+        "saas_disabled_in_entra|zoom:dana@contoso.test|-",
+        "open",
+      ],
+      ["saas_orphaned", "saas_orphaned|zoom:ghost@contoso.test|-", "open"],
+    ]);
+    // The enabled, recently active user matched the directory: no finding.
+    expect(afterFirst.some((f) => f.graphUserId === "csv-user-1")).toBe(false);
+
+    const second = await runSync(TENANT_ID);
+
+    expect(second.status).toBe("success");
+    // No resolve-and-recreate flip-flop: the same two rows, still open.
+    const afterSecond = await currentDb.select().from(schema.findings);
+    expect(afterSecond.map((f) => f.id).sort()).toEqual(
+      afterFirst.map((f) => f.id).sort(),
+    );
+    expect(afterSecond.every((f) => f.status === "open")).toBe(true);
+    expect(afterSecond.every((f) => f.resolvedAt === null)).toBe(true);
   });
 });
 

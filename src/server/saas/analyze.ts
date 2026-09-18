@@ -22,9 +22,9 @@ export const analyzeSaasWaste = (
 ): WasteFinding[] => {
   const label = CONNECTOR_LABELS[provider];
   const entraByEmail = new Map(entraUsers.map((u) => [u.upn.toLowerCase(), u]));
-  // Without a synced directory (Microsoft not connected) the leak rules have
-  // nothing to correlate against; only the provider's own inactivity signal
-  // remains meaningful.
+  // Without a directory (no Microsoft connection and no CSV import) the leak
+  // rules have nothing to correlate against; only the provider's own
+  // inactivity signal remains meaningful.
   const hasDirectory = entraUsers.length > 0;
   const findings: WasteFinding[] = [];
 

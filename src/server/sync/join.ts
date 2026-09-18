@@ -196,4 +196,25 @@ export const entraIdentitiesOf = (graphUsers: GraphUser[]): EntraIdentity[] => {
   return [...byAddress.values()];
 };
 
+/**
+ * Directory identities from the stored tenant_users rows, for analyses that
+ * run without a fresh Graph pull: a re-analysis from the database, and syncs
+ * of workspaces whose directory came from a CSV import instead of Microsoft.
+ * Only the UPN is persisted, so unlike entraIdentitiesOf there are no aliases.
+ */
+export const storedIdentitiesOf = (
+  rows: {
+    graphId: string;
+    upn: string;
+    displayName: string | null;
+    accountEnabled: boolean;
+  }[],
+): EntraIdentity[] =>
+  rows.map((r) => ({
+    graphId: r.graphId,
+    upn: r.upn,
+    displayName: r.displayName,
+    accountEnabled: r.accountEnabled,
+  }));
+
 export { COPILOT_SKU_ID };
