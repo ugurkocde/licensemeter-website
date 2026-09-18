@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
+import { z } from "zod";
 
 import {
   apiAccess,
@@ -14,6 +15,11 @@ import {
   workspaceCookieOptions,
 } from "~/server/access";
 import { audit } from "~/server/audit";
+import {
+  approveJoinRequestRow,
+  declineJoinRequestRow,
+  holdsJoinableDomain,
+} from "~/server/domainJoin";
 import { db } from "~/server/db";
 import {
   adobeConnections,
@@ -57,14 +63,19 @@ import { notifyOps } from "~/server/ops";
 import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import { maybeSendWelcome } from "~/server/welcome";
 import {
+  sendJoinApproved,
   sendWorkspaceDeleted,
   workspaceAdminEmails,
 } from "~/server/workspaceEmail";
 import { teardownTenantWorkosOrg } from "~/server/auth/workos";
-import { byoConnectorEnabled, siteUrl } from "~/env";
+import { authProvider, byoConnectorEnabled, siteUrl } from "~/env";
 import { runAnalysis, runSync } from "~/server/sync/runSync";
 import { fetchEcbReferenceRates } from "~/server/exchangeRates";
-import type { MembershipRole, RemediationStatus } from "~/server/types";
+import type {
+  DomainJoinMode,
+  MembershipRole,
+  RemediationStatus,
+} from "~/server/types";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -685,6 +696,118 @@ export const changeMemberRole = async (
     from: target.role,
     to: newRole,
   });
+  revalidateApp();
+  return ok();
+};
+
+const MEMBERS_DEMO_READONLY =
+  "The demo workspace keeps its members fixed. Connect your own tenant to manage people.";
+
+const domainJoinModeSchema = z.enum(["off", "approval", "auto"]);
+const joinRequestIdSchema = z.string().uuid();
+
+/**
+ * Owner-only: how verified colleagues on the workspace's email domain get in.
+ * Only meaningful for the workspace that holds a corporate domain under WorkOS
+ * sign-in; everywhere else the setting is refused rather than stored unused.
+ */
+export const setDomainJoinMode = async (
+  mode: DomainJoinMode,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("owner");
+  if (!ctx) return fail("Only owners can change who can join");
+  if (ctx.tenant.isDemo) return fail(MEMBERS_DEMO_READONLY);
+  const parsed = domainJoinModeSchema.safeParse(mode);
+  if (!parsed.success) return fail("Invalid option");
+  if (
+    authProvider() !== "workos" ||
+    !(await holdsJoinableDomain(db, ctx.tenant))
+  ) {
+    return fail("This workspace has no company email domain to join by");
+  }
+  if (ctx.tenant.domainJoinMode === parsed.data) return ok();
+
+  await db
+    .update(tenants)
+    .set({ domainJoinMode: parsed.data })
+    .where(eq(tenants.id, ctx.tenant.id));
+  await audit(ctx, "domain_join_mode_changed", {
+    from: ctx.tenant.domainJoinMode,
+    to: parsed.data,
+  });
+  revalidateApp();
+  return ok();
+};
+
+/**
+ * Approve a colleague's access request: links a viewer membership and tells
+ * the requester. Scoped to the active workspace, and safe to repeat: a second
+ * click finds the request already approved and changes nothing.
+ */
+export const approveJoinRequest = async (
+  requestId: string,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(MEMBERS_DEMO_READONLY);
+  const id = joinRequestIdSchema.safeParse(requestId);
+  if (!id.success) return fail("Request not found");
+  if (
+    !(await rateLimitDurable(
+      `join-decide:${ctx.tenant.id}`,
+      60,
+      60 * 60 * 1000,
+      "deny",
+    ))
+  ) {
+    return fail("Too many decisions this hour, please try again later");
+  }
+
+  const result = await approveJoinRequestRow(db, {
+    tenantId: ctx.tenant.id,
+    requestId: id.data,
+    decidedByMembershipId: ctx.membership.id,
+  });
+  if (result.status === "not_found") return fail("Request not found");
+  if (result.status === "conflict") {
+    return fail(
+      "This request was already declined. Invite the person instead.",
+    );
+  }
+  if (result.changed) {
+    const { email } = result.request;
+    await audit(ctx, "member_join_approved", { email, role: "viewer" });
+    // Best-effort and deferred: the approval stands even if the mail fails.
+    after(() => sendJoinApproved(ctx.tenant, email).catch(() => null));
+  }
+  revalidateApp();
+  return ok();
+};
+
+/** Decline an access request. The person is not notified and not asked about again. */
+export const declineJoinRequest = async (
+  requestId: string,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(MEMBERS_DEMO_READONLY);
+  const id = joinRequestIdSchema.safeParse(requestId);
+  if (!id.success) return fail("Request not found");
+
+  const result = await declineJoinRequestRow(db, {
+    tenantId: ctx.tenant.id,
+    requestId: id.data,
+    decidedByMembershipId: ctx.membership.id,
+  });
+  if (result.status === "not_found") return fail("Request not found");
+  if (result.status === "conflict") {
+    return fail(
+      "This request was already approved. Remove the member instead.",
+    );
+  }
+  if (result.changed) {
+    await audit(ctx, "member_join_declined", { email: result.request.email });
+  }
   revalidateApp();
   return ok();
 };

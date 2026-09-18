@@ -65,4 +65,8 @@ For Vercel, configure the database, authentication, encryption, `APP_BASE_URL`, 
 
 Sign in, open Connectors, and select Microsoft 365. Review the read-only permissions and complete consent with an account permitted to grant it. After syncing, review findings and set the license price book to your agreements. Invite colleagues through workspace membership controls.
 
+With WorkOS sign-in, the first workspace created from a company email domain also answers for that domain. Its owner chooses under Settings, Members, Who can join how colleagues with a verified email on the domain get in: ask to join (the default: an owner or admin approves each request), join automatically as viewer, or invite only. Owners and admins are emailed about requests and automatic joins, and every request, approval, decline and join is written to the activity log. Whoever is not admitted gets a separate workspace of their own, so nobody waits on an approval to use the product. Consumer email domains never qualify, and Entra sign-in (the Compose default) is always invite only.
+
+After upgrading a hosted database with `db:push`, run `scripts/db-backfill-domain-join-mode.sql` once: workspaces that used to admit colleagues silently move to approval, all others to invite only. Docker deployments get the same step from the bundled migration.
+
 Some activity signals require additional Microsoft licensing or identifiable reports. The application exposes missing signals and falls back where supported. It does not change report privacy settings on your behalf.

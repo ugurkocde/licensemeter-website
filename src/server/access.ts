@@ -1,16 +1,7 @@
-import {
-  and,
-  asc,
-  eq,
-  gt,
-  inArray,
-  isNotNull,
-  isNull,
-  or,
-  sql,
-} from "drizzle-orm";
-import { cookies } from "next/headers";
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 
 import { env } from "~/env";
 import { workspaceLabel } from "~/lib/format";
@@ -19,8 +10,14 @@ import { cookieOptions } from "~/server/auth/session";
 import { db } from "~/server/db";
 import { memberships, tenants } from "~/server/db/schema";
 import { ensureDemoWorkspace } from "~/server/demo/seed";
+import { provisionForSignIn } from "~/server/domainJoin";
 import { entitlementOf, type Entitlement } from "~/server/entitlement";
+import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import type { MembershipRole } from "~/server/types";
+import {
+  sendDomainJoinedNotice,
+  sendJoinRequestNotice,
+} from "~/server/workspaceEmail";
 
 // __Host- prefix in production locks the workspace cookie to this exact host
 // over HTTPS (no subdomain can inject it), matching the session/oauth cookies.
@@ -153,62 +150,46 @@ const resolveEntra = async (
   };
 };
 
+/** Limits on new access requests, so sign-in loops cannot flood admins. */
+const JOIN_REQUESTS_PER_WORKSPACE_PER_DAY = 20;
+const JOIN_REQUESTS_PER_IP_PER_HOUR = 5;
+
 /**
- * Public email providers: their domain is shared by strangers, so it must never
- * trigger domain-JIT (a gmail.com user must not auto-join another gmail user's
- * workspace). Everything else is treated as a corporate domain.
+ * Gate for filing a NEW access request (each one mails every owner/admin).
+ * A person can only ever hold one request per workspace, so the realistic
+ * abuse is many fresh accounts: capped per target workspace and per client IP.
+ * Fails closed: without a working limiter no request (and no mail) is created,
+ * and the person simply lands in their own workspace.
  */
-const CONSUMER_EMAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "msn.com",
-  "yahoo.com",
-  "yahoo.co.uk",
-  "icloud.com",
-  "me.com",
-  "mac.com",
-  "aol.com",
-  "proton.me",
-  "protonmail.com",
-  "pm.me",
-  "gmx.com",
-  "gmx.de",
-  "gmx.net",
-  "web.de",
-  "mail.com",
-  "yandex.com",
-  "zoho.com",
-  "fastmail.com",
-  "hey.com",
-  "qq.com",
-  "163.com",
-  "126.com",
-]);
-
-const domainOfEmail = (email: string): string | null => {
-  const d = email.split("@")[1]?.toLowerCase().trim();
-  return d?.includes(".") ? d : null;
-};
-
-/** A verified, non-consumer email domain eligible for workspace domain-JIT. */
-const corporateDomainOf = (
-  email: string,
-  emailVerified: boolean,
-): string | null => {
-  if (!emailVerified) return null;
-  const d = domainOfEmail(email);
-  return d && !CONSUMER_EMAIL_DOMAINS.has(d) ? d : null;
+const allowJoinRequest = async (tenantId: string): Promise<boolean> => {
+  const ip = clientIp(await headers());
+  if (
+    ip !== "unknown" &&
+    !(await rateLimitDurable(
+      `join-request-ip:${ip}`,
+      JOIN_REQUESTS_PER_IP_PER_HOUR,
+      60 * 60 * 1000,
+      "deny",
+    ))
+  ) {
+    return false;
+  }
+  return rateLimitDurable(
+    `join-request:${tenantId}`,
+    JOIN_REQUESTS_PER_WORKSPACE_PER_DAY,
+    24 * 60 * 60 * 1000,
+    "deny",
+  );
 };
 
 /**
  * First WorkOS sign-in with no membership: provision access so the user lands on
- * a dashboard instead of a dead end. Domain-JIT — a verified corporate-domain
- * user joins the existing same-domain workspace that allows it (no duplicate
- * empty workspaces for colleagues); everyone else gets a fresh personal
- * workspace they own. The workspace starts without a connected service. Returns true when a membership now exists for this user.
+ * a dashboard instead of a dead end. A verified corporate-domain user is matched
+ * to the workspace holding that domain, and its owner decides what happens:
+ * join as viewer ('auto'), file an access request ('approval') or nothing
+ * ('off'). Everyone who did not join gets a fresh workspace they own, so nobody
+ * waits on an approval to use the product. The workspace starts without a
+ * connected service. Returns true when a membership now exists for this user.
  */
 const provisionWorkspace = async (
   session: Session,
@@ -216,75 +197,52 @@ const provisionWorkspace = async (
 ): Promise<boolean> => {
   const email = (session.user.email ?? "").toLowerCase();
   if (!email) return false;
-  const corp = corporateDomainOf(email, session.user.emailVerified === true);
 
-  // Domain-JIT: join the oldest joinable workspace for this corporate domain.
-  if (corp) {
-    const [joinable] = await db
-      .select({ id: tenants.id })
-      .from(tenants)
-      .where(
-        and(
-          eq(tenants.domain, corp),
-          eq(tenants.allowDomainJoin, true),
-          eq(tenants.isDemo, false),
-        ),
-      )
-      .orderBy(asc(tenants.createdAt))
-      .limit(1);
-    if (joinable) {
-      await db
-        .insert(memberships)
-        .values({
-          tenantId: joinable.id,
-          workosUserId,
-          email,
-          name: session.user.name ?? null,
-          role: "viewer",
-        })
-        .onConflictDoUpdate({
-          target: [memberships.tenantId, memberships.email],
-          // This path only runs when accessible() found nothing, so any
-          // conflicting row is an unclaimed invite past its cutoff. A domain
-          // join must not inherit the role that expired invite carried.
-          set: { workosUserId, role: "viewer" },
-        });
-      return true;
-    }
-  }
-
-  // Otherwise create a personal workspace owned by this user, in one transaction
-  // so a crash can't leave a tenant with no owner. Corporate domains are recorded
-  // + joinable so the next colleague lands here; consumer domains are left null
-  // (unmatchable) so strangers never auto-join.
-  return db.transaction(async (tx) => {
-    const [created] = await tx
-      .insert(tenants)
-      .values({
-        name: corp ?? null,
-        domain: corp,
-        allowDomainJoin: corp !== null,
-      })
-      .returning({ id: tenants.id });
-    if (!created) return false;
-    await tx.insert(memberships).values({
-      tenantId: created.id,
-      workosUserId,
+  const { provisioned, outcome } = await provisionForSignIn(
+    db,
+    {
       email,
+      emailVerified: session.user.emailVerified === true,
+      workosUserId,
       name: session.user.name ?? null,
-      role: "owner",
+    },
+    { allowRequest: allowJoinRequest },
+  );
+
+  // Owner/admin mail goes out after the response and can never block or fail
+  // the sign-in. A request notifies once: only the sign-in that created the
+  // row gets a "requested" outcome.
+  if (outcome.kind !== "none") {
+    const { kind, tenant } = outcome;
+    after(async () => {
+      try {
+        if (kind === "requested") {
+          await sendJoinRequestNotice(tenant, email);
+        } else if (
+          await rateLimitDurable(
+            `join-notice:${tenant.id}`,
+            JOIN_REQUESTS_PER_WORKSPACE_PER_DAY,
+            24 * 60 * 60 * 1000,
+            "deny",
+          )
+        ) {
+          await sendDomainJoinedNotice(tenant, email);
+        }
+      } catch (err) {
+        console.error("[domain-join] admin notice failed", err);
+      }
     });
-    return true;
-  });
+  }
+  return provisioned;
 };
 
 /**
  * WorkOS-mode resolution. Identity is the WorkOS user id; the workspace is
  * matched either by a previously-linked membership (workos_user_id) or, for the
- * user's own verified email, by the email column — which also lazily links that
+ * user's own verified email, by the email column, which also lazily links that
  * membership (claiming an invite or adopting an entra-era row) on first sign-in.
- * A brand-new user with no membership is provisioned a workspace (domain-JIT or
- * personal) so sign-in always lands on a dashboard, never a forced connect gate.
+ * A brand-new user with no membership is provisioned a workspace (domain join or
+ * their own) so sign-in always lands on a dashboard, never a forced connect gate.
  * There is no Entra tid here, so the home-tenant heuristic is dropped: active
  * workspace is the cookie choice, else the first accessible one.
  */
@@ -325,7 +283,7 @@ const resolveWorkos = async (
 
   let rows = await accessible();
   if (rows.length === 0) {
-    // First sign-in, no invite: provision a workspace (domain-JIT or personal)
+    // First sign-in, no invite: provision a workspace (domain join or their own)
     // and re-read, so the user lands on a dashboard rather than a dead end.
     const provisioned = await provisionWorkspace(session, workosUserId);
     if (!provisioned) return null;

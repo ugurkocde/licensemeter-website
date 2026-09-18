@@ -30,7 +30,10 @@ correlates Adobe seats with Entra account state (offboarding leaks).
 - Retention: only while connected. Disconnecting deletes everything
   immediately (cascade); backups rotate out within 7 days
 - Access: invite-only per workspace with roles (read-only viewer for
-  finance); same-tenant sign-in alone grants nothing
+  finance); same-tenant sign-in alone grants nothing. Colleagues on the
+  workspace's verified company email domain can ask to join; an owner or
+  admin approves each request, and owners can switch this to automatic
+  joining or turn it off
 - Per-workspace activity log of exports and admin actions
 
 ## Technical measures (excerpt; full TOMs in the DPA)
