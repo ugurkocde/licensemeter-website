@@ -7,7 +7,7 @@
  * Session fields (workosUserId / workosOrgId); the Entra-centric oid/tid are
  * left empty and the access layer resolves the workspace by workosUserId or by
  * verified email. This deliberately does NOT map organizationId onto the Entra
- * `tid` — that id is the connector's per-tenant Graph key (tenants.tid) and
+ * `tid`; that id is the connector's per-tenant Graph key (tenants.tid) and
  * must keep its Entra meaning. No Directory Sync is required.
  */
 import { cookies } from "next/headers";

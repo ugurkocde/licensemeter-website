@@ -154,8 +154,6 @@ export const TrendChart = ({
               cy={yOf(point.value)}
               r="5"
               fill={point.color}
-              tabIndex={0}
-              aria-label={`${point.label} on ${fmtAxisDate(last.day)}: ${fmtMoney(point.value, currency)}`}
             >
               <title>{`${point.label}: ${fmtMoney(point.value, currency)} on ${fmtAxisDate(last.day)}`}</title>
             </circle>

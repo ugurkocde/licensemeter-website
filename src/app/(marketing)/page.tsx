@@ -40,7 +40,7 @@ const BASE = siteUrl();
 export const metadata: Metadata = {
   title: { absolute: SITE_TITLE },
   description: SITE_DESCRIPTION,
-  alternates: { canonical: BASE },
+  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     siteName: "LicenseMeter",
@@ -131,7 +131,7 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-      <section id="product-tour" className="bg-[#f8fafb] px-6 py-20 lg:py-24">
+      <section id="product-tour" className="bg-canvas px-6 py-20 lg:py-24">
         <div className="mx-auto max-w-6xl">
           <div className="mb-12 text-center">
             <p className="text-brand-text text-xs font-medium tracking-[0.12em] uppercase">
@@ -209,16 +209,16 @@ export default function LandingPage() {
               <div>
                 <h3 className="font-semibold">Prefer to run it yourself?</h3>
                 <p className="text-ink-soft mt-3 text-sm leading-7">
-                  The free, open-source PowerShell scanner runs the Microsoft
-                  365 audit locally. No account or upload needed.
+                  LicenseMeter is MIT-licensed. Self-host the whole app with
+                  Docker, or read the code before you connect anything.
                 </p>
                 <a
-                  href="https://github.com/ugurkocde/licensemeter"
+                  href="https://github.com/ugurkocde/licensemeter-website"
                   target="_blank"
                   rel="noreferrer"
                   className={buttonClass("secondary", "mt-4")}
                 >
-                  Get it on GitHub{" "}
+                  View the source on GitHub{" "}
                   <ArrowUpRight className="size-4" aria-hidden="true" />
                 </a>
               </div>
@@ -227,7 +227,7 @@ export default function LandingPage() {
         </div>
       </section>
       <section className="mx-auto max-w-6xl px-6 pb-20">
-        <div className="border-line rounded-3xl border bg-[#f8fafb] px-5 py-14 text-center sm:px-10 sm:py-16">
+        <div className="border-line bg-canvas rounded-3xl border px-5 py-14 text-center sm:px-10 sm:py-16">
           <h2 className="font-display mx-auto max-w-2xl text-3xl font-semibold tracking-[-0.04em] text-balance sm:text-4xl">
             Your next renewal deserves
             <br className="hidden sm:block" /> a smaller number.
@@ -261,7 +261,7 @@ export default function LandingPage() {
           >
             Ugur Koc
           </a>
-          , Microsoft MVP for Intune and Security Copilot. Operated by UgurLabs
+          , Microsoft MVP for Intune and Security Copilot. Operated by Ugurlabs
           in Düsseldorf, Germany.
         </p>
       </section>

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
+import { buttonClass } from "~/components/ui";
 import { CURRENCY_LABELS, SUPPORTED_CURRENCIES } from "~/lib/currency";
 import { setCurrency } from "~/server/actions";
 
@@ -62,7 +63,7 @@ export const CurrencySelect = ({ value }: { value: string }) => {
             setMessage("");
             setFailed(false);
           }}
-          className="border-line bg-card focus:border-ink border px-2 py-1.5 text-sm disabled:opacity-60"
+          className="border-line-input bg-card focus:border-ink min-h-11 rounded-xl border px-3 py-1.5 text-sm disabled:opacity-60"
         >
           {SUPPORTED_CURRENCIES.map((currency) => (
             <option key={currency} value={currency}>
@@ -74,7 +75,7 @@ export const CurrencySelect = ({ value }: { value: string }) => {
           <button
             type="submit"
             disabled={pending}
-            className="border-ink bg-ink text-paper hover:bg-ink-soft border px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
+            className={buttonClass("ink")}
           >
             {pending ? "Converting…" : "Convert"}
           </button>

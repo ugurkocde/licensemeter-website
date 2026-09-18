@@ -38,7 +38,7 @@ export const FindingWorkflowForm = ({
             name="remediationStatus"
             defaultValue={initial.remediationStatus}
             autoComplete="off"
-            className="border-line bg-card min-h-11 border px-3 py-2 font-normal"
+            className="border-line-input bg-card min-h-11 border px-3 py-2 font-normal"
           >
             <option value="unassigned">Not planned</option>
             <option value="planned">Planned</option>
@@ -52,7 +52,7 @@ export const FindingWorkflowForm = ({
             name="assigneeMembershipId"
             defaultValue={initial.assigneeMembershipId ?? ""}
             autoComplete="off"
-            className="border-line bg-card min-h-11 border px-3 py-2 font-normal"
+            className="border-line-input bg-card min-h-11 border px-3 py-2 font-normal"
           >
             <option value="">Unassigned</option>
             {members.map((member) => (
@@ -69,7 +69,7 @@ export const FindingWorkflowForm = ({
             name="dueDate"
             defaultValue={initial.dueDate ?? ""}
             autoComplete="off"
-            className="border-line bg-card min-h-11 border px-3 py-2 font-normal"
+            className="border-line-input bg-card min-h-11 border px-3 py-2 font-normal"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm font-medium">
@@ -81,7 +81,7 @@ export const FindingWorkflowForm = ({
             autoComplete="off"
             spellCheck={false}
             placeholder="https://tickets.example.com/…"
-            className="border-line bg-card min-h-11 border px-3 py-2 font-normal"
+            className="border-line-input bg-card min-h-11 border px-3 py-2 font-normal"
           />
         </label>
       </div>
@@ -94,7 +94,7 @@ export const FindingWorkflowForm = ({
           rows={4}
           maxLength={2_000}
           placeholder="Owner, approval context or remediation steps…"
-          className="border-line bg-card border px-3 py-2 font-normal"
+          className="border-line-input bg-card border px-3 py-2 font-normal"
         />
       </label>
       <div className="flex flex-wrap items-center gap-3">

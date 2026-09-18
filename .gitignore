@@ -58,6 +58,8 @@ test-results/
 # local agent/screenshot output
 output/
 .claude/
+.agents/
+.codex/
 tasks/
 /desktop-*.png
 /mobile-*.png

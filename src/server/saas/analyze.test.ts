@@ -100,6 +100,50 @@ describe("analyzeSaasWaste", () => {
     // always link to the drill-down page.
     expect(make(daysAgo(150))[0]!.graphUserId).toBe("graph-active");
     expect(make(daysAgo(30))).toHaveLength(0);
+    // "More than N days": exactly N idle days is not yet a finding, N+1 is.
+    expect(make(daysAgo(90))).toHaveLength(0);
+    expect(make(daysAgo(91))).toHaveLength(1);
+  });
+
+  it("matches seats through mail aliases listed as directory identities", () => {
+    const findings = analyzeSaasWaste(
+      "zoom",
+      [seat({ email: "Gone.Alias@example.com" })],
+      [
+        ...ENTRA,
+        {
+          graphId: "graph-gone",
+          upn: "gone.alias@example.com",
+          displayName: "Gone G",
+          accountEnabled: false,
+        },
+      ],
+      PRICES,
+      { inactiveDays: 90, now: NOW },
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.rule).toBe("saas_disabled_in_entra");
+    expect(findings[0]!.graphUserId).toBe("graph-gone");
+  });
+
+  it("without a synced directory only the provider's inactivity signal produces findings", () => {
+    const findings = analyzeSaasWaste(
+      "zoom",
+      [
+        seat({ email: "idle@example.com", lastActiveAt: daysAgo(150) }),
+        seat({ email: "fresh@example.com", lastActiveAt: daysAgo(3) }),
+        seat({ email: "unknown@example.com" }),
+      ],
+      [],
+      PRICES,
+      { inactiveDays: 90, now: NOW },
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      rule: "saas_inactive",
+      graphUserId: null,
+      title: "Zoom seat unused for 150 days: idle@example.com",
+    });
   });
 
   it("produces no inactivity finding without an activity signal", () => {

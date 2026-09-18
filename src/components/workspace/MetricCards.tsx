@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useCallback, useId, useState } from "react";
 
 import { Drawer } from "./Drawer";
 
@@ -43,9 +43,9 @@ export type MetricCardData = {
 
 /**
  * Focusable "i" that reveals its explainer on hover and on keyboard focus, and
- * opens the full breakdown on click. It is a real <button> (not a span nested
- * inside the card button) so keyboard users can reach the tooltip, and the
- * explainer is wired up via aria-describedby.
+ * opens the full breakdown on click. It is a real <button> so keyboard users
+ * can reach the tooltip, the explainer is wired up via aria-describedby, and
+ * Escape dismisses the tooltip without leaving the button.
  */
 const InfoButton = ({
   explainer,
@@ -59,12 +59,20 @@ const InfoButton = ({
   tourAnchor?: string;
 }) => {
   const tipId = useId();
+  const [dismissed, setDismissed] = useState(false);
   return (
-    <span className="group/info relative inline-flex">
+    <span
+      className="group/info relative inline-flex"
+      onMouseLeave={() => setDismissed(false)}
+    >
       <button
         type="button"
         data-tour={tourAnchor}
         onClick={onOpen}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setDismissed(true);
+        }}
+        onBlur={() => setDismissed(false)}
         aria-label={`${label}: what this means`}
         aria-describedby={tipId}
         className="text-ink-faint hover:text-ink focus-visible:text-ink focus-visible:ring-brand -my-3 flex size-11 cursor-pointer touch-manipulation items-center justify-center rounded-full transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-offset-2"
@@ -79,7 +87,11 @@ const InfoButton = ({
       <span
         id={tipId}
         role="tooltip"
-        className="border-line bg-card text-ink shadow-float pointer-events-none absolute top-full right-0 z-10 mt-2 w-56 rounded-lg border px-3 py-2 text-left text-xs leading-snug font-normal tracking-normal normal-case opacity-0 transition-opacity duration-150 group-focus-within/info:opacity-100 group-hover/info:opacity-100"
+        className={`border-line bg-card text-ink shadow-float pointer-events-none absolute top-full right-0 z-10 mt-2 w-56 rounded-lg border px-3 py-2 text-left text-xs leading-snug font-normal tracking-normal normal-case opacity-0 transition-opacity duration-150 ${
+          dismissed
+            ? ""
+            : "group-focus-within/info:opacity-100 group-hover/info:opacity-100"
+        }`}
       >
         {explainer}
       </span>
@@ -90,6 +102,7 @@ const InfoButton = ({
 export const MetricCards = ({ cards }: { cards: MetricCardData[] }) => {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const active = cards.find((c) => c.key === openKey) ?? null;
+  const closeDrawer = useCallback(() => setOpenKey(null), []);
 
   return (
     <>
@@ -101,15 +114,9 @@ export const MetricCards = ({ cards }: { cards: MetricCardData[] }) => {
             className="bg-card p-5"
           >
             <div className="flex w-full items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => setOpenKey(card.key)}
-                aria-haspopup="dialog"
-                aria-label={`${card.label}: show how this is calculated`}
-                className="text-ink-faint hover:text-ink text-left text-[11px] font-medium tracking-[0.16em] uppercase underline-offset-4 hover:underline"
-              >
+              <h2 className="text-ink-faint text-left text-[11px] font-medium tracking-[0.16em] uppercase">
                 {card.label}
-              </button>
+              </h2>
               <InfoButton
                 explainer={card.explainer}
                 label={card.label}
@@ -117,20 +124,13 @@ export const MetricCards = ({ cards }: { cards: MetricCardData[] }) => {
                 tourAnchor={card.key === "waste" ? "metric-info" : undefined}
               />
             </div>
-            <button
-              type="button"
-              onClick={() => setOpenKey(card.key)}
-              aria-label={`${card.label}: show breakdown`}
-              className="group/val block w-full text-left"
+            <p
+              className={`font-display mt-2 text-3xl tracking-tight ${
+                card.tone === "waste" ? "text-waste-text" : "text-ink"
+              }`}
             >
-              <span
-                className={`font-display mt-2 block text-3xl tracking-tight underline-offset-4 group-hover/val:underline ${
-                  card.tone === "waste" ? "text-waste-text" : "text-ink"
-                }`}
-              >
-                {card.value}
-              </span>
-            </button>
+              {card.value}
+            </p>
             <div className="text-ink-soft mt-1 text-xs">{card.sub}</div>
             {card.note && (
               <div className="text-ink-faint mt-1 text-xs">{card.note}</div>
@@ -138,7 +138,9 @@ export const MetricCards = ({ cards }: { cards: MetricCardData[] }) => {
             <button
               type="button"
               onClick={() => setOpenKey(card.key)}
-              className="text-brand-text hover:text-ink mt-3 inline-flex min-h-11 items-center text-xs font-medium underline-offset-4 hover:underline"
+              aria-haspopup="dialog"
+              aria-label={`${card.label}: view breakdown`}
+              className="text-brand-text hover:text-ink mt-3 inline-flex min-h-11 cursor-pointer items-center text-xs font-medium underline-offset-4 hover:underline"
             >
               View breakdown <span aria-hidden="true">→</span>
             </button>
@@ -148,7 +150,7 @@ export const MetricCards = ({ cards }: { cards: MetricCardData[] }) => {
 
       <Drawer
         open={active !== null}
-        onClose={() => setOpenKey(null)}
+        onClose={closeDrawer}
         title={active?.label ?? ""}
       >
         {active && (
@@ -191,10 +193,13 @@ export const MetricCards = ({ cards }: { cards: MetricCardData[] }) => {
                 <table className="mt-3 w-full text-sm">
                   <thead>
                     <tr className="border-line text-ink-faint border-b text-left text-[11px] tracking-[0.14em] uppercase">
-                      <th className="py-2 pr-3 font-medium">
+                      <th scope="col" className="py-2 pr-3 font-medium">
                         {active.detail.columns[0]}
                       </th>
-                      <th className="py-2 pl-3 text-right font-medium">
+                      <th
+                        scope="col"
+                        className="py-2 pl-3 text-right font-medium"
+                      >
                         {active.detail.columns[1]}
                       </th>
                     </tr>

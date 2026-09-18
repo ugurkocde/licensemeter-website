@@ -15,8 +15,8 @@ export const metadata = {
 /**
  * Standalone connect entry. In the workspace-first model almost every signed-in
  * user already has a workspace, so this redirects them to the in-app Microsoft
- * connector page (chrome, BYO, scan, CSV). It stays a standalone page — outside
- * the (dash) layout, which requires a workspace — only to serve the one case
+ * connector page (chrome, BYO, scan, CSV). It stays a standalone page (outside
+ * the (dash) layout, which requires a workspace) only to serve the one case
  * that has none yet: a brand-new entra-mode user completing first admin consent.
  */
 export default async function ConnectPage({

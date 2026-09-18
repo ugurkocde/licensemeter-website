@@ -7,7 +7,7 @@ import {
   type GraphUser,
 } from "~/server/graph/types";
 import { analyzeWaste } from "~/server/waste/engine";
-import { joinSignals } from "./join";
+import { entraIdentitiesOf, joinSignals } from "./join";
 
 const NOW = new Date("2026-06-11T00:00:00Z");
 const E3 = "05e9a617-0261-4cee-bb44-138d3ef5d965";
@@ -23,6 +23,52 @@ const graphUser = (overrides: Partial<GraphUser>): GraphUser => ({
   licenseAssignmentStates: null,
   signInActivity: null,
   ...overrides,
+});
+
+describe("entraIdentitiesOf", () => {
+  it("lists the UPN, mail and every smtp proxy address, lowercased, first writer wins", () => {
+    const identities = entraIdentitiesOf([
+      graphUser({
+        id: "g-1",
+        userPrincipalName: "Jane.Doe@contoso.example",
+        mail: "jane@contoso.com",
+        proxyAddresses: [
+          "SMTP:jane@contoso.com",
+          "smtp:j.doe@contoso.example",
+          "x500:/o=Exchange/ou=Group",
+          "smtp:  ",
+        ],
+      }),
+      graphUser({
+        id: "g-2",
+        displayName: "Second",
+        userPrincipalName: "second@contoso.example",
+        mail: "JANE@contoso.com",
+        accountEnabled: false,
+      }),
+    ]);
+    expect(identities.map((i) => [i.upn, i.graphId])).toEqual([
+      ["jane.doe@contoso.example", "g-1"],
+      ["jane@contoso.com", "g-1"],
+      ["j.doe@contoso.example", "g-1"],
+      ["second@contoso.example", "g-2"],
+    ]);
+    expect(identities[1]).toMatchObject({
+      displayName: "Jane Doe",
+      accountEnabled: true,
+    });
+  });
+
+  it("falls back to the UPN alone when mail and proxy addresses are absent", () => {
+    expect(entraIdentitiesOf([graphUser({ mail: null })])).toEqual([
+      {
+        graphId: "g-1",
+        upn: "jane.doe@contoso.example",
+        displayName: "Jane Doe",
+        accountEnabled: true,
+      },
+    ]);
+  });
 });
 
 describe("joinSignals", () => {
@@ -146,6 +192,25 @@ describe("joinSignals", () => {
       copilotRows: [],
     });
     expect(result.activitySignal).toBe("none");
+  });
+
+  it("does not treat report rows with a plain non-email UPN as concealed", () => {
+    const result = joinSignals({
+      hasP1: false,
+      graphUsers: [graphUser({})],
+      usageRows: [
+        {
+          userPrincipalName: "jane.doe",
+          exchangeLastActivityDate: "2026-06-01",
+          oneDriveLastActivityDate: null,
+          sharePointLastActivityDate: null,
+          teamsLastActivityDate: null,
+        },
+      ],
+      copilotRows: [],
+    });
+    expect(result.concealed).toBe(false);
+    expect(result.activitySignal).toBe("full");
   });
 
   it("prefers licenseAssignmentStates (group info) over assignedLicenses", () => {

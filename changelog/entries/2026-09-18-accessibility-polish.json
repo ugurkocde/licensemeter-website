@@ -1,0 +1,7 @@
+{
+  "title": "Easier to use with a keyboard or screen reader",
+  "summary": "Demo videos on the website now have a visible pause and play control, and pausing the feature rotation also pauses the clip. The overview cards have a clearer focus order with one breakdown button per card, the mobile menu keeps keyboard focus inside it while open, and form fields have higher-contrast borders. The currency convert button in settings is visible again, and the German pages announce their language correctly to assistive technology.",
+  "type": "improved",
+  "publishedOn": "2026-09-18",
+  "idempotencyKey": "licensemeter:2026-09-18-accessibility-polish"
+}

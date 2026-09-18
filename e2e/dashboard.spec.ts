@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await page.route("https://client.crisp.chat/l.js", (route) =>
@@ -179,7 +180,7 @@ test("sample dashboard exposes the action-first overview and renewal calendar", 
   await expect(
     page
       .getByRole("button", {
-        name: "Verified savings (30d): show how this is calculated",
+        name: "Verified savings (30d): what this means",
       })
       .first(),
   ).toBeVisible();

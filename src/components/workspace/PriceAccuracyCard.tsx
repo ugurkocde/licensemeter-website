@@ -29,7 +29,7 @@ export const PriceAccuracyCard = ({
         </p>
         <div
           className="bg-line mt-3 h-1.5 w-full max-w-sm overflow-hidden rounded-full"
-          role="progressbar"
+          role="meter"
           aria-label="Contract price coverage"
           aria-valuemin={0}
           aria-valuemax={100}

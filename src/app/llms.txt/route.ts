@@ -13,7 +13,7 @@ export function GET(): Response {
 
 > ${SITE_DEFINITION}
 
-Operated by UgurLabs UG and maintained by Ugur Koc, Microsoft MVP for Intune and Security Copilot. Key facts:
+Operated by Ugurlabs UG and maintained by Ugur Koc, Microsoft MVP for Intune and Security Copilot. Key facts:
 
 - Read-only by design: the connector app holds no write scopes; remediation ships as generated PowerShell scripts that admins review and run themselves.
 - Never reads content: no mailboxes, files or messages. License assignments, sign-in activity and usage metadata only.

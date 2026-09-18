@@ -28,11 +28,14 @@ export const notifyOps = async (
 ): Promise<void> => {
   console.error(`[ops] ${text}`);
 
-  // Webhook/email fire only from the production deployment. Local dev and
+  // Webhook/email fire only from production deployments. Local dev and
   // preview deploys share the same .env credentials, and a crash on a dev
-  // machine must not page anyone (VERCEL_ENV is unset locally, "preview" on
-  // preview deploys). Raw process.env: system var, not in the env schema.
-  if (process.env.VERCEL_ENV !== "production") return;
+  // machine must not page anyone: NODE_ENV gates dev, and on Vercel the
+  // VERCEL_ENV system var additionally gates preview deploys (unset on
+  // self-hosted installs, where production alerts must flow). Raw
+  // process.env: system vars, not in the env schema.
+  if (process.env.NODE_ENV !== "production") return;
+  if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production") return;
 
   const wantWebhook = Boolean(env.ALERT_WEBHOOK_URL);
   const wantEmail = Boolean(env.ALERT_EMAIL) && emailEnabled();
@@ -41,27 +44,36 @@ export const notifyOps = async (
   let suffix = "";
   if (opts.key && opts.cooldownMs) {
     try {
-      const row = await db.query.opsAlerts.findFirst({
-        where: eq(opsAlerts.key, opts.key),
-      });
-      const now = Date.now();
-      if (row && now - row.lastSentAt.getTime() < opts.cooldownMs) {
+      // Single atomic upsert: the row is claimed (last_sent_at reset, the
+      // suppressed counter zeroed) only when the cooldown has elapsed;
+      // otherwise the conflict branch changes nothing and RETURNING yields no
+      // row, so concurrent callers cannot both win. The subselect in
+      // RETURNING sees the pre-statement snapshot, i.e. the count suppressed
+      // since the previous alert.
+      const cooldownSeconds = opts.cooldownMs / 1000;
+      const claimed = await db
+        .insert(opsAlerts)
+        .values({ key: opts.key, lastSentAt: new Date(), suppressedCount: 0 })
+        .onConflictDoUpdate({
+          target: opsAlerts.key,
+          set: { lastSentAt: new Date(), suppressedCount: 0 },
+          setWhere: sql`${opsAlerts.lastSentAt} < now() - make_interval(secs => ${cooldownSeconds}::double precision)`,
+        })
+        .returning({
+          previousSuppressed: sql<number>`coalesce((select o.suppressed_count from ${opsAlerts} o where o.key = ${opts.key}), 0)`,
+        });
+      const row = claimed[0];
+      if (!row) {
         await db
           .update(opsAlerts)
           .set({ suppressedCount: sql`${opsAlerts.suppressedCount} + 1` })
           .where(eq(opsAlerts.key, opts.key));
         return;
       }
-      if (row && row.suppressedCount > 0) {
-        suffix = ` (${row.suppressedCount} similar suppressed since the last alert)`;
+      const previousSuppressed = Number(row.previousSuppressed);
+      if (previousSuppressed > 0) {
+        suffix = ` (${previousSuppressed} similar suppressed since the last alert)`;
       }
-      await db
-        .insert(opsAlerts)
-        .values({ key: opts.key, lastSentAt: new Date(), suppressedCount: 0 })
-        .onConflictDoUpdate({
-          target: opsAlerts.key,
-          set: { lastSentAt: new Date(), suppressedCount: 0 },
-        });
     } catch (err) {
       console.error("[ops] dedup bookkeeping failed", err);
     }

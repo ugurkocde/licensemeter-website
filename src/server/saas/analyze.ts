@@ -22,6 +22,10 @@ export const analyzeSaasWaste = (
 ): WasteFinding[] => {
   const label = CONNECTOR_LABELS[provider];
   const entraByEmail = new Map(entraUsers.map((u) => [u.upn.toLowerCase(), u]));
+  // Without a directory (no Microsoft connection and no CSV import) the leak
+  // rules have nothing to correlate against; only the provider's own
+  // inactivity signal remains meaningful.
+  const hasDirectory = entraUsers.length > 0;
   const findings: WasteFinding[] = [];
 
   for (const seat of seats) {
@@ -38,7 +42,7 @@ export const analyzeSaasWaste = (
       provider,
     };
 
-    if (entra && !entra.accountEnabled) {
+    if (hasDirectory && entra && !entra.accountEnabled) {
       findings.push({
         dedupeKey: `saas_disabled_in_entra|${provider}:${email}|-`,
         rule: "saas_disabled_in_entra",
@@ -48,7 +52,7 @@ export const analyzeSaasWaste = (
         detail,
         monthlyImpactCents,
       });
-    } else if (!entra) {
+    } else if (hasDirectory && !entra) {
       findings.push({
         dedupeKey: `saas_orphaned|${provider}:${email}|-`,
         rule: "saas_orphaned",
@@ -63,13 +67,15 @@ export const analyzeSaasWaste = (
         (opts.now.getTime() - seat.lastActiveAt.getTime()) /
           (24 * 60 * 60 * 1000),
       );
-      if (idleDays >= opts.inactiveDays) {
+      // Strictly more than the threshold, matching the Microsoft rule and the
+      // "more than N days" wording.
+      if (idleDays > opts.inactiveDays) {
         findings.push({
           dedupeKey: `saas_inactive|${provider}:${email}|-`,
           rule: "saas_inactive",
-          graphUserId: entra.graphId,
+          graphUserId: entra?.graphId ?? null,
           skuId: null,
-          title: `${label} seat unused for ${idleDays} days: ${entra.displayName ?? seat.email}`,
+          title: `${label} seat unused for ${idleDays} days: ${entra?.displayName ?? seat.displayName ?? seat.email}`,
           detail: { ...detail, idleDays },
           monthlyImpactCents,
         });

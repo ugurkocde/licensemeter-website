@@ -131,13 +131,22 @@ export default function PowershellAuditComparePage() {
           <table className="w-full min-w-[640px] border-collapse text-sm">
             <thead>
               <tr className="border-line bg-card border-b text-left">
-                <th className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase">
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
+                >
                   Dimension
                 </th>
-                <th className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase">
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
+                >
                   Manual PowerShell
                 </th>
-                <th className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase">
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
+                >
                   LicenseMeter
                 </th>
               </tr>

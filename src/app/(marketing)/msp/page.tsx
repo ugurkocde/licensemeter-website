@@ -45,7 +45,7 @@ const FEATURES = [
   },
   {
     title: "A weekly digest, sent for you",
-    body: "Every workspace emails its owners and admins a weekly digest with the current waste number and the largest open findings. Invite the client's IT lead as a member and they see progress between QBRs without logging in.",
+    body: "Every workspace emails its owners and admins a weekly digest with the current waste number and the largest open findings. Invite the client's IT lead as an admin and they get the weekly digest between QBRs without logging in.",
   },
 ] as const;
 
@@ -151,8 +151,7 @@ export default function MspPage() {
         {signInOk && (
           <p className="text-ink-faint mt-3 text-xs">
             Sign in, connect the first client read-only, and see their waste
-            number after the first sync. There is no tenant limit, and every
-            further client is one consent link away.
+            number after the first sync.
           </p>
         )}
       </div>
