@@ -35,19 +35,23 @@ The managed connector requests `User.Read.All`, `AuditLog.Read.All`, `Reports.Re
 
 ## Shared environment
 
-| Variable                                                     | Purpose                                                                     |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| `DATABASE_URL`                                               | PostgreSQL connection using the limited runtime role                        |
-| `AUTH_SECRET`                                                | Session signing secret, at least 32 characters in production                |
-| `DATA_ENCRYPTION_KEY`                                        | Separate encryption key for connector credentials                           |
-| `APP_BASE_URL`                                               | Canonical deployment origin, HTTPS for public access                        |
-| `CRON_SECRET`                                                | Bearer secret for scheduled-job routes                                      |
-| `DEMO_MODE`                                                  | `true` enables credentials-free sample-workspace access                     |
-| `SELF_HOSTED`                                                | `true` enables runtime page configuration and disables hosted chat defaults |
-| `RESEND_API_KEY`, `EMAIL_FROM`                               | Optional transactional email                                                |
-| `SUPPORT_TO_EMAIL`                                           | Destination for the self-hosted support form                                |
-| `SUPPORT_TURNSTILE_SITE_KEY`, `SUPPORT_TURNSTILE_SECRET_KEY` | Optional spam verification; configure both for your hostname                |
-| `CRISP_WEBSITE_ID`                                           | Optional chat website ID for your instance                                  |
+| Variable                                                     | Purpose                                                                         |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                               | PostgreSQL connection using the limited runtime role                            |
+| `AUTH_SECRET`                                                | Session signing secret, at least 32 characters in production                    |
+| `DATA_ENCRYPTION_KEY`                                        | Separate encryption key for connector credentials                               |
+| `APP_BASE_URL`                                               | Canonical deployment origin, HTTPS for public access                            |
+| `CRON_SECRET`                                                | Bearer secret for scheduled-job routes                                          |
+| `DEMO_MODE`                                                  | `true` enables credentials-free sample-workspace access                         |
+| `SELF_HOSTED`                                                | `true` enables runtime page configuration and disables hosted chat defaults     |
+| `RESEND_API_KEY`, `EMAIL_FROM`                               | Optional transactional email                                                    |
+| `SUPPORT_TO_EMAIL`                                           | Destination for the self-hosted support form                                    |
+| `SUPPORT_TURNSTILE_SITE_KEY`, `SUPPORT_TURNSTILE_SECRET_KEY` | Optional spam verification; configure both for your hostname                    |
+| `CRISP_WEBSITE_ID`                                           | Optional chat website ID for your instance                                      |
+| `SUPPORT_FROM_EMAIL`                                         | Optional sender override for the support form; falls back to `EMAIL_FROM`       |
+| `ALERT_EMAIL`                                                | Optional recipient for operational alerts; needs `RESEND_API_KEY`, `EMAIL_FROM` |
+| `ALERT_WEBHOOK_URL`                                          | Optional Teams/Slack incoming webhook for failed syncs and cron errors          |
+| `MS_BYO_ENABLED`                                             | `false` hides the bring-your-own app registration option; on by default         |
 
 Never commit environment files, database dumps, or private keys. `SKIP_ENV_VALIDATION` is for builds without secrets, not runtime deployment.
 

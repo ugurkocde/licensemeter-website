@@ -16,9 +16,9 @@ import { SUPPORT_EMAIL } from "~/lib/support";
  *
  * Consistency: the subprocessor list below is the DEFINITIVE list. Keep it in
  * sync with the convenience subset shown on /security (#subprocessors) and the
- * prose list in /privacy (section 5). Adobe/Zoom/Atlassian/Salesforce/OpenAI/
+ * prose list in /privacy (section 7). Adobe/Zoom/Atlassian/Salesforce/OpenAI/
  * Anthropic and CSV imports are deliberately framed as DATA SOURCES, not
- * subprocessors - preserve that framing (see /privacy section 5).
+ * subprocessors - preserve that framing (see /privacy section 7).
  */
 
 export type DpaLang = "en" | "de";

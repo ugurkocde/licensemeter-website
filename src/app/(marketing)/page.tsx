@@ -209,16 +209,16 @@ export default function LandingPage() {
               <div>
                 <h3 className="font-semibold">Prefer to run it yourself?</h3>
                 <p className="text-ink-soft mt-3 text-sm leading-7">
-                  The free, open-source PowerShell scanner runs the Microsoft
-                  365 audit locally. No account or upload needed.
+                  LicenseMeter is MIT-licensed. Self-host the whole app with
+                  Docker, or read the code before you connect anything.
                 </p>
                 <a
-                  href="https://github.com/ugurkocde/licensemeter"
+                  href="https://github.com/ugurkocde/licensemeter-website"
                   target="_blank"
                   rel="noreferrer"
                   className={buttonClass("secondary", "mt-4")}
                 >
-                  Get it on GitHub{" "}
+                  View the source on GitHub{" "}
                   <ArrowUpRight className="size-4" aria-hidden="true" />
                 </a>
               </div>

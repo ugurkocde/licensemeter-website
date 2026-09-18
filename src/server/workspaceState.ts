@@ -12,7 +12,7 @@ import {
 } from "~/server/db/schema";
 
 /**
- * Whether a workspace has connected any service yet — any connector row
+ * Whether a workspace has connected any service yet: any connector row
  * (Microsoft / Adobe / SaaS) or any synced/imported data. Drives the
  * workspace-first onboarding: a workspace with nothing connected shows the
  * onboarding empty state instead of a dashboard of zeros.

@@ -136,7 +136,7 @@ export default function PrivacyPolicyPage() {
         </p>
       </Section>
 
-      <Section title="Support conversations">
+      <Section title="6. Support conversations">
         <p>
           Crisp provides the support chat available across our website and
           dashboard. Loading the chat connects your browser to Crisp and shares
@@ -165,7 +165,7 @@ export default function PrivacyPolicyPage() {
         </p>
       </Section>
 
-      <Section title="6. Subprocessors">
+      <Section title="7. Subprocessors">
         <p>
           We engage the following subprocessors to process personal data on your
           behalf:
@@ -203,7 +203,7 @@ export default function PrivacyPolicyPage() {
         </p>
       </Section>
 
-      <Section title="7. Retention">
+      <Section title="8. Retention">
         <p>
           Account and product data is stored for as long as the workspace is
           connected. On disconnect, all synchronized data is deleted; remaining
@@ -214,7 +214,7 @@ export default function PrivacyPolicyPage() {
         </p>
       </Section>
 
-      <Section title="8. Your rights">
+      <Section title="9. Your rights">
         <p>
           You have the right of access (Art. 15), rectification (Art. 16),
           erasure (Art. 17), restriction of processing (Art. 18), data
@@ -225,7 +225,7 @@ export default function PrivacyPolicyPage() {
         </p>
       </Section>
 
-      <Section title="9. Contact">
+      <Section title="10. Contact">
         <p>Privacy questions: {SUPPORT_EMAIL}</p>
       </Section>
     </main>

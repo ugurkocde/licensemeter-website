@@ -205,7 +205,7 @@ const corporateDomainOf = (
 
 /**
  * First WorkOS sign-in with no membership: provision access so the user lands on
- * a dashboard instead of a dead end. Domain-JIT — a verified corporate-domain
+ * a dashboard instead of a dead end. Domain-JIT: a verified corporate-domain
  * user joins the existing same-domain workspace that allows it (no duplicate
  * empty workspaces for colleagues); everyone else gets a fresh personal
  * workspace they own. The workspace starts without a connected service. Returns true when a membership now exists for this user.
@@ -278,7 +278,7 @@ const provisionWorkspace = async (
 /**
  * WorkOS-mode resolution. Identity is the WorkOS user id; the workspace is
  * matched either by a previously-linked membership (workos_user_id) or, for the
- * user's own verified email, by the email column — which also lazily links that
+ * user's own verified email, by the email column, which also lazily links that
  * membership (claiming an invite or adopting an entra-era row) on first sign-in.
  * A brand-new user with no membership is provisioned a workspace (domain-JIT or
  * personal) so sign-in always lands on a dashboard, never a forced connect gate.

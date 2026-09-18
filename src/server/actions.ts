@@ -1524,7 +1524,7 @@ export const disconnectTenant = async (): Promise<ActionResult> => {
 
   const actor = ctx.membership.name ?? ctx.membership.email;
   // Resolve the OTHER admins/owners NOW, while the memberships still exist (they
-  // cascade-delete with the tenant). Exclude the actor — they triggered it. The
+  // cascade-delete with the tenant). Exclude the actor; they triggered it. The
   // send itself is deferred to after() and best-effort: a failure must not block
   // the deletion.
   if (emailEnabled()) {

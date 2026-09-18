@@ -30,22 +30,23 @@ export default async function PortfolioPage() {
         <header className="rise rise-1">
           <h1 className="font-display text-3xl tracking-tight">Portfolio</h1>
           <p className="text-ink-soft mt-2 max-w-2xl text-sm leading-relaxed">
-            Portfolio reporting becomes available when you can access 2 or more
+            Portfolio reporting appears once you belong to two or more
             workspaces. Your current workspace is ready on the overview.
           </p>
         </header>
         <div className="rise rise-2 mt-8">
           <Card title="One workspace connected">
             <p className="text-ink-soft text-sm">
-              Add another client workspace from the MSP area to compare spend,
-              waste, findings, and sync health in one view.
+              Portfolio reporting appears once you belong to two or more
+              workspaces. Ask a client to invite you to their workspace, or
+              connect one client tenant per account.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
               <Link href="/app" className={buttonClass("primary")}>
                 Open Overview
               </Link>
-              <Link href="/app/msp" className={buttonClass("secondary")}>
-                Set Up MSP Portfolio
+              <Link href="/app/connectors" className={buttonClass("secondary")}>
+                Open Connectors
               </Link>
             </div>
           </Card>
@@ -57,7 +58,7 @@ export default async function PortfolioPage() {
   const ids = ctx.workspaces.map((w) => w.id);
 
   // All per-workspace data is fetched set-based (one query each, distinct-on the
-  // latest row per tenant) rather than three queries per workspace — the old
+  // latest row per tenant) rather than three queries per workspace; the old
   // shape was ~3N round-trips for an MSP with N clients.
   const [tenantRows, findingCounts, snaps, runs, imports] = await Promise.all([
     db.query.tenants.findMany({ where: inArray(tenants.id, ids) }),

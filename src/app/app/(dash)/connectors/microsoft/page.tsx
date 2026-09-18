@@ -38,7 +38,7 @@ const ScopeList = () => (
 /**
  * Managed one-click (default) + BYO (Advanced) + the two no-consent fallbacks
  * (instant scan, CSV). Managed needs the central connector app; the scan needs
- * the Entra sign-in app — each is shown only when its env is configured so no
+ * the Entra sign-in app; each is shown only when its env is configured so no
  * option dead-ends.
  */
 const SetupOptions = ({
@@ -67,7 +67,7 @@ const SetupOptions = ({
         </p>
       )}
       <p className="text-ink-faint text-xs">
-        Not a Global Administrator? Forward this page to one — they complete the
+        Not a Global Administrator? Forward this page to one. They complete the
         Microsoft dialog and you become the workspace owner.
       </p>
     </div>
@@ -75,7 +75,7 @@ const SetupOptions = ({
     {byoEnabled && (
       <details className="group border-line border-t pt-4">
         <summary className="text-ink-soft hover:text-ink cursor-pointer text-sm font-medium select-none">
-          Advanced — bring your own app registration
+          Advanced: bring your own app registration
         </summary>
         <div className="mt-3 flex flex-col gap-3">
           <p className="text-ink-soft text-sm">
@@ -263,10 +263,10 @@ export default async function MicrosoftConnectorPage({
                   <div className="font-medium">
                     Connected
                     {conn.mode === "managed"
-                      ? " — Managed (one-click)"
+                      ? ": Managed (one-click)"
                       : conn.credType === "cert"
-                        ? " — Bring your own app (certificate)"
-                        : " — Bring your own app (client secret)"}
+                        ? ": Bring your own app (certificate)"
+                        : ": Bring your own app (client secret)"}
                   </div>
                   <div className="text-ink-soft mt-0.5 text-xs">
                     Tenant <span className="font-mono">{conn.tid}</span>

@@ -11,8 +11,7 @@ import {
 
 export const metadata: Metadata = {
   title: "Sample license waste report - synthetic demo tenant",
-  description:
-    "A walkthrough of a LicenseMeter license waste report, computed from the synthetic 155-user demo tenant: per-rule findings with euro figures, the weekly digest, the monthly PDF report and the PowerShell remediation. Not a customer story.",
+  description: `A walkthrough of a LicenseMeter license waste report, computed from the synthetic ${DEMO_FIGURES.users}-user demo tenant: per-rule findings with euro figures, the weekly digest, the monthly PDF report and the PowerShell remediation. Not a customer story.`,
   alternates: { canonical: "/sample-report" },
 };
 

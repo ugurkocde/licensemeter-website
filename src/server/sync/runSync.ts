@@ -922,7 +922,7 @@ export const runSync = async (
 /**
  * Whether a sync error is an app-only authentication failure (expired/revoked
  * credential), not a data error. Matches MSAL/AADSTS token-acquisition codes
- * only — deliberately not the bare word "certificate", which can appear in
+ * only, deliberately not the bare word "certificate", which can appear in
  * unrelated Graph error bodies (AADSTS700027 already covers cert-credential
  * failures, "client assertion" the JWT-assertion path).
  */
