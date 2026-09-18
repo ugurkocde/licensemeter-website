@@ -1,0 +1,7 @@
+{
+  "title": "Header fits on the narrowest phones",
+  "summary": "On 320 pixel wide screens the logo, menu, updates bell and start button now sit on one line without spilling past the header edge.",
+  "type": "fixed",
+  "publishedOn": "2026-09-18",
+  "idempotencyKey": "licensemeter:2026-09-18-narrow-phone-header"
+}
