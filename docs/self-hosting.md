@@ -70,7 +70,7 @@ A containerized proxy should join the web service's network. Do not publish Post
 - Email requires your own `RESEND_API_KEY` and verified `EMAIL_FROM` sender.
 - The support form requires your `SUPPORT_TO_EMAIL`. Self-hosted requests are not sent to the hosted support mailbox by default. Optionally set both Turnstile keys for your hostname.
 - Crisp is disabled unless you configure your own `CRISP_WEBSITE_ID`.
-- Operational alerts optionally use `ALERT_EMAIL` and/or `ALERT_WEBHOOK_URL`. Configure destinations you control.
+- Operational alerts optionally use `ALERT_EMAIL` and/or `ALERT_WEBHOOK_URL`. Configure destinations you control. Alerts are only sent when `NODE_ENV=production` (the Docker image sets this); on Vercel, preview deployments additionally stay silent.
 - Vercel Analytics is not enabled by the Docker setup.
 
 Marketing/legal content, contact details, and the external provider-status page describe licensemeter.com. Adapt them to your organization and infrastructure before presenting them as your policies. The self-hosted `robots.txt` asks crawlers to avoid the instance; this is not access control.

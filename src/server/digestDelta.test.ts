@@ -143,7 +143,7 @@ describe("renewalDigestLine", () => {
         NOW,
       ),
     ).toBe(
-      "Microsoft — Enterprise Agreement: cancellation notice deadline is today; renewal in 120 days",
+      "Microsoft: Enterprise Agreement: cancellation notice deadline is today; renewal in 120 days",
     );
   });
 
@@ -167,7 +167,7 @@ describe("renewalDigestLine", () => {
         NOW,
       ),
     ).toBe(
-      "Atlassian — Cloud Enterprise: cancellation notice deadline is in 1 day; renewal in 90 days",
+      "Atlassian: Cloud Enterprise: cancellation notice deadline is in 1 day; renewal in 90 days",
     );
   });
 

@@ -1,0 +1,7 @@
+{
+  "title": "Syncing works without Microsoft 365 and connector clients are sturdier",
+  "summary": "Workspaces that connect Adobe or SaaS tools before Microsoft 365 now sync and produce findings instead of stalling. Seats are matched to directory users by their email aliases as well as their sign-in names, so people whose email differs from their login are no longer reported as missing. Microsoft throttling and slow responses are handled more reliably, CSV exports open correctly in Excel with accented names, and alert delivery was fixed for self-hosted installs.",
+  "type": "fixed",
+  "publishedOn": "2026-09-18",
+  "idempotencyKey": "licensemeter:2026-09-18-sync-reliability"
+}
