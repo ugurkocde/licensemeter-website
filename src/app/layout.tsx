@@ -28,6 +28,14 @@ const SITE_LD = {
       logo: `${BASE}/icon.svg`,
       description: SITE_DEFINITION,
       legalName: "UgurLabs UG (haftungsbeschränkt)",
+      duns: "317299682",
+      address: {
+        "@type": "PostalAddress",
+        streetAddress: "Fährstraße 217",
+        postalCode: "40221",
+        addressLocality: "Düsseldorf",
+        addressCountry: "DE",
+      },
       member: {
         "@type": "Person",
         name: "Ugur Koc",
