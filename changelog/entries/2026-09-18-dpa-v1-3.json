@@ -1,0 +1,7 @@
+{
+  "title": "Data Processing Agreement updated to v1.3",
+  "summary": "The data processing agreement and the legal pages now show the registered company name and the commercial register entry of the provider. The processing terms are unchanged, and the pre-signed PDF in English and German is available on the DPA page as before.",
+  "type": "maintenance",
+  "publishedOn": "2026-09-18",
+  "idempotencyKey": "licensemeter:2026-09-18-dpa-company-register"
+}

@@ -32,7 +32,7 @@ export default function PrivacyPolicyPage() {
 
       <Section title="1. Controller">
         <p>
-          UgurLabs UG (haftungsbeschränkt)
+          Ugurlabs UG (haftungsbeschränkt)
           <br />
           Fährstraße 217, 40221 Düsseldorf, Germany
           <br />

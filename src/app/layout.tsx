@@ -27,7 +27,7 @@ const SITE_LD = {
       url: BASE,
       logo: `${BASE}/icon.svg`,
       description: SITE_DEFINITION,
-      legalName: "UgurLabs UG (haftungsbeschränkt)",
+      legalName: "Ugurlabs UG (haftungsbeschränkt)",
       duns: "317299682",
       address: {
         "@type": "PostalAddress",
