@@ -1,6 +1,6 @@
 "use client";
 
-import { Maximize2 } from "lucide-react";
+import { Maximize2, Pause, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { useReducedMotion } from "./useReducedMotion";
@@ -31,6 +31,8 @@ export const DemoClip = ({
   const [expanded, setExpanded] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
   const [inView, setInView] = useState(false);
+  /* Explicit visitor pause of the clip; wins over visibility-driven autoplay. */
+  const [paused, setPaused] = useState(false);
   const reducedMotion = useReducedMotion();
   const videoRef = useRef<HTMLVideoElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -67,7 +69,7 @@ export const DemoClip = ({
     if (!video || !mediaReady) return;
     const sync = () => {
       if (inView && document.visibilityState === "visible") {
-        if (reducedMotion) video.pause();
+        if (reducedMotion || paused) video.pause();
         else void video.play().catch(() => undefined);
       } else {
         video.pause();
@@ -78,12 +80,23 @@ export const DemoClip = ({
     return () => {
       document.removeEventListener("visibilitychange", sync);
     };
-  }, [inView, mediaReady, reducedMotion]);
+  }, [inView, mediaReady, paused, reducedMotion]);
 
   const close = () => {
     setExpanded(false);
     const video = videoRef.current;
-    if (video && !reducedMotion) void video.play().catch(() => undefined);
+    if (video && !reducedMotion && !paused) {
+      void video.play().catch(() => undefined);
+    }
+  };
+
+  const togglePlayback = () => {
+    const next = !paused;
+    setPaused(next);
+    const video = videoRef.current;
+    if (!video) return;
+    if (next) video.pause();
+    else void video.play().catch(() => undefined);
   };
 
   const open = () => {
@@ -127,7 +140,7 @@ export const DemoClip = ({
             type="button"
             onClick={open}
             aria-haspopup="dialog"
-            aria-label={`${label} — Enlarge`}
+            aria-label={`${label}, enlarge`}
             className="block w-full cursor-zoom-in"
           >
             {videoElement}
@@ -135,6 +148,20 @@ export const DemoClip = ({
               <Maximize2 className="size-3.5" aria-hidden="true" />
               Enlarge
             </span>
+          </button>
+        )}
+        {!reducedMotion && mediaReady && (
+          <button
+            type="button"
+            onClick={togglePlayback}
+            aria-label={paused ? "Play video" : "Pause video"}
+            className="bg-ink/70 text-canvas hover:bg-ink/85 absolute bottom-3 left-3 inline-flex size-11 cursor-pointer touch-manipulation items-center justify-center rounded-full transition-colors duration-150"
+          >
+            {paused ? (
+              <Play className="size-4" aria-hidden="true" />
+            ) : (
+              <Pause className="size-4" aria-hidden="true" />
+            )}
           </button>
         )}
       </div>

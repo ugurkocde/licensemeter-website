@@ -16,7 +16,7 @@ export default function MarketingLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <div className="min-h-screen bg-[#f5f6f8] px-2 py-3 sm:p-5 lg:p-7">
+    <div className="bg-canvas-deep min-h-screen px-2 py-3 sm:p-5 lg:p-7">
       <div className="marketing-frame relative mx-auto max-w-[1600px] rounded-[24px] border border-white bg-white sm:rounded-[32px]">
         <MarketingLanguageSync />
         <a
@@ -43,7 +43,7 @@ export default function MarketingLayout({
         </header>
 
         <div id="content">{children}</div>
-        <MarketingFooter />
+        <MarketingFooter year={new Date().getFullYear()} />
       </div>
     </div>
   );

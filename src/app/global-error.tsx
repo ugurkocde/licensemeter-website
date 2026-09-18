@@ -12,8 +12,8 @@ export default function GlobalError({
       <body
         style={{
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
-          background: "#f4f7f6",
-          color: "#102c2a",
+          background: "#f7f8fa",
+          color: "#171b23",
           display: "flex",
           minHeight: "100vh",
           alignItems: "center",
@@ -27,13 +27,13 @@ export default function GlobalError({
             padding: 28,
             maxWidth: 520,
             background: "#ffffff",
-            border: "1px solid #d8e2df",
+            border: "1px solid #d0d9d6",
             borderRadius: 16,
-            boxShadow: "0 18px 50px rgba(16, 44, 42, 0.08)",
+            boxShadow: "0 18px 50px rgba(12, 26, 23, 0.08)",
           }}
         >
           <div style={{ fontSize: 22 }}>
-            License<span style={{ color: "#087f76" }}>Meter</span>
+            License<span style={{ color: "#115e59" }}>Meter</span>
           </div>
           <h1 style={{ fontSize: 28, fontWeight: "normal", marginTop: 24 }}>
             Something went wrong on our side.
@@ -41,7 +41,7 @@ export default function GlobalError({
           <p
             style={{
               fontSize: 14,
-              color: "#56706c",
+              color: "#555e69",
               lineHeight: 1.6,
             }}
           >
@@ -51,7 +51,7 @@ export default function GlobalError({
             onClick={() => reset()}
             style={{
               marginTop: 16,
-              background: "#087f76",
+              background: "#115e59",
               color: "#ffffff",
               border: "none",
               padding: "12px 20px",

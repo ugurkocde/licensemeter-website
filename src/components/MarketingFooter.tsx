@@ -110,7 +110,7 @@ const GERMAN = {
     "Unabhängiges Werkzeug ohne Verbindung zu den auf dieser Website genannten Anbietern. Alle Produktnamen sind Marken ihrer jeweiligen Inhaber.",
 } as const;
 
-export const MarketingFooter = () => {
+export const MarketingFooter = ({ year }: { year: number }) => {
   const german = usePathname().startsWith("/de/");
   const copy = german ? GERMAN : ENGLISH;
   return (
@@ -185,7 +185,7 @@ export const MarketingFooter = () => {
       </div>
       <div className="border-line text-ink-faint mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 border-t px-6 py-6 text-xs">
         <span>
-          &copy; {new Date().getFullYear()} LicenseMeter, {copy.copyright}
+          &copy; {year} LicenseMeter, {copy.copyright}
         </span>
         <span className="max-w-3xl">{copy.legal}</span>
       </div>

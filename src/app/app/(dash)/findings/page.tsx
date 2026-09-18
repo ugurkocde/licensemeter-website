@@ -257,7 +257,7 @@ export default async function FindingsPage({
         </div>
       </header>
 
-      <div className="rise rise-2 bg-canvas sticky top-16 z-10 -mx-2 mt-6 space-y-3 px-2 py-2 md:static md:mx-0 md:mt-8 md:p-0">
+      <div className="rise rise-2 bg-canvas sticky top-[3.75rem] z-10 -mx-2 mt-6 space-y-3 px-2 py-2 md:static md:mx-0 md:mt-8 md:p-0">
         <form
           role="search"
           className="flex flex-col gap-2 sm:flex-row sm:items-center"
@@ -280,7 +280,7 @@ export default async function FindingsPage({
               autoComplete="off"
               spellCheck={false}
               placeholder="Search by finding or email…"
-              className="border-line bg-card text-ink placeholder:text-ink-faint focus-visible:border-brand focus-visible:ring-brand/30 min-h-11 w-full rounded-xl border py-2 pr-3 pl-10 text-sm focus-visible:ring-2"
+              className="border-line-input bg-card text-ink placeholder:text-ink-faint focus-visible:border-brand focus-visible:ring-brand/30 min-h-11 w-full rounded-xl border py-2 pr-3 pl-10 text-sm focus-visible:ring-2"
             />
           </div>
           <label className="sr-only" htmlFor="finding-sort">
@@ -291,7 +291,7 @@ export default async function FindingsPage({
             name="sort"
             defaultValue={sort}
             autoComplete="off"
-            className="border-line bg-card text-ink min-h-11 rounded-xl border px-3 py-2 text-sm"
+            className="border-line-input bg-card text-ink min-h-11 rounded-xl border px-3 py-2 text-sm"
           >
             <option value="impact">Highest impact</option>
             <option value="newest">Newest first</option>

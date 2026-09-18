@@ -15,7 +15,7 @@ export default function SupportPage() {
       <p className="text-brand-text text-xs font-medium tracking-[0.12em] uppercase">
         Here to help
       </p>
-      <h1 className="font-display mt-4 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
+      <h1 className="font-display mt-4 text-4xl tracking-tight">
         Contact support
       </h1>
       <p className="text-ink-soft mt-5 mb-10 max-w-xl text-lg leading-8">

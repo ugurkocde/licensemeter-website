@@ -78,7 +78,7 @@ export const ImportSeatsForm = ({ spec }: { spec: ConnectorSpec }) => {
         }
         defaultValue={result && !result.ok ? result.csv : undefined}
         autoComplete="off"
-        className="border-line bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-44 w-full border px-3 py-2 font-mono text-sm focus-visible:ring-2"
+        className="border-line-input bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-44 w-full border px-3 py-2 font-mono text-sm focus-visible:ring-2"
       />
       <div>
         <Button variant="primary" disabled={pending}>

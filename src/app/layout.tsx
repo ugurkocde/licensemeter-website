@@ -89,6 +89,9 @@ export const viewport: Viewport = {
   colorScheme: "light",
 };
 
+const LANGUAGE_BOOTSTRAP =
+  '(function(){var p=location.pathname;if(p==="/de"||p.indexOf("/de/")===0){document.documentElement.lang="de";}})();';
+
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -101,7 +104,21 @@ export default async function RootLayout({
       ? undefined
       : "d8cf4fcb-0dbe-42ee-b94c-3bbc415d58f4");
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
+    >
+      <head>
+        {/* German route group: set the document language before first paint
+            so assistive tech announces it correctly. MarketingLanguageSync
+            keeps it in step during client navigation. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: LANGUAGE_BOOTSTRAP,
+          }}
+        />
+      </head>
       <body className="font-sans antialiased">
         {authProvider() === "workos" ? (
           <AuthKitProvider>{children}</AuthKitProvider>

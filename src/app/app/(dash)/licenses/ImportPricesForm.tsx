@@ -71,7 +71,7 @@ export const ImportPricesForm = () => {
         spellCheck={false}
         placeholder={"ENTERPRISEPACK,12.80\nadobe:Photoshop,23,79"}
         defaultValue={result && !result.ok ? result.csv : undefined}
-        className="border-line bg-card focus:border-ink w-full border px-3 py-2 font-mono text-sm"
+        className="border-line-input bg-card focus:border-ink w-full border px-3 py-2 font-mono text-sm"
       />
       <div>
         <Button variant="primary" disabled={pending}>

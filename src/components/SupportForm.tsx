@@ -2,6 +2,7 @@
 
 import Script from "next/script";
 import Link from "next/link";
+import { buttonClass } from "~/components/ui";
 import { SUPPORT_EMAIL } from "~/lib/support";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
@@ -105,16 +106,16 @@ export function SupportForm({
     return (
       <div
         role="status"
-        className="rounded-2xl border border-teal-200 bg-teal-50 p-8"
+        className="border-brand/20 bg-brand-soft rounded-2xl border p-8"
       >
         <h2 className="text-ink text-xl font-semibold">Support request sent</h2>
-        <p className="mt-3 text-slate-700">
+        <p className="text-ink-soft mt-3">
           Thank you for getting in touch. We’ll reply to the email address you
           provided.
         </p>
         <Link
           href="/"
-          className="mt-6 inline-flex min-h-11 items-center font-semibold text-teal-800 underline"
+          className="text-brand-deep mt-6 inline-flex min-h-11 items-center font-semibold underline underline-offset-4"
         >
           Back to home
         </Link>
@@ -122,7 +123,7 @@ export function SupportForm({
     );
 
   const inputClass =
-    "mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-3 text-base text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700";
+    "mt-2 block min-h-11 w-full rounded-lg border border-line-input bg-card px-3 py-2.5 text-base text-ink focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card focus-visible:outline-none";
   return (
     <>
       {siteKey && (
@@ -141,7 +142,7 @@ export function SupportForm({
         <fieldset disabled={pending} className="space-y-6">
           <div className="grid gap-6 sm:grid-cols-2">
             <label
-              className="block text-sm font-semibold text-slate-800"
+              className="text-ink block text-sm font-semibold"
               htmlFor="support-name"
             >
               Name
@@ -155,7 +156,7 @@ export function SupportForm({
               />
             </label>
             <label
-              className="block text-sm font-semibold text-slate-800"
+              className="text-ink block text-sm font-semibold"
               htmlFor="support-email"
             >
               Email address
@@ -171,7 +172,7 @@ export function SupportForm({
             </label>
           </div>
           <label
-            className="block text-sm font-semibold text-slate-800"
+            className="text-ink block text-sm font-semibold"
             htmlFor="support-subject"
           >
             Subject
@@ -184,7 +185,7 @@ export function SupportForm({
             />
           </label>
           <label
-            className="block text-sm font-semibold text-slate-800"
+            className="text-ink block text-sm font-semibold"
             htmlFor="support-message"
           >
             Message
@@ -200,7 +201,7 @@ export function SupportForm({
           </label>
           <p
             id="support-message-hint"
-            className="text-sm leading-6 text-slate-600"
+            className="text-ink-soft text-sm leading-6"
           >
             Describe what happened and what you expected. Please leave out
             passwords, access tokens, and tenant data.
@@ -217,13 +218,16 @@ export function SupportForm({
         </fieldset>
         <div ref={container} />
         {error && (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="text-danger-text text-sm">
             {error}
           </p>
         )}
-        <p className="text-sm leading-6 text-slate-600">
+        <p className="text-ink-soft text-sm leading-6">
           We use your details to respond to your request. Read our{" "}
-          <Link href="/privacy" className="text-teal-800 underline">
+          <Link
+            href="/privacy"
+            className="text-brand-deep underline underline-offset-4"
+          >
             privacy policy
           </Link>
           .
@@ -231,7 +235,7 @@ export function SupportForm({
         <button
           type="submit"
           disabled={pending || Boolean(siteKey && !token)}
-          className="min-h-12 rounded-lg bg-teal-800 px-6 py-3 font-semibold text-white transition-colors hover:bg-teal-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className={buttonClass("primary")}
         >
           {pending ? "Sending…" : "Send support request"}
         </button>

@@ -106,7 +106,7 @@ export default async function ActivityPage({
             defaultValue={query}
             autoComplete="off"
             placeholder="Email, SKU, member or value…"
-            className="border-line bg-card min-h-11 border px-3 py-2 text-sm font-normal"
+            className="border-line-input bg-card min-h-11 border px-3 py-2 text-sm font-normal"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium">
@@ -115,7 +115,7 @@ export default async function ActivityPage({
             name="action"
             defaultValue={action}
             autoComplete="off"
-            className="border-line bg-card min-h-11 border px-3 py-2 text-sm font-normal"
+            className="border-line-input bg-card min-h-11 border px-3 py-2 text-sm font-normal"
           >
             <option value="">All actions</option>
             {actionRows.map((row) => (
