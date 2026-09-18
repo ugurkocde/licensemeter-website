@@ -172,6 +172,30 @@ describe("parseMembers", () => {
     ]);
   });
 
+  it("parses explicit date shapes as UTC and rejects ambiguous ones", () => {
+    const { rows } = ok(
+      "email,last active\n" +
+        "a@acme.com,12.03.2026\n" +
+        "b@acme.com,2026-03-12 14:30\n" +
+        "c@acme.com,2026-03-12T14:30:00Z\n" +
+        "d@acme.com,2026-03-12T14:30:00+02:00\n" +
+        "e@acme.com,03/12/2026\n" +
+        "f@acme.com,March 12 2026\n" +
+        "g@acme.com,31.02.2026\n" +
+        "h@acme.com,2026-13-01",
+    );
+    expect(rows.map((r) => r.lastActiveAt)).toEqual([
+      new Date("2026-03-12T00:00:00.000Z"),
+      new Date("2026-03-12T14:30:00.000Z"),
+      new Date("2026-03-12T14:30:00.000Z"),
+      new Date("2026-03-12T12:30:00.000Z"),
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
   it("defaults every row to active when the status column is absent", () => {
     const { rows } = ok("email\na@acme.com\nb@acme.com");
     expect(rows.map((r) => r.status)).toEqual(["active", "active"]);

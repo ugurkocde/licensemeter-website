@@ -1,0 +1,7 @@
+{
+  "title": "More reliable self-hosted startup",
+  "summary": "Self-hosted stacks start more reliably on first boot, the scheduler can be started on its own, and the migration image is smaller. The self-hosting docs now explain that the encryption key must stay fixed once connectors are stored.",
+  "type": "improved",
+  "publishedOn": "2026-09-18",
+  "idempotencyKey": "licensemeter:2026-09-18-self-hosting-startup"
+}

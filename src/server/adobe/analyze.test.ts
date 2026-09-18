@@ -15,6 +15,21 @@ const entra = (upn: string, accountEnabled: boolean) => ({
 });
 
 describe("analyzeAdobeWaste", () => {
+  it("produces no findings without a synced directory to correlate against", () => {
+    const findings = analyzeAdobeWaste(
+      [
+        {
+          email: "anyone@corp.example",
+          status: "active",
+          products: ["Acrobat Pro"],
+        },
+      ],
+      [],
+      PRICES,
+    );
+    expect(findings).toEqual([]);
+  });
+
   it("flags Adobe seats held by Entra-disabled users with summed impact", () => {
     const findings = analyzeAdobeWaste(
       [
@@ -76,7 +91,7 @@ describe("analyzeAdobeWaste", () => {
   it("prices unknown products at zero without failing", () => {
     const findings = analyzeAdobeWaste(
       [{ email: "x@y.example", status: "active", products: ["Substance 3D"] }],
-      [],
+      [entra("someone.else@y.example", true)],
       PRICES,
     );
     expect(findings[0]!.monthlyImpactCents).toBe(0);

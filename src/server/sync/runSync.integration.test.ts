@@ -11,6 +11,7 @@ import type {
   GraphSubscribedSku,
   GraphUser,
 } from "~/server/graph/types";
+import type { SaasSeat } from "~/server/types";
 
 /**
  * Integration test for the sync lifecycle racing tenant teardown.
@@ -30,8 +31,13 @@ import type {
  *  - runSync for a deleted tenant id: clean rejection, no rows written
  *  - tenant deleted mid-flight: the run resolves "failed" (no unhandled
  *    rejection) and the cascade leaves zero orphaned rows
- *  - disconnectMicrosoft during a running sync: dataset purged, the running
- *    sync_runs row and findings are left in place (tenant survives)
+ *  - disconnectMicrosoft during a running sync: dataset and Microsoft-rule
+ *    findings purged, the running sync_runs row is left in place (tenant
+ *    survives)
+ *  - a workspace without any Microsoft credential but with a SaaS connection
+ *    syncs: Microsoft steps skipped, seats persisted, run not failed
+ *  - the same workspace with a CSV-imported directory: the leak rules use the
+ *    stored users and the findings stay stable across repeated syncs
  *  - disconnectTenant during a running sync: the delete SUCCEEDS and the
  *    running run cascades away regardless of historical payment state
  */
@@ -140,10 +146,26 @@ vi.mock("~/server/exchangeRates", () => ({
 }));
 
 // Every test injects a fake GraphClient; the MSAL-backed factory must never run.
+const msGraphClientForTenantMock = vi.fn(() => {
+  throw new Error("msGraphClientForTenant must not be called in tests");
+});
 vi.mock("~/server/graph/msConnection", () => ({
-  msGraphClientForTenant: vi.fn(() => {
-    throw new Error("msGraphClientForTenant must not be called in tests");
-  }),
+  msGraphClientForTenant: () => msGraphClientForTenantMock(),
+}));
+
+// SaaS connectors are stubbed per test; the registry's other exports are real.
+const buildSaasClientMock =
+  vi.fn<() => Promise<{ getSeats: () => Promise<SaasSeat[]> }>>();
+vi.mock("~/server/saas/registry", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  buildSaasClient: () => buildSaasClientMock(),
+}));
+
+// Connector secrets are stored encrypted; the fake client never needs them.
+vi.mock("~/server/crypto", () => ({
+  decryptSecret: () => "secret",
+  encryptSecret: () => "enc",
+  secretAad: () => "aad",
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
@@ -328,6 +350,8 @@ beforeEach(async () => {
   revalidatePathMock.mockClear();
   afterMock.mockClear();
   redirectMock.mockClear();
+  msGraphClientForTenantMock.mockClear();
+  buildSaasClientMock.mockReset();
 });
 
 describe("runSync concurrency lock (sync_runs_one_running_idx)", () => {
@@ -418,6 +442,152 @@ describe("runSync against a deleted tenant", () => {
   });
 });
 
+describe("runSync without a Microsoft connection", () => {
+  it("skips the Microsoft steps, syncs the SaaS connector and does not fail", async () => {
+    // No tid, no ms_connections row: resolveMsCredential would reject.
+    await seedTenant({ tid: null, consentedAt: null });
+    await currentDb.insert(schema.saasConnections).values({
+      tenantId: TENANT_ID,
+      provider: "zoom",
+      orgRef: "acct-1",
+      clientId: "client",
+      secretEnc: "enc",
+    });
+    const getSeats = vi.fn(() =>
+      Promise.resolve([
+        {
+          email: "Zoe@contoso.test",
+          displayName: "Zoe",
+          status: "active",
+          products: ["Licensed"],
+          lastActiveAt: new Date(Date.now() - 200 * 24 * 60 * 60 * 1000),
+        },
+      ]),
+    );
+    buildSaasClientMock.mockImplementation(() => Promise.resolve({ getSeats }));
+
+    const result = await runSync(TENANT_ID);
+
+    expect(result.status).toBe("success");
+    expect(msGraphClientForTenantMock).not.toHaveBeenCalled();
+    const byStep = new Map(result.steps.map((s) => [s.step, s]));
+    for (const step of [
+      "subscribedSkus",
+      "reportSettings",
+      "users",
+      "usageReports",
+      "copilotUsage",
+    ] as const) {
+      expect(byStep.get(step)?.status).toBe("skipped");
+    }
+    expect(byStep.get("zoomSeats")).toMatchObject({ status: "ok", count: 1 });
+    expect(byStep.get("wasteAnalysis")?.status).toBe("ok");
+    // The seat landed and the connector was stamped.
+    const seats = await currentDb.select().from(schema.saasSeats);
+    expect(seats).toHaveLength(1);
+    expect(seats[0]!.email).toBe("zoe@contoso.test");
+    const [conn] = await currentDb.select().from(schema.saasConnections);
+    expect(conn?.lastSyncStatus).toBe("ok");
+    // No directory to correlate against: an inactivity finding from the
+    // provider's own signal, but no orphan finding for every seat.
+    const found = await currentDb.select().from(schema.findings);
+    expect(found.map((f) => f.rule)).toEqual(["saas_inactive"]);
+    expect(await countRows(schema.snapshots)).toBe(1);
+    const [run] = await getRuns();
+    expect(run?.status).toBe("success");
+    expect(notifyOpsMock).not.toHaveBeenCalled();
+  });
+
+  it("correlates connector seats against a CSV-imported directory and keeps the findings stable", async () => {
+    await seedTenant({ tid: null, consentedAt: null });
+    await currentDb.insert(schema.saasConnections).values({
+      tenantId: TENANT_ID,
+      provider: "zoom",
+      orgRef: "acct-1",
+      clientId: "client",
+      secretEnc: "enc",
+    });
+    // A CSV import fills tenant_users without any Microsoft connection.
+    await currentDb.insert(schema.tenantUsers).values([
+      {
+        tenantId: TENANT_ID,
+        graphId: "csv-user-1",
+        upn: "zoe@contoso.test",
+        displayName: "Zoe",
+        accountEnabled: true,
+      },
+      {
+        tenantId: TENANT_ID,
+        graphId: "csv-user-2",
+        upn: "dana@contoso.test",
+        displayName: "Dana",
+        accountEnabled: false,
+      },
+    ]);
+    // All three seats were active recently, so inactivity never applies and
+    // only the leak rules can produce findings.
+    const recent = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const getSeats = vi.fn(() =>
+      Promise.resolve(
+        (
+          [
+            "Zoe@contoso.test",
+            "dana@contoso.test",
+            "ghost@contoso.test",
+          ] as const
+        ).map(
+          (email): SaasSeat => ({
+            email,
+            displayName: null,
+            status: "active",
+            products: ["Licensed"],
+            lastActiveAt: recent,
+          }),
+        ),
+      ),
+    );
+    buildSaasClientMock.mockImplementation(() => Promise.resolve({ getSeats }));
+
+    const first = await runSync(TENANT_ID);
+
+    expect(first.status).toBe("success");
+    const byStep = new Map(first.steps.map((s) => [s.step, s]));
+    for (const step of [
+      "subscribedSkus",
+      "reportSettings",
+      "users",
+      "usageReports",
+      "copilotUsage",
+    ] as const) {
+      expect(byStep.get(step)?.status).toBe("skipped");
+    }
+    const afterFirst = await currentDb.select().from(schema.findings);
+    expect(
+      afterFirst.map((f) => [f.rule, f.dedupeKey, f.status]).sort(),
+    ).toEqual([
+      [
+        "saas_disabled_in_entra",
+        "saas_disabled_in_entra|zoom:dana@contoso.test|-",
+        "open",
+      ],
+      ["saas_orphaned", "saas_orphaned|zoom:ghost@contoso.test|-", "open"],
+    ]);
+    // The enabled, recently active user matched the directory: no finding.
+    expect(afterFirst.some((f) => f.graphUserId === "csv-user-1")).toBe(false);
+
+    const second = await runSync(TENANT_ID);
+
+    expect(second.status).toBe("success");
+    // No resolve-and-recreate flip-flop: the same two rows, still open.
+    const afterSecond = await currentDb.select().from(schema.findings);
+    expect(afterSecond.map((f) => f.id).sort()).toEqual(
+      afterFirst.map((f) => f.id).sort(),
+    );
+    expect(afterSecond.every((f) => f.status === "open")).toBe(true);
+    expect(afterSecond.every((f) => f.resolvedAt === null)).toBe(true);
+  });
+});
+
 describe("disconnectMicrosoft during a running sync", () => {
   it("purges the Microsoft dataset but leaves the running run and findings in place", async () => {
     const tenant = await seedTenant({ tid: TID, consentedAt: new Date() });
@@ -445,9 +615,8 @@ describe("disconnectMicrosoft during a running sync", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]!.id).toBe(runId);
     expect(runs[0]!.status).toBe("running");
-    // Findings are kept for auto-resolve on the next analysis; with the
-    // dataset gone runAnalysis early-returns, so the row survives unchanged.
-    expect(await countRows(schema.findings)).toBe(1);
+    // Microsoft-rule findings carry directory names and go with the dataset.
+    expect(await countRows(schema.findings)).toBe(0);
     // Durable audit row recorded before the analysis re-run.
     const audits = await currentDb.select().from(schema.auditLog);
     expect(audits.some((a) => a.action === "microsoft_disconnected")).toBe(

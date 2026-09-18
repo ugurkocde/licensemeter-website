@@ -89,6 +89,7 @@ export function OrbitHero({
         <div
           className="sample-stack rise rise-5 mx-auto mt-12 text-left"
           id="sample-tenant"
+          role="group"
           aria-label="Illustrative findings from the sample tenant"
         >
           <div className="sample-glow" aria-hidden="true" />

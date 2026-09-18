@@ -7,8 +7,10 @@
 }
 
 @theme {
-  /* Surfaces — cool, bright. */
+  /* Surfaces: cool, bright. */
   --color-canvas: #f7f8fa;
+  /* Slightly deeper page backdrop behind the framed marketing shell. */
+  --color-canvas-deep: #f5f6f8;
   --color-card: #ffffff;
   --color-subtle: #f3f6f5;
   --color-ink: #171b23;
@@ -16,8 +18,10 @@
   --color-ink-faint: #67717e;
   --color-line: #e8ebef;
   --color-line-strong: #d0d9d6;
+  /* Form control borders: about 3:1 against white for non-text contrast. */
+  --color-line-input: #9aa5b1;
 
-  /* Brand — teal: trust, action, savings. Button fill uses brand-strong so
+  /* Brand: teal: trust, action, savings. Button fill uses brand-strong so
      white labels clear AA (#0d9488 alone fails on white at body size). */
   --color-brand: #0d9488;
   --color-brand-strong: #115e59;
@@ -26,24 +30,24 @@
   --color-brand-soft: #e6f7f4;
   --color-brand-bright: #2dd4bf;
 
-  /* Waste / leak — amber: the money semantic, on every € figure. */
+  /* Waste / leak: amber: the money semantic, on every € figure. */
   --color-waste: #f59e0b;
   --color-waste-text: #b45309;
   --color-waste-deep: #854f0b;
   --color-waste-soft: #fef3e2;
 
-  /* Recovered / healthy — emerald. */
+  /* Recovered / healthy: emerald. */
   --color-good: #10b981;
   --color-good-text: #047857;
   --color-good-soft: #e7f7f0;
 
-  /* Danger / destructive — red (disconnect, remove, form errors). */
+  /* Danger / destructive: red (disconnect, remove, form errors). */
   --color-danger: #dc2626;
   --color-danger-text: #b91c1c;
   --color-danger-bright: #f87171;
   --color-danger-soft: #fdecec;
 
-  /* Categorical ramp — finding categories on the dashboard / ledger / PDF.
+  /* Categorical ramp: finding categories on the dashboard / ledger / PDF.
      Re-hued brighter; mapping preserved. Distinct from the brand teal. */
   --color-moss: #047857;
   --color-moss-soft: #e7f7f0;
@@ -216,7 +220,11 @@ body {
   border-radius: 0 0 32px 32px;
 }
 .connector-tile {
-  background-image: radial-gradient(ellipse at top left, var(--connector-accent), transparent 60%);
+  background-image: radial-gradient(
+    ellipse at top left,
+    var(--connector-accent),
+    transparent 60%
+  );
 }
 .connector-tile-logo {
   background: var(--connector-accent);

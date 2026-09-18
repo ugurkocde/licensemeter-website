@@ -94,7 +94,7 @@ const EN: SecurityContent = {
       pre: "No role with consent rights at hand today? The ",
       linkText: "CSV import",
       href: "/app/connect/csv",
-      post: " computes your waste number from two Microsoft 365 admin center exports, with no consent at all. The link signs you in with Microsoft first.",
+      post: " computes your waste number from two Microsoft 365 admin center exports, with no consent at all. The link asks you to sign in first.",
     },
   },
   never: {
@@ -123,7 +123,7 @@ const EN: SecurityContent = {
   },
   residency: {
     title: "Data residency, retention and deletion",
-    body: "Customer application data is stored in the EU in a Supabase Postgres database hosted on AWS eu-central-1 (Frankfurt), matching the current Privacy Policy wording. Data is retained only while your tenant is connected. Disconnecting the workspace (Settings → Danger zone) deletes all synced data immediately and irreversibly: users, findings, prices, history. Revoking the enterprise application in your Entra ID additionally cuts our access at the source.",
+    body: "Customer application data is stored in the EU in a Supabase Postgres database hosted on AWS eu-central-1 (Frankfurt). Data is retained only while your tenant is connected. Disconnecting the workspace (Settings → Danger zone) deletes all synced data immediately and irreversibly: users, findings, prices, history. Revoking the enterprise application in your Entra ID additionally cuts our access at the source.",
   },
   subprocessors: {
     title: "Subprocessors",
@@ -152,7 +152,7 @@ const EN: SecurityContent = {
     title: "Who builds LicenseMeter",
     pre: "LicenseMeter is built and maintained by ",
     kocLabel: "Ugur Koc",
-    mid: ", Microsoft MVP for Intune and Security Copilot. The operating company is UgurLabs UG (haftungsbeschränkt) in Düsseldorf, Germany, the same legal entity named in the ",
+    mid: ", Microsoft MVP for Intune and Security Copilot. The operating company is Ugurlabs UG (haftungsbeschränkt) in Düsseldorf, Germany, the same legal entity named in the ",
     impressumLabel: "Imprint",
     post: " and in every DPA, and the read-only design principles documented on this page apply to the entire product.",
   },
@@ -207,7 +207,7 @@ const DE: SecurityContent = {
       pre: "Gerade keine Rolle mit Einwilligungsrechten zur Hand? Der ",
       linkText: "CSV-Import",
       href: "/app/connect/csv",
-      post: " berechnet Ihre Verschwendungssumme aus zwei Exporten des Microsoft 365 Admin Centers, ganz ohne Einwilligung. Der Link meldet Sie zunächst mit Microsoft an.",
+      post: " berechnet Ihre Verschwendungssumme aus zwei Exporten des Microsoft 365 Admin Centers, ganz ohne Einwilligung. Der Link fordert Sie zunächst zur Anmeldung auf.",
     },
   },
   never: {
@@ -236,7 +236,7 @@ const DE: SecurityContent = {
   },
   residency: {
     title: "Datenhaltung, Aufbewahrung und Löschung",
-    body: "Kundendaten der Anwendung werden in der EU gespeichert, in einer Supabase-Postgres-Datenbank auf AWS eu-central-1 (Frankfurt), entsprechend der aktuellen Formulierung der Datenschutzerklärung. Daten werden nur gespeichert, solange Ihr Tenant verbunden ist. Das Trennen des Workspace (Einstellungen → Gefahrenzone) löscht alle synchronisierten Daten sofort und unwiderruflich: Benutzer, Ergebnisse, Preise, Verlauf. Das Widerrufen der Unternehmensanwendung in Ihrem Entra ID unterbindet unseren Zugriff zusätzlich an der Quelle.",
+    body: "Kundendaten der Anwendung werden in der EU gespeichert, in einer Supabase-Postgres-Datenbank auf AWS eu-central-1 (Frankfurt). Daten werden nur gespeichert, solange Ihr Tenant verbunden ist. Das Trennen des Workspace (Einstellungen → Gefahrenzone) löscht alle synchronisierten Daten sofort und unwiderruflich: Benutzer, Ergebnisse, Preise, Verlauf. Das Widerrufen der Unternehmensanwendung in Ihrem Entra ID unterbindet unseren Zugriff zusätzlich an der Quelle.",
   },
   subprocessors: {
     title: "Unterauftragsverarbeiter",
@@ -264,7 +264,7 @@ const DE: SecurityContent = {
     title: "Wer LicenseMeter entwickelt",
     pre: "LicenseMeter wird entwickelt und betrieben von ",
     kocLabel: "Ugur Koc",
-    mid: ", Microsoft MVP für Intune und Security Copilot. Betreibergesellschaft ist die UgurLabs UG (haftungsbeschränkt) in Düsseldorf - dieselbe juristische Person, die im ",
+    mid: ", Microsoft MVP für Intune und Security Copilot. Betreibergesellschaft ist die Ugurlabs UG (haftungsbeschränkt) in Düsseldorf - dieselbe juristische Person, die im ",
     impressumLabel: "Impressum",
     post: " und in jedem AVV genannt ist. Die auf dieser Seite dokumentierten Nur-Lese-Designprinzipien gelten für das gesamte Produkt.",
   },

@@ -1,23 +1,45 @@
-import { isNotNull } from "drizzle-orm";
+import { eq, exists, isNotNull, or } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { db } from "~/server/db";
-import { tenants } from "~/server/db/schema";
+import { adobeConnections, saasConnections, tenants } from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
 import { runSync } from "~/server/sync/runSync";
 import { requireCronAuth } from "~/server/cronAuth";
 
 export const maxDuration = 300;
 
+/**
+ * Stop starting new tenant syncs past this point so the in-flight ones can
+ * finish inside maxDuration instead of being killed mid-write.
+ */
+const DEQUEUE_BUDGET_MS = 240_000;
+
 /** Nightly sync across all connected tenants. Protected by CRON_SECRET. */
 export const GET = async (req: NextRequest) => {
   const denied = requireCronAuth(req);
   if (denied) return denied;
+  const start = Date.now();
 
-  // CSV-import workspaces (consentedAt null) have no Graph access. Syncing
-  // them could only fail. The demo tenant has consentedAt set by its seed.
+  // Tenants with anything to sync: a Microsoft consent (the demo tenant has
+  // consentedAt set by its seed) or at least one Adobe/SaaS connection.
+  // Pure CSV-import workspaces have no live source and are left out.
   const allTenants = await db.query.tenants.findMany({
-    where: isNotNull(tenants.consentedAt),
+    where: or(
+      isNotNull(tenants.consentedAt),
+      exists(
+        db
+          .select({ tenantId: saasConnections.tenantId })
+          .from(saasConnections)
+          .where(eq(saasConnections.tenantId, tenants.id)),
+      ),
+      exists(
+        db
+          .select({ tenantId: adobeConnections.tenantId })
+          .from(adobeConnections)
+          .where(eq(adobeConnections.tenantId, tenants.id)),
+      ),
+    ),
   });
 
   // Bounded concurrency: sequential syncs would exceed maxDuration once a
@@ -27,6 +49,7 @@ export const GET = async (req: NextRequest) => {
   let cursor = 0;
   const worker = async () => {
     while (cursor < allTenants.length) {
+      if (Date.now() - start > DEQUEUE_BUDGET_MS) return;
       const tenant = allTenants[cursor++]!;
       try {
         const result = await runSync(tenant.id);
@@ -44,5 +67,14 @@ export const GET = async (req: NextRequest) => {
     Array.from({ length: Math.min(CONCURRENCY, allTenants.length) }, worker),
   );
 
-  return NextResponse.json({ synced: results.length, results });
+  const synced = new Set(results.map((r) => r.tenantId));
+  const unsynced = allTenants.filter((t) => !synced.has(t.id)).map((t) => t.id);
+  if (unsynced.length > 0) {
+    void notifyOps(
+      `nightly sync ran out of time: ${unsynced.length} of ${allTenants.length} tenants not synced`,
+      { key: "cron:sync:budget", cooldownMs: 6 * 60 * 60 * 1000 },
+    );
+  }
+
+  return NextResponse.json({ synced: results.length, results, unsynced });
 };

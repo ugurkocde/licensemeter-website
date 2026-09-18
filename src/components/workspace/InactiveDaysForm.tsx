@@ -53,7 +53,7 @@ export const InactiveDaysForm = ({ value }: { value: number }) => {
             }
           });
         }}
-        className={`border-line bg-card focus:border-ink min-h-11 border px-2 py-1.5 text-sm ${
+        className={`border-line-input bg-card focus:border-ink min-h-11 border px-2 py-1.5 text-sm ${
           pending ? "opacity-60" : ""
         }`}
       >

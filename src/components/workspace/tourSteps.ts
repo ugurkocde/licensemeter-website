@@ -9,7 +9,7 @@ export const welcomeTourSteps: TourStep[] = [
   {
     anchor: "connect-cta",
     title: "Welcome to LicenseMeter",
-    body: "Start here — connect Microsoft 365 (or upload a CSV) and LicenseMeter finds your license waste automatically.",
+    body: "Start here: connect Microsoft 365 (or upload a CSV) and LicenseMeter finds your license waste automatically.",
     placement: "bottom",
   },
 ];

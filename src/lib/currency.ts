@@ -15,17 +15,17 @@ export const SUPPORTED_CURRENCIES = [
 export type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];
 
 export const CURRENCY_LABELS: Record<SupportedCurrency, string> = {
-  EUR: "EUR — Euro",
-  USD: "USD — US dollar",
-  GBP: "GBP — Pound sterling",
-  CHF: "CHF — Swiss franc",
-  CAD: "CAD — Canadian dollar",
-  AUD: "AUD — Australian dollar",
-  DKK: "DKK — Danish krone",
-  NOK: "NOK — Norwegian krone",
-  SEK: "SEK — Swedish krona",
-  PLN: "PLN — Polish złoty",
-  CZK: "CZK — Czech koruna",
+  EUR: "EUR: Euro",
+  USD: "USD: US dollar",
+  GBP: "GBP: Pound sterling",
+  CHF: "CHF: Swiss franc",
+  CAD: "CAD: Canadian dollar",
+  AUD: "AUD: Australian dollar",
+  DKK: "DKK: Danish krone",
+  NOK: "NOK: Norwegian krone",
+  SEK: "SEK: Swedish krona",
+  PLN: "PLN: Polish złoty",
+  CZK: "CZK: Czech koruna",
 };
 
 export const isSupportedCurrency = (

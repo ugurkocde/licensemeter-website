@@ -41,6 +41,7 @@ export default async function RenewalsPage() {
           }))}
           currency={ctx.tenant.currency}
           canEdit={canEdit}
+          nowMs={Date.now()}
         />
       </div>
     </div>

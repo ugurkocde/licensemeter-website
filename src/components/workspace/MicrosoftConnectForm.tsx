@@ -82,7 +82,7 @@ export const MicrosoftByoForm = () => {
             spellCheck={false}
             autoCapitalize="none"
             autoCorrect="off"
-            className="border-line bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-11 border px-3 py-2 font-mono text-sm focus-visible:ring-2"
+            className="border-line-input bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-11 border px-3 py-2 font-mono text-sm focus-visible:ring-2"
           />
         </label>
       ))}
@@ -122,7 +122,7 @@ export const MicrosoftByoForm = () => {
                 spellCheck={false}
                 autoCapitalize="none"
                 autoCorrect="off"
-                className="border-line bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-11 w-full border px-3 py-2 pr-18 text-sm focus-visible:ring-2"
+                className="border-line-input bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-11 w-full border px-3 py-2 pr-18 text-sm focus-visible:ring-2"
               />
               <button
                 type="button"
@@ -142,7 +142,7 @@ export const MicrosoftByoForm = () => {
               name="secretExpiresAt"
               type="date"
               autoComplete="off"
-              className="border-line bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-11 border px-3 py-2 text-sm focus-visible:ring-2"
+              className="border-line-input bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-11 border px-3 py-2 text-sm focus-visible:ring-2"
             />
           </label>
         </>
@@ -161,7 +161,7 @@ export const MicrosoftByoForm = () => {
               autoCapitalize="none"
               autoCorrect="off"
               autoComplete="off"
-              className="border-line bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-28 border px-3 py-2 font-mono text-xs focus-visible:ring-2"
+              className="border-line-input bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-28 border px-3 py-2 font-mono text-xs focus-visible:ring-2"
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -177,7 +177,7 @@ export const MicrosoftByoForm = () => {
               autoCapitalize="none"
               autoCorrect="off"
               autoComplete="off"
-              className="border-line bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-28 border px-3 py-2 font-mono text-xs focus-visible:ring-2"
+              className="border-line-input bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-28 border px-3 py-2 font-mono text-xs focus-visible:ring-2"
             />
           </label>
         </>

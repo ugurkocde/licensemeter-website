@@ -211,7 +211,7 @@ export default async function UserDetailPage({
             <li key={f.id} className="border-line border-b last:border-b-0">
               <Link
                 href={`/app/findings/${f.id}`}
-                className="hover:bg-canvas flex flex-wrap items-center justify-between gap-2 px-4 py-3"
+                className="group hover:bg-canvas flex flex-wrap items-center justify-between gap-2 px-4 py-3"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <FindingChip rule={f.rule} detail={f.detail} />

@@ -59,7 +59,7 @@ export const EmailCapture = () => {
         aria-invalid={state === "error" || undefined}
         autoComplete="email"
         spellCheck={false}
-        className={`border-line bg-card text-ink placeholder:text-ink-faint focus:border-brand min-h-11 min-w-56 flex-1 rounded-lg border px-3 py-2.5 text-sm ${
+        className={`border-line-input bg-card text-ink placeholder:text-ink-faint focus:border-brand min-h-11 min-w-56 flex-1 rounded-lg border px-3 py-2.5 text-sm ${
           state === "done" ? "hidden" : ""
         }`}
       />

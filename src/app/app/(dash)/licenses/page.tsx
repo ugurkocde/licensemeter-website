@@ -247,7 +247,7 @@ export default async function LicensesPage({
             defaultValue={query}
             autoComplete="off"
             placeholder="Product, SKU or connector…"
-            className="border-line bg-card min-h-11 border px-3 py-2 text-sm font-normal"
+            className="border-line-input bg-card min-h-11 border px-3 py-2 text-sm font-normal"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium">
@@ -256,7 +256,7 @@ export default async function LicensesPage({
             name="pricing"
             defaultValue={pricingFilter}
             autoComplete="off"
-            className="border-line bg-card min-h-11 border px-3 py-2 text-sm font-normal"
+            className="border-line-input bg-card min-h-11 border px-3 py-2 text-sm font-normal"
           >
             <option value="all">All products</option>
             <option value="unpriced">Unpriced only</option>
@@ -506,10 +506,7 @@ export default async function LicensesPage({
       </ul>
 
       {adobeProducts.length > 0 && (
-        <section
-          id="bulk-price-import"
-          className="rise rise-3 mb-8 scroll-mt-24"
-        >
+        <section id="adobe-products" className="rise rise-3 mb-8 scroll-mt-24">
           <h2 className="text-ink-faint text-xs font-medium tracking-[0.18em] uppercase">
             Adobe products
           </h2>
@@ -597,7 +594,10 @@ export default async function LicensesPage({
       ))}
 
       {isAdmin && (
-        <section className="rise rise-3 mb-8">
+        <section
+          id="bulk-price-import"
+          className="rise rise-3 mb-8 scroll-mt-24"
+        >
           <div className="flex items-baseline justify-between gap-4">
             <h2 className="text-ink-faint text-xs font-medium tracking-[0.18em] uppercase">
               Bulk price import

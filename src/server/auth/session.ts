@@ -24,7 +24,7 @@ const key = new TextEncoder().encode(env.AUTH_SECRET);
 export type SessionUser = {
   /**
    * Stable actor id. In entra mode: the Entra object id (or demo constant).
-   * In workos mode: empty here — the WorkOS identity travels in workosUserId,
+   * In workos mode: empty here; the WorkOS identity travels in workosUserId,
    * and the access layer projects it onto the actor id it returns.
    */
   oid: string;

@@ -62,11 +62,43 @@ const splitProducts = (raw: string): string[] | null => {
   return parts.length > 0 ? parts : null;
 };
 
-/** ISO date-only strings parse as UTC midnight, desired for day math. */
+const ISO_DATE =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+const DOTTED_DATE = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/;
+
+const utcDate = (y: number, m: number, d: number): Date | null => {
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y &&
+    date.getUTCMonth() === m - 1 &&
+    date.getUTCDate() === d
+    ? date
+    : null;
+};
+
+/**
+ * Explicit shapes only, all pinned to UTC for day math: yyyy-mm-dd (optional
+ * time, ISO datetimes with an offset go through Date.parse), dd.mm.yyyy as
+ * used by German exports. Anything else is no date: Date.parse would read
+ * "12.03.2026" as December in some runtimes and apply the local timezone.
+ */
 const parseLastActive = (raw: string): Date | null => {
   if (NO_DATE.has(raw.toLowerCase())) return null;
-  const ms = Date.parse(raw);
-  return Number.isNaN(ms) ? null : new Date(ms);
+  const iso = ISO_DATE.exec(raw);
+  if (iso) {
+    if (iso[7]) {
+      const ms = Date.parse(raw.replace(" ", "T"));
+      return Number.isNaN(ms) ? null : new Date(ms);
+    }
+    const day = utcDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+    if (!day || !iso[4]) return day;
+    day.setUTCHours(Number(iso[4]), Number(iso[5]), Number(iso[6] ?? 0));
+    return day;
+  }
+  const dotted = DOTTED_DATE.exec(raw);
+  if (dotted) {
+    return utcDate(Number(dotted[3]), Number(dotted[2]), Number(dotted[1]));
+  }
+  return null;
 };
 
 /**

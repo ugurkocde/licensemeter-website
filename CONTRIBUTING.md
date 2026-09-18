@@ -22,7 +22,7 @@ The source is `src/server/db/schema.ts`. Docker uses committed migrations in `do
 npm run db:generate -- --name describe_your_change
 ```
 
-Review the SQL for data preservation and indexes. Test both a fresh database and an upgrade from the previous schema. Do not edit released migrations or auto-approve destructive pushes. Hosted database changes have a separate operator-managed process.
+CI regenerates migrations from the schema and fails when `docker/migrations` would change, so commit the generated files with the schema change. Review the SQL for data preservation and indexes. Test both a fresh database and an upgrade from the previous schema. Do not edit released migrations or auto-approve destructive pushes. Hosted database changes have a separate operator-managed process.
 
 ## Security and assets
 

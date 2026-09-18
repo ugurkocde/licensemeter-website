@@ -58,19 +58,14 @@ export function ConnectorCatalog({
     <div className="mx-auto max-w-7xl pb-8">
       <header className="flex flex-wrap items-end justify-between gap-6">
         <div>
-          <p className="text-brand-text text-[11px] font-semibold tracking-[0.16em] uppercase">
-            Your connected workspace
-          </p>
-          <h1 className="font-display mt-3 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">
-            Connectors
-          </h1>
-          <p className="text-ink-soft mt-3 max-w-xl text-base leading-7">
+          <h1 className="font-display text-3xl tracking-tight">Connectors</h1>
+          <p className="text-ink-soft mt-1 max-w-xl text-sm">
             All your tools. One place to find the waste.
             <br className="hidden sm:block" /> Connect your stack and see what
             you could save.
           </p>
         </div>
-        <div className="border-line flex gap-7 rounded-2xl border bg-white px-6 py-4">
+        <div className="border-line bg-card flex gap-7 rounded-2xl border px-6 py-4">
           <div>
             <p className="font-display text-2xl font-semibold tabular-nums">
               {String(WORKSPACE_CONNECTORS.length).padStart(2, "0")}
@@ -124,6 +119,7 @@ export function ConnectorCatalog({
 
       <div className="mt-9 flex flex-wrap items-center justify-between gap-4">
         <div
+          role="group"
           className="bg-subtle flex max-w-full flex-wrap gap-1 rounded-xl p-1"
           aria-label="Filter connectors"
         >
@@ -133,7 +129,7 @@ export function ConnectorCatalog({
               type="button"
               aria-pressed={filter === value}
               onClick={() => setFilter(value)}
-              className={`min-h-10 rounded-lg px-3 text-xs font-medium transition-colors sm:px-4 sm:text-sm ${filter === value ? "text-ink bg-white shadow-sm" : "text-ink-soft hover:text-ink"}`}
+              className={`min-h-11 cursor-pointer rounded-lg px-3 text-xs font-medium transition-colors sm:px-4 sm:text-sm ${filter === value ? "text-ink bg-card shadow-sm" : "text-ink-soft hover:text-ink"}`}
             >
               {value}
             </button>
@@ -141,7 +137,7 @@ export function ConnectorCatalog({
         </div>
         <div className="relative w-full sm:w-64">
           <Search
-            className="text-ink-faint pointer-events-none absolute top-3 left-3 size-4"
+            className="text-ink-faint pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
             aria-hidden="true"
           />
           <input
@@ -152,7 +148,7 @@ export function ConnectorCatalog({
             placeholder="Find a connector…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="border-line text-ink placeholder:text-ink-faint h-10 w-full rounded-xl border bg-white pr-3 pl-9 text-sm"
+            className="border-line-input bg-card text-ink placeholder:text-ink-faint min-h-11 w-full rounded-xl border pr-3 pl-9 text-sm"
           />
         </div>
       </div>
@@ -186,7 +182,7 @@ export function ConnectorCatalog({
               href={`/app/connectors/${connector.id}`}
               aria-label={`${action}: ${connector.name}`}
               aria-describedby={`connector-${connector.id}-status connector-${connector.id}-description`}
-              className="connector-tile group border-line hover:border-brand/35 flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-white p-6 transition-[border-color,box-shadow] hover:shadow-lg"
+              className="connector-tile group border-line bg-card hover:border-brand/35 flex min-w-0 flex-col overflow-hidden rounded-2xl border p-6 transition-[border-color,box-shadow] hover:shadow-lg"
               style={
                 { "--connector-accent": connector.accent } as CSSProperties
               }
@@ -197,7 +193,7 @@ export function ConnectorCatalog({
                 </span>
                 <span
                   id={`connector-${connector.id}-status`}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium ${state.className}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${state.className}`}
                 >
                   {(summary.status === "connected" ||
                     summary.status === "imported") && (
@@ -232,7 +228,7 @@ export function ConnectorCatalog({
                   <p className="text-brand-text text-xs font-semibold">
                     {action}
                   </p>
-                  <p className="text-ink-faint mt-1 text-[10px] leading-4">
+                  <p className="text-ink-faint mt-1 text-[11px] leading-4">
                     {summary.detail}
                   </p>
                 </div>
@@ -248,7 +244,7 @@ export function ConnectorCatalog({
         })}
       </div>
       {connectors.length === 0 && (
-        <div className="border-line mt-4 rounded-2xl border border-dashed bg-white px-6 py-14 text-center">
+        <div className="border-line bg-card mt-4 rounded-2xl border border-dashed px-6 py-14 text-center">
           <Search
             className="text-ink-faint mx-auto size-6"
             aria-hidden="true"

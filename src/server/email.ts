@@ -1,4 +1,4 @@
-import { env } from "~/env";
+import { env, signInPath } from "~/env";
 import { emailWordmark, escapeHtml } from "~/lib/html";
 
 /**
@@ -66,13 +66,13 @@ export const inviteHtml = (args: {
     but nobody uses, with read-only access to license metadata, never content.
   </p>
   <p style="margin:24px 0">
-    <a href="${args.appUrl}/auth/sign-in"
+    <a href="${args.appUrl}${signInPath()}"
        style="font-family:Arial,sans-serif;font-size:14px;background:#1c1a16;color:#faf8f3;padding:12px 20px;text-decoration:none">
-      Sign in with Microsoft
+      Sign in to LicenseMeter
     </a>
   </p>
   <p style="font-family:Arial,sans-serif;font-size:12px;color:#a39d8f;line-height:1.5">
-    Use the Microsoft account for this email address. If you did not expect
+    Sign in with the account that uses this email address. If you did not expect
     this invitation, you can ignore this email. Nothing is shared without
     signing in.
   </p>
@@ -368,7 +368,7 @@ export const workspaceDeletedHtml = (args: {
     The LicenseMeter workspace
     <strong style="color:#1c1a16">${escapeHtml(args.tenantName)}</strong> was
     deleted by <strong style="color:#1c1a16">${escapeHtml(args.actor)}</strong>.
-    Every synced record &mdash; users, findings, prices, history &mdash; has been
+    Every synced record (users, findings, prices, history) has been
     permanently removed and this cannot be undone.
   </p>
   <p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">

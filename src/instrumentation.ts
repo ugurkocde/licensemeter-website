@@ -18,9 +18,14 @@ export const onRequestError = async (
   // Edge/middleware runtime doesn't have Node.js modules; skip ops notification.
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
+  // Same production gate as notifyOps: dev and preview deploys stay quiet,
+  // self-hosted production installs (no VERCEL_ENV) alert.
+  if (process.env.NODE_ENV !== "production") return;
+  if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production") return;
+
   // Send to ops webhook if configured. Inline fetch avoids importing the db
   // module (postgres requires Node.js-only modules that break edge bundling).
-  const webhookUrl = process.env.OPS_WEBHOOK_URL;
+  const webhookUrl = process.env.ALERT_WEBHOOK_URL;
   if (!webhookUrl) return;
 
   try {

@@ -8,8 +8,10 @@
 
 Read-only analysis of Microsoft 365 license waste: seats on disabled accounts,
 never-active and long-inactive users, unassigned paid seats, unused Copilot
-seats, licensed guests, each priced per month. Optional Adobe connector
-correlates Adobe seats with Entra account state (offboarding leaks).
+seats, licensed guests, each priced per month. Optional connectors for Adobe,
+Zoom, Atlassian, Salesforce, OpenAI and Anthropic, plus CSV imports for
+ChatGPT and Claude workspace seats, correlate those seats and API spend with
+Entra account state (offboarding leaks).
 
 ## Access model
 
@@ -24,7 +26,8 @@ correlates Adobe seats with Entra account state (offboarding leaks).
 ## Data handling
 
 - Stored: license counts, directory metadata (name, UPN, enabled state,
-  assignments), activity **timestamps** only; optional Adobe entitlements
+  assignments), activity **timestamps** only; optional connector entitlements
+  and daily API spend totals
 - Residency: PostgreSQL in the EU (AWS Frankfurt); application functions
   pinned to Frankfurt
 - Retention: only while connected. Disconnecting deletes everything
@@ -41,17 +44,19 @@ correlates Adobe seats with Entra account state (offboarding leaks).
 TLS everywhere with HSTS; AES-256 at rest; third-party credentials
 additionally app-layer encrypted (AES-256-GCM); least-privilege database role
 behind row-level security; PKCE + JWKS-verified sign-in; security headers;
-CSRF origin checks; tenant isolation verified by independent security audit.
+CSRF origin checks; tenant isolation enforced in the application layer on
+every query.
 
 ## Compliance
 
 - GDPR processor (Art. 28): DPA/AVV with TOMs and subprocessor annexes
   available before production data is connected
 - Subprocessors: Vercel (hosting, EU functions), Supabase (database,
-  Frankfurt), Microsoft (identity + Graph), Resend (admin notifications, EU)
+  Frankfurt), Microsoft (identity + Graph), WorkOS (AuthKit sign-in, US,
+  EU SCCs), Resend (admin notifications, EU)
 - Breach notification to the controller within 72 hours
 - Data-subject requests routed via you as controller
 
 ## Contact
 
-security questions / vendor questionnaires: support@licensemeter.com
+security questions / vendor questionnaires: support@ugurlabs.com
