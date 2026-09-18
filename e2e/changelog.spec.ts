@@ -282,19 +282,28 @@ test("dashboard bells share one request and open from sidebar and mobile bar", a
 }) => {
   const requests = await mockFeed(page);
   await page.goto("/");
+  // The marketing header bell loads the feed once for the landing page; the
+  // demo sign-in is a full navigation, so count only what the dashboard adds.
+  await expect(bell(page)).toHaveAccessibleName("Product updates, 2 unread");
+  const marketingRequests = requests();
   await page
     .getByRole("button", { name: "Open the sample tenant" })
     .first()
     .click();
   await expect(page).toHaveURL(/\/app$/);
-  // The first demo visit opens the welcome tour over the page; dismiss it.
-  await page.getByRole("button", { name: "Skip tour" }).click();
+  // The first demo visit of a database opens the tour over the page; its
+  // dismissal is stored on the demo membership, so later runs never see it.
+  const skipTour = page.getByRole("button", { name: "Skip tour" });
+  await skipTour
+    .waitFor({ state: "visible", timeout: 3_000 })
+    .then(() => skipTour.click())
+    .catch(() => undefined);
 
   const aside = page.locator("aside").first();
   const desktopBell = aside.getByRole("button", { name: /^Product updates/ });
   await expect(desktopBell).toHaveAccessibleName("Product updates, 2 unread");
   await page.waitForTimeout(500);
-  expect(requests()).toBe(1);
+  expect(requests() - marketingRequests).toBe(1);
 
   await desktopBell.click();
   const dialog = page.getByRole("dialog", { name: "What's new" });
@@ -316,7 +325,7 @@ test("dashboard bells share one request and open from sidebar and mobile bar", a
   await expect(page.getByRole("dialog", { name: "What's new" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(mobileBell).toBeFocused();
-  expect(requests()).toBe(1);
+  expect(requests() - marketingRequests).toBe(1);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth - innerWidth,
