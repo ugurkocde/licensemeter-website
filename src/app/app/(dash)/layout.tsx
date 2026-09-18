@@ -6,6 +6,7 @@ import { ChangelogBell } from "~/components/changelog/ChangelogBell";
 import { JoinRequestNotice } from "~/components/workspace/JoinRequestNotice";
 import { MobileNav } from "~/components/workspace/MobileNav";
 import { NavLinks } from "~/components/workspace/NavLinks";
+import { PlanBadge } from "~/components/workspace/PlanBadge";
 import { WorkspaceSwitcher } from "~/components/workspace/WorkspaceSwitcher";
 import { authProvider } from "~/env";
 import { workspaceLabel } from "~/lib/format";
@@ -51,6 +52,7 @@ export default async function WorkspaceLayout({
         showPortfolio={ctx.workspaces.length > 1}
         workspaces={ctx.workspaces}
         activeId={ctx.tenant.id}
+        entitlement={ctx.entitlement}
       />
 
       <aside className="bg-sidebar border-line sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r lg:flex">
@@ -78,10 +80,14 @@ export default async function WorkspaceLayout({
           <div className="text-sidebar-soft mt-0.5 text-[11px] tracking-wider uppercase">
             {ctx.tenant.isDemo ? "Demo workspace" : "Connected tenant"}
           </div>
+          <PlanBadge entitlement={ctx.entitlement} className="mt-2" />
         </div>
 
         <div className="mt-4 flex-1">
-          <NavLinks showPortfolio={ctx.workspaces.length > 1} />
+          <NavLinks
+            showPortfolio={ctx.workspaces.length > 1}
+            entitlement={ctx.entitlement}
+          />
         </div>
 
         <div className="border-sidebar-line border-t px-5 py-4">

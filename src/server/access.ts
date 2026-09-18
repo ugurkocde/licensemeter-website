@@ -5,13 +5,20 @@ import { after } from "next/server";
 
 import { env } from "~/env";
 import { workspaceLabel } from "~/lib/format";
+import { upgradePath } from "~/lib/upgrade";
 import { auth, type Session } from "~/server/auth";
 import { cookieOptions } from "~/server/auth/session";
 import { db } from "~/server/db";
 import { memberships, tenants } from "~/server/db/schema";
 import { ensureDemoWorkspace } from "~/server/demo/seed";
 import { provisionForSignIn } from "~/server/domainJoin";
-import { entitlementOf, type Entitlement } from "~/server/entitlement";
+import {
+  hasFeature,
+  planFor,
+  type Entitlement,
+  type Feature,
+} from "~/server/entitlement";
+import { loadEntitlement } from "~/server/entitlementStore";
 import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import type { MembershipRole } from "~/server/types";
 import {
@@ -51,7 +58,8 @@ export type AccessContext = {
   /** Every workspace this user can open (MSP/consultant support). */
   workspaces: WorkspaceSummary[];
   /**
-   * Permanent free access for the active workspace.
+   * Plan and paid features of the active workspace. Free keeps everything it
+   * has today; a self-hosted install resolves to every feature.
    */
   entitlement: Entitlement;
 };
@@ -146,7 +154,7 @@ const resolveEntra = async (
       role: r.membership.role,
       isDemo: r.tenant.isDemo,
     })),
-    entitlement: entitlementOf(active.tenant),
+    entitlement: await loadEntitlement(active.tenant),
   };
 };
 
@@ -323,7 +331,7 @@ const resolveWorkos = async (
       role: r.membership.role,
       isDemo: r.tenant.isDemo,
     })),
-    entitlement: entitlementOf(active.tenant),
+    entitlement: await loadEntitlement(active.tenant),
   };
 };
 
@@ -364,6 +372,16 @@ export const requireAccess = async (
   return ctx;
 };
 
+/** For pages/layouts: like requireAccess, plus an upgrade redirect when the plan lacks the feature. */
+export const requireFeature = async (
+  feature: Feature,
+  minRole: MembershipRole = "viewer",
+): Promise<AccessContext> => {
+  const ctx = await requireAccess(minRole);
+  if (!hasFeature(ctx.entitlement, feature)) redirect(upgradePath(feature));
+  return ctx;
+};
+
 /** For API routes and server actions: returns null instead of redirecting. */
 export const apiAccess = async (
   minRole: MembershipRole = "viewer",
@@ -372,6 +390,38 @@ export const apiAccess = async (
   const ctx = await resolveAccess(session);
   if (!ctx || !hasRole(ctx, minRole)) return null;
   return ctx;
+};
+
+export type FeatureAccess =
+  | { ctx: AccessContext; denied: null }
+  | { ctx: null; denied: "unauthorized" }
+  /** Signed in with the right role, but the plan lacks the feature: answer 402. */
+  | {
+      ctx: null;
+      denied: "featureRequired";
+      feature: Feature;
+      plan: ReturnType<typeof planFor>;
+    };
+
+/**
+ * For API routes and server actions that serve a paid feature: apiAccess, with
+ * the missing-feature case kept apart so a route can answer 402 instead of 401.
+ */
+export const apiFeatureAccess = async (
+  feature: Feature,
+  minRole: MembershipRole = "viewer",
+): Promise<FeatureAccess> => {
+  const ctx = await apiAccess(minRole);
+  if (!ctx) return { ctx: null, denied: "unauthorized" };
+  if (!hasFeature(ctx.entitlement, feature)) {
+    return {
+      ctx: null,
+      denied: "featureRequired",
+      feature,
+      plan: planFor(feature),
+    };
+  }
+  return { ctx, denied: null };
 };
 
 /** Workspace-switch cookie options (validated against memberships per request). */

@@ -52,6 +52,7 @@ The managed connector requests `User.Read.All`, `AuditLog.Read.All`, `Reports.Re
 | `ALERT_EMAIL`                                                | Optional recipient for operational alerts; needs `RESEND_API_KEY`, `EMAIL_FROM` |
 | `ALERT_WEBHOOK_URL`                                          | Optional Teams/Slack incoming webhook for failed syncs and cron errors          |
 | `MS_BYO_ENABLED`                                             | `false` hides the bring-your-own app registration option; on by default         |
+| `BILLING_ENABLED`                                            | Hosted paid plans only; unset gives every workspace every feature               |
 
 Keep `DATA_ENCRYPTION_KEY` fixed once connectors are stored: their secrets are encrypted with the key that was active when they were saved, and a new key cannot decrypt them. If the key must change, disconnect and reconnect every connector afterward.
 
@@ -63,7 +64,7 @@ Docker initializes its dedicated database automatically. Do not point its initia
 
 For an independently managed PostgreSQL database, provision the schema as the database owner and use a separate login for runtime. Keep administrator connection strings out of the web environment.
 
-The `scripts/db-*.sql` files describe the hosted Supabase deployment: RLS, application-role DML permissions, and denial of Supabase Data API access. Tenant isolation remains in application code. Review these files before applying them, and run `scripts/db-audit-posture.sql` after schema changes. The bundled PostgreSQL service has no Data API and does not need these Supabase-specific scripts.
+The `scripts/db-*.sql` files describe the hosted Supabase deployment: RLS, application-role DML permissions, and denial of Supabase Data API access. Tenant isolation remains in application code. Review these files before applying them, and run `scripts/db-audit-posture.sql` after schema changes. Before setting `BILLING_ENABLED=true`, run `scripts/db-create-entitlements.sql`: with the flag on, every request reads the `entitlements` table. The bundled PostgreSQL service has no Data API and does not need these Supabase-specific scripts.
 
 For Vercel, configure the database, authentication, encryption, `APP_BASE_URL`, and `CRON_SECRET`. `vercel.json` schedules the sync, digest, and monthly report. The hosted deployment retains its WorkOS and Crisp behavior; `SELF_HOSTED=true` is for instances you operate yourself.
 

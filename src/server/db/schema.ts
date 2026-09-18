@@ -17,11 +17,15 @@ import {
 import type {
   AggregateUsage,
   AuditAction,
+  BillingProvider,
   DomainJoinMode,
+  EntitlementSource,
+  EntitlementStatus,
   FindingStatus,
   JoinRequestStatus,
   MembershipRole,
   RemediationStatus,
+  PaidPlan,
   PlanInterval,
   PlanTier,
   SaasProvider,
@@ -869,6 +873,94 @@ export const subscriptions = pgTable(
     uniqueIndex("subscriptions_stripe_customer_idx").on(t.stripeCustomerId),
   ],
 );
+
+/**
+ * A paid hosted plan. No row means Free. Provider-neutral: Microsoft
+ * Marketplace, Polar and hand-set comps all write the same shape. loadEntitlement
+ * reads it and entitlementOf decides, so feature checks never know who was paid.
+ *
+ * Owned by exactly one of a workspace (Pro) or an MSP account (MSP). Client
+ * workspaces inherit an MSP row through tenants.mspAccountId, up to quantity.
+ */
+export const entitlements = pgTable(
+  "entitlements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
+      onDelete: "cascade",
+    }),
+    mspAccountId: uuid("msp_account_id").references(() => mspAccounts.id, {
+      onDelete: "cascade",
+    }),
+    plan: text("plan").$type<PaidPlan>().notNull(),
+    source: text("source").$type<EntitlementSource>().notNull(),
+    status: text("status").$type<EntitlementStatus>().notNull(),
+    /** Workspaces covered. Always 1 for Pro; included plus add-on tenants for MSP. */
+    quantity: integer("quantity").notNull().default(1),
+    trialEnd: timestamp("trial_end", { withTimezone: true }),
+    /** Paid-access horizon. A canceled row stays entitled until this passes. */
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    providerSubscriptionId: text("provider_subscription_id"),
+    providerCustomerId: text("provider_customer_id"),
+    /** Timestamp of the last applied provider event; gates stale out-of-order writes. */
+    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("entitlements_tenant_idx")
+      .on(t.tenantId)
+      .where(sql`${t.tenantId} is not null`),
+    uniqueIndex("entitlements_msp_account_idx")
+      .on(t.mspAccountId)
+      .where(sql`${t.mspAccountId} is not null`),
+    // One row per provider subscription: a second owner pointing at the same
+    // subscription is a webhook routing bug, not a silent duplicate.
+    uniqueIndex("entitlements_provider_subscription_idx")
+      .on(t.source, t.providerSubscriptionId)
+      .where(sql`${t.providerSubscriptionId} is not null`),
+    check(
+      "entitlements_single_owner",
+      sql`(${t.tenantId} is null) <> (${t.mspAccountId} is null)`,
+    ),
+    check("entitlements_plan_valid", sql`${t.plan} in ('pro', 'msp')`),
+    check(
+      "entitlements_source_valid",
+      sql`${t.source} in ('marketplace', 'polar', 'comped')`,
+    ),
+    check(
+      "entitlements_status_valid",
+      sql`${t.status} in ('trialing', 'active', 'past_due', 'canceled', 'suspended')`,
+    ),
+    check("entitlements_quantity_positive", sql`${t.quantity} > 0`),
+  ],
+).enableRLS();
+
+export type EntitlementRow = typeof entitlements.$inferSelect;
+
+/**
+ * Idempotency ledger for payment-provider webhooks. Insert-on-receipt inside
+ * the same transaction as the handler: a duplicate event is a no-op, and a
+ * handler failure rolls the row back so the provider retry re-processes exactly
+ * once. No FK, so it survives workspace deletion.
+ */
+export const billingEvents = pgTable(
+  "billing_events",
+  {
+    provider: text("provider").$type<BillingProvider>().notNull(),
+    eventId: text("event_id").notNull(),
+    type: text("type").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.provider, t.eventId] })],
+).enableRLS();
 
 /**
  * Idempotency ledger for Stripe webhook deliveries. Insert-on-receipt inside

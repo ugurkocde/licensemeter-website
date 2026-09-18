@@ -22,6 +22,23 @@ export type SubscriptionStatus =
   | "incomplete_expired"
   | "paused";
 
+/** Paid hosted plans. A workspace without an entitlement row is on Free. */
+export type PaidPlan = "pro" | "msp";
+
+/** Who granted a paid plan. "comped" is set by hand and never by a webhook. */
+export type EntitlementSource = "marketplace" | "polar" | "comped";
+
+/** Provider-neutral lifecycle of an entitlement row. */
+export type EntitlementStatus =
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "suspended";
+
+/** Payment providers that deliver webhooks into billing_events. */
+export type BillingProvider = "marketplace" | "polar";
+
 /** Historical column type, read-only. Legacy plan tiers still referenced by the schema. */
 export type PlanTier = "starter" | "growth" | "scale";
 
@@ -121,7 +138,10 @@ export type AiSpendRow = {
 
 /** Human workflow layered over an automatically detected finding. */
 export type RemediationStatus =
-  "unassigned" | "planned" | "requested" | "in_progress";
+  | "unassigned"
+  | "planned"
+  | "requested"
+  | "in_progress";
 
 /** One Adobe Admin Console user as returned by the User Management API. */
 export type AdobeUser = {

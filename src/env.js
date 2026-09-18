@@ -78,6 +78,12 @@ export const env = createEnv({
      * MS_BYO_ENABLED=false to hide the BYO form and offer managed only.
      */
     MS_BYO_ENABLED: z.enum(["true", "false"]).optional(),
+    /**
+     * Paid hosted plans. Off by default, which gives every workspace the full
+     * feature set (self-hosting). The hosted service sets BILLING_ENABLED=true
+     * so workspaces without an entitlement row are on Free.
+     */
+    BILLING_ENABLED: z.enum(["true", "false"]).optional(),
 
     /**
      * WorkOS AuthKit credentials, read by @workos-inc/authkit-nextjs. Required
@@ -145,6 +151,7 @@ export const env = createEnv({
     CONNECTOR_CLIENT_SECRET: process.env.CONNECTOR_CLIENT_SECRET,
     AUTH_PROVIDER: process.env.AUTH_PROVIDER,
     MS_BYO_ENABLED: process.env.MS_BYO_ENABLED,
+    BILLING_ENABLED: process.env.BILLING_ENABLED,
     WORKOS_API_KEY: process.env.WORKOS_API_KEY,
     WORKOS_CLIENT_ID: process.env.WORKOS_CLIENT_ID,
     WORKOS_COOKIE_PASSWORD: process.env.WORKOS_COOKIE_PASSWORD,
@@ -193,6 +200,12 @@ export const signInPath = () =>
  * MS_BYO_ENABLED=false to hide it and offer managed one-click only.
  */
 export const byoConnectorEnabled = () => env.MS_BYO_ENABLED !== "false";
+
+/**
+ * Whether paid hosted plans are in force. Off by default: a self-hosted install
+ * gets every feature without an entitlement row.
+ */
+export const billingEnabled = () => env.BILLING_ENABLED === "true";
 
 /**
  * Like appBaseUrl but never throws, for sitemap/OG metadata where a localhost
