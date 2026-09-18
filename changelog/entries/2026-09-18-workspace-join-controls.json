@@ -1,0 +1,7 @@
+{
+  "title": "Owners decide how colleagues join a workspace",
+  "summary": "Colleagues who sign in with a verified email on your company domain now request access, and an owner or admin approves it before anything is shared. Owners can switch to automatic joining or invite only under Settings, Members. Owners and admins are notified by email about requests and new joins, and every request, approval and join is recorded in the activity log. Existing workspaces that admitted colleagues automatically were switched to approval; current members keep their access.",
+  "type": "new",
+  "publishedOn": "2026-09-18",
+  "idempotencyKey": "licensemeter:2026-09-18-workspace-join-controls"
+}

@@ -3,12 +3,15 @@ import Link from "next/link";
 
 import { BrandMark } from "~/components/BrandMark";
 import { ChangelogBell } from "~/components/changelog/ChangelogBell";
+import { JoinRequestNotice } from "~/components/workspace/JoinRequestNotice";
 import { MobileNav } from "~/components/workspace/MobileNav";
 import { NavLinks } from "~/components/workspace/NavLinks";
 import { WorkspaceSwitcher } from "~/components/workspace/WorkspaceSwitcher";
 import { authProvider } from "~/env";
 import { workspaceLabel } from "~/lib/format";
 import { requireAccess } from "~/server/access";
+import { db } from "~/server/db";
+import { pendingJoinRequestsOf } from "~/server/domainJoin";
 import { signOutAction } from "~/app/auth/actions";
 
 /* Auth already gates these routes; noindex closes the gap robots.txt leaves
@@ -24,6 +27,12 @@ export default async function WorkspaceLayout({
   const tenantName = workspaceLabel(ctx.tenant);
   // Self-service account page is WorkOS-only; entra users manage profile in Entra.
   const accountEnabled = authProvider() === "workos";
+  // Access requests only exist under WorkOS sign-in, where the actor id is the
+  // WorkOS user id. The notice disappears once the request is decided.
+  const waitingOn =
+    accountEnabled && !ctx.user.isDemo
+      ? await pendingJoinRequestsOf(db, ctx.user.oid)
+      : [];
 
   return (
     <div className="bg-canvas min-h-screen lg:flex">
@@ -109,6 +118,13 @@ export default async function WorkspaceLayout({
         id="content"
         className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-8 lg:px-12"
       >
+        {waitingOn.map((request) => (
+          <JoinRequestNotice
+            key={request.id}
+            requestId={request.id}
+            workspaceName={request.tenantName ?? "a workspace"}
+          />
+        ))}
         {children}
       </main>
     </div>

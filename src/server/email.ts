@@ -78,6 +78,86 @@ export const inviteHtml = (args: {
   </p>
 </div>`;
 
+const noticeShell = (args: {
+  appUrl: string;
+  heading: string;
+  body: string;
+  cta: { href: string; label: string };
+  footer: string;
+}): string => `
+<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
+  ${emailWordmark(args.appUrl)}
+  <h1 style="font-size:22px;font-weight:normal">${args.heading}</h1>
+  <p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.5">
+    ${args.body}
+  </p>
+  <p style="margin:24px 0">
+    <a href="${args.cta.href}"
+       style="font-family:Arial,sans-serif;font-size:14px;background:#1c1a16;color:#faf8f3;padding:12px 20px;text-decoration:none">
+      ${args.cta.label}
+    </a>
+  </p>
+  <p style="font-family:Arial,sans-serif;font-size:12px;color:#a39d8f;line-height:1.5">
+    ${args.footer}
+  </p>
+</div>`;
+
+const strong = (text: string): string =>
+  `<strong style="color:#1c1a16">${escapeHtml(text)}</strong>`;
+
+/** To owners/admins: a colleague on the workspace's domain asked to get in. */
+export const joinRequestHtml = (args: {
+  requesterEmail: string;
+  tenantName: string;
+  appUrl: string;
+}): string =>
+  noticeShell({
+    appUrl: args.appUrl,
+    heading: `${escapeHtml(args.requesterEmail)} asked to join ${escapeHtml(args.tenantName)}`,
+    body: `${strong(args.requesterEmail)} signed in with a verified company
+    email and asked for access to the workspace ${strong(args.tenantName)}.
+    Nothing is shared until an owner or admin approves the request. Approved
+    people start as viewer: read-only dashboards, findings and exports.`,
+    cta: { href: `${args.appUrl}/app/settings`, label: "Review the request" },
+    footer: `You get this because you are an owner or admin of this workspace.
+    Owners can change who can join under Settings, Members.`,
+  });
+
+/** To owners/admins: a colleague joined automatically by company email. */
+export const domainJoinedHtml = (args: {
+  memberEmail: string;
+  tenantName: string;
+  appUrl: string;
+}): string =>
+  noticeShell({
+    appUrl: args.appUrl,
+    heading: `${escapeHtml(args.memberEmail)} joined ${escapeHtml(args.tenantName)}`,
+    body: `${strong(args.memberEmail)} signed in with a verified company email
+    and joined the workspace ${strong(args.tenantName)} as viewer: read-only
+    dashboards, findings and exports. You can change the role or remove the
+    member in Settings.`,
+    cta: { href: `${args.appUrl}/app/settings`, label: "Open members" },
+    footer: `You get this because this workspace lets colleagues join
+    automatically. Owners can change that under Settings, Members.`,
+  });
+
+/** To the requester: an owner or admin approved the access request. */
+export const joinApprovedHtml = (args: {
+  tenantName: string;
+  appUrl: string;
+  signInUrl: string;
+}): string =>
+  noticeShell({
+    appUrl: args.appUrl,
+    heading: `You now have access to ${escapeHtml(args.tenantName)}`,
+    body: `Your request to join the workspace ${strong(args.tenantName)} was
+    approved. You have viewer access: read-only dashboards, findings and
+    exports. Sign in and pick the workspace from the switcher in the sidebar.`,
+    cta: { href: args.signInUrl, label: "Open LicenseMeter" },
+    footer: `You get this because you asked to join this workspace. If that was
+    not you, you can ignore this email.`,
+  });
+
 /**
  * "N new findings since last week (+X/mo). M resolved (Y/mo freed)." The
  * money figures arrive pre-formatted. Zero-count parts degrade gracefully.

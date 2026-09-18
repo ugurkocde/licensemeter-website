@@ -15,6 +15,13 @@
       "when": 1789689266975,
       "tag": "0001_consent_state_tenant",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789710868354,
+      "tag": "0002_domain_join_mode",
+      "breakpoints": true
     }
   ]
 }
