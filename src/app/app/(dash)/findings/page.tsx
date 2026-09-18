@@ -473,7 +473,7 @@ export default async function FindingsPage({
         </div>
       </FindingsBulkForm>
 
-      {/* Mobile stacked cards — own bulk form so multi-select works on phones. */}
+      {/* Mobile stacked cards: own bulk form so multi-select works on phones. */}
       <FindingsBulkForm
         action={bulkSetFindingStatus}
         showBar={canAct && !showResolved && rowCount > 0}

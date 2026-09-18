@@ -14,7 +14,7 @@ jobs:
     env:
       # Build-time env validation runs with NODE_ENV=production; these are
       # CI-only values, never used at runtime. WorkOS is the default auth
-      # provider, so its credentials are required at build — dummy values here
+      # provider, so its credentials are required at build; dummy values here
       # satisfy the schema (cookie password must be >=32 chars).
       AUTH_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
       DEMO_MODE: "true"

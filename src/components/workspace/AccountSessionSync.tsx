@@ -9,7 +9,7 @@ import { refreshUserSession } from "~/app/app/(dash)/account/actions";
  * Keeps the workspace sidebar in sync with edits made in the WorkOS account
  * widgets (e.g. changing your display name). The widgets write straight to the
  * WorkOS API from the browser and expose no success callback, while the sidebar
- * name comes from the sealed AuthKit session cookie (a login snapshot) — so a
+ * name comes from the sealed AuthKit session cookie (a login snapshot), so a
  * change otherwise stays invisible until the session refreshes on its own.
  *
  * While mounted (account page only) this watches for a successful mutating

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 // WorkOS is the default sign-in; entra is the flag-only opt-out. Mirrors
 // authProvider() below, but evaluated here so the WorkOS credentials become
-// REQUIRED whenever WorkOS is the live provider — a misconfigured production
+// REQUIRED whenever WorkOS is the live provider: a misconfigured production
 // deploy then fails the build instead of 500-ing every page at runtime (the
 // AuthKit middleware throws without a >=32-char cookie password).
 const workosLogin = process.env.AUTH_PROVIDER !== "entra";
@@ -67,15 +67,15 @@ export const env = createEnv({
     /**
      * Which login stack is live. Defaults to "workos" (AuthKit multi-method
      * sign-in); "entra" is a flag-only opt-out that restores the original MSAL
-     * sign-in. The connector (app-only Graph access) is unaffected either way —
+     * sign-in. The connector (app-only Graph access) is unaffected either way;
      * it keys on the Entra tenant id stored on the tenant row, not on the login.
      */
     AUTH_PROVIDER: z.enum(["entra", "workos"]).optional(),
 
     /**
      * Gates the "bring your own app registration" Microsoft connector path.
-     * Off by default: the managed one-click admin-consent path is unchanged and
-     * always available. Flip MS_BYO_ENABLED=true to expose the BYO form.
+     * On by default, next to the managed one-click admin-consent path. Set
+     * MS_BYO_ENABLED=false to hide the BYO form and offer managed only.
      */
     MS_BYO_ENABLED: z.enum(["true", "false"]).optional(),
 

@@ -12,7 +12,7 @@ export const metadata = { title: "Account" };
 
 /**
  * Self-service account page: the signed-in user manages their own name, password
- * and MFA via the WorkOS widgets. WorkOS-only — under the entra opt-out there is
+ * and MFA via the WorkOS widgets. WorkOS-only; under the entra opt-out there is
  * no WorkOS profile to manage (those users manage it in Entra / Microsoft).
  */
 export default async function AccountPage() {
@@ -69,7 +69,7 @@ export default async function AccountPage() {
           <h1 className="font-display text-3xl tracking-tight">Account</h1>
           <p className="text-ink-soft mt-1 text-sm">
             Your profile, password and sign-in security are managed by Microsoft
-            Entra ID. Update them in your Microsoft account — changes apply
+            Entra ID. Update them in your Microsoft account; changes apply
             across every workspace you belong to.
           </p>
         </header>

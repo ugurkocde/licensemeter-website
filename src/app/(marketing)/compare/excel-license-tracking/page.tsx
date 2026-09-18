@@ -247,9 +247,9 @@ export default function ExcelLicenseTrackingComparePage() {
             CSV import
           </a>{" "}
           computes your waste number from two Microsoft 365 admin center
-          exports, with no consent at all. The link signs you in with Microsoft
-          first. If the number justifies it, connect read-only afterwards and
-          let the nightly sync take over from the uploads.
+          exports, with no consent at all. The link asks you to sign in first.
+          If the number justifies it, connect read-only afterwards and let the
+          nightly sync take over from the uploads.
         </p>
       </section>
 

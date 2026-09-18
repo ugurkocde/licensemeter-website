@@ -115,7 +115,7 @@ const EN: TrustContent = {
   },
   security: {
     title: "Security measures",
-    body: "Access to a workspace is invite-based and role-based (owner, admin, viewer); sign-in uses OpenID Connect with PKCE and signed, httpOnly, short-lived session cookies. Data is encrypted in transit (TLS, HSTS) and at rest (AES-256), with bring-your-own connector credentials additionally encrypted at the application layer (AES-256-GCM). Tenants are logically separated with row-level security, state-changing requests are CSRF-protected and rate-limited, and a per-workspace audit log records exports and administrative actions.",
+    body: "Access to a workspace is invite-based and role-based (owner, admin, viewer); sign-in uses OpenID Connect with PKCE and signed, httpOnly, short-lived session cookies. Data is encrypted in transit (TLS, HSTS) and at rest (AES-256), with bring-your-own connector credentials additionally encrypted at the application layer (AES-256-GCM). Tenants are logically separated in the application layer on every query. PostgreSQL row-level security additionally blocks every database role other than the application role. State-changing requests are CSRF-protected and rate-limited, and a per-workspace audit log records exports and administrative actions.",
     linked: {
       pre: "The full technical and organizational measures are ",
       linkText: "Annex 2 of the DPA",
@@ -256,7 +256,7 @@ const DE: TrustContent = {
   },
   security: {
     title: "Sicherheitsmaßnahmen",
-    body: "Der Zugang zu einem Workspace erfolgt einladungs- und rollenbasiert (Inhaber, Administrator, Betrachter); die Anmeldung nutzt OpenID Connect mit PKCE sowie signierte, httpOnly- und kurzlebige Sitzungscookies. Daten werden bei der Übertragung (TLS, HSTS) und im Ruhezustand (AES-256) verschlüsselt; selbst bereitgestellte Connector-Anmeldedaten werden zusätzlich auf Anwendungsebene verschlüsselt (AES-256-GCM). Tenants sind durch Row-Level-Security logisch getrennt, zustandsändernde Anfragen sind CSRF-geschützt und ratenbegrenzt, und ein Audit-Log je Workspace protokolliert Exporte und administrative Aktionen.",
+    body: "Der Zugang zu einem Workspace erfolgt einladungs- und rollenbasiert (Inhaber, Administrator, Betrachter); die Anmeldung nutzt OpenID Connect mit PKCE sowie signierte, httpOnly- und kurzlebige Sitzungscookies. Daten werden bei der Übertragung (TLS, HSTS) und im Ruhezustand (AES-256) verschlüsselt; selbst bereitgestellte Connector-Anmeldedaten werden zusätzlich auf Anwendungsebene verschlüsselt (AES-256-GCM). Mandanten werden in der Anwendungsschicht bei jeder Abfrage logisch getrennt. PostgreSQL Row-Level Security blockiert zusätzlich jede Datenbankrolle außer der Anwendungsrolle. Zustandsändernde Anfragen sind CSRF-geschützt und ratenbegrenzt, und ein Audit-Log je Workspace protokolliert Exporte und administrative Aktionen.",
     linked: {
       pre: "Die vollständigen technischen und organisatorischen Maßnahmen finden Sie in ",
       linkText: "Anhang 2 des AVV",
@@ -297,25 +297,25 @@ const DE: TrustContent = {
       },
       {
         href: "/privacy",
-        label: "Datenschutzerklärung",
+        label: "Datenschutzerklärung (EN)",
         detail:
           "Was wir verarbeiten, auf welcher Rechtsgrundlage, wie lange und welche Betroffenenrechte gelten.",
       },
       {
         href: "/terms",
-        label: "AGB",
+        label: "AGB (EN)",
         detail:
           "Der B2B-Servicevertrag. Bei allem, was die Datenverarbeitung betrifft, geht der AVV den AGB vor.",
       },
       {
         href: "/cookies",
-        label: "Cookie-Richtlinie",
+        label: "Cookie-Richtlinie (EN)",
         detail:
           "Die funktionalen Cookies, die wir setzen, warum und wie lange sie gelten. Keine Tracking-Cookies.",
       },
       {
         href: "/faq",
-        label: "FAQ",
+        label: "FAQ (EN)",
         detail:
           "Verständliche Antworten auf die Fragen, die Sicherheits- und Identitätsteams am häufigsten stellen.",
       },

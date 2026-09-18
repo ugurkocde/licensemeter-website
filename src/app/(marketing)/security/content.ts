@@ -94,7 +94,7 @@ const EN: SecurityContent = {
       pre: "No role with consent rights at hand today? The ",
       linkText: "CSV import",
       href: "/app/connect/csv",
-      post: " computes your waste number from two Microsoft 365 admin center exports, with no consent at all. The link signs you in with Microsoft first.",
+      post: " computes your waste number from two Microsoft 365 admin center exports, with no consent at all. The link asks you to sign in first.",
     },
   },
   never: {
@@ -123,7 +123,7 @@ const EN: SecurityContent = {
   },
   residency: {
     title: "Data residency, retention and deletion",
-    body: "Customer application data is stored in the EU in a Supabase Postgres database hosted on AWS eu-central-1 (Frankfurt), matching the current Privacy Policy wording. Data is retained only while your tenant is connected. Disconnecting the workspace (Settings → Danger zone) deletes all synced data immediately and irreversibly: users, findings, prices, history. Revoking the enterprise application in your Entra ID additionally cuts our access at the source.",
+    body: "Customer application data is stored in the EU in a Supabase Postgres database hosted on AWS eu-central-1 (Frankfurt). Data is retained only while your tenant is connected. Disconnecting the workspace (Settings → Danger zone) deletes all synced data immediately and irreversibly: users, findings, prices, history. Revoking the enterprise application in your Entra ID additionally cuts our access at the source.",
   },
   subprocessors: {
     title: "Subprocessors",
@@ -207,7 +207,7 @@ const DE: SecurityContent = {
       pre: "Gerade keine Rolle mit Einwilligungsrechten zur Hand? Der ",
       linkText: "CSV-Import",
       href: "/app/connect/csv",
-      post: " berechnet Ihre Verschwendungssumme aus zwei Exporten des Microsoft 365 Admin Centers, ganz ohne Einwilligung. Der Link meldet Sie zunächst mit Microsoft an.",
+      post: " berechnet Ihre Verschwendungssumme aus zwei Exporten des Microsoft 365 Admin Centers, ganz ohne Einwilligung. Der Link fordert Sie zunächst zur Anmeldung auf.",
     },
   },
   never: {
@@ -236,7 +236,7 @@ const DE: SecurityContent = {
   },
   residency: {
     title: "Datenhaltung, Aufbewahrung und Löschung",
-    body: "Kundendaten der Anwendung werden in der EU gespeichert, in einer Supabase-Postgres-Datenbank auf AWS eu-central-1 (Frankfurt), entsprechend der aktuellen Formulierung der Datenschutzerklärung. Daten werden nur gespeichert, solange Ihr Tenant verbunden ist. Das Trennen des Workspace (Einstellungen → Gefahrenzone) löscht alle synchronisierten Daten sofort und unwiderruflich: Benutzer, Ergebnisse, Preise, Verlauf. Das Widerrufen der Unternehmensanwendung in Ihrem Entra ID unterbindet unseren Zugriff zusätzlich an der Quelle.",
+    body: "Kundendaten der Anwendung werden in der EU gespeichert, in einer Supabase-Postgres-Datenbank auf AWS eu-central-1 (Frankfurt). Daten werden nur gespeichert, solange Ihr Tenant verbunden ist. Das Trennen des Workspace (Einstellungen → Gefahrenzone) löscht alle synchronisierten Daten sofort und unwiderruflich: Benutzer, Ergebnisse, Preise, Verlauf. Das Widerrufen der Unternehmensanwendung in Ihrem Entra ID unterbindet unseren Zugriff zusätzlich an der Quelle.",
   },
   subprocessors: {
     title: "Unterauftragsverarbeiter",

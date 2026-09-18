@@ -1,9 +1,11 @@
 name: Guide link check
 
 # Weekly check that the official vendor documentation links embedded in the
-# connector setup guides still resolve. Some vendors (help.openai.com,
-# help.salesforce.com) block non-browser clients with 403 or render via JS, so
-# only hard failures count as broken: 404/410 or no connection at all.
+# connector setup guides, plus the external links on the marketing shell
+# (footer, navigation, home page, root layout), still resolve. Some vendors
+# (help.openai.com, help.salesforce.com) block non-browser clients with 403 or
+# render via JS, so only hard failures count as broken: 404/410 or no
+# connection at all.
 on:
   schedule:
     - cron: "0 5 * * 1"
@@ -18,10 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Check vendor doc links in src/lib/connectorGuides.ts
+      - name: Check vendor doc links and marketing shell links
         run: |
           broken=""
-          urls=$(grep -oE 'https://[a-zA-Z0-9./?&=_-]+' src/lib/connectorGuides.ts | sort -u)
+          files="src/lib/connectorGuides.ts src/components/MarketingFooter.tsx src/components/MarketingNav.tsx src/app/(marketing)/page.tsx src/app/layout.tsx"
+          urls=$(grep -ohE 'https://[a-zA-Z0-9./?&=_-]+' $files | sort -u)
           for url in $urls; do
             # curl -w prints 000 itself on connection failure; `|| true` keeps
             # the step alive under the runner's bash -e.
@@ -49,8 +52,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          title="Connector guide vendor links broken"
-          body=$(printf 'The weekly link check found vendor documentation links that no longer resolve:\n\n```\n%s```\n\nFix the href in src/lib/connectorGuides.ts. The step copy is written to stand alone, so only the link needs updating.' "$BROKEN")
+          title="Guide or marketing links broken"
+          body=$(printf 'The weekly link check found links that no longer resolve:\n\n```\n%s```\n\nFix the href in src/lib/connectorGuides.ts or the marketing shell (MarketingFooter, MarketingNav, the home page, the root layout). The step copy is written to stand alone, so only the link needs updating.' "$BROKEN")
           existing=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"

@@ -154,8 +154,8 @@ export default async function OverviewPage() {
 
   // Real, purchased SKUs only. Microsoft auto-provisions free/viral/capacity
   // sentinels (WINDOWS_STORE's 1,000,000 prepaid units, FLOW_FREE, etc.) into
-  // every tenant; they carry no cost and only add noise. Excluding them here —
-  // the same exemption the waste engine and seat-tier gate already use — keeps
+  // every tenant; they carry no cost and only add noise. Excluding them here
+  // (the same exemption the waste engine and seat-tier gate already use) keeps
   // the spend total, the assigned-seat count and the inventory table all
   // reconciled to one set of SKUs.
   const realSkus = skus.filter(
@@ -310,7 +310,7 @@ export default async function OverviewPage() {
         </>
       ) : null,
       explainer:
-        "The monthly cost of every open finding added together — this is the spend you could reclaim.",
+        "The monthly cost of every open finding added together. This is the spend you could reclaim.",
       detail: {
         formula:
           "Each open or acknowledged finding carries the monthly cost of the wasted seat. Monthly waste is the sum of those costs, grouped here by the rule that flagged them.",
@@ -320,7 +320,7 @@ export default async function OverviewPage() {
         rows: wasteRows,
         totalLabel: "Total monthly waste",
         totalValue: fmtMoney(monthlyWaste, currency),
-        emptyText: "No open findings — nothing flagged as waste.",
+        emptyText: "No open findings, nothing flagged as waste.",
         footnote: listPriceFootnote,
       },
     },
@@ -340,7 +340,7 @@ export default async function OverviewPage() {
         rows: annualRows,
         totalLabel: "Total annualized waste",
         totalValue: fmtMoney(monthlyWaste * 12, currency),
-        emptyText: "No open findings — nothing flagged as waste.",
+        emptyText: "No open findings, nothing flagged as waste.",
         footnote: listPriceFootnote,
       },
     },
