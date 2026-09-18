@@ -8,9 +8,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # Build-time env validation runs with NODE_ENV=production; these are
       # CI-only values, never used at runtime. WorkOS is the default auth
@@ -23,12 +28,21 @@ jobs:
       WORKOS_COOKIE_PASSWORD: ci-only-cookie-password-0123456789abcdef
       NEXT_PUBLIC_WORKOS_REDIRECT_URI: http://127.0.0.1:3100/auth/callback
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Check committed migrations match the schema
+        run: |
+          npx drizzle-kit generate --config docker/drizzle.config.ts --name ci_drift_check
+          if [ -n "$(git status --porcelain docker/migrations)" ]; then
+            echo "docker/migrations is out of date. Run: npm run db:generate -- --name <change>"
+            git status --porcelain docker/migrations
+            git diff -- docker/migrations
+            exit 1
+          fi
       - run: npm run db:push -- --force
       - run: npm run format:check
       - run: npm run lint
@@ -37,7 +51,17 @@ jobs:
       - run: npm run test:docker
       - run: node --test scripts/changelog-publish.test.mjs
       - run: node scripts/changelog-publish.mjs --check
-      - run: npm audit --omit=dev --audit-level=high
+      - id: audit
+        # Advisory only; the weekly Audit workflow tracks findings in an issue.
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
+      - if: steps.audit.outcome == 'failure'
+        run: |
+          {
+            echo "## npm audit"
+            echo
+            echo "High or critical advisories were reported for production dependencies. See the audit step log."
+          } >> "$GITHUB_STEP_SUMMARY"
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
@@ -46,8 +70,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
           cache: npm
