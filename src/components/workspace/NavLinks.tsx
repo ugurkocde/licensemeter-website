@@ -18,6 +18,7 @@ const ITEMS: NavItem[] = [
   { href: "/app/ai-costs", label: "AI costs" },
   { href: "/app/connectors", label: "Connectors" },
   { href: "/app/settings", label: "Settings" },
+  { href: "https://docs.licensemeter.com/", label: "Docs" },
   { href: "/support", label: "Support" },
 ];
 

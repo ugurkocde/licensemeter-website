@@ -10,6 +10,7 @@ const ENGLISH = [
   { href: "/connectors", label: "Connectors" },
   { href: "/msp", label: "MSP" },
   { href: "/trust-center", label: "Trust Center" },
+  { href: "https://docs.licensemeter.com/", label: "Docs" },
   { href: "/support", label: "Support" },
   {
     href: "https://github.com/ugurkocde/licensemeter-website",
@@ -21,6 +22,7 @@ const GERMAN = [
   { href: "/de/security", label: "Sicherheit" },
   { href: "/de/trust-center", label: "Trust Center" },
   { href: "/de/dpa", label: "AV-Vertrag" },
+  { href: "https://docs.licensemeter.com/", label: "Docs" },
   { href: "/", label: "English" },
   {
     href: "https://github.com/ugurkocde/licensemeter-website",

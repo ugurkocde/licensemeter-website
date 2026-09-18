@@ -1,0 +1,8 @@
+{
+  "title": "LicenseMeter documentation is now live",
+  "summary": "Explore 27 documentation pages covering getting started, all nine connectors, findings, contract prices, AI API costs, renewals, exports and self-hosting. Sixteen screenshots from the sample workspace show where to find key features. The guides explain data-coverage limits, the difference between estimated waste and verified resolutions, and how to troubleshoot common connection problems. Open Docs from the website navigation or workspace sidebar, including their mobile menus.",
+  "type": "new",
+  "publishedOn": "2026-09-18",
+  "idempotencyKey": "licensemeter:documentation-site:2026-09-18",
+  "sourceUrl": "https://docs.licensemeter.com/"
+}
