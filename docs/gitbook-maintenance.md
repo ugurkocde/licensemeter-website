@@ -2,7 +2,15 @@
 
 Public site: https://docs.licensemeter.com/
 
-The first publication contains 27 English pages and 16 sample-workspace screenshots. Content is in `docs/gitbook/`, with navigation in `SUMMARY.md` and optimized WebP images in `.gitbook/assets/`. This directory is the documentation source. The first publication used a GitBook change request; **Git Sync is not connected**.
+The documentation contains 36 English pages and 29 screenshots. Content is in `docs/gitbook/`, with navigation in `SUMMARY.md` and optimized WebP images in `.gitbook/assets/`. This directory is the documentation source. Publication uses GitBook change requests; **Git Sync is not connected**.
+
+## Onboarding coverage update
+
+Application source checked: `2e0e24cbcb94fbd282af09133d333e5b924d3eba` on 2026-09-18. The update adds nine guides and expands the existing onboarding, Microsoft, workspace and troubleshooting pages. It includes 13 new screenshots and a fictional practice CSV.
+
+- [Change request](https://app.gitbook.com/o/8JOz1GqzmW1uYxMKpPPG/s/LWIsqiRHwXSWQ10QGIRo/~/changes/8wULF9iDxKJi45m04IdK/)
+- [Change preview](https://docs.licensemeter.com/~/changes/2/)
+- [Verification and screenshot provenance](onboarding-verification.md)
 
 ## Initial publication
 

@@ -25,7 +25,7 @@ Open **Connectors** in the workspace sidebar. Select a provider to see its conne
 
 Use an Admin or Owner role in LicenseMeter. Obtain the provider access described on its guide, then enter credentials only in the connector's secure fields. A provider may grant a credential broader authority than LicenseMeter uses; the application performs read operations, but the credential itself must still be protected.
 
-Directory matching is particularly useful when Microsoft 365 is connected. A person without a match may be an external collaborator or use a different email address; investigate before treating them as departed.
+A live Microsoft 365 connection is a prerequisite for these additional provider connectors, including ChatGPT and Claude imports. CSV-only assessments and instant scans do not unlock them. If the page says to connect or reconnect Microsoft, complete that first. Directory matching uses the connected Microsoft directory. A person without a match may be an external collaborator or use a different email address; investigate before treating them as departed.
 
 ## After connecting
 

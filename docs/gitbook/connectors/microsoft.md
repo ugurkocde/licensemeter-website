@@ -1,74 +1,42 @@
 ---
-description: "Connect your Microsoft 365 tenant read-only: one-click admin consent, or bring your own Entra app registration (client secret or certificate)."
-icon: plug
+description: "Choose managed consent, your own app registration, or a Microsoft assessment from a snapshot."
 ---
 
 # Microsoft 365
 
-Microsoft 365 is the core directory LicenseMeter reads to find license waste. Most teams use the managed one-click path: a Global Administrator grants read-only application permissions once. If you prefer to own the app registration, the BYO path takes your own Entra app's credentials, stored encrypted and used only for the nightly read-only sync.
+Microsoft 365 provides the directory used to correlate users, licenses and other provider seats. Open **Connectors > Microsoft 365** in the intended workspace. You need LicenseMeter **Admin** or **Owner** to configure a live connection, plus the separate Microsoft authority required by your chosen path.
 
-Open **Connectors > Microsoft 365** in your workspace.
+## Choose one setup path
 
-<figure><img src="../.gitbook/assets/connector-microsoft.webp" alt="Microsoft 365 connector in the LicenseMeter sample workspace"><figcaption><p>LicenseMeter sample workspace. All names, costs and findings shown are demonstration data.</p></figcaption></figure>
+| Path | Use it when | Continue |
+| --- | --- | --- |
+| Managed consent | You want a live connection without supplying your own application credential | [Connect with managed consent](microsoft-managed.md) |
+| Bring your own registration | Your organization manages the app registration and credential, and the installation exposes this option | [Connect with your own app](microsoft-byo.md) |
+| CSV import | You have approved exports and want an assessment without API consent | [Import Microsoft CSV exports](../getting-started/csv-import.md) |
+| Instant scan | Your installation offers a delegated, one-time assessment | [Run an instant scan](../getting-started/instant-scan.md) |
 
-{% hint style="info" %}
-The screenshot shows sample data, not a live connection or provider consent screen. In your own workspace, the page presents the appropriate connection or import controls.
-{% endhint %}
+Managed and BYO connections provide scheduled and manual refreshes. Snapshot routes require a new import or scan. Additional provider connectors remain unavailable until a live Microsoft connection is established.
 
-## Setup
+<figure><img src="../.gitbook/assets/onboarding-microsoft.webp" alt="Microsoft connector before connection, showing managed consent, Advanced setup, instant scan and CSV alternatives"><figcaption><p>Isolated documentation workspace with fictional data. No live provider connection or customer data is shown.</p></figcaption></figure>
 
-{% stepper %}
-{% step %}
-### Managed (recommended): one-click admin consent
-
-On the Microsoft connector page, choose Grant admin consent. A Global Administrator approves LicenseMeter's read-only application permissions for your tenant in the Microsoft dialog. Nothing is stored on your side and nothing is ever written to your tenant. This is the default and needs no app registration.
-{% endstep %}
-
-{% step %}
-### Optional: bring your own registration
-
-If the deployment exposes the Advanced / bring-your-own-app option, use an organization-owned application registration and the exact application permissions listed below. Supply the tenant ID, client ID and a client secret, or the supported certificate credentials. Follow your normal approval process for granting tenant-wide read access. Self-hosted registrations are covered in the self-hosting setup guide.
-
-[Grant admin consent to an application](https://learn.microsoft.com/entra/identity/enterprise-apps/grant-admin-consent)
-{% endstep %}
-
-{% step %}
-### Verify
-
-On save, LicenseMeter acquires an app-only token and checks the token's roles claim contains every required permission, showing a green/red row per permission and blocking the save if any are missing. It also runs one live call against the usage Reports API. Switching between managed and BYO re-points the sync with no data loss.
-{% endstep %}
-{% endstepper %}
+This illustration enables all setup options. Your installation may show fewer choices; use the route it supports. A Viewer sees an instruction to ask a workspace Admin instead of setup controls.
 
 ## Data used
 
-- Directory users: name, UPN, enabled state and assigned licenses
-- Subscribed SKUs: purchased vs assigned seat counts
-- Sign-in activity (with Entra ID P1) and usage / Copilot activity reports
-- Whether report display names are concealed (a tenant setting)
+The live connector reads directory users and assigned licenses, purchased and assigned SKU counts, available sign-in activity, usage and Copilot reports, and report-privacy settings. It does not request mailbox, calendar, Teams message, OneDrive file or SharePoint document content.
 
-## Outside this connector's scope
-
-- Mailbox, calendar, Teams, OneDrive or SharePoint content: no content scopes are requested
-- Anything writable: every permission is read-only (*.Read.All)
-
-## Findings and limitations
-
-- Licenses assigned to accounts that are disabled in Entra ID.
-- Licenses nobody has signed into for your inactivity threshold.
-- Overlapping plans and shelfware across your subscribed SKUs.
-
-Managed consent grants ongoing, tenant-wide read access to the listed directory, license and reporting data. It does not grant LicenseMeter write permission. To stop future managed reads, revoke the application permissions for the LicenseMeter enterprise application in Entra and disconnect the integration in LicenseMeter. Revocation stops future refreshes; it does not erase previously imported data. For a registration you own, also revoke its secret or certificate when retiring it.
-
-After setup, check the refresh timestamp and [set contract prices](../licenses-and-prices.md) for any seat-based products. If validation or sync fails, start with [Troubleshooting](../troubleshooting/README.md).
-
-## Application permissions used by the connector
-
-| Permission | Purpose |
+| Application permission | Purpose |
 | --- | --- |
-| `User.Read.All` | directory users, enabled state, assigned licenses |
-| `AuditLog.Read.All` | last sign-in timestamps (needs Entra ID P1) |
-| `Reports.Read.All` | usage and Copilot activity reports |
-| `LicenseAssignment.Read.All` | purchased vs assigned seat counts |
-| `ReportSettings.Read.All` | whether report names are concealed |
+| User.Read.All | Directory users, enabled state and assigned licenses |
+| AuditLog.Read.All | Sign-in timestamps, subject to the tenant's licensing and available signal |
+| Reports.Read.All | Usage and Copilot activity reports |
+| LicenseAssignment.Read.All | Purchased versus assigned seat counts |
+| ReportSettings.Read.All | Whether reports conceal user identities |
 
-These are the permissions requested by the application connector. Sign-in and a delegated instant scan have separate authorization flows. Report privacy and source capabilities can still limit the results after consent. See [Report privacy](../troubleshooting/report-privacy.md).
+These are the live connector's **application** permissions. Account sign-in and a delegated instant scan are separate authorization flows. Read access is tenant-wide for the approved data, not limited to the person who signs in.
+
+## Verify and stop access
+
+Follow [Verify your first sync](../getting-started/first-sync.md) after setup, then [set contract prices](../licenses-and-prices.md). A completed run may still have reporting limitations; see [Report privacy](../troubleshooting/report-privacy.md).
+
+To stop future reads, disconnect Microsoft in LicenseMeter and revoke the application's consent in Entra as appropriate. For BYO, retire its credential only after checking whether anything else uses it. Disconnecting the connector does not erase imported workspace data and stops new syncs that depend on Microsoft. Removing a shared sign-in registration can also block self-hosted login; check that dependency first. Workspace data deletion is a separate destructive action in Settings.

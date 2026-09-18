@@ -21,7 +21,11 @@ Open **Settings** to review your workspace's data coverage, recent syncs and adm
 
 Use **Sync now** when available to refresh a connected workspace. Scheduled live sync runs daily at 03:00 UTC. Imported data requires a fresh import; an instant scan requires another scan.
 
-Check **Sync history** after a failed or partial refresh. Record the provider, timestamp and error before seeking help. Expired credentials, missing permissions and provider-side report availability need different fixes.
+For your first refresh, use the [first-sync checklist](../getting-started/first-sync.md). A partial run may still redirect to Overview. Check **Sync history** after a failed or partial refresh. Record the provider, timestamp and error before seeking help. Expired credentials, missing permissions and provider-side report availability need different fixes.
+
+## Members and joining
+
+Use **Members** to invite colleagues, resend expired invitations and manage their roles. Where company-domain joining is available, **Access requests** lets Admins and Owners approve or decline requests, and **Who can join** lets an Owner choose the policy. See the [membership walkthrough](members.md).
 
 ## Preferences and history
 

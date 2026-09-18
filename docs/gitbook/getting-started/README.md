@@ -1,44 +1,64 @@
 ---
-description: "Choose the sample workspace, a live connection, an instant scan, or a CSV import."
-icon: bolt
+description: "Go from your first sign-in to a checked, priced finding and a report you can share."
 ---
 
 # Getting started
 
-Start with the sample workspace to learn the interface. When you are ready, sign in to work with your own organization's data.
+Use this guide to set up your own workspace. If you only want to explore, take the separate [sample-workspace tour](sample-workspace.md). No account or provider consent is needed for that tour.
+
+## Choose your starting point
+
+| Your situation | Start here |
+| --- | --- |
+| You are setting up LicenseMeter for an organization | [Before you start](before-you-start.md), then [Sign in and find your workspace](sign-in.md) |
+| A colleague invited you, or you are waiting for approval | [Sign in and find your workspace](sign-in.md) |
+| You have Microsoft CSV exports and cannot grant API access | [Import Microsoft CSV exports](csv-import.md) |
+| You already have data but are unsure what to do next | [Verify your first sync](first-sync.md), then [Review your first finding](first-review.md) |
+| You operate your own installation | [Self-hosting](../self-hosting/README.md), then return here for the user workflow |
+
+## Your first complete workflow
 
 {% stepper %}
 {% step %}
-## Explore the sample tenant
+## Prepare access
 
-Open [licensemeter.com](https://www.licensemeter.com) and select **Open the sample tenant**. No provider keys or Microsoft admin consent are needed. The workspace contains fictional users, products, findings, renewals and AI costs.
+Read [Before you start](before-you-start.md). Decide who will own the workspace, which Microsoft tenant you will assess, and whether you will connect continuously or start with a snapshot.
 {% endstep %}
 {% step %}
-## Follow a finding
+## Sign in and confirm the workspace
 
-In **Overview**, select an item under **Next best actions**, or open **Findings**. Review the affected user or product, the evidence and the estimated monthly impact. The sample workspace is read-only; workflow and connector controls may show previews.
+[Sign in](sign-in.md) using the identity intended for this workspace. Check the workspace name and your role. A new empty workspace shows **Add your Microsoft 365 directory**. If your organization already uses LicenseMeter, request an invitation instead of creating a duplicate connection.
 {% endstep %}
 {% step %}
-## Check the price basis
+## Add Microsoft data
 
-Open **Licenses & prices**. Notice the distinction between list-price estimates and your own contract prices. In a real workspace, set contract prices before using the figures for procurement decisions.
+Choose one path: [managed consent](../connectors/microsoft-managed.md), [your own app registration](../connectors/microsoft-byo.md), [CSV import](csv-import.md), or an [instant scan](instant-scan.md) where available. These are alternatives, not four steps you must complete.
+
+Other provider connectors require a live Microsoft connection. A CSV import or instant scan provides a Microsoft assessment but does not unlock those connectors.
 {% endstep %}
 {% step %}
-## Choose your data source
+## Verify the result
 
-Leave the demo and sign in for your own workspace. Open **Connectors**, then choose the appropriate provider. Use the options below for Microsoft data.
+Follow [Verify your first sync](first-sync.md). Check the workspace, source freshness, Sync history and Detection capabilities. Reaching Overview does not prove the sync was complete: partial runs can also take you there.
+{% endstep %}
+{% step %}
+## Set prices and review one finding
+
+Use [Review your first finding](first-review.md) to enter a contract price, inspect the evidence, record a decision and export a report. You can complete this review without changing anything at a provider.
+{% endstep %}
+{% step %}
+## Bring in your team and other sources
+
+[Invite colleagues](../workspace/members.md) with the access they need. For continuous monitoring, add further [connectors](../connectors/README.md) after the live Microsoft connection is working. Review [Settings](../workspace/settings.md) for notifications and sync history.
 {% endstep %}
 {% endstepper %}
 
-## Which Microsoft connection fits?
+## You are ready when
 
-| Route | Suitable for | Refresh behavior |
-| --- | --- | --- |
-| Managed connector | Continuous monitoring with tenant-wide read access approved by an administrator | Scheduled sync and manual sync |
-| Bring your own app | Organizations that manage their own connector registration, where the deployment enables this option | Scheduled sync and manual sync |
-| Instant scan | A one-time read while signed in, where enabled | Run another scan to refresh |
-| CSV import | A first assessment from admin-center exports without granting API consent | Import fresh exports to refresh |
+- You can identify the active workspace and your role.
+- You know whether its data is live, imported or from a one-time scan.
+- You checked source coverage and the latest sync or import.
+- You reviewed the price basis and at least one finding's evidence.
+- You know who owns the next action and how to share a report.
 
-Sign-in access and provider-data access are separate. Creating a LicenseMeter account does not itself grant access to Microsoft 365 or another vendor.
-
-Continue with [Microsoft 365](../connectors/microsoft.md), [CSV imports](csv-import.md), or the [connector directory](../connectors/README.md).
+Zero findings alone is not a completion criterion. Missing data, permissions or prices can make an incomplete assessment look quiet.

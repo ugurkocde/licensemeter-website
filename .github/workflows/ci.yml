@@ -51,6 +51,8 @@ jobs:
       - run: npm run test:docker
       - run: node --test scripts/changelog-publish.test.mjs
       - run: node scripts/changelog-publish.mjs --check
+      - name: Validate documentation links, assets and navigation
+        run: node scripts/docs-check.mjs
       - id: audit
         # Advisory only; the weekly Audit workflow tracks findings in an issue.
         continue-on-error: true

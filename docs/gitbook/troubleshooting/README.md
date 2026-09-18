@@ -10,6 +10,10 @@ Start with the workspace name, the last successful sync and the provider's conne
 | Symptom | What to check |
 | --- | --- |
 | Controls do not save | Confirm your role and whether you are in the read-only sample workspace. |
+| Empty workspace after accepting an invitation | Check the sign-in email, invitation expiry, approval state and workspace switcher. See [sign-in guidance](../getting-started/sign-in.md). |
+| Microsoft tenant already connected to another workspace | Ask its Admin for an invitation; do not create a second binding. |
+| First sync is taking longer than expected | Refresh and inspect Sync history. The polling timeout does not prove the background sync stopped. See [first-sync recovery](../getting-started/first-sync.md). |
+| Other providers remain locked after CSV import or instant scan | Those routes create assessments; a live managed or BYO Microsoft connection is required for other connectors. |
 | Sign-in works but no Microsoft data appears | Sign-in does not grant provider access. Complete the connector flow, scan or import. |
 | Microsoft consent fails | Read the displayed error, confirm the selected tenant and the administrator's ability to grant the requested permissions. Self-hosted operators should also check registered redirect URIs. |
 | Sync fails after previously working | Check secret expiry, permission changes and provider availability. Inspect Sync history before retrying. |

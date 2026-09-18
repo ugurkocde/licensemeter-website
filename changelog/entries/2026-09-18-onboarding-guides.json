@@ -1,0 +1,8 @@
+{
+  "title": "A complete guide to your first LicenseMeter assessment",
+  "summary": "The documentation now walks you through sign-in, finding the right workspace, Microsoft setup, checking your first sync, setting prices and reviewing your first finding. Separate guides explain managed consent, your own app registration, CSV imports and instant scans. Invitations, access requests, recovery steps, illustrated examples and a fictional practice CSV help you get started and bring in your team.",
+  "type": "improved",
+  "publishedOn": "2026-09-18",
+  "idempotencyKey": "licensemeter:2026-09-18-onboarding-guides",
+  "sourceUrl": "https://docs.licensemeter.com/getting-started"
+}

@@ -27,8 +27,10 @@ Select **View breakdown** on a metric to inspect its calculation. The figures ar
 
 Use **Last synced** to judge data freshness. A recent timestamp does not by itself prove that every provider returned every signal; check [Settings and sync history](settings.md) for limitations or failures.
 
+For your first assessment, follow [Review your first finding](../getting-started/first-review.md) to connect these metrics to a concrete decision and report.
+
 ## Multiple workspaces
 
-Use the workspace switcher when available. **Portfolio** summarizes the workspaces you can access; a workspace with a different currency or incomplete prices needs its own context when comparing totals. Your membership and role apply separately to each workspace.
+Use the workspace switcher when available. **Portfolio** summarizes the workspaces you can access; a workspace with a different currency or incomplete prices needs its own context when comparing totals. Your membership and role apply separately to each workspace. On mobile, open the navigation menu to find the switcher. A pending company-domain request does not grant access; follow [workspace invitations and approvals](members.md).
 
 Next: [Roles and access](roles.md), [Findings](../findings/README.md), or [Renewals](../renewals.md).
