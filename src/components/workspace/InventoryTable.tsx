@@ -15,12 +15,7 @@ export type InventoryRow = {
 };
 
 type SortKey =
-  | "name"
-  | "purchased"
-  | "assigned"
-  | "unassigned"
-  | "utilization"
-  | "spend";
+  "name" | "purchased" | "assigned" | "unassigned" | "utilization" | "spend";
 type SortDir = "asc" | "desc";
 
 /** Over-assigned SKUs (assigned > purchased) have no spare seats; clamp to 0. */

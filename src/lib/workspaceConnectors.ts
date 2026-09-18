@@ -91,11 +91,7 @@ export const WORKSPACE_CONNECTORS = [
 
 export type WorkspaceConnectorId = (typeof WORKSPACE_CONNECTORS)[number]["id"];
 export type ConnectorStatus =
-  | "available"
-  | "connected"
-  | "imported"
-  | "attention"
-  | "demo";
+  "available" | "connected" | "imported" | "attention" | "demo";
 export type ConnectorSummary = {
   id: WorkspaceConnectorId;
   status: ConnectorStatus;

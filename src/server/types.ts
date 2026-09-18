@@ -121,10 +121,7 @@ export type AiSpendRow = {
 
 /** Human workflow layered over an automatically detected finding. */
 export type RemediationStatus =
-  | "unassigned"
-  | "planned"
-  | "requested"
-  | "in_progress";
+  "unassigned" | "planned" | "requested" | "in_progress";
 
 /** One Adobe Admin Console user as returned by the User Management API. */
 export type AdobeUser = {
