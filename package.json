@@ -25,7 +25,7 @@
     "test:docker": "node --test docker/*.test.mjs"
   },
   "dependencies": {
-    "@azure/msal-node": "^5.2.4",
+    "@azure/msal-node": "^6.0.0",
     "@electric-sql/pglite": "^0.5.8",
     "@radix-ui/themes": "^3.3.0",
     "@react-pdf/renderer": "^4.9.0",
