@@ -36,6 +36,8 @@ export default function PrivacyPolicyPage() {
           <br />
           Fährstraße 217, 40221 Düsseldorf, Germany
           <br />
+          Commercial register: Amtsgericht Düsseldorf, HRB 113979
+          <br />
           Managing Director: Ugur Koc
           <br />
           Email: {SUPPORT_EMAIL}
