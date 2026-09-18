@@ -13,7 +13,7 @@ export function GET(): Response {
 
 > ${SITE_DEFINITION}
 
-Operated by UgurLabs UG and maintained by Ugur Koc, Microsoft MVP for Intune and Security Copilot. Key facts:
+Operated by Ugurlabs UG and maintained by Ugur Koc, Microsoft MVP for Intune and Security Copilot. Key facts:
 
 - Read-only by design: the connector app holds no write scopes; remediation ships as generated PowerShell scripts that admins review and run themselves.
 - Never reads content: no mailboxes, files or messages. License assignments, sign-in activity and usage metadata only.
@@ -36,7 +36,7 @@ Operated by UgurLabs UG and maintained by Ugur Koc, Microsoft MVP for Intune and
 - [DPA](${base}/dpa): pre-signed Art. 28 GDPR data processing agreement, downloadable in English and German (German version at ${base}/de/dpa)
 - [FAQ](${base}/faq): the questions IT and security teams ask before granting admin consent
 - [Connectors](${base}/connectors): step-by-step setup guides for all ${CONNECTOR_GUIDES.length} connectors (${CONNECTOR_GUIDES.map((g) => g.name).join(", ")})
-- [Support](${base}/support): contact the UgurLabs team by chat or email
+- [Support](${base}/support): contact the Ugurlabs team by chat or email
 - [Status](${base}/status): live operational status for LicenseMeter and the infrastructure it relies on
 `;
   return new Response(body, {

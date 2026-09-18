@@ -2,6 +2,11 @@
 
 export type MembershipRole = "owner" | "admin" | "viewer";
 
+/** How verified colleagues on a workspace's email domain get in. */
+export type DomainJoinMode = "off" | "approval" | "auto";
+
+export type JoinRequestStatus = "pending" | "approved" | "declined";
+
 export type FindingStatus = "open" | "acknowledged" | "resolved";
 
 export type SyncRunStatus = "running" | "success" | "partial" | "failed";
@@ -162,6 +167,7 @@ export type AuditAction =
   | "export_audit_log_csv"
   | "leak_alerts_changed"
   | "monthly_report_changed"
+  | "email_preference_changed"
   | "tour_done"
   | "tour_reset"
   | "checkout_started"
@@ -177,7 +183,12 @@ export type AuditAction =
   | "msp_billing_portal_opened"
   | "msp_subscription_activated"
   | "msp_subscription_updated"
-  | "msp_subscription_canceled";
+  | "msp_subscription_canceled"
+  | "member_join_requested"
+  | "member_join_approved"
+  | "member_join_declined"
+  | "member_domain_joined"
+  | "domain_join_mode_changed";
 
 /** Aggregate counts captured when user identities are concealed in usage reports. */
 export type AggregateUsage = {

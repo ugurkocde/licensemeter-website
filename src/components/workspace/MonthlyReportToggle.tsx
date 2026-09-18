@@ -59,7 +59,7 @@ export const MonthlyReportToggle = ({ initial }: { initial: boolean }) => {
           }}
           className="accent-ink size-4 shrink-0"
         />
-        <span>Email me the PDF report monthly</span>
+        <span>Send admins the PDF report monthly</span>
       </label>
       <span
         role="status"

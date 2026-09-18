@@ -77,7 +77,16 @@ export const RULE_META: Record<
 export const ALL_RULES = Object.keys(RULE_META) as WasteRuleId[];
 
 export const isWasteRule = (value: string): value is WasteRuleId =>
-  value in RULE_META;
+  Object.hasOwn(RULE_META, value);
+
+/**
+ * Rules derived from the Microsoft directory and license data (everything
+ * that is not an Adobe or generic SaaS connector rule). Their findings carry
+ * directory names and go away with the Microsoft connection.
+ */
+export const MICROSOFT_RULES: WasteRuleId[] = ALL_RULES.filter(
+  (rule) => !rule.startsWith("saas_") && !rule.startsWith("adobe_"),
+);
 
 /** Chip suffix per generic SaaS rule, prefixed with the provider name when known. */
 const SAAS_CHIP_SUFFIX: Partial<Record<WasteRuleId, string>> = {
@@ -87,7 +96,7 @@ const SAAS_CHIP_SUFFIX: Partial<Record<WasteRuleId, string>> = {
 };
 
 const isSaasProvider = (value: unknown): value is SaasProvider =>
-  typeof value === "string" && value in CONNECTOR_LABELS;
+  typeof value === "string" && Object.hasOwn(CONNECTOR_LABELS, value);
 
 /**
  * Chip text for a concrete finding row. The generic SaaS rules store the

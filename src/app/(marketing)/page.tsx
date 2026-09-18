@@ -261,7 +261,7 @@ export default function LandingPage() {
           >
             Ugur Koc
           </a>
-          , Microsoft MVP for Intune and Security Copilot. Operated by UgurLabs
+          , Microsoft MVP for Intune and Security Copilot. Operated by Ugurlabs
           in Düsseldorf, Germany.
         </p>
       </section>

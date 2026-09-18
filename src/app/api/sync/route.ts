@@ -44,6 +44,8 @@ export const POST = async (req: Request) => {
   const ctx = await apiAccess("admin");
   if (!ctx)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (ctx.tenant.isDemo)
+    return NextResponse.json({ error: "demo_readonly" }, { status: 403 });
   // runSync holds its own concurrency lock; this only blunts hammering the
   // endpoint with costly Graph pulls.
   if (!(await rateLimitDurable(`sync:${ctx.tenant.id}`, 3, 10 * 60 * 1000))) {
@@ -51,7 +53,18 @@ export const POST = async (req: Request) => {
   }
 
   await audit(ctx, "sync_triggered", {});
-  const result = await runSync(ctx.tenant.id);
+  let result;
+  try {
+    result = await runSync(ctx.tenant.id);
+  } catch (err) {
+    // runSync records per-step failures itself; anything that still throws
+    // (credential resolution, lock bookkeeping) becomes a clean 500.
+    console.error(
+      "[api/sync]",
+      err instanceof Error ? err.message : String(err),
+    );
+    return NextResponse.json({ error: "sync_failed" }, { status: 500 });
+  }
   revalidatePath("/app", "layout");
   return NextResponse.json(result);
 };

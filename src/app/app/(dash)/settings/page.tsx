@@ -3,19 +3,24 @@ import Link from "next/link";
 
 import { CurrencySelect } from "~/components/workspace/CurrencySelect";
 import { DangerZone } from "~/components/workspace/DangerZone";
+import { DomainJoinControl } from "~/components/workspace/DomainJoinControl";
+import { EmailPreferenceToggle } from "~/components/workspace/EmailPreferenceToggle";
 import { InactiveDaysForm } from "~/components/workspace/InactiveDaysForm";
 import { InviteForm } from "~/components/workspace/InviteForm";
+import { JoinRequestActions } from "~/components/workspace/JoinRequestActions";
 import { LeakAlertsToggle } from "~/components/workspace/LeakAlertsToggle";
 import { MemberActions } from "~/components/workspace/MemberActions";
 import { MonthlyReportToggle } from "~/components/workspace/MonthlyReportToggle";
 import { ReplayTourButton } from "~/components/workspace/ReplayTourButton";
 import { RoleSelect } from "~/components/workspace/RoleSelect";
 import { Card, Pill } from "~/components/ui";
+import { authProvider } from "~/env";
 import { fmtDate, fmtDateTime, workspaceLabel } from "~/lib/format";
 import { ROLE_DESCRIPTION } from "~/lib/roles";
 import { hasRole, inviteExpiry, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
 import { auditLog, memberships, syncRuns } from "~/server/db/schema";
+import { holdsJoinableDomain, pendingJoinRequests } from "~/server/domainJoin";
 import { emailEnabled } from "~/server/email";
 import { syncStepLabel } from "~/lib/activityLabels";
 
@@ -62,23 +67,34 @@ export default async function SettingsPage() {
   const canEdit = isAdmin && !ctx.tenant.isDemo;
   const inviteEmailsActive = emailEnabled() && !ctx.tenant.isDemo;
 
-  const [members, runs, activity] = await Promise.all([
-    db.query.memberships.findMany({
-      where: eq(memberships.tenantId, ctx.tenant.id),
-    }),
-    db.query.syncRuns.findMany({
-      where: eq(syncRuns.tenantId, ctx.tenant.id),
-      orderBy: desc(syncRuns.startedAt),
-      limit: 8,
-    }),
-    isAdmin
-      ? db.query.auditLog.findMany({
-          where: eq(auditLog.tenantId, ctx.tenant.id),
-          orderBy: desc(auditLog.createdAt),
-          limit: 30,
-        })
-      : Promise.resolve([]),
-  ]);
+  const [members, runs, activity, joinRequests, joinByDomain] =
+    await Promise.all([
+      db.query.memberships.findMany({
+        where: eq(memberships.tenantId, ctx.tenant.id),
+      }),
+      db.query.syncRuns.findMany({
+        where: eq(syncRuns.tenantId, ctx.tenant.id),
+        orderBy: desc(syncRuns.startedAt),
+        limit: 8,
+      }),
+      isAdmin
+        ? db.query.auditLog.findMany({
+            where: eq(auditLog.tenantId, ctx.tenant.id),
+            orderBy: desc(auditLog.createdAt),
+            limit: 30,
+          })
+        : Promise.resolve([]),
+      // Access requests and the "Who can join" setting are for owners and
+      // admins only. Domain join runs under WorkOS sign-in, for the one
+      // workspace that holds a company email domain; elsewhere the control
+      // would do nothing, so it is not shown.
+      isAdmin && !ctx.tenant.isDemo
+        ? pendingJoinRequests(db, ctx.tenant.id)
+        : Promise.resolve([]),
+      isAdmin && authProvider() === "workos"
+        ? holdsJoinableDomain(db, ctx.tenant)
+        : Promise.resolve(false),
+    ]);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 pb-8">
@@ -180,6 +196,45 @@ export default async function SettingsPage() {
                 <ReplayTourButton storageId={ctx.membership.id} />
               </dd>
             </div>
+            {canEdit && (
+              <>
+                <div className="border-line mt-2 border-t pt-4 sm:col-span-2">
+                  <h3 className="text-ink-faint text-[11px] font-medium tracking-[0.16em] uppercase">
+                    Email me
+                  </h3>
+                  <p className="text-ink-soft mt-1 text-sm">
+                    Your own copy for this workspace, sent to{" "}
+                    {ctx.membership.email}. Other admins decide for themselves.
+                  </p>
+                </div>
+                <div>
+                  <dt className="sr-only">Weekly digest email</dt>
+                  <dd>
+                    <EmailPreferenceToggle
+                      job="digest"
+                      label="Weekly digest"
+                      initial={!ctx.membership.digestOptOut}
+                    />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="sr-only">Monthly report email</dt>
+                  <dd>
+                    <EmailPreferenceToggle
+                      job="report"
+                      label="Monthly report"
+                      initial={!ctx.membership.reportOptOut}
+                    />
+                    {!ctx.tenant.monthlyReport && (
+                      <p className="text-ink-faint mt-1 text-xs">
+                        Applies once the monthly PDF report is on for this
+                        workspace.
+                      </p>
+                    )}
+                  </dd>
+                </div>
+              </>
+            )}
           </dl>
         </Card>
 
@@ -288,6 +343,7 @@ export default async function SettingsPage() {
                   <div className="text-ink-faint truncate text-xs">
                     {m.email}
                     {!m.oid &&
+                      !m.workosUserId &&
                       (inviteExpiry(m.createdAt) < new Date()
                         ? " · invite expired"
                         : ` · invited, expires ${fmtDate(inviteExpiry(m.createdAt))}`)}
@@ -311,7 +367,7 @@ export default async function SettingsPage() {
                   {isAdmin && !ctx.tenant.isDemo && (
                     <MemberActions
                       membershipId={m.id}
-                      canResend={!m.oid}
+                      canResend={!m.oid && !m.workosUserId}
                       canRemove={m.id !== ctx.membership.id}
                     />
                   )}
@@ -319,6 +375,44 @@ export default async function SettingsPage() {
               </li>
             ))}
           </ul>
+
+          {joinRequests.length > 0 && (
+            <div className="border-line mt-4 border-t pt-4">
+              <h3 className="text-sm font-medium">Access requests</h3>
+              <p className="text-ink-faint mt-0.5 text-xs">
+                Colleagues who signed in with a verified company email. Approved
+                people start as viewer.
+              </p>
+              <ul className="mt-1 flex flex-col">
+                {joinRequests.map((r) => (
+                  <li
+                    key={r.id}
+                    className="border-line flex items-center justify-between gap-3 border-b py-2.5 text-sm last:border-b-0"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">
+                        {r.name ?? r.email}
+                      </div>
+                      <div className="text-ink-faint truncate text-xs">
+                        {r.email} · asked {fmtDate(r.createdAt)}
+                      </div>
+                    </div>
+                    <div className="shrink-0">
+                      <JoinRequestActions requestId={r.id} email={r.email} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {joinByDomain && ctx.tenant.domain && (
+            <DomainJoinControl
+              domain={ctx.tenant.domain}
+              initial={ctx.tenant.domainJoinMode}
+              canEdit={isOwner}
+            />
+          )}
 
           {isAdmin && !ctx.tenant.isDemo && (
             <InviteForm

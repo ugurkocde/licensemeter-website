@@ -1,13 +1,4 @@
-import {
-  and,
-  eq,
-  inArray,
-  isNotNull,
-  lt,
-  notInArray,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 
 import { siteUrl } from "~/env";
 import { fmtMoney, workspaceLabel } from "~/lib/format";
@@ -17,7 +8,6 @@ import {
   adobeUsers as adobeUsersTable,
   aiSpendDaily,
   findings,
-  memberships,
   msConnections,
   priceBook,
   saasConnections,
@@ -58,8 +48,13 @@ import {
 import { emailEnabled, leakAlertHtml, sendEmail } from "~/server/email";
 import { pickLeakFindings } from "~/server/leakAlerts";
 import { notifyOps } from "~/server/ops";
+import { workspaceAdminEmails } from "~/server/workspaceEmail";
 import { aiSpendSinceDay } from "~/server/sync/aiSpendWindow";
-import { joinSignals } from "~/server/sync/join";
+import {
+  entraIdentitiesOf,
+  joinSignals,
+  storedIdentitiesOf,
+} from "~/server/sync/join";
 import type { SyncRunStatus, SyncStep, WasteRuleId } from "~/server/types";
 import {
   analyzeWaste,
@@ -84,6 +79,15 @@ const errText = (err: unknown): string => {
   console.error("[sync]", message);
   return message.slice(0, 300);
 };
+
+/** Steps that need a Graph credential; skipped when Microsoft is not connected. */
+const MICROSOFT_STEPS = [
+  "subscribedSkus",
+  "reportSettings",
+  "users",
+  "usageReports",
+  "copilotUsage",
+] as const satisfies readonly SyncStep["step"][];
 
 export type SyncResult = {
   runId: string;
@@ -168,11 +172,23 @@ export const runSync = async (
   });
   if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
 
-  const client: GraphClient =
-    clientOverride ??
-    (tenant.isDemo
-      ? new DemoGraphClient()
-      : await msGraphClientForTenant(tenant));
+  // A workspace that connected Adobe or SaaS tools but never Microsoft has no
+  // Graph credential: the Microsoft steps are recorded as skipped and the run
+  // continues with the connector steps and the analysis. Same condition as
+  // resolveMsCredential's "no Microsoft tenant connected" rejection.
+  const hasMicrosoft =
+    Boolean(clientOverride) ||
+    tenant.isDemo ||
+    tenant.tid !== null ||
+    (await db.query.msConnections.findFirst({
+      where: eq(msConnections.tenantId, tenantId),
+    })) !== undefined;
+  const client: GraphClient | null = hasMicrosoft
+    ? (clientOverride ??
+      (tenant.isDemo
+        ? new DemoGraphClient()
+        : await msGraphClientForTenant(tenant)))
+    : null;
 
   // Fail runs stuck in "running" (crashed process) so the lock cannot
   // deadlock. The threshold must STRICTLY exceed the worst-case wall-clock of a
@@ -205,14 +221,18 @@ export const runSync = async (
       .values({ tenantId, status: "running" })
       .returning({ id: syncRuns.id });
     runId = run!.id;
-  } catch {
+  } catch (err) {
+    // Only a unique violation means "lock held"; anything else (connection
+    // loss, FK failure) must surface instead of masquerading as a running sync.
+    if (!isUniqueViolation(err)) throw err;
     const inFlight = await db.query.syncRuns.findFirst({
       where: and(
         eq(syncRuns.tenantId, tenantId),
         eq(syncRuns.status, "running"),
       ),
     });
-    return { runId: inFlight?.id ?? "", status: "running", steps: [] };
+    if (!inFlight) throw err;
+    return { runId: inFlight.id, status: "running", steps: [] };
   }
 
   const steps: SyncStep[] = [];
@@ -230,96 +250,114 @@ export const runSync = async (
     }
 
     // --- Pull phase -----------------------------------------------------
-    const orgName = await client.getOrganizationName();
-
+    let orgName: string | null = null;
     let skus: GraphSubscribedSku[] = [];
-    try {
-      skus = await client.getSubscribedSkus();
-      steps.push({ step: "subscribedSkus", status: "ok", count: skus.length });
-    } catch (err) {
-      steps.push({
-        step: "subscribedSkus",
-        status: "failed",
-        message: errText(err),
-      });
-      throw err; // critical: nothing useful without SKUs
-    }
-
     let concealmentSetting: boolean | null = null;
-    try {
-      concealmentSetting = await client.getReportConcealment();
-      steps.push({
-        step: "reportSettings",
-        status: concealmentSetting === null ? "warning" : "ok",
-        message:
-          concealmentSetting === null
-            ? "Could not read /admin/reportSettings"
-            : `displayConcealedNames=${concealmentSetting}`,
-      });
-    } catch {
-      steps.push({ step: "reportSettings", status: "warning" });
-    }
-
     let graphUsers: GraphUser[] = [];
     let hasP1 = true;
-    try {
-      try {
-        graphUsers = await client.listUsers({ includeSignInActivity: true });
-        steps.push({ step: "signInActivity", status: "ok" });
-      } catch (err) {
-        if (err instanceof PremiumLicenseRequiredError) {
-          hasP1 = false;
-          steps.push({
-            step: "signInActivity",
-            status: "skipped",
-            message:
-              "Sign-in activity unavailable (no Entra ID P1/P2, or AuditLog.Read.All not granted); falling back to usage reports",
-          });
-          graphUsers = await client.listUsers({ includeSignInActivity: false });
-        } else {
-          throw err;
-        }
-      }
-      steps.push({ step: "users", status: "ok", count: graphUsers.length });
-    } catch (err) {
-      steps.push({
-        step: "users",
-        status: "failed",
-        message: errText(err),
-      });
-      throw err; // critical
-    }
-
     let usageRows: UsageReportRow[] = [];
-    try {
-      usageRows = await client.getActiveUserDetail("D90");
-      steps.push({
-        step: "usageReports",
-        status: "ok",
-        count: usageRows.length,
-      });
-    } catch (err) {
-      steps.push({
-        step: "usageReports",
-        status: "warning",
-        message: errText(err),
-      });
-    }
-
     let copilotRows: CopilotUsageRow[] = [];
-    try {
-      copilotRows = await client.getCopilotUsage("D90");
-      steps.push({
-        step: "copilotUsage",
-        status: "ok",
-        count: copilotRows.length,
-      });
-    } catch (err) {
-      steps.push({
-        step: "copilotUsage",
-        status: "warning",
-        message: errText(err),
-      });
+
+    if (!client) {
+      for (const step of MICROSOFT_STEPS) {
+        steps.push({
+          step,
+          status: "skipped",
+          message: "Microsoft 365 is not connected",
+        });
+      }
+    } else {
+      orgName = await client.getOrganizationName();
+
+      try {
+        skus = await client.getSubscribedSkus();
+        steps.push({
+          step: "subscribedSkus",
+          status: "ok",
+          count: skus.length,
+        });
+      } catch (err) {
+        steps.push({
+          step: "subscribedSkus",
+          status: "failed",
+          message: errText(err),
+        });
+        throw err; // critical: nothing useful without SKUs
+      }
+
+      try {
+        concealmentSetting = await client.getReportConcealment();
+        steps.push({
+          step: "reportSettings",
+          status: concealmentSetting === null ? "warning" : "ok",
+          message:
+            concealmentSetting === null
+              ? "Could not read /admin/reportSettings"
+              : `displayConcealedNames=${concealmentSetting}`,
+        });
+      } catch {
+        steps.push({ step: "reportSettings", status: "warning" });
+      }
+
+      try {
+        try {
+          graphUsers = await client.listUsers({ includeSignInActivity: true });
+          steps.push({ step: "signInActivity", status: "ok" });
+        } catch (err) {
+          if (err instanceof PremiumLicenseRequiredError) {
+            hasP1 = false;
+            steps.push({
+              step: "signInActivity",
+              status: "skipped",
+              message:
+                "Sign-in activity unavailable (no Entra ID P1/P2, or AuditLog.Read.All not granted); falling back to usage reports",
+            });
+            graphUsers = await client.listUsers({
+              includeSignInActivity: false,
+            });
+          } else {
+            throw err;
+          }
+        }
+        steps.push({ step: "users", status: "ok", count: graphUsers.length });
+      } catch (err) {
+        steps.push({
+          step: "users",
+          status: "failed",
+          message: errText(err),
+        });
+        throw err; // critical
+      }
+
+      try {
+        usageRows = await client.getActiveUserDetail("D90");
+        steps.push({
+          step: "usageReports",
+          status: "ok",
+          count: usageRows.length,
+        });
+      } catch (err) {
+        steps.push({
+          step: "usageReports",
+          status: "warning",
+          message: errText(err),
+        });
+      }
+
+      try {
+        copilotRows = await client.getCopilotUsage("D90");
+        steps.push({
+          step: "copilotUsage",
+          status: "ok",
+          count: copilotRows.length,
+        });
+      } catch (err) {
+        steps.push({
+          step: "copilotUsage",
+          status: "warning",
+          message: errText(err),
+        });
+      }
     }
 
     // --- Adobe: entitlements for offboarding-leak detection ----------------
@@ -785,12 +823,22 @@ export const runSync = async (
       copilotAggregate: joined.copilotAggregate,
       inactiveDays: tenant.inactiveDays,
     });
-    const entraIdentities = joined.users.map((u) => ({
-      graphId: u.graphId,
-      upn: u.upn,
-      displayName: u.displayName,
-      accountEnabled: u.accountEnabled,
-    }));
+    // Every sign-in name plus mail alias of each directory user, so connector
+    // seats registered under an alias still match (in-memory only; the
+    // tenant_users table keeps the UPN alone).
+    // No Graph pull this run (Microsoft not connected, or an empty result that
+    // left the stored inventory alone): correlate against the stored directory
+    // instead, which a CSV import fills without any Microsoft connection.
+    // Dropping it here would resolve the leak findings runAnalysis creates and
+    // recreate them on the next analysis.
+    const entraIdentities =
+      graphUsers.length > 0
+        ? entraIdentitiesOf(graphUsers)
+        : storedIdentitiesOf(
+            await db.query.tenantUsers.findMany({
+              where: eq(tenantUsers.tenantId, tenantId),
+            }),
+          );
     const adobeFindings = analyzeAdobeWaste(adobeRows, entraIdentities, prices);
     const saasFindings = [...saasRows.entries()].flatMap(([provider, seats]) =>
       analyzeSaasWaste(provider, seats, entraIdentities, prices, {
@@ -857,18 +905,22 @@ export const runSync = async (
         },
       });
 
-    await db
-      .update(tenants)
-      .set({
-        hasP1,
-        concealedNames: concealmentSetting ?? joined.concealed,
-        activitySignal: joined.activitySignal,
-        copilotSignal: joined.copilotSignal,
-        usageAggregate: joined.usageAggregate ?? null,
-        copilotAggregate: joined.copilotAggregate ?? null,
-        ...(orgName && !tenant.isDemo ? { name: orgName } : {}),
-      })
-      .where(eq(tenants.id, tenantId));
+    // Directory capabilities describe the Microsoft connection; a workspace
+    // without one keeps its stored values untouched.
+    if (client) {
+      await db
+        .update(tenants)
+        .set({
+          hasP1,
+          concealedNames: concealmentSetting ?? joined.concealed,
+          activitySignal: joined.activitySignal,
+          copilotSignal: joined.copilotSignal,
+          usageAggregate: joined.usageAggregate ?? null,
+          copilotAggregate: joined.copilotAggregate ?? null,
+          ...(orgName && !tenant.isDemo ? { name: orgName } : {}),
+        })
+        .where(eq(tenants.id, tenantId));
+    }
 
     const status: SyncRunStatus = steps.some((s) => s.status === "failed")
       ? "partial"
@@ -880,7 +932,7 @@ export const runSync = async (
     // The Microsoft connection authenticated and pulled data: clear any prior
     // credential error and stamp the verification time (no-op for tenants
     // without an msConnections row).
-    if (!tenant.isDemo) {
+    if (client && !tenant.isDemo) {
       await db
         .update(msConnections)
         .set({ lastVerifiedAt: new Date(), lastVerifyError: null })
@@ -917,6 +969,19 @@ export const runSync = async (
     );
     return { runId, status: "failed", steps };
   }
+};
+
+/** Postgres unique_violation, as surfaced by postgres-js and PGlite (directly or as cause). */
+const isUniqueViolation = (err: unknown): boolean => {
+  const code = (e: unknown): unknown =>
+    typeof e === "object" && e !== null && "code" in e
+      ? (e as { code?: unknown }).code
+      : undefined;
+  const cause =
+    typeof err === "object" && err !== null && "cause" in err
+      ? (err as { cause?: unknown }).cause
+      : undefined;
+  return code(err) === "23505" || code(cause) === "23505";
 };
 
 /**
@@ -958,7 +1023,16 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
         where: eq(saasSeatsTable.tenantId, tenantId),
       }),
     ]);
-  if (skuRows.length === 0 && userRows.length === 0) return;
+  // Nothing synced yet from any source: keep the stored findings untouched.
+  // Adobe/SaaS rows alone are enough to analyze (workspaces without a
+  // Microsoft connection), and vanished seats then resolve their findings.
+  if (
+    skuRows.length === 0 &&
+    userRows.length === 0 &&
+    adobeRows.length === 0 &&
+    saasSeatRows.length === 0
+  )
+    return;
 
   const now = new Date();
   const prices = Object.fromEntries(
@@ -1000,12 +1074,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     inactiveDays: tenant.inactiveDays,
   });
 
-  const entraIdentities = userRows.map((r) => ({
-    graphId: r.graphId,
-    upn: r.upn,
-    displayName: r.displayName,
-    accountEnabled: r.accountEnabled,
-  }));
+  const entraIdentities = storedIdentitiesOf(userRows);
   const adobeFindings = analyzeAdobeWaste(
     adobeRows.map((r) => ({
       email: r.email,
@@ -1184,16 +1253,7 @@ const sendLeakAlert = async (
     const leaks = pickLeakFindings(inserted);
     if (leaks.length === 0) return;
 
-    const admins = await db.query.memberships.findMany({
-      where: and(
-        eq(memberships.tenantId, tenant.id),
-        inArray(memberships.role, ["owner", "admin"]),
-        // A claimed membership has signed in via either provider: entra sets
-        // oid, workos sets workosUserId. Pending invites have neither.
-        or(isNotNull(memberships.oid), isNotNull(memberships.workosUserId)),
-      ),
-    });
-    const to = admins.map((m) => m.email).filter(Boolean);
+    const to = await workspaceAdminEmails(tenant.id);
     if (to.length === 0) return;
 
     const totalCents = leaks.reduce((s, f) => s + f.monthlyImpactCents, 0);

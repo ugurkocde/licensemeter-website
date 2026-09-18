@@ -1,0 +1,7 @@
+{
+  "title": "Tighter checks when connecting a Microsoft tenant",
+  "summary": "The Microsoft connect flow now verifies that the person who started it is the one finishing it, and the consent stays bound to the workspace it was started from. Reconnecting no longer changes existing member roles, and a workspace already linked to one Microsoft tenant must be disconnected before another can be added. The sample workspace and sign-up emails also have stricter limits.",
+  "type": "improved",
+  "publishedOn": "2026-09-18",
+  "idempotencyKey": "licensemeter:2026-09-18-connection-security-hardening"
+}

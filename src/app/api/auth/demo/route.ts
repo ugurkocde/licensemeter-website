@@ -21,7 +21,7 @@ export const POST = async (req: Request) => {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   const ip = clientIp(req.headers);
-  if (!(await rateLimitDurable(`demo:${ip}`, 20, 60 * 60 * 1000))) {
+  if (!(await rateLimitDurable(`demo:${ip}`, 20, 60 * 60 * 1000, "deny"))) {
     return NextResponse.json({ error: "rate limited" }, { status: 429 });
   }
   // Lead signal for the founder; hourly cooldown so curious clicking

@@ -37,7 +37,7 @@ export default function TermsPage() {
           These Terms and Conditions govern the use of the online service
           LicenseMeter (the &ldquo;Service&rdquo;) by companies and other
           organizations (the &ldquo;Customer&rdquo;). The provider and
-          contracting party is UgurLabs UG (haftungsbeschränkt), Fährstraße 217,
+          contracting party is Ugurlabs UG (haftungsbeschränkt), Fährstraße 217,
           40221 Düsseldorf, Germany, registered with the commercial register of
           the Local Court (Amtsgericht) of Düsseldorf under HRB 113979,
           represented by its Managing Director Ugur Koc (the

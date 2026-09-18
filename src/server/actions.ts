@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
+import { z } from "zod";
 
 import {
   apiAccess,
@@ -14,6 +15,11 @@ import {
   workspaceCookieOptions,
 } from "~/server/access";
 import { audit } from "~/server/audit";
+import {
+  approveJoinRequestRow,
+  declineJoinRequestRow,
+  holdsJoinableDomain,
+} from "~/server/domainJoin";
 import { db } from "~/server/db";
 import {
   adobeConnections,
@@ -47,6 +53,7 @@ import {
 import { parseMembers } from "~/server/saas/parseMembers";
 import { normalizeSalesforceOrgRef } from "~/server/saas/salesforce";
 import { connectorSpec } from "~/lib/connectors";
+import { MICROSOFT_RULES } from "~/lib/rules";
 import { isSupportedCurrency } from "~/lib/currency";
 import { rateBetween } from "~/lib/exchangeRates";
 import { workspaceLabel } from "~/lib/format";
@@ -57,14 +64,19 @@ import { notifyOps } from "~/server/ops";
 import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import { maybeSendWelcome } from "~/server/welcome";
 import {
+  sendJoinApproved,
   sendWorkspaceDeleted,
   workspaceAdminEmails,
 } from "~/server/workspaceEmail";
 import { teardownTenantWorkosOrg } from "~/server/auth/workos";
-import { byoConnectorEnabled, siteUrl } from "~/env";
+import { authProvider, byoConnectorEnabled, siteUrl } from "~/env";
 import { runAnalysis, runSync } from "~/server/sync/runSync";
 import { fetchEcbReferenceRates } from "~/server/exchangeRates";
-import type { MembershipRole, RemediationStatus } from "~/server/types";
+import type {
+  DomainJoinMode,
+  MembershipRole,
+  RemediationStatus,
+} from "~/server/types";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -479,7 +491,12 @@ export const addMember = async (formData: FormData): Promise<ActionResult> => {
     return fail("Only owners can add owners");
   }
   if (
-    !(await rateLimitDurable(`invite:${ctx.tenant.id}`, 20, 60 * 60 * 1000))
+    !(await rateLimitDurable(
+      `invite:${ctx.tenant.id}`,
+      20,
+      60 * 60 * 1000,
+      "deny",
+    ))
   ) {
     return fail("Too many invites this hour, please try again later");
   }
@@ -561,7 +578,12 @@ export const resendInvite = async (
   if (target.oid || target.workosUserId)
     return fail("This member has already signed in");
   if (
-    !(await rateLimitDurable(`resend:${ctx.tenant.id}`, 10, 60 * 60 * 1000))
+    !(await rateLimitDurable(
+      `resend:${ctx.tenant.id}`,
+      10,
+      60 * 60 * 1000,
+      "deny",
+    ))
   ) {
     return fail("Too many resends this hour");
   }
@@ -679,6 +701,118 @@ export const changeMemberRole = async (
   return ok();
 };
 
+const MEMBERS_DEMO_READONLY =
+  "The demo workspace keeps its members fixed. Connect your own tenant to manage people.";
+
+const domainJoinModeSchema = z.enum(["off", "approval", "auto"]);
+const joinRequestIdSchema = z.string().uuid();
+
+/**
+ * Owner-only: how verified colleagues on the workspace's email domain get in.
+ * Only meaningful for the workspace that holds a corporate domain under WorkOS
+ * sign-in; everywhere else the setting is refused rather than stored unused.
+ */
+export const setDomainJoinMode = async (
+  mode: DomainJoinMode,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("owner");
+  if (!ctx) return fail("Only owners can change who can join");
+  if (ctx.tenant.isDemo) return fail(MEMBERS_DEMO_READONLY);
+  const parsed = domainJoinModeSchema.safeParse(mode);
+  if (!parsed.success) return fail("Invalid option");
+  if (
+    authProvider() !== "workos" ||
+    !(await holdsJoinableDomain(db, ctx.tenant))
+  ) {
+    return fail("This workspace has no company email domain to join by");
+  }
+  if (ctx.tenant.domainJoinMode === parsed.data) return ok();
+
+  await db
+    .update(tenants)
+    .set({ domainJoinMode: parsed.data })
+    .where(eq(tenants.id, ctx.tenant.id));
+  await audit(ctx, "domain_join_mode_changed", {
+    from: ctx.tenant.domainJoinMode,
+    to: parsed.data,
+  });
+  revalidateApp();
+  return ok();
+};
+
+/**
+ * Approve a colleague's access request: links a viewer membership and tells
+ * the requester. Scoped to the active workspace, and safe to repeat: a second
+ * click finds the request already approved and changes nothing.
+ */
+export const approveJoinRequest = async (
+  requestId: string,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(MEMBERS_DEMO_READONLY);
+  const id = joinRequestIdSchema.safeParse(requestId);
+  if (!id.success) return fail("Request not found");
+  if (
+    !(await rateLimitDurable(
+      `join-decide:${ctx.tenant.id}`,
+      60,
+      60 * 60 * 1000,
+      "deny",
+    ))
+  ) {
+    return fail("Too many decisions this hour, please try again later");
+  }
+
+  const result = await approveJoinRequestRow(db, {
+    tenantId: ctx.tenant.id,
+    requestId: id.data,
+    decidedByMembershipId: ctx.membership.id,
+  });
+  if (result.status === "not_found") return fail("Request not found");
+  if (result.status === "conflict") {
+    return fail(
+      "This request was already declined. Invite the person instead.",
+    );
+  }
+  if (result.changed) {
+    const { email } = result.request;
+    await audit(ctx, "member_join_approved", { email, role: "viewer" });
+    // Best-effort and deferred: the approval stands even if the mail fails.
+    after(() => sendJoinApproved(ctx.tenant, email).catch(() => null));
+  }
+  revalidateApp();
+  return ok();
+};
+
+/** Decline an access request. The person is not notified and not asked about again. */
+export const declineJoinRequest = async (
+  requestId: string,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(MEMBERS_DEMO_READONLY);
+  const id = joinRequestIdSchema.safeParse(requestId);
+  if (!id.success) return fail("Request not found");
+
+  const result = await declineJoinRequestRow(db, {
+    tenantId: ctx.tenant.id,
+    requestId: id.data,
+    decidedByMembershipId: ctx.membership.id,
+  });
+  if (result.status === "not_found") return fail("Request not found");
+  if (result.status === "conflict") {
+    return fail(
+      "This request was already approved. Remove the member instead.",
+    );
+  }
+  if (result.changed) {
+    await audit(ctx, "member_join_declined", { email: result.request.email });
+  }
+  revalidateApp();
+  return ok();
+};
+
 /** Per-workspace inactivity threshold (days) for the inactive-users rule. */
 export const setInactiveDays = async (
   formData: FormData,
@@ -729,6 +863,34 @@ export const setMonthlyReport = async (
     .set({ monthlyReport: enabled === true })
     .where(eq(tenants.id, ctx.tenant.id));
   await audit(ctx, "monthly_report_changed", { enabled: enabled === true });
+  revalidateApp();
+  return ok();
+};
+
+/**
+ * Personal email preference of the signed-in owner/admin for this workspace:
+ * whether they get the weekly digest or the monthly report. Only touches the
+ * caller's own membership; the workspace-level switches stay separate.
+ */
+export const setMyEmailPreference = async (
+  job: "digest" | "report",
+  enabled: boolean,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
+  if (job !== "digest" && job !== "report") return fail("Unknown email");
+  if (typeof enabled !== "boolean") return fail("Invalid value");
+
+  await db
+    .update(memberships)
+    .set(
+      job === "digest"
+        ? { digestOptOut: !enabled }
+        : { reportOptOut: !enabled },
+    )
+    .where(eq(memberships.id, ctx.membership.id));
+  await audit(ctx, "email_preference_changed", { email: job, enabled });
   revalidateApp();
   return ok();
 };
@@ -1093,6 +1255,8 @@ export const disconnectSaasConnector = async (
 
 /** GUID shape for tenant/app ids (lenient case). */
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Upper bound for a pasted PEM (key or certificate); real ones are a few KB. */
+const PEM_MAX_LENGTH = 16384;
 
 export type MsConnectResult =
   | {
@@ -1142,6 +1306,14 @@ export const connectMicrosoftByo = async (
     return { ok: false, error: "Tenant ID and Application ID must be GUIDs" };
   if (credType !== "secret" && credType !== "cert")
     return { ok: false, error: "Choose a credential type" };
+  // Refuse to silently repoint a workspace already bound to another tenant
+  // (mirrors the managed consent callback's already_connected check).
+  if (ctx.tenant.tid && ctx.tenant.tid !== tid)
+    return {
+      ok: false,
+      error:
+        "This workspace is already connected to a different Microsoft tenant. Disconnect it first.",
+    };
 
   // A given Microsoft tenant belongs to exactly one workspace (the partial-
   // unique tid index); refuse to silently steal it from another workspace.
@@ -1187,6 +1359,11 @@ export const connectMicrosoftByo = async (
       return {
         ok: false,
         error: "Both the private key and the certificate (PEM) are required",
+      };
+    if (privateKey.length > PEM_MAX_LENGTH || certPem.length > PEM_MAX_LENGTH)
+      return {
+        ok: false,
+        error: `The private key and certificate must each be under ${PEM_MAX_LENGTH} characters`,
       };
     try {
       const x = new X509Certificate(certPem);
@@ -1286,7 +1463,11 @@ export const connectMicrosoftByo = async (
     throw err;
   }
 
-  await audit(ctx, "microsoft_connected", { mode: "byo", credType });
+  await audit(ctx, "microsoft_connected", {
+    mode: "byo",
+    credType,
+    previousTid: ctx.tenant.tid ?? null,
+  });
   // First sync runs after the response, like the other connectors.
   after(() => runSync(ctx.tenant.id));
   revalidateApp();
@@ -1310,12 +1491,21 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
   // leave it (mirrors disconnectAdobe/disconnectSaasConnector clearing their
   // data). Customer-entered prices (priceBook) are deliberately kept. A partial
   // delete that left tenants.tid set would let the managed fallback in
-  // resolveMsCredential silently re-enable sync. Findings auto-resolve on the
-  // next analysis.
+  // resolveMsCredential silently re-enable sync. Findings from the Microsoft
+  // rules carry directory names (UPNs, display names) and are deleted with
+  // the dataset; connector findings stay and re-evaluate on the next analysis.
   await db.transaction(async (tx) => {
     await tx
       .delete(msConnections)
       .where(eq(msConnections.tenantId, ctx.tenant.id));
+    await tx
+      .delete(findings)
+      .where(
+        and(
+          eq(findings.tenantId, ctx.tenant.id),
+          inArray(findings.rule, MICROSOFT_RULES),
+        ),
+      );
     await tx.delete(tenantUsers).where(eq(tenantUsers.tenantId, ctx.tenant.id));
     await tx.delete(tenantSkus).where(eq(tenantSkus.tenantId, ctx.tenant.id));
     await tx.delete(snapshots).where(eq(snapshots.tenantId, ctx.tenant.id));
@@ -1480,7 +1670,7 @@ export const captureEmail = async (
 ): Promise<ActionResult> => {
   if (formData.get("website")) return ok(); // honeypot: pretend success to bots
   const ip = clientIp(await headers());
-  if (!(await rateLimitDurable(`capture:${ip}`, 5, 60 * 60 * 1000))) {
+  if (!(await rateLimitDurable(`capture:${ip}`, 5, 60 * 60 * 1000, "deny"))) {
     return fail("Too many attempts, please try again later");
   }
   const raw = formData.get("email");

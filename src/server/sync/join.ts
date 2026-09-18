@@ -4,6 +4,7 @@ import type {
   UsageReportRow,
 } from "~/server/graph/types";
 import { isConcealedUpn } from "~/server/graph/types";
+import type { EntraIdentity } from "~/server/adobe/analyze";
 import {
   COPILOT_SKU_ID,
   type WasteInput,
@@ -164,5 +165,56 @@ export const joinSignals = (args: {
     copilotAggregate,
   };
 };
+
+/**
+ * Directory identities for connector seat matching: one entry per address a
+ * user is reachable under (UPN, primary mail, every smtp: proxy address),
+ * lowercased for lookup, first writer wins on a shared address. Built in
+ * memory per sync; nothing beyond the UPN is persisted.
+ */
+export const entraIdentitiesOf = (graphUsers: GraphUser[]): EntraIdentity[] => {
+  const byAddress = new Map<string, EntraIdentity>();
+  for (const g of graphUsers) {
+    const addresses = [
+      g.userPrincipalName,
+      g.mail ?? "",
+      ...(g.proxyAddresses ?? [])
+        .filter((p) => /^smtp:/i.test(p))
+        .map((p) => p.slice("smtp:".length)),
+    ];
+    for (const raw of addresses) {
+      const address = raw.trim().toLowerCase();
+      if (address === "" || byAddress.has(address)) continue;
+      byAddress.set(address, {
+        graphId: g.id,
+        upn: address,
+        displayName: g.displayName,
+        accountEnabled: g.accountEnabled,
+      });
+    }
+  }
+  return [...byAddress.values()];
+};
+
+/**
+ * Directory identities from the stored tenant_users rows, for analyses that
+ * run without a fresh Graph pull: a re-analysis from the database, and syncs
+ * of workspaces whose directory came from a CSV import instead of Microsoft.
+ * Only the UPN is persisted, so unlike entraIdentitiesOf there are no aliases.
+ */
+export const storedIdentitiesOf = (
+  rows: {
+    graphId: string;
+    upn: string;
+    displayName: string | null;
+    accountEnabled: boolean;
+  }[],
+): EntraIdentity[] =>
+  rows.map((r) => ({
+    graphId: r.graphId,
+    upn: r.upn,
+    displayName: r.displayName,
+    accountEnabled: r.accountEnabled,
+  }));
 
 export { COPILOT_SKU_ID };

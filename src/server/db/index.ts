@@ -16,8 +16,27 @@ export type Db = PostgresJsDatabase<typeof schema>;
  */
 const createDb = (): Db => {
   if (env.DATABASE_URL) {
-    const client = postgres(env.DATABASE_URL, { prepare: false });
+    const client = postgres(env.DATABASE_URL, {
+      prepare: false,
+      max: 5,
+      idle_timeout: 20,
+      connect_timeout: 10,
+    });
     return drizzlePostgres(client, { schema });
+  }
+  // The embedded database is for local development and demos only: a
+  // production deployment without DATABASE_URL would silently write to
+  // ephemeral instance storage. (Docker validates this in its entrypoint;
+  // this guards other hosts.) `next build` evaluates this module while
+  // collecting page data with NODE_ENV=production and no database; only the
+  // running server is gated.
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.NEXT_PHASE !== "phase-production-build"
+  ) {
+    throw new Error(
+      "DATABASE_URL is not set. Production requires a Postgres connection string.",
+    );
   }
   const client = new PGlite("./.pglite/data");
   return drizzlePglite(client, { schema }) as unknown as Db;

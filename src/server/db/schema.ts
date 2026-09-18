@@ -17,7 +17,9 @@ import {
 import type {
   AggregateUsage,
   AuditAction,
+  DomainJoinMode,
   FindingStatus,
+  JoinRequestStatus,
   MembershipRole,
   RemediationStatus,
   PlanInterval,
@@ -130,11 +132,21 @@ export const tenants = pgTable(
      */
     domain: text("domain"),
     /**
-     * Whether same-domain verified users auto-join this workspace on sign-in.
-     * Defaults off so only workspaces explicitly provisioned for a corporate
-     * domain are joinable; provisionWorkspace sets it true for those.
+     * Legacy flag, superseded by domainJoinMode. Kept so historical rows and
+     * older deployments stay readable; no code reads or writes it anymore.
      */
     allowDomainJoin: boolean("allow_domain_join").notNull().default(false),
+    /**
+     * How verified colleagues on this workspace's domain get in: 'approval'
+     * (they request access and an owner or admin approves), 'auto' (they join
+     * as viewer on sign-in) or 'off' (invite only). Replaces allowDomainJoin,
+     * which is kept for history and no longer read. Only the oldest workspace
+     * holding a domain is ever consulted; see server/domainJoin.ts.
+     */
+    domainJoinMode: text("domain_join_mode")
+      .$type<DomainJoinMode>()
+      .notNull()
+      .default("approval"),
     /** Capabilities discovered during sync; null until first sync. */
     concealedNames: boolean("concealed_names"),
     hasP1: boolean("has_p1"),
@@ -218,6 +230,10 @@ export const tenants = pgTable(
       sql`${t.currency} in ('EUR', 'USD', 'GBP', 'CHF', 'CAD', 'AUD', 'DKK', 'NOK', 'SEK', 'PLN', 'CZK')`,
     ),
     check("tenants_currency_rate_positive", sql`${t.currencyRatePpm} > 0`),
+    check(
+      "tenants_domain_join_mode_check",
+      sql`${t.domainJoinMode} in ('off', 'approval', 'auto')`,
+    ),
   ],
 );
 
@@ -304,6 +320,13 @@ export const memberships = pgTable(
     role: text("role").$type<MembershipRole>().notNull().default("viewer"),
     welcomeTourAt: timestamp("welcome_tour_at", { withTimezone: true }),
     dataTourAt: timestamp("data_tour_at", { withTimezone: true }),
+    /**
+     * Personal opt-outs for the scheduled emails. The tenant-level switches
+     * decide whether the workspace sends an email at all; these only take
+     * this one person off the recipient list.
+     */
+    digestOptOut: boolean("digest_opt_out").notNull().default(false),
+    reportOptOut: boolean("report_opt_out").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -315,6 +338,49 @@ export const memberships = pgTable(
     check(
       "memberships_role_check",
       sql`${t.role} in ('viewer', 'admin', 'owner')`,
+    ),
+  ],
+);
+
+/**
+ * A verified colleague on the workspace's domain asking to get in (approval
+ * mode), or the record of one who joined automatically (auto mode, stored as
+ * approved). One row per workspace and email, so a repeated sign-in never
+ * files a second request or notifies admins again, and a declined or removed
+ * person does not come back without an invite.
+ */
+export const joinRequests = pgTable(
+  "join_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /** Verified sign-in email, lowercased. */
+    email: text("email").notNull(),
+    workosUserId: text("workos_user_id").notNull(),
+    name: text("name"),
+    status: text("status")
+      .$type<JoinRequestStatus>()
+      .notNull()
+      .default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** Deciding owner/admin; null for automatic joins or once they leave. */
+    decidedByMembershipId: uuid("decided_by_membership_id").references(
+      () => memberships.id,
+      { onDelete: "set null" },
+    ),
+  },
+  (t) => [
+    uniqueIndex("join_requests_tenant_email_idx").on(t.tenantId, t.email),
+    index("join_requests_tenant_status_idx").on(t.tenantId, t.status),
+    index("join_requests_workos_user_idx").on(t.workosUserId),
+    check(
+      "join_requests_status_check",
+      sql`${t.status} in ('pending', 'approved', 'declined')`,
     ),
   ],
 );
@@ -333,6 +399,10 @@ export const consentStates = pgTable("consent_states", {
   tid: text("tid"),
   /** WorkOS user id of the initiator (workos mode). */
   workosUserId: text("workos_user_id"),
+  /** Workspace the consent was started from (workos mode); checked on callback. */
+  tenantId: uuid("tenant_id").references(() => tenants.id, {
+    onDelete: "cascade",
+  }),
   email: text("email").notNull(),
   name: text("name"),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -813,3 +883,51 @@ export const stripeEvents = pgTable("stripe_events", {
     .notNull()
     .defaultNow(),
 });
+
+/**
+ * Delivery ledger for the scheduled emails (weekly digest, monthly report).
+ * One row per (tenant, job, period, recipient): the row is claimed before the
+ * send and marked sent afterwards, so a repeated cron run, a scheduler restart
+ * or a run cut off by the function time limit never sends the same email
+ * twice. Claim rules live in ~/server/emailLedger.
+ */
+export const emailDeliveries = pgTable(
+  "email_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    job: text("job").$type<"digest" | "report">().notNull(),
+    /** Digest: ISO week in UTC ("2026-W38"). Report: reported month ("2026-08"). */
+    periodKey: text("period_key").notNull(),
+    /** Lowercased email address. */
+    recipient: text("recipient").notNull(),
+    status: text("status").$type<"claimed" | "sent" | "failed">().notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    /** Short failure reason, never a secret or a response body. */
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /** Start of the current claim; a claim older than 15 minutes is stale. */
+    claimedAt: timestamp("claimed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("email_deliveries_key_idx").on(
+      t.tenantId,
+      t.job,
+      t.periodKey,
+      t.recipient,
+    ),
+    index("email_deliveries_created_idx").on(t.createdAt),
+    check("email_deliveries_job_check", sql`${t.job} in ('digest', 'report')`),
+    check(
+      "email_deliveries_status_check",
+      sql`${t.status} in ('claimed', 'sent', 'failed')`,
+    ),
+  ],
+);

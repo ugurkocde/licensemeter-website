@@ -8,6 +8,7 @@ import {
   WORKSPACE_COOKIE,
   workspaceCookieOptions,
 } from "~/server/access";
+import { auth } from "~/server/auth";
 import { db } from "~/server/db";
 import {
   consentStates,
@@ -77,6 +78,16 @@ export const GET = async (req: NextRequest) => {
   // authority URL; reject anything that is not a well-formed GUID before then.
   if (!GUID_PATTERN.test(grantedTid!)) fail("consent_incomplete");
 
+  // The browser finishing the flow must be the one that started it. Checked
+  // before the nonce is consumed so a mismatch does not burn a valid state.
+  // The workos branch below repeats the check against its access context.
+  if (!stateRow!.workosUserId) {
+    const session = await auth();
+    if (!session?.user?.oid || session.user.oid !== stateRow!.oid) {
+      fail("not_allowed");
+    }
+  }
+
   // Atomically consume the single-use nonce: a concurrent duplicate callback
   // (double-submit / proxy retry) loses the race here instead of both binding
   // ownership and starting two first syncs. Declined/expired consent returned
@@ -112,6 +123,11 @@ export const GET = async (req: NextRequest) => {
     const ctx = await apiAccess("admin");
     if (!ctx) return fail("not_allowed");
     if (ctx.membership.workosUserId !== stateRow!.workosUserId) {
+      return fail("not_allowed");
+    }
+    // The consent must land on the workspace it was started from, not on
+    // whichever workspace is active in the browser at callback time.
+    if (stateRow!.tenantId && ctx.tenant.id !== stateRow!.tenantId) {
       return fail("not_allowed");
     }
     const target = ctx.tenant;
@@ -151,6 +167,7 @@ export const GET = async (req: NextRequest) => {
         where: eq(tenants.tid, grantedTid!),
       });
       let id: string;
+      let created = false;
       if (existing) {
         id = existing.id;
         await tx
@@ -168,6 +185,7 @@ export const GET = async (req: NextRequest) => {
           })
           .returning({ id: tenants.id });
         id = inserted!.id;
+        created = true;
       }
       await tx
         .insert(msConnections)
@@ -188,7 +206,11 @@ export const GET = async (req: NextRequest) => {
         })
         .onConflictDoUpdate({
           target: [memberships.tenantId, memberships.email],
-          set: { oid: stateRow!.oid, role: "owner" },
+          // Re-consenting on an existing workspace links the identity but must
+          // not promote an existing viewer/admin membership to owner.
+          set: created
+            ? { oid: stateRow!.oid, role: "owner" }
+            : { oid: stateRow!.oid },
         });
       return id;
     });

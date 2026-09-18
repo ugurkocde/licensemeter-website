@@ -19,6 +19,11 @@ export const sendEmail = async (args: {
   headers?: Record<string, string>;
   /** File attachments; content is base64-encoded. */
   attachments?: { filename: string; content: string }[];
+  /**
+   * Resend Idempotency-Key: a repeated request with the same key within 24
+   * hours is not delivered a second time.
+   */
+  idempotencyKey?: string;
 }): Promise<boolean> => {
   if (!emailEnabled()) return false;
   const res = await fetch("https://api.resend.com/emails", {
@@ -26,6 +31,9 @@ export const sendEmail = async (args: {
     headers: {
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
+      ...(args.idempotencyKey
+        ? { "Idempotency-Key": args.idempotencyKey }
+        : {}),
     },
     body: JSON.stringify({
       from: args.from ?? env.EMAIL_FROM,
@@ -78,6 +86,86 @@ export const inviteHtml = (args: {
   </p>
 </div>`;
 
+const noticeShell = (args: {
+  appUrl: string;
+  heading: string;
+  body: string;
+  cta: { href: string; label: string };
+  footer: string;
+}): string => `
+<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
+  ${emailWordmark(args.appUrl)}
+  <h1 style="font-size:22px;font-weight:normal">${args.heading}</h1>
+  <p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.5">
+    ${args.body}
+  </p>
+  <p style="margin:24px 0">
+    <a href="${args.cta.href}"
+       style="font-family:Arial,sans-serif;font-size:14px;background:#1c1a16;color:#faf8f3;padding:12px 20px;text-decoration:none">
+      ${args.cta.label}
+    </a>
+  </p>
+  <p style="font-family:Arial,sans-serif;font-size:12px;color:#a39d8f;line-height:1.5">
+    ${args.footer}
+  </p>
+</div>`;
+
+const strong = (text: string): string =>
+  `<strong style="color:#1c1a16">${escapeHtml(text)}</strong>`;
+
+/** To owners/admins: a colleague on the workspace's domain asked to get in. */
+export const joinRequestHtml = (args: {
+  requesterEmail: string;
+  tenantName: string;
+  appUrl: string;
+}): string =>
+  noticeShell({
+    appUrl: args.appUrl,
+    heading: `${escapeHtml(args.requesterEmail)} asked to join ${escapeHtml(args.tenantName)}`,
+    body: `${strong(args.requesterEmail)} signed in with a verified company
+    email and asked for access to the workspace ${strong(args.tenantName)}.
+    Nothing is shared until an owner or admin approves the request. Approved
+    people start as viewer: read-only dashboards, findings and exports.`,
+    cta: { href: `${args.appUrl}/app/settings`, label: "Review the request" },
+    footer: `You get this because you are an owner or admin of this workspace.
+    Owners can change who can join under Settings, Members.`,
+  });
+
+/** To owners/admins: a colleague joined automatically by company email. */
+export const domainJoinedHtml = (args: {
+  memberEmail: string;
+  tenantName: string;
+  appUrl: string;
+}): string =>
+  noticeShell({
+    appUrl: args.appUrl,
+    heading: `${escapeHtml(args.memberEmail)} joined ${escapeHtml(args.tenantName)}`,
+    body: `${strong(args.memberEmail)} signed in with a verified company email
+    and joined the workspace ${strong(args.tenantName)} as viewer: read-only
+    dashboards, findings and exports. You can change the role or remove the
+    member in Settings.`,
+    cta: { href: `${args.appUrl}/app/settings`, label: "Open members" },
+    footer: `You get this because this workspace lets colleagues join
+    automatically. Owners can change that under Settings, Members.`,
+  });
+
+/** To the requester: an owner or admin approved the access request. */
+export const joinApprovedHtml = (args: {
+  tenantName: string;
+  appUrl: string;
+  signInUrl: string;
+}): string =>
+  noticeShell({
+    appUrl: args.appUrl,
+    heading: `You now have access to ${escapeHtml(args.tenantName)}`,
+    body: `Your request to join the workspace ${strong(args.tenantName)} was
+    approved. You have viewer access: read-only dashboards, findings and
+    exports. Sign in and pick the workspace from the switcher in the sidebar.`,
+    cta: { href: args.signInUrl, label: "Open LicenseMeter" },
+    footer: `You get this because you asked to join this workspace. If that was
+    not you, you can ignore this email.`,
+  });
+
 /**
  * "N new findings since last week (+X/mo). M resolved (Y/mo freed)." The
  * money figures arrive pre-formatted. Zero-count parts degrade gracefully.
@@ -108,6 +196,25 @@ const lineBlock = (line: string): string => `
     ${escapeHtml(line)}
   </p>`;
 
+/** Per-recipient footer of the scheduled emails: why, and how to stop them. */
+export type EmailFooter = {
+  /** Workspace the recipient administers. */
+  workspaceName: string;
+  /** "weekly digest" or "monthly report". */
+  emailLabel: string;
+  /** Personal one-click unsubscribe link for exactly this email type. */
+  unsubscribeUrl: string;
+  /** Page with the personal email toggles. */
+  settingsUrl: string;
+};
+
+const footerBlock = (footer: EmailFooter): string => `
+  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;line-height:1.5;margin-top:24px">
+    You get this because you are an admin of ${escapeHtml(footer.workspaceName)}.
+    <a href="${escapeHtml(footer.unsubscribeUrl)}" style="color:#6b665d">Unsubscribe from the ${escapeHtml(footer.emailLabel)}</a> ·
+    <a href="${escapeHtml(footer.settingsUrl)}" style="color:#6b665d">Manage email settings</a>
+  </p>`;
+
 /** Minimal, inline-styled digest that survives Outlook. Leads with the 7-day delta. */
 export const digestHtml = (args: {
   tenantName: string;
@@ -128,6 +235,7 @@ export const digestHtml = (args: {
   renewalLine?: string;
   /** Pre-composed AI API spend line; omitted when no spend rows exist. */
   aiSpendLine?: string;
+  footer: EmailFooter;
 }): string => `
 <div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
   ${emailWordmark(args.appUrl)}
@@ -153,9 +261,7 @@ export const digestHtml = (args: {
   <p style="font-family:Arial,sans-serif;font-size:13px;margin-top:16px">
     <a href="${args.appUrl}/app/findings" style="color:#1c1a16">Open the findings →</a>
   </p>
-  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;margin-top:24px">
-    Weekly digest for workspace admins. Manage members in Settings.
-  </p>
+  ${footerBlock(args.footer)}
 </div>`;
 
 /**
@@ -171,6 +277,7 @@ export const allClearHtml = (args: {
   /** Pre-composed AI API spend line; omitted when no spend rows exist. */
   aiSpendLine?: string;
   appUrl: string;
+  footer: EmailFooter;
 }): string => `
 <div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
   ${emailWordmark(args.appUrl)}
@@ -190,9 +297,7 @@ export const allClearHtml = (args: {
   <p style="font-family:Arial,sans-serif;font-size:13px;margin-top:16px">
     <a href="${args.appUrl}/app/findings" style="color:#1c1a16">Open LicenseMeter →</a>
   </p>
-  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;margin-top:24px">
-    Weekly digest for workspace admins. Manage members in Settings.
-  </p>
+  ${footerBlock(args.footer)}
 </div>`;
 
 /**
@@ -205,6 +310,7 @@ export const reportHtml = (args: {
   monthlyWaste: string;
   openFindings: number;
   appUrl: string;
+  footer: EmailFooter;
 }): string => `
 <div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
   ${emailWordmark(args.appUrl)}
@@ -220,9 +326,7 @@ export const reportHtml = (args: {
   <p style="font-family:Arial,sans-serif;font-size:13px;margin-top:16px">
     <a href="${args.appUrl}/app" style="color:#1c1a16">Open LicenseMeter →</a>
   </p>
-  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;margin-top:24px">
-    Monthly PDF report for workspace admins. Turn this off in Settings.
-  </p>
+  ${footerBlock(args.footer)}
 </div>`;
 
 /**

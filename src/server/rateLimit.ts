@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 import { sql } from "drizzle-orm";
 
 import { db } from "~/server/db";
@@ -53,8 +55,13 @@ export const rateLimitDurable = async (
 
 /**
  * Client IP from Vercel's trusted x-real-ip header. x-forwarded-for is
- * intentionally not trusted because clients can spoof it.
+ * intentionally not trusted because clients can spoof it. Anything that is not
+ * a literal IP address collapses to "unknown" so a malformed header cannot mint
+ * an unbounded number of rate-limit keys.
  */
 export const clientIp = (headerStore: {
   get(name: string): string | null;
-}): string => headerStore.get("x-real-ip") ?? "unknown";
+}): string => {
+  const value = headerStore.get("x-real-ip")?.trim() ?? "";
+  return isIP(value) ? value : "unknown";
+};
