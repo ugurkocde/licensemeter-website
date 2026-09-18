@@ -6,8 +6,14 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # Separate, one-shot schema migration image. The web container never gets the
-# database owner's credentials or permission to alter the schema.
-FROM dependencies AS migrate
+# database owner's credentials or permission to alter the schema. Only the
+# production dependencies are installed; the migrator needs postgres and
+# drizzle-orm, not the build toolchain.
+FROM node:24-bookworm-slim AS migrate
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
 COPY docker/migrations ./docker/migrations
 COPY docker/migrate.mjs ./docker/migrate.mjs
 USER node

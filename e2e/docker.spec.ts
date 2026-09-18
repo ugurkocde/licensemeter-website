@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test.skip(
   !process.env.DOCKER_SMOKE,

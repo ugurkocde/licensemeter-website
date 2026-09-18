@@ -49,6 +49,8 @@ The managed connector requests `User.Read.All`, `AuditLog.Read.All`, `Reports.Re
 | `SUPPORT_TURNSTILE_SITE_KEY`, `SUPPORT_TURNSTILE_SECRET_KEY` | Optional spam verification; configure both for your hostname                |
 | `CRISP_WEBSITE_ID`                                           | Optional chat website ID for your instance                                  |
 
+Keep `DATA_ENCRYPTION_KEY` fixed once connectors are stored: their secrets are encrypted with the key that was active when they were saved, and a new key cannot decrypt them. If the key must change, disconnect and reconnect every connector afterward.
+
 Never commit environment files, database dumps, or private keys. `SKIP_ENV_VALIDATION` is for builds without secrets, not runtime deployment.
 
 ## Database and hosting

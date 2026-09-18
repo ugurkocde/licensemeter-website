@@ -91,6 +91,8 @@ Run one scheduler. It does not backfill missed times or retry ambiguous email re
 
 Back up PostgreSQL and `.env.docker`, especially `DATA_ENCRYPTION_KEY`. Without the original key, restored connector credentials cannot be decrypted. Changing environment passwords alone does not rotate passwords in an existing PostgreSQL volume.
 
+Do not change `DATA_ENCRYPTION_KEY` once connectors are stored. Connector secrets are encrypted with the key that was active when they were saved, and a new key cannot decrypt them. If the key must change, disconnect and reconnect every connector afterward.
+
 ```bash
 mkdir -p backups
 chmod 700 backups
