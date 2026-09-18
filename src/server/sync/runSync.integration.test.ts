@@ -535,15 +535,13 @@ describe("runSync without a Microsoft connection", () => {
             "dana@contoso.test",
             "ghost@contoso.test",
           ] as const
-        ).map(
-          (email): SaasSeat => ({
-            email,
-            displayName: null,
-            status: "active",
-            products: ["Licensed"],
-            lastActiveAt: recent,
-          }),
-        ),
+        ).map((email): SaasSeat => ({
+          email,
+          displayName: null,
+          status: "active",
+          products: ["Licensed"],
+          lastActiveAt: recent,
+        })),
       ),
     );
     buildSaasClientMock.mockImplementation(() => Promise.resolve({ getSeats }));

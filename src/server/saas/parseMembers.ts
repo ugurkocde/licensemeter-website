@@ -13,8 +13,7 @@ export type ParsedMember = {
 };
 
 export type ParsedMembers =
-  | { rows: ParsedMember[]; invalid: string[] }
-  | { error: string };
+  { rows: ParsedMember[]; invalid: string[] } | { error: string };
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
