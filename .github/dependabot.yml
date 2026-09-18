@@ -21,6 +21,9 @@ updates:
         update-types: [version-update:semver-major]
       - dependency-name: eslint
         update-types: [version-update:semver-major]
+      # Stay on the Node 24 LTS line; revisit when Node 26 is LTS.
+      - dependency-name: "@types/node"
+        versions: [">=25"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -29,3 +32,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Stay on the Node 24 LTS line; revisit when Node 26 is LTS.
+      - dependency-name: node
+        update-types: [version-update:semver-major]
