@@ -95,9 +95,12 @@ export type DpaDoc = {
 // 1.2: added the purpose-limitation commitment (no use of the data to evaluate
 // individual employees' performance or behavior) to Clause 1 and Annex 1, for
 // works-council (BetrVG) and Art. 5(1)(b) GDPR assessments.
-const VERSION = "1.2";
-const EFFECTIVE_EN = "2 July 2026";
-const EFFECTIVE_DE = "2. Juli 2026";
+// 1.3: corrected the Processor's registered company name and added its
+// commercial register entry to the party and signature blocks. No change to the
+// processing terms.
+const VERSION = "1.3";
+const EFFECTIVE_EN = "18 September 2026";
+const EFFECTIVE_DE = "18. September 2026";
 
 /* ------------------------------------------------------------------ English */
 
@@ -119,8 +122,9 @@ const EN: DpaDoc = {
     processor: {
       label: "Processor (Auftragsverarbeiter)",
       lines: [
-        "UgurLabs UG (haftungsbeschränkt)",
+        "Ugurlabs UG (haftungsbeschränkt)",
         "Fährstraße 217, 40221 Düsseldorf, Germany",
+        "Registered with the commercial register of the Local Court (Amtsgericht) of Düsseldorf under HRB 113979",
         "Represented by its Managing Director Ugur Koc",
         `Contact: ${SUPPORT_EMAIL}`,
         '("LicenseMeter" or the "Processor")',
@@ -495,7 +499,8 @@ const EN: DpaDoc = {
     processor: {
       label: "For the Processor",
       lines: [
-        "UgurLabs UG (haftungsbeschränkt)",
+        "Ugurlabs UG (haftungsbeschränkt)",
+        "Registered with the commercial register of the Local Court (Amtsgericht) of Düsseldorf under HRB 113979",
         "Name: Ugur Koc",
         "Title: Managing Director (Geschäftsführer)",
         `Signed electronically with version ${VERSION}, ${EFFECTIVE_EN}`,
@@ -550,8 +555,9 @@ const DE: DpaDoc = {
     processor: {
       label: "Auftragsverarbeiter",
       lines: [
-        "UgurLabs UG (haftungsbeschränkt)",
+        "Ugurlabs UG (haftungsbeschränkt)",
         "Fährstraße 217, 40221 Düsseldorf, Deutschland",
+        "Eingetragen im Handelsregister des Amtsgerichts Düsseldorf unter HRB 113979",
         "Vertreten durch den Geschäftsführer Ugur Koc",
         `Kontakt: ${SUPPORT_EMAIL}`,
         '("LicenseMeter" bzw. der "Auftragsverarbeiter")',
@@ -926,7 +932,8 @@ const DE: DpaDoc = {
     processor: {
       label: "Für den Auftragsverarbeiter",
       lines: [
-        "UgurLabs UG (haftungsbeschränkt)",
+        "Ugurlabs UG (haftungsbeschränkt)",
+        "Eingetragen im Handelsregister des Amtsgerichts Düsseldorf unter HRB 113979",
         "Name: Ugur Koc",
         "Funktion: Geschäftsführer",
         `Elektronisch unterzeichnet mit Version ${VERSION}, ${EFFECTIVE_DE}`,

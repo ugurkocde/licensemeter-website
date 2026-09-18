@@ -62,7 +62,7 @@ const ENGLISH = {
       ],
     },
   ],
-  copyright: "operated by UgurLabs",
+  copyright: "operated by Ugurlabs",
   legal:
     "Independent tool, not affiliated with the vendors named on this site. All product names are trademarks of their respective owners.",
 } as const;
@@ -105,7 +105,7 @@ const GERMAN = {
       ],
     },
   ],
-  copyright: "betrieben von UgurLabs",
+  copyright: "betrieben von Ugurlabs",
   legal:
     "Unabhängiges Werkzeug ohne Verbindung zu den auf dieser Website genannten Anbietern. Alle Produktnamen sind Marken ihrer jeweiligen Inhaber.",
 } as const;

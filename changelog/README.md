@@ -1,7 +1,7 @@
 # Changelog entries
 
 Each JSON file in `entries/` is one user-facing announcement for the central
-UgurLabs changelog (https://changelog.ugurlabs.com/?product=licensemeter).
+Ugurlabs changelog (https://changelog.ugurlabs.com/?product=licensemeter).
 The `Changelog` GitHub workflow publishes them after they reach `main`.
 
 File name: `YYYY-MM-DD-short-slug.json`. Fields:

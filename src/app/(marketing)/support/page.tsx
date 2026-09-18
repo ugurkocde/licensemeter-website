@@ -5,7 +5,7 @@ import { env } from "~/env";
 export const metadata: Metadata = {
   title: "Contact support",
   description:
-    "Get help with LicenseMeter. Send a support request to the UgurLabs team.",
+    "Get help with LicenseMeter. Send a support request to the Ugurlabs team.",
   alternates: { canonical: "/support" },
 };
 

@@ -23,7 +23,7 @@ export default function ImpressumPage() {
         <section>
           <h2 className="text-ink font-medium">Angaben gemäß § 5 DDG</h2>
           <p className="mt-2">
-            UgurLabs UG (haftungsbeschränkt)
+            Ugurlabs UG (haftungsbeschränkt)
             <br />
             Fährstraße 217
             <br />
