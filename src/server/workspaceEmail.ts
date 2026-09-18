@@ -12,10 +12,20 @@ import {
   sendEmail,
   workspaceDeletedHtml,
 } from "~/server/email";
+import type { EmailJob } from "~/server/emailPeriods";
 type Tenant = TenantRow;
-export const workspaceAdminEmails = (tenantId: string): Promise<string[]> =>
-  recipients(tenantId);
-const recipients = async (tenantId: string): Promise<string[]> => {
+export type EmailRecipient = { membershipId: string; email: string };
+
+/**
+ * The one recipient rule for workspace email: owners and admins whose
+ * membership is claimed. With a job, people who personally opted out of that
+ * email are left out and counted instead. Addresses are deduplicated
+ * case-insensitively so nobody gets the same email twice.
+ */
+export const workspaceEmailRecipients = async (
+  tenantId: string,
+  job?: EmailJob,
+): Promise<{ recipients: EmailRecipient[]; optedOut: number }> => {
   const rows = await db.query.memberships.findMany({
     where: and(
       eq(memberships.tenantId, tenantId),
@@ -24,10 +34,32 @@ const recipients = async (tenantId: string): Promise<string[]> => {
       // invites have neither and are excluded.
       or(isNotNull(memberships.oid), isNotNull(memberships.workosUserId)),
     ),
-    columns: { email: true },
+    columns: { id: true, email: true, digestOptOut: true, reportOptOut: true },
   });
-  return rows.map((r) => r.email).filter(Boolean);
+  const seen = new Set<string>();
+  const recipients: EmailRecipient[] = [];
+  let optedOut = 0;
+  for (const row of rows) {
+    const email = row.email.trim();
+    if (!email || seen.has(email.toLowerCase())) continue;
+    seen.add(email.toLowerCase());
+    const out =
+      job === "digest"
+        ? row.digestOptOut
+        : job === "report"
+          ? row.reportOptOut
+          : false;
+    if (out) optedOut++;
+    else recipients.push({ membershipId: row.id, email });
+  }
+  return { recipients, optedOut };
 };
+
+/** Addresses of every claimed owner/admin, for mail without a personal opt-out. */
+export const workspaceAdminEmails = async (
+  tenantId: string,
+): Promise<string[]> =>
+  (await workspaceEmailRecipients(tenantId)).recipients.map((r) => r.email);
 
 export const sendWorkspaceDeleted = async (
   tenant: Tenant,

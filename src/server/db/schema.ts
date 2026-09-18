@@ -320,6 +320,13 @@ export const memberships = pgTable(
     role: text("role").$type<MembershipRole>().notNull().default("viewer"),
     welcomeTourAt: timestamp("welcome_tour_at", { withTimezone: true }),
     dataTourAt: timestamp("data_tour_at", { withTimezone: true }),
+    /**
+     * Personal opt-outs for the scheduled emails. The tenant-level switches
+     * decide whether the workspace sends an email at all; these only take
+     * this one person off the recipient list.
+     */
+    digestOptOut: boolean("digest_opt_out").notNull().default(false),
+    reportOptOut: boolean("report_opt_out").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -876,3 +883,51 @@ export const stripeEvents = pgTable("stripe_events", {
     .notNull()
     .defaultNow(),
 });
+
+/**
+ * Delivery ledger for the scheduled emails (weekly digest, monthly report).
+ * One row per (tenant, job, period, recipient): the row is claimed before the
+ * send and marked sent afterwards, so a repeated cron run, a scheduler restart
+ * or a run cut off by the function time limit never sends the same email
+ * twice. Claim rules live in ~/server/emailLedger.
+ */
+export const emailDeliveries = pgTable(
+  "email_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    job: text("job").$type<"digest" | "report">().notNull(),
+    /** Digest: ISO week in UTC ("2026-W38"). Report: reported month ("2026-08"). */
+    periodKey: text("period_key").notNull(),
+    /** Lowercased email address. */
+    recipient: text("recipient").notNull(),
+    status: text("status").$type<"claimed" | "sent" | "failed">().notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    /** Short failure reason, never a secret or a response body. */
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /** Start of the current claim; a claim older than 15 minutes is stale. */
+    claimedAt: timestamp("claimed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("email_deliveries_key_idx").on(
+      t.tenantId,
+      t.job,
+      t.periodKey,
+      t.recipient,
+    ),
+    index("email_deliveries_created_idx").on(t.createdAt),
+    check("email_deliveries_job_check", sql`${t.job} in ('digest', 'report')`),
+    check(
+      "email_deliveries_status_check",
+      sql`${t.status} in ('claimed', 'sent', 'failed')`,
+    ),
+  ],
+);

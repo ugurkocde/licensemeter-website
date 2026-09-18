@@ -23,3 +23,39 @@ export const verifyUnsubToken = (
   const given = Buffer.from(token);
   return expected.length === given.length && timingSafeEqual(expected, given);
 };
+
+/** Scheduled email a membership can opt out of. */
+export type UnsubJob = "digest" | "report";
+
+export const isUnsubJob = (v: unknown): v is UnsubJob =>
+  v === "digest" || v === "report";
+
+/**
+ * Membership-scoped token for the digest and report emails: HMAC over
+ * "membership:<id>:<job>" with the same derived key. The prefix keeps the
+ * message space disjoint from the email tokens above (an email always
+ * contains "@", a membership id never does), so neither kind can stand in
+ * for the other, and the job is signed so a digest link cannot switch off
+ * the report.
+ */
+export const makeMembershipUnsubToken = (
+  membershipId: string,
+  job: UnsubJob,
+  secret: string,
+): string =>
+  createHmac("sha256", key(secret))
+    .update(`membership:${membershipId.trim().toLowerCase()}:${job}`)
+    .digest("base64url");
+
+export const verifyMembershipUnsubToken = (
+  membershipId: string,
+  job: UnsubJob,
+  token: string,
+  secret: string,
+): boolean => {
+  const expected = Buffer.from(
+    makeMembershipUnsubToken(membershipId, job, secret),
+  );
+  const given = Buffer.from(token);
+  return expected.length === given.length && timingSafeEqual(expected, given);
+};

@@ -85,7 +85,7 @@ Schedules use UTC, matching `vercel.json`:
 | Digest email                 | Monday 06:00              |
 | Monthly report               | Day 1 of the month, 07:00 |
 
-Run one scheduler. It does not backfill missed times or retry ambiguous email requests. Restarting within a scheduled minute may invoke that job again; avoid restarting during email windows. Inspect scheduler logs after operational changes. You can replace it with an external scheduler calling the same routes with `Authorization: Bearer <CRON_SECRET>`; disable the bundled service to avoid duplicate scheduling.
+Run one scheduler. It does not backfill missed times. The digest and report jobs are safe to invoke again: every recipient's email for the week or the reported month is recorded in a delivery ledger before it is sent, so a restart within the scheduled minute, a manual re-trigger or a second run never sends the same email twice. Each job stops starting new workspaces after 240 seconds and returns JSON totals (`sent`, `skippedAlreadySent`, `skippedOptedOut`, `failed`, `unprocessedTenants`). If `unprocessedTenants` or `failed` is above zero, call the same route again to finish the remainder; a failed recipient is retried up to three times per period. Inspect scheduler logs after operational changes. You can replace it with an external scheduler calling the same routes with `Authorization: Bearer <CRON_SECRET>`; disable the bundled service to avoid duplicate scheduling.
 
 ## Backups
 

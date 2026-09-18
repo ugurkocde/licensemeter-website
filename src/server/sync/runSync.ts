@@ -1,13 +1,4 @@
-import {
-  and,
-  eq,
-  inArray,
-  isNotNull,
-  lt,
-  notInArray,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 
 import { siteUrl } from "~/env";
 import { fmtMoney, workspaceLabel } from "~/lib/format";
@@ -17,7 +8,6 @@ import {
   adobeUsers as adobeUsersTable,
   aiSpendDaily,
   findings,
-  memberships,
   msConnections,
   priceBook,
   saasConnections,
@@ -58,6 +48,7 @@ import {
 import { emailEnabled, leakAlertHtml, sendEmail } from "~/server/email";
 import { pickLeakFindings } from "~/server/leakAlerts";
 import { notifyOps } from "~/server/ops";
+import { workspaceAdminEmails } from "~/server/workspaceEmail";
 import { aiSpendSinceDay } from "~/server/sync/aiSpendWindow";
 import { joinSignals } from "~/server/sync/join";
 import type { SyncRunStatus, SyncStep, WasteRuleId } from "~/server/types";
@@ -1184,16 +1175,7 @@ const sendLeakAlert = async (
     const leaks = pickLeakFindings(inserted);
     if (leaks.length === 0) return;
 
-    const admins = await db.query.memberships.findMany({
-      where: and(
-        eq(memberships.tenantId, tenant.id),
-        inArray(memberships.role, ["owner", "admin"]),
-        // A claimed membership has signed in via either provider: entra sets
-        // oid, workos sets workosUserId. Pending invites have neither.
-        or(isNotNull(memberships.oid), isNotNull(memberships.workosUserId)),
-      ),
-    });
-    const to = admins.map((m) => m.email).filter(Boolean);
+    const to = await workspaceAdminEmails(tenant.id);
     if (to.length === 0) return;
 
     const totalCents = leaks.reduce((s, f) => s + f.monthlyImpactCents, 0);

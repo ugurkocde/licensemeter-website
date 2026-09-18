@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CurrencySelect } from "~/components/workspace/CurrencySelect";
 import { DangerZone } from "~/components/workspace/DangerZone";
 import { DomainJoinControl } from "~/components/workspace/DomainJoinControl";
+import { EmailPreferenceToggle } from "~/components/workspace/EmailPreferenceToggle";
 import { InactiveDaysForm } from "~/components/workspace/InactiveDaysForm";
 import { InviteForm } from "~/components/workspace/InviteForm";
 import { JoinRequestActions } from "~/components/workspace/JoinRequestActions";
@@ -195,6 +196,45 @@ export default async function SettingsPage() {
                 <ReplayTourButton storageId={ctx.membership.id} />
               </dd>
             </div>
+            {canEdit && (
+              <>
+                <div className="border-line mt-2 border-t pt-4 sm:col-span-2">
+                  <h3 className="text-ink-faint text-[11px] font-medium tracking-[0.16em] uppercase">
+                    Email me
+                  </h3>
+                  <p className="text-ink-soft mt-1 text-sm">
+                    Your own copy for this workspace, sent to{" "}
+                    {ctx.membership.email}. Other admins decide for themselves.
+                  </p>
+                </div>
+                <div>
+                  <dt className="sr-only">Weekly digest email</dt>
+                  <dd>
+                    <EmailPreferenceToggle
+                      job="digest"
+                      label="Weekly digest"
+                      initial={!ctx.membership.digestOptOut}
+                    />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="sr-only">Monthly report email</dt>
+                  <dd>
+                    <EmailPreferenceToggle
+                      job="report"
+                      label="Monthly report"
+                      initial={!ctx.membership.reportOptOut}
+                    />
+                    {!ctx.tenant.monthlyReport && (
+                      <p className="text-ink-faint mt-1 text-xs">
+                        Applies once the monthly PDF report is on for this
+                        workspace.
+                      </p>
+                    )}
+                  </dd>
+                </div>
+              </>
+            )}
           </dl>
         </Card>
 
