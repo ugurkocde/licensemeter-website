@@ -144,7 +144,7 @@ export const GET = async (req: NextRequest) => {
   } else {
     // Entra mode: the login IS the Microsoft tenant, so the workspace is keyed
     // by the granted tid (created on first consent) and the initiator is bound
-    // as its owner — all in one transaction so a partial write can't leave a
+    // as its owner, all in one transaction so a partial write can't leave a
     // consented tenant with no connection or owner.
     tenantId = await db.transaction(async (tx) => {
       const existing = await tx.query.tenants.findFirst({

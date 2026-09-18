@@ -1,0 +1,7 @@
+{
+  "title": "Clearer copy, working links and accurate emails",
+  "summary": "The source-code link on the home page and in the footer now points to the actual repository. The FAQ describes the free product instead of asking what is charged for, and the portfolio page explains that reporting appears once you belong to two or more workspaces. Invite and welcome emails describe sign-in and the pre-signed DPA accurately, and the onboarding checklist now lists the OpenAI and Anthropic connectors.",
+  "type": "fixed",
+  "publishedOn": "2026-09-18",
+  "idempotencyKey": "licensemeter:2026-09-18-clearer-copy-and-links"
+}

@@ -28,7 +28,7 @@ const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Adobe organization IDs look like `XXXXXXXXXXXXXXXXXXXXXXXX@AdobeOrg` — a hex
+ * Adobe organization IDs look like `XXXXXXXXXXXXXXXXXXXXXXXX@AdobeOrg`, a hex
  * IMS id with an `@AdobeOrg` suffix. We pin a conservative charset (letters,
  * digits, `@`, `.`, `_`, `-`) so a tampered/garbage orgId can never inject
  * path segments (`/`, `..`), query, or fragment characters into the UMAPI URL.

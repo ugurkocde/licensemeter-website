@@ -224,7 +224,7 @@ export default async function ConnectorGuidePage({
           )}
         </div>
         <p className="text-ink-faint mt-3 text-xs">
-          Opening the connector signs you in with Microsoft first.
+          Opening the connector asks you to sign in first.
         </p>
       </section>
 

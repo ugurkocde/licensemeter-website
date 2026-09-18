@@ -153,8 +153,7 @@ When `privacyMode` is on:
 2. Should enabling privacy mode require re-consent or a confirmation export of the
    scrub result? Leaning: show a summary ("removed names from 220 users, rewrote
    14 findings") in the audit detail.
-3. Pricing: same price, no separate tier. It removes data; charging extra for it
-   undermines the trust story.
+3. Pricing: free, like the rest of the product.
 
 ## Acceptance criteria
 

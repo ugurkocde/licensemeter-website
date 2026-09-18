@@ -38,10 +38,12 @@ export default function TermsPage() {
           LicenseMeter (the &ldquo;Service&rdquo;) by companies and other
           organizations (the &ldquo;Customer&rdquo;). The provider and
           contracting party is UgurLabs UG (haftungsbeschränkt), Fährstraße 217,
-          40221 Düsseldorf, Germany, represented by its Managing Director Ugur
-          Koc (the &ldquo;Provider&rdquo;). The Service is directed exclusively
-          at businesses within the meaning of Section 14 of the German Civil
-          Code (BGB), not at consumers.
+          40221 Düsseldorf, Germany, registered with the commercial register of
+          the Local Court (Amtsgericht) of Düsseldorf under HRB 113979,
+          represented by its Managing Director Ugur Koc (the
+          &ldquo;Provider&rdquo;). The Service is directed exclusively at
+          businesses within the meaning of Section 14 of the German Civil Code
+          (BGB), not at consumers.
         </p>
       </Section>
 

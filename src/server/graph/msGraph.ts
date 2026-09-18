@@ -228,8 +228,8 @@ const probeReports = async (
  * Test-connection for a Microsoft credential: acquires an app-only token with
  * the given creds and checks the token's `roles` claim contains every required
  * application permission. The roles claim is authoritative for app-only tokens
- * (verified end-to-end against a real tenant via Lokka) — granted permissions
- * appear, ungranted ones are absent — so this needs no extra Graph call.
+ * (verified end-to-end against a real tenant via Lokka): granted permissions
+ * appear, ungranted ones are absent, so this needs no extra Graph call.
  *
  * On an auth failure (wrong/expired secret, unknown app) it returns a clean,
  * non-leaking message; the underlying AADSTS error is for server logs only.
@@ -366,7 +366,7 @@ const graphFetch = async (token: string, url: string): Promise<Response> => {
 
 /**
  * Upper bound on pages a single getAllPages call will follow. At $top=250 this
- * is 250k rows — far beyond any real tenant — so it never trips a healthy sync,
+ * is 250k rows, far beyond any real tenant, so it never trips a healthy sync,
  * but stops a looping/duplicating @odata.nextLink from running to the 300s
  * maxDuration timeout. Every SaaS paginator bounds its loop the same way.
  */
@@ -522,7 +522,7 @@ export class MsGraphClient implements GraphClient {
     } catch (err) {
       // signInActivity is gated twice for app-only callers: tenant Entra ID P1
       // AND AuditLog.Read.All consent. Either denial degrades the same way the
-      // delegated client already handles it — drop sign-in data and let the sync
+      // delegated client already handles it; drop sign-in data and let the sync
       // fall back to usage reports rather than failing the whole run.
       if (
         opts.includeSignInActivity &&

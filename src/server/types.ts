@@ -6,7 +6,7 @@ export type FindingStatus = "open" | "acknowledged" | "resolved";
 
 export type SyncRunStatus = "running" | "success" | "partial" | "failed";
 
-/** Stripe subscription.status values we persist and reason about. */
+/** Historical column type, read-only. Legacy subscription.status values still stored in old rows. */
 export type SubscriptionStatus =
   | "active"
   | "trialing"
@@ -17,18 +17,11 @@ export type SubscriptionStatus =
   | "incomplete_expired"
   | "paused";
 
-/** Self-serve plan tiers, sized by seat band. */
+/** Historical column type, read-only. Legacy plan tiers still referenced by the schema. */
 export type PlanTier = "starter" | "growth" | "scale";
 
-/** Stripe recurring interval for a plan price. */
+/** Historical column type, read-only. Legacy recurring interval still referenced by the schema. */
 export type PlanInterval = "month" | "year";
-
-/** Trial/billing reminder stages the cron can emit (one send per stage per trial). */
-export type ReminderStage =
-  | "trial_day7"
-  | "trial_day12"
-  | "trial_last"
-  | "trial_expired";
 
 export type UserLicense = {
   skuId: string;

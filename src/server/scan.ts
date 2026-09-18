@@ -30,7 +30,7 @@ export type ScanTenantResult =
 /**
  * The Microsoft identity the scan token proves (from the delegated id_token's
  * claims) and the LicenseMeter actor to bind as owner. The actor is the WorkOS
- * user (workos sign-in) or the Entra object id (entra opt-out) — decoupled from
+ * user (workos sign-in) or the Entra object id (entra opt-out), decoupled from
  * the Microsoft tenant being scanned, since under WorkOS the person signs in
  * with any method and only proves Microsoft access here.
  */
@@ -89,7 +89,7 @@ export const resolveScanTenant = async (
 
   // The tenant and its owner membership are created together: a crash between
   // them would leave a tid-bound workspace with no member, which the guard
-  // matrix above would then reject as "ask for an invite" — locking the creator
+  // matrix above would then reject as "ask for an invite", locking the creator
   // out of their own workspace. onConflictDoNothing: two colleagues scanning at
   // the same moment race on the tid unique index; the loser gets a message.
   return db.transaction(async (tx) => {
