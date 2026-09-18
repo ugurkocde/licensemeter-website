@@ -3,15 +3,23 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 
-import { setMonthlyReport } from "~/server/actions";
+import { setMyEmailPreference } from "~/server/actions";
 import type { ActionResult } from "~/server/actions";
 
 /**
- * Monthly PDF report toggle for the Workspace card. Same optimistic
- * save-on-change pattern as LeakAlertsToggle, plus a live region so the
- * result is announced instead of discarded.
+ * Personal "Email me" toggle for one scheduled email (weekly digest or
+ * monthly report). Same optimistic save-on-change pattern and live region as
+ * MonthlyReportToggle, but it only changes the signed-in person's own copy.
  */
-export const MonthlyReportToggle = ({ initial }: { initial: boolean }) => {
+export const EmailPreferenceToggle = ({
+  job,
+  label,
+  initial,
+}: {
+  job: "digest" | "report";
+  label: string;
+  initial: boolean;
+}) => {
   const [pending, startTransition] = useTransition();
   const [current, setCurrent] = useState(initial);
   const [lastValue, setLastValue] = useState(initial);
@@ -45,7 +53,7 @@ export const MonthlyReportToggle = ({ initial }: { initial: boolean }) => {
             setResult(null);
             startTransition(async () => {
               try {
-                const res = await setMonthlyReport(next);
+                const res = await setMyEmailPreference(job, next);
                 setResult(res);
                 if (!res.ok) {
                   setCurrent(initial);
@@ -59,7 +67,7 @@ export const MonthlyReportToggle = ({ initial }: { initial: boolean }) => {
           }}
           className="accent-ink size-4 shrink-0"
         />
-        <span>Send admins the PDF report monthly</span>
+        <span>{label}</span>
       </label>
       <span
         role="status"

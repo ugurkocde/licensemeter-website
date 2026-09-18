@@ -1,0 +1,7 @@
+{
+  "title": "Digest and report emails arrive once, addressed only to you",
+  "summary": "Each workspace admin now gets their own copy of the weekly digest and the monthly report instead of sharing one recipient list, so nobody sees who else receives it. Every email has a one-click unsubscribe, and Settings has a personal switch for the weekly digest and the monthly report. A repeated run can no longer send the same email twice.",
+  "type": "improved",
+  "publishedOn": "2026-09-18",
+  "idempotencyKey": "licensemeter:2026-09-18-reliable-digest-emails"
+}

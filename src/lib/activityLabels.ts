@@ -40,6 +40,7 @@ const ACTION_LABELS: Record<string, string> = {
   renewal_deleted: "Renewal deleted",
   leak_alerts_changed: "Leak alerts changed",
   monthly_report_changed: "Monthly report changed",
+  email_preference_changed: "Personal email preference changed",
   trial_reminders_changed: "Trial reminders changed",
 };
 

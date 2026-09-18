@@ -167,6 +167,7 @@ export type AuditAction =
   | "export_audit_log_csv"
   | "leak_alerts_changed"
   | "monthly_report_changed"
+  | "email_preference_changed"
   | "tour_done"
   | "tour_reset"
   | "checkout_started"

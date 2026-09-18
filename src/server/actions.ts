@@ -867,6 +867,34 @@ export const setMonthlyReport = async (
   return ok();
 };
 
+/**
+ * Personal email preference of the signed-in owner/admin for this workspace:
+ * whether they get the weekly digest or the monthly report. Only touches the
+ * caller's own membership; the workspace-level switches stay separate.
+ */
+export const setMyEmailPreference = async (
+  job: "digest" | "report",
+  enabled: boolean,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
+  if (job !== "digest" && job !== "report") return fail("Unknown email");
+  if (typeof enabled !== "boolean") return fail("Invalid value");
+
+  await db
+    .update(memberships)
+    .set(
+      job === "digest"
+        ? { digestOptOut: !enabled }
+        : { reportOptOut: !enabled },
+    )
+    .where(eq(memberships.id, ctx.membership.id));
+  await audit(ctx, "email_preference_changed", { email: job, enabled });
+  revalidateApp();
+  return ok();
+};
+
 /** Mark one phase of the per-user dashboard tour complete. */
 export const markTourDone = async (
   phase: "welcome" | "data",

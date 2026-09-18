@@ -19,6 +19,11 @@ export const sendEmail = async (args: {
   headers?: Record<string, string>;
   /** File attachments; content is base64-encoded. */
   attachments?: { filename: string; content: string }[];
+  /**
+   * Resend Idempotency-Key: a repeated request with the same key within 24
+   * hours is not delivered a second time.
+   */
+  idempotencyKey?: string;
 }): Promise<boolean> => {
   if (!emailEnabled()) return false;
   const res = await fetch("https://api.resend.com/emails", {
@@ -26,6 +31,9 @@ export const sendEmail = async (args: {
     headers: {
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
+      ...(args.idempotencyKey
+        ? { "Idempotency-Key": args.idempotencyKey }
+        : {}),
     },
     body: JSON.stringify({
       from: args.from ?? env.EMAIL_FROM,
@@ -188,6 +196,25 @@ const lineBlock = (line: string): string => `
     ${escapeHtml(line)}
   </p>`;
 
+/** Per-recipient footer of the scheduled emails: why, and how to stop them. */
+export type EmailFooter = {
+  /** Workspace the recipient administers. */
+  workspaceName: string;
+  /** "weekly digest" or "monthly report". */
+  emailLabel: string;
+  /** Personal one-click unsubscribe link for exactly this email type. */
+  unsubscribeUrl: string;
+  /** Page with the personal email toggles. */
+  settingsUrl: string;
+};
+
+const footerBlock = (footer: EmailFooter): string => `
+  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;line-height:1.5;margin-top:24px">
+    You get this because you are an admin of ${escapeHtml(footer.workspaceName)}.
+    <a href="${escapeHtml(footer.unsubscribeUrl)}" style="color:#6b665d">Unsubscribe from the ${escapeHtml(footer.emailLabel)}</a> ·
+    <a href="${escapeHtml(footer.settingsUrl)}" style="color:#6b665d">Manage email settings</a>
+  </p>`;
+
 /** Minimal, inline-styled digest that survives Outlook. Leads with the 7-day delta. */
 export const digestHtml = (args: {
   tenantName: string;
@@ -208,6 +235,7 @@ export const digestHtml = (args: {
   renewalLine?: string;
   /** Pre-composed AI API spend line; omitted when no spend rows exist. */
   aiSpendLine?: string;
+  footer: EmailFooter;
 }): string => `
 <div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
   ${emailWordmark(args.appUrl)}
@@ -233,9 +261,7 @@ export const digestHtml = (args: {
   <p style="font-family:Arial,sans-serif;font-size:13px;margin-top:16px">
     <a href="${args.appUrl}/app/findings" style="color:#1c1a16">Open the findings →</a>
   </p>
-  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;margin-top:24px">
-    Weekly digest for workspace admins. Manage members in Settings.
-  </p>
+  ${footerBlock(args.footer)}
 </div>`;
 
 /**
@@ -251,6 +277,7 @@ export const allClearHtml = (args: {
   /** Pre-composed AI API spend line; omitted when no spend rows exist. */
   aiSpendLine?: string;
   appUrl: string;
+  footer: EmailFooter;
 }): string => `
 <div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
   ${emailWordmark(args.appUrl)}
@@ -270,9 +297,7 @@ export const allClearHtml = (args: {
   <p style="font-family:Arial,sans-serif;font-size:13px;margin-top:16px">
     <a href="${args.appUrl}/app/findings" style="color:#1c1a16">Open LicenseMeter →</a>
   </p>
-  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;margin-top:24px">
-    Weekly digest for workspace admins. Manage members in Settings.
-  </p>
+  ${footerBlock(args.footer)}
 </div>`;
 
 /**
@@ -285,6 +310,7 @@ export const reportHtml = (args: {
   monthlyWaste: string;
   openFindings: number;
   appUrl: string;
+  footer: EmailFooter;
 }): string => `
 <div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#1c1a16">
   ${emailWordmark(args.appUrl)}
@@ -300,9 +326,7 @@ export const reportHtml = (args: {
   <p style="font-family:Arial,sans-serif;font-size:13px;margin-top:16px">
     <a href="${args.appUrl}/app" style="color:#1c1a16">Open LicenseMeter →</a>
   </p>
-  <p style="font-family:Arial,sans-serif;font-size:11px;color:#a39d8f;margin-top:24px">
-    Monthly PDF report for workspace admins. Turn this off in Settings.
-  </p>
+  ${footerBlock(args.footer)}
 </div>`;
 
 /**
