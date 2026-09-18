@@ -63,6 +63,8 @@ export const FeatureShowcase = () => {
   /* Rotate through the features until the visitor interacts; a manual tab
    * click or opening the lightbox hands over control for good. */
   const [autoAdvance, setAutoAdvance] = useState(true);
+  /* Explicit visitor pause of the clip; wins over visibility-driven autoplay. */
+  const [paused, setPaused] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLSpanElement>(null);
@@ -103,7 +105,7 @@ export const FeatureShowcase = () => {
     if (!video || !mediaReady) return;
     const sync = () => {
       if (inView && document.visibilityState === "visible") {
-        if (reducedMotion) video.pause();
+        if (reducedMotion || paused) video.pause();
         else void video.play().catch(() => undefined);
       } else {
         video.pause();
@@ -114,12 +116,30 @@ export const FeatureShowcase = () => {
     return () => {
       document.removeEventListener("visibilitychange", sync);
     };
-  }, [active, inView, mediaReady, reducedMotion]);
+  }, [active, inView, mediaReady, paused, reducedMotion]);
 
   const close = () => {
     setExpanded(false);
     const video = videoRef.current;
-    if (video && !reducedMotion) void video.play().catch(() => undefined);
+    if (video && !reducedMotion && !paused) {
+      void video.play().catch(() => undefined);
+    }
+  };
+
+  const togglePlayback = () => {
+    const next = !paused;
+    setPaused(next);
+    const video = videoRef.current;
+    if (!video) return;
+    if (next) video.pause();
+    else void video.play().catch(() => undefined);
+  };
+
+  /* Pausing the rotation also freezes the clip; resuming restarts both. */
+  const toggleRotation = () => {
+    const next = !autoAdvance;
+    setAutoAdvance(next);
+    setPaused(!next);
   };
 
   const open = () => {
@@ -265,7 +285,7 @@ export const FeatureShowcase = () => {
         {!reducedMotion && (
           <button
             type="button"
-            onClick={() => setAutoAdvance((current) => !current)}
+            onClick={toggleRotation}
             className="text-ink-soft hover:text-ink focus-visible:ring-brand inline-flex min-h-11 w-fit cursor-pointer touch-manipulation items-center gap-2 rounded-lg px-2 text-xs font-medium transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-offset-2"
           >
             {autoAdvance ? (
@@ -293,7 +313,7 @@ export const FeatureShowcase = () => {
               type="button"
               onClick={open}
               aria-haspopup="dialog"
-              aria-label={`Product demo — Enlarge: ${feature.title}`}
+              aria-label={`Product demo: ${feature.title}, enlarge`}
               className="block w-full cursor-zoom-in"
             >
               {videoElement}
@@ -301,6 +321,20 @@ export const FeatureShowcase = () => {
                 <Maximize2 className="size-3.5" aria-hidden="true" />
                 Enlarge
               </span>
+            </button>
+          )}
+          {!reducedMotion && mediaReady && (
+            <button
+              type="button"
+              onClick={togglePlayback}
+              aria-label={paused ? "Play video" : "Pause video"}
+              className="bg-ink/70 text-canvas hover:bg-ink/85 absolute bottom-3 left-3 inline-flex size-11 cursor-pointer touch-manipulation items-center justify-center rounded-full transition-colors duration-150"
+            >
+              {paused ? (
+                <Play className="size-4" aria-hidden="true" />
+              ) : (
+                <Pause className="size-4" aria-hidden="true" />
+              )}
             </button>
           )}
         </div>

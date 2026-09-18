@@ -164,13 +164,22 @@ export default function SampleReportPage() {
           <table className="w-full min-w-[640px] border-collapse text-sm">
             <thead>
               <tr className="border-line bg-card border-b text-left">
-                <th className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase">
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
+                >
                   Finding category
                 </th>
-                <th className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase">
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
+                >
                   What the rule flags
                 </th>
-                <th className="text-ink-faint px-4 py-3 text-right text-xs font-medium tracking-[0.18em] uppercase">
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-right text-xs font-medium tracking-[0.18em] uppercase"
+                >
                   Waste / month
                 </th>
               </tr>

@@ -4,6 +4,8 @@ import { SUPPORT_EMAIL } from "~/lib/support";
 
 export const metadata: Metadata = {
   title: "Impressum",
+  description:
+    "Anbieterkennzeichnung der UgurLabs UG (haftungsbeschränkt), Betreiberin von LicenseMeter.",
 };
 
 /*

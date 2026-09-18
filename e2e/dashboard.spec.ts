@@ -179,7 +179,7 @@ test("sample dashboard exposes the action-first overview and renewal calendar", 
   await expect(
     page
       .getByRole("button", {
-        name: "Verified savings (30d): show how this is calculated",
+        name: "Verified savings (30d): what this means",
       })
       .first(),
   ).toBeVisible();

@@ -40,7 +40,7 @@ const BASE = siteUrl();
 export const metadata: Metadata = {
   title: { absolute: SITE_TITLE },
   description: SITE_DESCRIPTION,
-  alternates: { canonical: BASE },
+  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     siteName: "LicenseMeter",
@@ -131,7 +131,7 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-      <section id="product-tour" className="bg-[#f8fafb] px-6 py-20 lg:py-24">
+      <section id="product-tour" className="bg-canvas px-6 py-20 lg:py-24">
         <div className="mx-auto max-w-6xl">
           <div className="mb-12 text-center">
             <p className="text-brand-text text-xs font-medium tracking-[0.12em] uppercase">
@@ -227,7 +227,7 @@ export default function LandingPage() {
         </div>
       </section>
       <section className="mx-auto max-w-6xl px-6 pb-20">
-        <div className="border-line rounded-3xl border bg-[#f8fafb] px-5 py-14 text-center sm:px-10 sm:py-16">
+        <div className="border-line bg-canvas rounded-3xl border px-5 py-14 text-center sm:px-10 sm:py-16">
           <h2 className="font-display mx-auto max-w-2xl text-3xl font-semibold tracking-[-0.04em] text-balance sm:text-4xl">
             Your next renewal deserves
             <br className="hidden sm:block" /> a smaller number.

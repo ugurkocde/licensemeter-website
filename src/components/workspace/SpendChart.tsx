@@ -162,8 +162,6 @@ export const SpendChart = ({
                 cy={y}
                 r="5"
                 fill={STROKES[index] ?? "var(--color-brand)"}
-                tabIndex={0}
-                aria-label={`${item.label} on ${fmtAxisDate(point.day)}: ${fmtMoney(point.cents, "USD")}`}
               >
                 <title>{`${item.label}: ${fmtMoney(point.cents, "USD")} on ${fmtAxisDate(point.day)}`}</title>
               </circle>
@@ -239,7 +237,9 @@ export const SpendChart = ({
                           key={series[index]!.label}
                           className="tnum px-2 py-2 text-right text-[11px] sm:px-4 sm:text-xs"
                         >
-                          {map.has(day) ? fmtMoney(map.get(day)!, "USD") : "—"}
+                          {map.has(day)
+                            ? fmtMoney(map.get(day)!, "USD")
+                            : "none"}
                         </td>
                       ))}
                     </tr>

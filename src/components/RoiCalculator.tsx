@@ -12,7 +12,7 @@ import {
 } from "~/components/roiMath";
 
 const inputClass =
-  "tnum mt-1.5 block min-h-11 w-full rounded-lg border border-line bg-card px-3 py-2.5 text-sm focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card focus-visible:outline-none";
+  "tnum mt-1.5 block min-h-11 w-full rounded-lg border border-line-input bg-card px-3 py-2.5 text-sm focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card focus-visible:outline-none";
 
 /**
  * Interactive waste estimate for the landing page. Every number on screen is

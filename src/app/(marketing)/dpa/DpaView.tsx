@@ -224,7 +224,7 @@ export const DpaView = ({ lang }: { lang: DpaLang }) => {
               key={l.id}
               href={l.href}
               aria-current={lang === l.id ? "page" : undefined}
-              className={`min-h-9 cursor-pointer rounded-lg px-3.5 py-1.5 text-sm font-medium transition ${
+              className={`inline-flex min-h-11 cursor-pointer items-center rounded-lg px-3.5 py-1.5 text-sm font-medium transition ${
                 lang === l.id
                   ? "bg-brand-strong text-white"
                   : "text-ink-soft hover:text-ink"

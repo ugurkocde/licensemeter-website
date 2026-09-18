@@ -5,6 +5,8 @@ import { SUPPORT_EMAIL } from "~/lib/support";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
+  description:
+    "How LicenseMeter processes personal data: website visits, sign-in, product data processed on your behalf under Art. 28 GDPR, subprocessors, retention and your rights.",
 };
 
 const Section = ({

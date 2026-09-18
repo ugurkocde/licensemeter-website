@@ -156,6 +156,7 @@ export default async function StatusPage() {
                     href={provider.statusPageUrl}
                     target="_blank"
                     rel="noreferrer"
+                    aria-label={`${provider.name} status details`}
                     className="text-ink-faint hover:text-ink text-xs underline-offset-4 hover:underline"
                   >
                     details &rarr;
@@ -183,6 +184,7 @@ export default async function StatusPage() {
                 href={link.statusPageUrl}
                 target="_blank"
                 rel="noreferrer"
+                aria-label={`Check ${link.name} status`}
                 className="border-line-strong text-ink-soft hover:border-brand hover:text-ink shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium underline-offset-4"
               >
                 Check status &rarr;

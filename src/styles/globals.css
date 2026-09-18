@@ -9,6 +9,8 @@
 @theme {
   /* Surfaces: cool, bright. */
   --color-canvas: #f7f8fa;
+  /* Slightly deeper page backdrop behind the framed marketing shell. */
+  --color-canvas-deep: #f5f6f8;
   --color-card: #ffffff;
   --color-subtle: #f3f6f5;
   --color-ink: #171b23;
@@ -16,6 +18,8 @@
   --color-ink-faint: #67717e;
   --color-line: #e8ebef;
   --color-line-strong: #d0d9d6;
+  /* Form control borders: about 3:1 against white for non-text contrast. */
+  --color-line-input: #9aa5b1;
 
   /* Brand: teal: trust, action, savings. Button fill uses brand-strong so
      white labels clear AA (#0d9488 alone fails on white at body size). */

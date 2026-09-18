@@ -1,12 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "~/components/ui";
 
 /** Fetches the generated remediation script and copies it to the clipboard. */
 export const CopyScriptButton = ({ url }: { url: string }) => {
   const [state, setState] = useState<"idle" | "copied" | "error">("idle");
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (resetTimer.current !== null) clearTimeout(resetTimer.current);
+    },
+    [],
+  );
 
   return (
     <>
@@ -21,7 +29,8 @@ export const CopyScriptButton = ({ url }: { url: string }) => {
           } catch {
             setState("error");
           }
-          setTimeout(() => setState("idle"), 2000);
+          if (resetTimer.current !== null) clearTimeout(resetTimer.current);
+          resetTimer.current = setTimeout(() => setState("idle"), 2000);
         }}
       >
         {state === "copied"

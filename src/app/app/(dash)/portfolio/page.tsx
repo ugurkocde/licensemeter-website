@@ -286,7 +286,7 @@ export default async function PortfolioPage() {
                       <>
                         {fmtMoney(snapshot.spendCents, currency)}
                         {currency !== reportingCurrency && (
-                          <div className="text-ink-faint text-[10px]">
+                          <div className="text-ink-faint text-[11px]">
                             {fmtMoney(
                               reportingSpendCents ?? 0,
                               reportingCurrency,
@@ -303,7 +303,7 @@ export default async function PortfolioPage() {
                       <>
                         {fmtMoney(snapshot.wasteCents, currency)}
                         {currency !== reportingCurrency && (
-                          <div className="text-ink-faint text-[10px] font-normal">
+                          <div className="text-ink-faint text-[11px] font-normal">
                             {fmtMoney(
                               reportingWasteCents ?? 0,
                               reportingCurrency,

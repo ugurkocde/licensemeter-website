@@ -64,7 +64,7 @@ export const PriceEditor = ({
         autoComplete="off"
         inputMode="decimal"
         aria-label={`Monthly price for ${name ?? skuId}`}
-        className="tnum border-line bg-card focus:border-ink min-h-11 w-24 border px-2 py-1.5 text-right font-mono text-sm"
+        className="tnum border-line-input bg-card focus:border-ink min-h-11 w-24 border px-2 py-1.5 text-right font-mono text-sm"
       />
       <button
         disabled={!dirty || pending}

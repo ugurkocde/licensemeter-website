@@ -73,7 +73,7 @@ export const SaasConnectForm = ({ spec }: { spec: ConnectorSpec }) => {
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"
-              className={`border-line bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-11 w-full border px-3 py-2 text-sm focus-visible:ring-2 ${f.secret ? "pr-18" : ""}`}
+              className={`border-line-input bg-card focus-visible:border-brand focus-visible:ring-brand/30 min-h-11 w-full border px-3 py-2 text-sm focus-visible:ring-2 ${f.secret ? "pr-18" : ""}`}
             />
             {f.secret && (
               <button

@@ -12,7 +12,7 @@ declare global {
 /** Mounted once in the root layout, so chat survives client-side navigation. */
 export function CrispChat({ websiteId }: { websiteId: string }) {
   return (
-    <Script id="crisp-chat" strategy="afterInteractive">{`
+    <Script id="crisp-chat" strategy="lazyOnload">{`
       window.$crisp = window.$crisp || [];
       window.CRISP_WEBSITE_ID = ${JSON.stringify(websiteId).replaceAll("<", "\\u003c")};
       window.$crisp.push(["config", "color:mode", ["light"]]);
