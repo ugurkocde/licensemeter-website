@@ -244,7 +244,10 @@ const provisionWorkspace = async (
         })
         .onConflictDoUpdate({
           target: [memberships.tenantId, memberships.email],
-          set: { workosUserId },
+          // This path only runs when accessible() found nothing, so any
+          // conflicting row is an unclaimed invite past its cutoff. A domain
+          // join must not inherit the role that expired invite carried.
+          set: { workosUserId, role: "viewer" },
         });
       return true;
     }

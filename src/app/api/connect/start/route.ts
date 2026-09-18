@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { appBaseUrl, env } from "~/env";
+import { apiAccess } from "~/server/access";
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
 import { consentStates } from "~/server/db/schema";
@@ -17,9 +18,16 @@ export const GET = async () => {
   if (user.isDemo) redirect("/app");
   if (!env.CONNECTOR_CLIENT_ID) redirect("/app/connect?error=not_configured");
 
+  // Workos flow: pin the consent to the workspace it starts from so the
+  // callback cannot attach the tenant to a different active workspace.
+  const ctx = user.workosUserId ? await apiAccess("admin") : null;
+  if (user.workosUserId && !ctx)
+    redirect("/app/connectors/microsoft?error=not_allowed");
+
   const state = crypto.randomUUID();
   await db.insert(consentStates).values({
     state,
+    tenantId: ctx?.tenant.id ?? null,
     // Exactly one identity is populated; the empty entra fields collapse to null
     // in workos mode and vice-versa.
     oid: user.oid || null,
