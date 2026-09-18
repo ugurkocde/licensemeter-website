@@ -135,7 +135,10 @@ const buildApp = (cred: MsCredential): ConfidentialClientApplication => {
   });
 };
 
-const acquireToken = async (cred: MsCredential): Promise<string> => {
+const acquireToken = async (
+  cred: MsCredential,
+  opts: { retryConsentPropagation?: boolean } = {},
+): Promise<string> => {
   const cacheKey = appCacheKey(cred);
   let app = getCachedApp(cacheKey);
   if (!app) {
@@ -155,7 +158,11 @@ const acquireToken = async (cred: MsCredential): Promise<string> => {
       return result.accessToken;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (attempt < 3 && CONSENT_PROPAGATION_PATTERNS.test(message)) {
+      if (
+        opts.retryConsentPropagation !== false &&
+        attempt < 3 &&
+        CONSENT_PROPAGATION_PATTERNS.test(message)
+      ) {
         await sleep(15_000);
         continue;
       }
@@ -204,7 +211,11 @@ const probeReports = async (
   try {
     const res = await fetch(
       `${GRAPH}/reports/getOffice365ActiveUserDetail(period='D7')`,
-      { headers: { Authorization: `Bearer ${token}` }, redirect: "follow" },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        redirect: "follow",
+        signal: AbortSignal.timeout(REPORT_TIMEOUT_MS),
+      },
     );
     if (res.ok) return { ok: true };
     return { ok: false, message: `Reports API returned ${res.status}` };
@@ -228,7 +239,9 @@ export const verifyMsCredential = async (
 ): Promise<MsVerifyResult> => {
   let token: string;
   try {
-    token = await acquireToken(cred);
+    // An unknown Client ID matches the consent-propagation patterns; a test
+    // connection must answer now rather than retry for 45 seconds.
+    token = await acquireToken(cred, { retryConsentPropagation: false });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // Log only the message: MSAL error objects can carry request context, and
@@ -280,14 +293,48 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type GraphErrorBody = { error?: { code?: string; message?: string } };
 
+/** Per-request timeouts: directory pages are small, report downloads are not. */
+const DIRECTORY_TIMEOUT_MS = 30_000;
+const REPORT_TIMEOUT_MS = 60_000;
+
+const RETRY_AFTER_DEFAULT_MS = 2_000;
+const RETRY_AFTER_MAX_MS = 30_000;
+
+/**
+ * Retry-After header to a wait in ms, clamped to [0, 30s]: delta-seconds or
+ * an HTTP-date relative to nowMs. Null when the header is absent or unparsable
+ * (the caller falls back to its default) so a garbage value never yields NaN.
+ */
+export const parseRetryAfter = (
+  header: string | null,
+  nowMs: number,
+): number | null => {
+  if (header === null) return null;
+  const value = header.trim();
+  if (value === "") return null;
+  const clamp = (ms: number): number | null =>
+    Number.isFinite(ms) ? Math.min(Math.max(ms, 0), RETRY_AFTER_MAX_MS) : null;
+  if (/^\d+(\.\d+)?$/.test(value)) return clamp(Number(value) * 1000);
+  // HTTP-dates start with a weekday name; Date.parse accepts far too much.
+  if (!/^[A-Za-z]/.test(value)) return null;
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? null : clamp(at - nowMs);
+};
+
 /** Fetch with Graph throttling etiquette: respect Retry-After on 429/503, max 4 tries. */
 const graphFetch = async (token: string, url: string): Promise<Response> => {
+  const timeoutMs = url.includes("/reports/")
+    ? REPORT_TIMEOUT_MS
+    : DIRECTORY_TIMEOUT_MS;
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       redirect: "follow",
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (res.status === 429 || res.status === 503) {
+      // Drain the body so the connection is released before retrying.
+      await res.arrayBuffer().catch(() => undefined);
       if (attempt >= 3) {
         throw new GraphHttpError(
           res.status,
@@ -295,8 +342,10 @@ const graphFetch = async (token: string, url: string): Promise<Response> => {
           "Graph throttling persisted",
         );
       }
-      const retryAfter = Number(res.headers.get("retry-after") ?? "2");
-      await sleep(Math.min(retryAfter, 30) * 1000);
+      await sleep(
+        parseRetryAfter(res.headers.get("retry-after"), Date.now()) ??
+          RETRY_AFTER_DEFAULT_MS,
+      );
       continue;
     }
     if (!res.ok) {
@@ -339,10 +388,17 @@ const getAllPages = async <T>(
     }
     const res = await graphFetch(token, url);
     const body = (await res.json()) as {
-      value: T[];
+      value?: unknown;
       "@odata.nextLink"?: string;
     };
-    items.push(...body.value);
+    if (!Array.isArray(body.value)) {
+      throw new GraphHttpError(
+        502,
+        "bad_shape",
+        "Graph collection response has no value array",
+      );
+    }
+    items.push(...(body.value as T[]));
     const next = body["@odata.nextLink"];
     // Defense in depth: never follow pagination off graph.microsoft.com.
     if (next && !next.startsWith("https://graph.microsoft.com/")) {
@@ -358,7 +414,7 @@ const getAllPages = async <T>(
 };
 
 const USER_FIELDS =
-  "id,displayName,userPrincipalName,accountEnabled,userType,createdDateTime,assignedLicenses,licenseAssignmentStates";
+  "id,displayName,userPrincipalName,mail,proxyAddresses,accountEnabled,userType,createdDateTime,assignedLicenses,licenseAssignmentStates";
 
 /** Office 365 active-user-detail CSV -> usage rows (shared by both clients). */
 const fetchActiveUserDetail = async (
@@ -370,13 +426,19 @@ const fetchActiveUserDetail = async (
     `${GRAPH}/reports/getOffice365ActiveUserDetail(period='${period}')`,
   );
   const text = await res.text();
-  return csvToRecords(text).map((r) => ({
-    userPrincipalName: r["User Principal Name"] ?? "",
-    exchangeLastActivityDate: reportDate(r["Exchange Last Activity Date"]),
-    oneDriveLastActivityDate: reportDate(r["OneDrive Last Activity Date"]),
-    sharePointLastActivityDate: reportDate(r["SharePoint Last Activity Date"]),
-    teamsLastActivityDate: reportDate(r["Teams Last Activity Date"]),
-  }));
+  // Rows without a UPN (deleted accounts, blank trailing rows) cannot join
+  // and must not be mistaken for concealed names.
+  return csvToRecords(text)
+    .filter((r) => (r["User Principal Name"] ?? "") !== "")
+    .map((r) => ({
+      userPrincipalName: r["User Principal Name"]!,
+      exchangeLastActivityDate: reportDate(r["Exchange Last Activity Date"]),
+      oneDriveLastActivityDate: reportDate(r["OneDrive Last Activity Date"]),
+      sharePointLastActivityDate: reportDate(
+        r["SharePoint Last Activity Date"],
+      ),
+      teamsLastActivityDate: reportDate(r["Teams Last Activity Date"]),
+    }));
 };
 
 /** Copilot usage report (CSV or JSON shape) -> rows (shared by both clients). */
@@ -396,16 +458,20 @@ const fetchCopilotUsage = async (
         lastActivityDate?: string | null;
       }[];
     };
-    return (body.value ?? []).map((r) => ({
-      userPrincipalName: r.userPrincipalName ?? "",
-      lastActivityDate: r.lastActivityDate ?? null,
-    }));
+    return (body.value ?? [])
+      .filter((r) => (r.userPrincipalName ?? "") !== "")
+      .map((r) => ({
+        userPrincipalName: r.userPrincipalName!,
+        lastActivityDate: r.lastActivityDate ?? null,
+      }));
   }
   const text = await res.text();
-  return csvToRecords(text).map((r) => ({
-    userPrincipalName: r["User Principal Name"] ?? "",
-    lastActivityDate: reportDate(r["Last Activity Date"]),
-  }));
+  return csvToRecords(text)
+    .filter((r) => (r["User Principal Name"] ?? "") !== "")
+    .map((r) => ({
+      userPrincipalName: r["User Principal Name"]!,
+      lastActivityDate: reportDate(r["Last Activity Date"]),
+    }));
 };
 
 export class MsGraphClient implements GraphClient {

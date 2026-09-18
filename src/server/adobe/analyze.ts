@@ -22,6 +22,9 @@ export const analyzeAdobeWaste = (
 ): WasteFinding[] => {
   const entraByEmail = new Map(entraUsers.map((u) => [u.upn.toLowerCase(), u]));
   const findings: WasteFinding[] = [];
+  // Without a synced directory (Microsoft not connected) there is nothing to
+  // correlate seats against: no orphan or disabled-account findings.
+  if (entraUsers.length === 0) return findings;
 
   for (const adobe of adobeUsers) {
     if (adobe.status !== "active") continue;

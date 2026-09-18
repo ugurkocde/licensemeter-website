@@ -4,6 +4,7 @@ import type {
   UsageReportRow,
 } from "~/server/graph/types";
 import { isConcealedUpn } from "~/server/graph/types";
+import type { EntraIdentity } from "~/server/adobe/analyze";
 import {
   COPILOT_SKU_ID,
   type WasteInput,
@@ -163,6 +164,36 @@ export const joinSignals = (args: {
     usageAggregate,
     copilotAggregate,
   };
+};
+
+/**
+ * Directory identities for connector seat matching: one entry per address a
+ * user is reachable under (UPN, primary mail, every smtp: proxy address),
+ * lowercased for lookup, first writer wins on a shared address. Built in
+ * memory per sync; nothing beyond the UPN is persisted.
+ */
+export const entraIdentitiesOf = (graphUsers: GraphUser[]): EntraIdentity[] => {
+  const byAddress = new Map<string, EntraIdentity>();
+  for (const g of graphUsers) {
+    const addresses = [
+      g.userPrincipalName,
+      g.mail ?? "",
+      ...(g.proxyAddresses ?? [])
+        .filter((p) => /^smtp:/i.test(p))
+        .map((p) => p.slice("smtp:".length)),
+    ];
+    for (const raw of addresses) {
+      const address = raw.trim().toLowerCase();
+      if (address === "" || byAddress.has(address)) continue;
+      byAddress.set(address, {
+        graphId: g.id,
+        upn: address,
+        displayName: g.displayName,
+        accountEnabled: g.accountEnabled,
+      });
+    }
+  }
+  return [...byAddress.values()];
 };
 
 export { COPILOT_SKU_ID };
