@@ -69,6 +69,8 @@ Register these Web redirect URIs for your deployment:
 
 Store the generated IDs and secrets in deployment environment variables. The connector uses `CONNECTOR_CLIENT_ID` and `CONNECTOR_CLIENT_SECRET`, independently of sign-in. Its setup page also supports bringing your own app registration. `scripts/add-redirect-uris.ps1` requires your own sign-in and connector app IDs explicitly.
 
+The hosted documentation names the applications **LicenseMeter Sign-in** and **LicenseMeter Connector** with Ugurlabs as verified publisher. Your installation's consent dialogs show your own registrations: the same default names unless you rename them, but your own application IDs and your organization as publisher. The publisher appears as unverified to other tenants unless you complete publisher verification. Microsoft also adds a **Sign in and read user profile** line to the connector's admin consent dialog, although the connector registration declares application permissions only.
+
 The managed connector requests `User.Read.All`, `AuditLog.Read.All`, `Reports.Read.All`, `LicenseAssignment.Read.All`, and `ReportSettings.Read.All`. Consent and publisher requirements depend on the target tenant's policies. See Microsoft's [admin-consent documentation](https://learn.microsoft.com/entra/identity-platform/v2-admin-consent) and [publisher verification overview](https://learn.microsoft.com/entra/identity-platform/publisher-verification-overview).
 
 ## Shared environment
