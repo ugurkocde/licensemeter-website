@@ -55,6 +55,9 @@ export const BrandingForm = ({
   const [result, setResult] = useState<BrandingActionResult | null>(null);
   const [pending, startTransition] = useTransition();
   const fileInput = useRef<HTMLInputElement>(null);
+  // Reads finish out of order when a user picks two files quickly; only the
+  // latest pick may become the logo.
+  const logoPick = useRef(0);
   const router = useRouter();
   const ids = { name: useId(), hex: useId(), logo: useId(), logoHelp: useId() };
 
@@ -72,6 +75,7 @@ export const BrandingForm = ({
   };
 
   const pickLogo = async (file: File | undefined) => {
+    const pick = ++logoPick.current;
     setLogoError(null);
     if (!file) return;
     if (!(LOGO_MEDIA_TYPES as readonly string[]).includes(file.type)) {
@@ -83,9 +87,11 @@ export const BrandingForm = ({
       return;
     }
     try {
-      setLogo(await readAsDataUrl(file));
+      const dataUrl = await readAsDataUrl(file);
+      if (pick === logoPick.current) setLogo(dataUrl);
     } catch {
-      setLogoError("The file could not be read.");
+      if (pick === logoPick.current)
+        setLogoError("The file could not be read.");
     }
   };
 
