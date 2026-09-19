@@ -14,7 +14,6 @@ import { MonthlyReportToggle } from "~/components/workspace/MonthlyReportToggle"
 import { ReplayTourButton } from "~/components/workspace/ReplayTourButton";
 import { RoleSelect } from "~/components/workspace/RoleSelect";
 import { Card, Pill } from "~/components/ui";
-import { authProvider } from "~/env";
 import { fmtDate, fmtDateTime, workspaceLabel } from "~/lib/format";
 import { ROLE_DESCRIPTION } from "~/lib/roles";
 import { hasRole, inviteExpiry, requireAccess } from "~/server/access";
@@ -85,15 +84,14 @@ export default async function SettingsPage() {
           })
         : Promise.resolve([]),
       // Access requests and the "Who can join" setting are for owners and
-      // admins only. Domain join runs under WorkOS sign-in, for the one
-      // workspace that holds a company email domain; elsewhere the control
-      // would do nothing, so it is not shown.
+      // admins only. Domain join runs for the one workspace colleagues are
+      // matched to (connected to their Microsoft tenant, or holding their
+      // company email domain); elsewhere the control would do nothing, so it
+      // is not shown.
       isAdmin && !ctx.tenant.isDemo
         ? pendingJoinRequests(db, ctx.tenant.id)
         : Promise.resolve([]),
-      isAdmin && authProvider() === "workos"
-        ? holdsJoinableDomain(db, ctx.tenant)
-        : Promise.resolve(false),
+      isAdmin ? holdsJoinableDomain(db, ctx.tenant) : Promise.resolve(false),
     ]);
 
   return (
@@ -342,11 +340,16 @@ export default async function SettingsPage() {
                   </div>
                   <div className="text-ink-faint truncate text-xs">
                     {m.email}
+                    {/* No object id and no earlier sign-in: an open invite. */}
                     {!m.oid &&
                       !m.workosUserId &&
                       (inviteExpiry(m.createdAt) < new Date()
                         ? " · invite expired"
                         : ` · invited, expires ${fmtDate(inviteExpiry(m.createdAt))}`)}
+                    {/* A member from before sign-in moved to Microsoft. */}
+                    {!m.oid &&
+                      m.workosUserId &&
+                      " · has not signed in with Microsoft yet"}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">

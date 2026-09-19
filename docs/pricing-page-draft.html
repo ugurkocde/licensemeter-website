@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pricing | LicenseMeter</title>
+<meta name="description" content="LicenseMeter is free to use and open source. Pro adds support, a 99.9% uptime target, a signed data processing agreement and MCP support. MSP adds client tenant coverage and white-label reporting.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Tokens mirror src/styles/globals.css. Keep in sync by hand. */
+  :root {
+    color-scheme: only light;
+    --canvas: #f7f8fa;
+    --card: #ffffff;
+    --subtle: #f3f6f5;
+    --ink: #171b23;
+    --ink-soft: #555e69;
+    --ink-faint: #67717e;
+    --line: #e8ebef;
+    --line-strong: #d0d9d6;
+    --brand: #0d9488;
+    --brand-strong: #115e59;
+    --brand-text: #0f766e;
+    --brand-deep: #134e4a;
+    --brand-soft: #e6f7f4;
+    --brand-bright: #2dd4bf;
+    --waste: #f59e0b;
+    --waste-deep: #854f0b;
+    --waste-soft: #fef3e2;
+    --shadow-card: 0 2px 8px -2px rgba(12, 26, 23, 0.08);
+    --shadow-float: 0 10px 28px -10px rgba(12, 26, 23, 0.14);
+    --shadow-hero: 0 24px 56px -18px rgba(12, 26, 23, 0.22);
+    --sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow-x: hidden;
+    touch-action: manipulation;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, p, ul, dl, dd, figure, fieldset { margin: 0; padding: 0; }
+  ul { list-style: none; }
+  fieldset { border: 0; min-width: 0; }
+  a { color: inherit; }
+  :where(a, button, input, summary, label):focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  .wrap {
+    max-width: 64rem;
+    margin: 0 auto;
+    padding-left: max(1.25rem, env(safe-area-inset-left));
+    padding-right: max(1.25rem, env(safe-area-inset-right));
+  }
+  .eyebrow {
+    color: var(--brand-text);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* Nav */
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: 1rem;
+  }
+  .brandlink {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+  }
+  .navlink {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    color: var(--ink-soft);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+  }
+
+  /* Hero */
+  .hero { padding-top: 1.5rem; padding-bottom: 2rem; }
+  .hero h1 {
+    margin-top: 1rem;
+    max-width: 18ch;
+    font-size: clamp(2.125rem, 7.5vw, 3.25rem);
+    font-weight: 600;
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+  }
+  .hero h1 .struck {
+    position: relative;
+    white-space: nowrap;
+    color: var(--ink-faint);
+  }
+  /* The brand strike: the amber line from the mark, drawn through the cost. */
+  .hero h1 .struck::after {
+    content: "";
+    position: absolute;
+    left: -0.06em;
+    right: -0.06em;
+    top: 54%;
+    height: 0.13em;
+    background: var(--waste);
+    transform: rotate(-7deg);
+    transform-origin: center;
+    animation: strike 0.7s 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  .hero p.lede {
+    margin-top: 1.125rem;
+    max-width: 38rem;
+    color: var(--ink-soft);
+    font-size: 1.0625rem;
+    line-height: 1.65;
+  }
+
+  /* Billing toggle: CSS only, so it survives previewers that block scripts. */
+  .billing {
+    display: inline-grid;
+    grid-template-columns: 1fr 1fr;
+    margin-top: 1.75rem;
+    padding: 0.25rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 0.875rem;
+    background: var(--card);
+    box-shadow: var(--shadow-card);
+  }
+  .billing input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+  }
+  .billing label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0 1rem;
+    border-radius: 0.625rem;
+    color: var(--ink-soft);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.18s, color 0.18s;
+  }
+  .billing input:checked + label {
+    background: var(--ink);
+    color: #fff;
+  }
+  .billing input:focus-visible + label {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  .billing .save {
+    padding: 0.125rem 0.4rem;
+    border-radius: 999px;
+    background: var(--waste-soft);
+    color: var(--waste-deep);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  /* Two-class selectors so these outrank the later .price display rule. */
+  .plan .yearly { display: none; }
+  body:has(#bill-y:checked) .plan .monthly { display: none; }
+  body:has(#bill-y:checked) .plan p.yearly { display: block; }
+  body:has(#bill-y:checked) .plan p.price.yearly { display: flex; }
+
+  /* Plans */
+  .plans {
+    display: grid;
+    gap: 1rem;
+    padding-bottom: 1rem;
+  }
+  .plan {
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+    border: 1px solid var(--line);
+    border-radius: 1.25rem;
+    background: var(--card);
+    box-shadow: var(--shadow-card);
+  }
+  .plan.pro {
+    border-color: var(--brand-deep);
+    background:
+      radial-gradient(120% 70% at 100% 0%, rgba(45, 212, 191, 0.16), transparent 60%),
+      var(--brand-deep);
+    color: #fff;
+    box-shadow: var(--shadow-hero);
+  }
+  .plan-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .plan-name {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .plan.pro .plan-name { color: var(--brand-bright); }
+  .tag {
+    padding: 0.1875rem 0.5625rem;
+    border-radius: 999px;
+    background: rgba(45, 212, 191, 0.16);
+    color: var(--brand-bright);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .plan:not(.pro) .tag { background: var(--brand-soft); color: var(--brand-text); }
+  .plan.msp {
+    border-color: var(--line-strong);
+    background:
+      radial-gradient(120% 60% at 100% 0%, var(--brand-soft), transparent 60%),
+      var(--card);
+  }
+  .price {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+  }
+  .price .amount {
+    font-size: 3rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.04em;
+  }
+  .price .per {
+    color: var(--ink-faint);
+    font-size: 0.9375rem;
+  }
+  .plan.pro .price .per { color: rgba(255, 255, 255, 0.66); }
+  .price-note {
+    margin-top: 0.5rem;
+    min-height: 1.4rem;
+    color: var(--ink-faint);
+    font-size: 0.8125rem;
+  }
+  .plan.pro .price-note { color: rgba(255, 255, 255, 0.66); }
+  .plan-pitch {
+    margin-top: 1rem;
+    color: var(--ink-soft);
+    font-size: 0.9375rem;
+  }
+  .plan.pro .plan-pitch { color: rgba(255, 255, 255, 0.84); }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    width: 100%;
+    min-height: 3rem;
+    margin-top: 1.25rem;
+    padding: 0.75rem 1.25rem;
+    border-radius: 0.75rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
+  }
+  .btn { text-align: center; }
+  .btn-solid { background: var(--brand-strong); color: #fff; }
+  .btn-solid:hover { background: var(--brand-deep); }
+  .btn-solid + .btn-secondary { margin-top: 0.625rem; }
+  .btn-secondary {
+    border: 1px solid var(--line-strong);
+    background: var(--card);
+    color: var(--ink);
+  }
+  .btn-secondary:hover { border-color: var(--brand); background: var(--subtle); }
+  .btn-bright {
+    background: #fff;
+    color: var(--brand-deep);
+    font-weight: 600;
+  }
+  .btn-bright:hover { background: var(--brand-soft); }
+  .btn-ghost {
+    margin-top: 0.625rem;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    color: #fff;
+  }
+  .btn-ghost:hover { border-color: #fff; }
+
+  .includes {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--line);
+  }
+  .plan.pro .includes { border-top-color: rgba(255, 255, 255, 0.16); }
+  .includes h3 {
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .plan.pro .includes h3 { color: rgba(255, 255, 255, 0.6); }
+  .includes ul { margin-top: 0.875rem; display: grid; gap: 0.75rem; }
+  .includes li {
+    display: grid;
+    grid-template-columns: 1.125rem 1fr;
+    gap: 0.625rem;
+    align-items: start;
+    font-size: 0.9375rem;
+    line-height: 1.45;
+  }
+  .includes li svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-top: 0.125rem;
+    color: var(--brand);
+  }
+  .plan.pro .includes li svg { color: var(--brand-bright); }
+  .includes li.off { color: var(--ink-faint); }
+  .includes li.off svg { color: var(--line-strong); }
+  .includes li small {
+    display: block;
+    margin-top: 0.125rem;
+    color: var(--ink-faint);
+    font-size: 0.8125rem;
+  }
+  .plan.pro .includes li small { color: rgba(255, 255, 255, 0.62); }
+
+  /* Ways to buy */
+  .section { padding-top: 3.5rem; }
+  .section h2 {
+    margin-top: 0.75rem;
+    font-size: clamp(1.5rem, 5vw, 2rem);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+  .section .sub {
+    margin-top: 0.75rem;
+    max-width: 38rem;
+    color: var(--ink-soft);
+  }
+  .buy {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .buy-card {
+    padding: 1.25rem;
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    background: var(--card);
+    box-shadow: var(--shadow-card);
+  }
+  .buy-card .kicker {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .buy-card h3 {
+    margin-top: 0.375rem;
+    font-size: 1.0625rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .buy-card p {
+    margin-top: 0.5rem;
+    color: var(--ink-soft);
+    font-size: 0.9375rem;
+  }
+
+  /* Comparison ledger */
+  .ledger {
+    margin-top: 1.5rem;
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    background: var(--card);
+    box-shadow: var(--shadow-card);
+    overflow: clip;
+  }
+  .ledger-head, .ledger-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 3.5rem 3.5rem 3.5rem;
+    align-items: center;
+    column-gap: 0.25rem;
+    padding: 0 1rem;
+  }
+  .ledger-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    min-height: 2.75rem;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .ledger-head span:nth-child(n + 2), .ledger-row > :nth-child(n + 2) {
+    text-align: center;
+    justify-self: center;
+  }
+  .ledger-head .is-pro { color: var(--brand-text); font-weight: 500; }
+  .ledger-group {
+    padding: 0.625rem 1rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--subtle);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .ledger-row {
+    min-height: 3.25rem;
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.9375rem;
+    line-height: 1.35;
+  }
+  .ledger-row:last-child { border-bottom: 0; }
+  .ledger-row .val {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .ledger-row svg { width: 1.125rem; height: 1.125rem; }
+  .ledger-row .yes { color: var(--brand); }
+  .ledger-row .no { color: var(--line-strong); }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* SLA figures */
+  .sla {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .sla div {
+    padding: 1.125rem;
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    background: var(--card);
+  }
+  .sla dt {
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .sla dd {
+    margin-top: 0.375rem;
+    font-size: 1.625rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+  .sla dd small {
+    display: block;
+    margin-top: 0.375rem;
+    color: var(--ink-soft);
+    font-size: 0.8125rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    line-height: 1.4;
+  }
+
+  /* FAQ */
+  .faq { margin-top: 1.25rem; border-top: 1px solid var(--line); }
+  .faq details { border-bottom: 1px solid var(--line); }
+  .faq summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 3.5rem;
+    padding: 0.75rem 0;
+    font-weight: 500;
+    cursor: pointer;
+    list-style: none;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after {
+    content: "";
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-right: 2px solid var(--ink-faint);
+    border-bottom: 2px solid var(--ink-faint);
+    transform: rotate(45deg);
+    transition: transform 0.2s;
+  }
+  .faq details[open] summary::after { transform: rotate(-135deg); }
+  .faq details p {
+    padding-bottom: 1.125rem;
+    max-width: 40rem;
+    color: var(--ink-soft);
+    font-size: 0.9375rem;
+  }
+
+  /* Closing band */
+  .closing {
+    margin-top: 3.5rem;
+    padding: 2rem 1.5rem;
+    border-radius: 1.25rem;
+    background: var(--ink);
+    color: #fff;
+  }
+  .closing h2 {
+    font-size: clamp(1.5rem, 5vw, 2rem);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+  .closing p { margin-top: 0.75rem; color: rgba(255, 255, 255, 0.72); max-width: 34rem; }
+  .closing .row { display: grid; gap: 0.625rem; margin-top: 1.5rem; }
+  .closing .btn { margin-top: 0; }
+  .btn-primary { background: var(--brand-bright); color: var(--brand-deep); font-weight: 600; }
+
+  footer {
+    padding-top: 2rem;
+    padding-bottom: max(2.5rem, env(safe-area-inset-bottom));
+    color: var(--ink-faint);
+    font-size: 0.8125rem;
+  }
+
+  @keyframes strike {
+    from { transform: rotate(-7deg) scaleX(0); }
+    to { transform: rotate(-7deg) scaleX(1); }
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
+  .rise { animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .rise.d1 { animation-delay: 0.08s; }
+  .rise.d2 { animation-delay: 0.16s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rise, .hero h1 .struck::after { animation: none; }
+  }
+
+  @media (min-width: 48rem) {
+    .hero { padding-top: 3rem; padding-bottom: 2.5rem; }
+    .plans { grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: stretch; }
+    .plans .plan:first-child { grid-column: 1 / -1; }
+    .plan { padding: 2rem; }
+    .buy { grid-template-columns: 1fr 1fr; }
+    .sla { grid-template-columns: repeat(4, 1fr); }
+    .ledger-head, .ledger-row { grid-template-columns: minmax(0, 1fr) 7rem 7rem 7rem; padding: 0 1.5rem; }
+    .ledger-row .val { font-size: 0.8125rem; }
+    .ledger-group { padding-left: 1.5rem; padding-right: 1.5rem; }
+    .closing { padding: 3rem; }
+    .closing .row { grid-template-columns: max-content max-content; }
+    .closing .btn { width: auto; }
+    .section { padding-top: 5rem; }
+  }
+
+  @media (min-width: 64rem) {
+    .plans { grid-template-columns: repeat(3, 1fr); }
+    .plans .plan:first-child { grid-column: auto; }
+    .plan { padding: 1.5rem; }
+    .price-note { min-height: 2.8rem; }
+    .plan-pitch { min-height: 6.4rem; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="check" viewBox="0 0 20 20">
+    <path d="M4.5 10.5l3.5 3.5 7.5-8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="dash" viewBox="0 0 20 20">
+    <path d="M6 10h8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+  </symbol>
+</svg>
+
+<header class="wrap nav">
+  <a class="brandlink" href="https://licensemeter.com">
+    <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <g fill="#0c1a17">
+        <rect x="6" y="6.5" width="4.5" height="19"/>
+        <rect x="13.75" y="6.5" width="4.5" height="19"/>
+        <rect x="21.5" y="6.5" width="4.5" height="19"/>
+      </g>
+      <line x1="3.5" y1="22.5" x2="28.5" y2="9.5" stroke="#f59e0b" stroke-width="4.5"/>
+    </svg>
+    LicenseMeter
+  </a>
+  <a class="navlink" href="#compare">Compare plans</a>
+</header>
+
+<main>
+  <section class="wrap hero">
+    <p class="eyebrow rise">Pricing</p>
+    <h1 class="rise d1">Finding the waste costs <span class="struck" aria-hidden="true">money</span> nothing.</h1>
+    <p class="lede rise d2">
+      LicenseMeter is free to use and open source, with every scan, finding and
+      report included. Pro is for teams that need someone accountable behind it:
+      support, a 99.9% uptime target, a signed data processing agreement and MCP
+      support. MSP
+      extends that across your client tenants.
+    </p>
+
+    <fieldset class="billing rise d2">
+      <legend class="sr">Billing period</legend>
+      <input type="radio" name="bill" id="bill-m" checked>
+      <label for="bill-m">Monthly</label>
+      <input type="radio" name="bill" id="bill-y">
+      <label for="bill-y">Yearly <span class="save">2 months off</span></label>
+    </fieldset>
+  </section>
+
+  <section class="wrap plans" aria-label="Plans">
+    <article class="plan rise d1">
+      <div class="plan-head">
+        <h2 class="plan-name">Free</h2>
+      </div>
+      <p class="price tnum"><span class="amount">€0</span><span class="per">forever</span></p>
+      <p class="price-note">No card. No seat or tenant limit.</p>
+      <p class="plan-pitch">The full product. Connect a tenant, see what the unused licenses cost per month, and hand IT the script that fixes it.</p>
+      <a class="btn btn-secondary" href="https://licensemeter.com">Start free</a>
+
+      <div class="includes">
+        <h3>Included</h3>
+        <ul>
+          <li><svg><use href="#check"/></svg><span>Read-only Microsoft 365 scan<small>Admin consent, no write scope</small></span></li>
+          <li><svg><use href="#check"/></svg><span>Every finding priced in euros per month</span></li>
+          <li><svg><use href="#check"/></svg><span>Nightly sync and weekly email digest</span></li>
+          <li><svg><use href="#check"/></svg><span>PDF waste report, CSV export, PowerShell scripts</span></li>
+          <li><svg><use href="#check"/></svg><span>Portfolio view across client tenants</span></li>
+          <li><svg><use href="#check"/></svg><span>Self-host with Docker under the MIT license</span></li>
+          <li class="off"><svg><use href="#dash"/></svg><span>No support<small>Support comes with Pro and MSP</small></span></li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="plan pro rise d2">
+      <div class="plan-head">
+        <h2 class="plan-name">Pro</h2>
+        <span class="tag">30-day trial</span>
+      </div>
+      <p class="price tnum monthly"><span class="amount">€99</span><span class="per">per month</span></p>
+      <p class="price tnum yearly"><span class="amount">€990</span><span class="per">per year</span></p>
+      <p class="price-note monthly">Excluding VAT. Cancel any time.</p>
+      <p class="price-note yearly">Excluding VAT. Twelve months for the price of ten.</p>
+      <p class="plan-pitch">Everything in Free for one tenant, with support, a signed data processing agreement and an MCP server for your AI assistant.</p>
+      <a class="btn btn-bright" href="#buy">Buy on Microsoft Marketplace</a>
+      <a class="btn btn-ghost" href="#buy">Pay by card with Polar</a>
+
+      <div class="includes">
+        <h3>Everything in Free, plus</h3>
+        <ul>
+          <li><svg><use href="#check"/></svg><span>Support<small>By email</small></span></li>
+          <li><svg><use href="#check"/></svg><span>99.9% uptime target<small>Tracked on a public status page</small></span></li>
+          <li><svg><use href="#check"/></svg><span>Signed data processing agreement<small>DPA (AVV) under GDPR Art. 28, signed with your company, in German or English</small></span></li>
+          <li><svg><use href="#check"/></svg><span>MCP support<small>Query waste, findings and trends from Claude, Copilot or any MCP client</small></span></li>
+          <li><svg><use href="#check"/></svg><span>24 months of waste history</span></li>
+          <li><svg><use href="#check"/></svg><span>Buy on your Microsoft invoice</span></li>
+          <li><svg><use href="#check"/></svg><span>Covers one tenant</span></li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="plan msp rise d2">
+      <div class="plan-head">
+        <h2 class="plan-name">MSP</h2>
+        <span class="tag">30-day trial</span>
+      </div>
+      <p class="price tnum monthly"><span class="amount">€299</span><span class="per">per month</span></p>
+      <p class="price tnum yearly"><span class="amount">€2,990</span><span class="per">per year</span></p>
+      <p class="price-note monthly">Excluding VAT. 10 client tenants included, then €25 each per month.</p>
+      <p class="price-note yearly">Excluding VAT. 10 client tenants included, then €250 each per year.</p>
+      <p class="plan-pitch">Pro across your client portfolio, with reports under your own brand and roles for your team.</p>
+      <a class="btn btn-solid" href="#buy">Buy on Microsoft Marketplace</a>
+      <a class="btn btn-secondary" href="#buy">Pay by card with Polar</a>
+
+      <div class="includes">
+        <h3>Everything in Pro, plus</h3>
+        <ul>
+          <li><svg><use href="#check"/></svg><span>10 client tenants covered<small>Add more at any time</small></span></li>
+          <li><svg><use href="#check"/></svg><span>DPA that covers your client tenants<small>LicenseMeter signs as your sub-processor</small></span></li>
+          <li><svg><use href="#check"/></svg><span>White-label PDF reports</span></li>
+          <li><svg><use href="#check"/></svg><span>Team roles and delegation</span></li>
+          <li><svg><use href="#check"/></svg><span>Portfolio alerts</span></li>
+          <li><svg><use href="#check"/></svg><span>Onboarding call</span></li>
+        </ul>
+      </div>
+    </article>
+  </section>
+
+  <section class="wrap section" id="buy">
+    <p class="eyebrow">Two ways to buy Pro or MSP</p>
+    <h2>Use the channel your procurement already approved.</h2>
+    <p class="sub">Same plans, same prices, same features. Your subscription attaches to your tenant either way.</p>
+    <div class="buy">
+      <div class="buy-card">
+        <p class="kicker">Option 01</p>
+        <h3>Microsoft Marketplace</h3>
+        <p>The charge lands on your existing Microsoft invoice under the agreement you already have. No new vendor to onboard, no card, no separate purchase order.</p>
+      </div>
+      <div class="buy-card">
+        <p class="kicker">Option 02</p>
+        <h3>Polar</h3>
+        <p>Pay by card in a minute. Polar is the merchant of record, so VAT is calculated correctly for your country and you get a compliant invoice every period.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap section" id="compare">
+    <p class="eyebrow">Compare plans</p>
+    <h2>Nothing moves out of Free.</h2>
+    <p class="sub">The paid plans add commitments and tooling on top. They do not take features away from the free product.</p>
+
+    <div class="ledger" role="table" aria-label="Plan comparison">
+      <div class="ledger-head" role="row">
+        <span role="columnheader">Feature</span>
+        <span role="columnheader">Free</span>
+        <span role="columnheader" class="is-pro">Pro</span>
+        <span role="columnheader" class="is-pro">MSP</span>
+      </div>
+
+      <div class="ledger-group" role="row"><span role="cell">Find the waste</span></div>
+      <div class="ledger-row" role="row"><span role="cell">Read-only tenant scan</span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">Findings priced per month</span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">Price book with negotiated rates</span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">Nightly sync and weekly digest</span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">Waste history</span><span role="cell" class="val">Standard</span><span role="cell" class="val">24 mo</span><span role="cell" class="val">24 mo</span></div>
+
+      <div class="ledger-group" role="row"><span role="cell">Act on it</span></div>
+      <div class="ledger-row" role="row"><span role="cell">PDF report and CSV export</span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">Generated PowerShell scripts</span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">MCP server for AI assistants</span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+
+      <div class="ledger-group" role="row"><span role="cell">For MSPs</span></div>
+      <div class="ledger-row" role="row"><span role="cell">Portfolio across client tenants</span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">White-label PDF reports</span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">Team roles and delegation</span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">Portfolio alerts</span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">Client tenants covered</span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell" class="val">1</span><span role="cell" class="val">10+</span></div>
+
+      <div class="ledger-group" role="row"><span role="cell">Support and commitments</span></div>
+      <div class="ledger-row" role="row"><span role="cell">Support</span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell" class="val">Email</span><span role="cell" class="val">Email</span></div>
+      <div class="ledger-row" role="row"><span role="cell">Uptime target</span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell" class="val">99.9%</span><span role="cell" class="val">99.9%</span></div>
+      <div class="ledger-row" role="row"><span role="cell">Onboarding call</span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+
+      <div class="ledger-group" role="row"><span role="cell">Data governance</span></div>
+      <div class="ledger-row" role="row"><span role="cell">Data stored in the EU (Frankfurt)</span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">Read-only access to your tenant</span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">Standard DPA (AVV), accepted online</span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">Signed DPA (AVV) with your company</span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">DPA covers client tenants as sub-processor</span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+
+      <div class="ledger-group" role="row"><span role="cell">Buying</span></div>
+      <div class="ledger-row" role="row"><span role="cell">Microsoft Marketplace invoice</span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not applicable</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+      <div class="ledger-row" role="row"><span role="cell">Card payment through Polar</span><span role="cell"><svg class="no"><use href="#dash"/></svg><span class="sr">Not applicable</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span><span role="cell"><svg class="yes"><use href="#check"/></svg><span class="sr">Included</span></span></div>
+    </div>
+  </section>
+
+  <section class="wrap section" id="sla">
+    <p class="eyebrow">What Pro and MSP add</p>
+    <h2>A target we publish, not a promise we cannot keep.</h2>
+    <p class="sub">The uptime target covers the hosted service at licensemeter.com and is tracked on a public status page. It is a target, without service credits.</p>
+    <dl class="sla tnum">
+      <div><dt>Uptime target</dt><dd>99.9%<small>Measured monthly</small></dd></div>
+      <div><dt>Status</dt><dd>Public<small>Live status page with incident history</small></dd></div>
+      <div><dt>Support</dt><dd>Email<small>Pro and MSP, answered by the people who build it</small></dd></div>
+      <div><dt>Your data</dt><dd>EU<small>Stored in Frankfurt, signed DPA (AVV)</small></dd></div>
+    </dl>
+  </section>
+
+  <section class="wrap section" id="faq">
+    <p class="eyebrow">Questions</p>
+    <h2>Before you ask procurement.</h2>
+    <div class="faq">
+      <details>
+        <summary>Will Free stay free?</summary>
+        <p>Yes. LicenseMeter is MIT licensed and the hosted product has no seat or tenant limit. The paid plans pay for support, the signed data processing agreement and the extra tooling. It does not gate the scan, the findings or the reports.</p>
+      </details>
+      <details>
+        <summary>Is there support on Free?</summary>
+        <p>No. Free is the full product without support. Support by email comes with Pro and MSP.</p>
+      </details>
+      <details>
+        <summary>Can we sign a data processing agreement?</summary>
+        <p>Every plan includes our standard data processing agreement, accepted online with the terms. With Pro and MSP, LicenseMeter, which is operated from Germany, also signs a data processing agreement (Auftragsverarbeitungsvertrag) under GDPR Art. 28 with your company, in German or English. Data is stored in the EU. On MSP the agreement also covers your client tenants, with LicenseMeter as your sub-processor.</p>
+      </details>
+      <details>
+        <summary>What does MCP support give me?</summary>
+        <p>Pro and MSP include a Model Context Protocol server for your workspace. Connect it to Claude, Copilot or any MCP client and ask questions in plain language, such as which SKUs wasted the most last quarter. Access is read-only and scoped to the tenants you can already see.</p>
+      </details>
+      <details>
+        <summary>How does buying through Microsoft Marketplace work?</summary>
+        <p>You subscribe in Microsoft Marketplace or the Azure portal, sign in to LicenseMeter with the same Microsoft account, and your plan activates on your tenant. The charge appears on your Microsoft invoice. The 30-day trial runs there too.</p>
+      </details>
+      <details>
+        <summary>I run an MSP. Which plan do I need?</summary>
+        <p>You can connect as many client tenants as you like on Free. Pro covers a single tenant. MSP covers 10 client tenants with support and the signed agreement, plus white-label reports, team roles and portfolio alerts. Further tenants cost €25 each per month.</p>
+      </details>
+      <details>
+        <summary>Does Pro apply if I self-host?</summary>
+        <p>The uptime target covers the hosted service. Self-hosted teams can still buy Pro or MSP for support, MSP tooling and MCP support.</p>
+      </details>
+      <details>
+        <summary>Can I cancel?</summary>
+        <p>Any time, from Microsoft Marketplace or the Polar customer portal. Your workspace drops back to Free at the end of the period and nothing is deleted.</p>
+      </details>
+    </div>
+
+    <div class="closing">
+      <h2>Run the scan first. Decide about a paid plan after you see the number.</h2>
+      <p>The first scan takes a few minutes and shows what your unused licenses cost per month.</p>
+      <div class="row">
+        <a class="btn btn-primary" href="https://licensemeter.com">Start free</a>
+        <a class="btn btn-ghost" href="mailto:support@ugurlabs.com">Talk to us</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>Draft pricing page. Prices exclude VAT. Figures and plan contents are proposals, not published terms.</p>
+</footer>
+
+</body>
+</html>

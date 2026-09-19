@@ -32,6 +32,7 @@ const ACTION_LABELS: Record<string, string> = {
   member_join_approved: "Access request approved",
   member_join_declined: "Access request declined",
   member_domain_joined: "Colleague joined by company email",
+  member_identity_linked: "Member confirmed with Microsoft",
   domain_join_mode_changed: "Who can join changed",
   threshold_changed: "Inactivity threshold changed",
   currency_changed: "Reporting currency changed",
