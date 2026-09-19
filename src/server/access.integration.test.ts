@@ -692,6 +692,16 @@ describe("first sign-in", () => {
     expect(sent[0]!.html).toContain("Hi Vera, the three steps");
   });
 
+  it("sends no onboarding mail to an unproven address", async () => {
+    session = attackerSession();
+
+    const ctx = await apiAccess();
+    for (const task of afterTasks) await task();
+
+    expect(ctx!.membership.role).toBe("owner");
+    expect(sent).toHaveLength(0);
+  });
+
   it("sends no onboarding mail to a colleague who joined an existing workspace", async () => {
     await currentDb.insert(schema.tenants).values({
       id: tenantId(1),
@@ -717,10 +727,8 @@ describe("first sign-in", () => {
     await apiAccess();
 
     expect(ctx!.tenant.id).not.toBe(tenantId(1));
-    // The admin notice, plus the onboarding mail for the requester's own
-    // workspace; the second sign-in queues nothing.
-    expect(afterTasks).toHaveLength(2);
-    for (const task of afterTasks) await task();
+    expect(afterTasks).toHaveLength(1);
+    await afterTasks[0]!();
     expect(joinRequestNotice).toHaveBeenCalledTimes(1);
     expect(domainJoinedNotice).not.toHaveBeenCalled();
     const requests = await currentDb.select().from(schema.joinRequests);

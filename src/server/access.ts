@@ -177,8 +177,10 @@ const provisionWorkspace = async (session: Session): Promise<boolean> => {
     });
   }
   // Only the sign-in that created the person's own workspace welcomes them;
-  // a colleague who joined an existing one is not onboarding from zero.
-  if (createdWorkspace) {
+  // a colleague who joined an existing one is not onboarding from zero. And
+  // only at a proven address: an unproven one is free text another tenant's
+  // admin can set, which would let them aim our mail at a stranger's mailbox.
+  if (createdWorkspace && emailProven) {
     after(() =>
       sendOnboardingEmail({ oid, email, name: session.user.name || null }),
     );
