@@ -103,7 +103,7 @@ export default async function AgreementPage({
 
       {billingEnabled() && (
         <div className="rise rise-2 flex flex-col gap-6">
-          <Card title="Online acceptance">
+          <Card title="Record of acceptance">
             {acceptance ? (
               <AcceptanceRecord record={acceptance} />
             ) : isDemo ? (
@@ -111,17 +111,12 @@ export default async function AgreementPage({
                 The demo workspace has no agreement to accept. Connect your own
                 tenant to record one.
               </p>
-            ) : canAccept && billingEnabled() ? (
-              // The layout already shows the acceptance panel at the top of
-              // every page while it is open; a second form here would be noise.
-              <p className="text-ink-soft text-sm">
-                Version {DPA_VERSION} has not been accepted yet. Use the panel
-                at the top of this page.
-              </p>
             ) : canAccept ? (
               <>
                 <p className="text-ink-soft mb-4 text-sm">
-                  Version {DPA_VERSION} has not been accepted yet.
+                  The agreement is part of the Terms and applies from your first
+                  sign-in, so nothing is missing. If your organisation wants a
+                  named, dated record of version {DPA_VERSION}, record it here.
                 </p>
                 <AcceptanceForm
                   summary={buildDpa("en").summary}
@@ -131,8 +126,9 @@ export default async function AgreementPage({
               </>
             ) : (
               <p className="text-ink-soft text-sm">
-                Version {DPA_VERSION} has not been accepted yet. An owner or
-                admin of this workspace can accept it.
+                The agreement is part of the Terms and applies from the first
+                sign-in. An owner or admin of this workspace can add a named,
+                dated record of version {DPA_VERSION} here.
               </p>
             )}
           </Card>

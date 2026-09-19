@@ -86,17 +86,19 @@ export default function TermsPage() {
         <p>
           When the Customer connects its tenant or further source systems, the
           Provider processes the data retrieved solely on the instructions and
-          on behalf of the Customer (Art. 28 GDPR). A{" "}
+          on behalf of the Customer (Art. 28 GDPR). The{" "}
           <a
             href="/dpa"
             className="hover:text-ink underline underline-offset-4"
           >
             data processing agreement (DPA)
           </a>{" "}
-          is provided before production use and, in the event of a conflict
-          regarding data processing, prevails over these Terms. Mailbox, file or
-          message content is not read; access is technically limited to
-          read-only permissions.
+          forms part of these Terms and is concluded together with them, in
+          electronic form, when the Customer first uses the Service. In the
+          event of a conflict regarding data processing, the DPA prevails over
+          these Terms. On the Pro and MSP plans the Provider also signs the DPA
+          with the Customer named as a party. Mailbox, file or message content
+          is not read; access is technically limited to read-only permissions.
         </p>
       </Section>
 

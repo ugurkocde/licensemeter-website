@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { BrandMark } from "~/components/BrandMark";
-import { AcceptanceGate } from "~/components/agreement/AcceptanceGate";
 import { ChangelogBell } from "~/components/changelog/ChangelogBell";
 import { JoinRequestNotice } from "~/components/workspace/JoinRequestNotice";
 import { MobileNav } from "~/components/workspace/MobileNav";
@@ -132,9 +131,6 @@ export default async function WorkspaceLayout({
             workspaceName={request.tenantName ?? "a workspace"}
           />
         ))}
-        {/* Pages, not API routes or cron jobs, pass through here; the gate
-            decides on its own whether there is anything to show. */}
-        <AcceptanceGate ctx={ctx} />
         {children}
       </main>
     </div>

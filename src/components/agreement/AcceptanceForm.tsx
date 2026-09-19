@@ -36,7 +36,7 @@ export const AcceptanceForm = ({
     </ul>
 
     <p className="text-ink-soft text-sm">
-      Read the full text before you accept:{" "}
+      The full text:{" "}
       <a
         href="/dpa"
         target="_blank"
@@ -89,7 +89,7 @@ export const AcceptanceForm = ({
 
     <div className="flex flex-wrap items-center gap-3">
       <Button type="submit" variant="primary">
-        Accept version {DPA_VERSION}
+        Record acceptance of version {DPA_VERSION}
       </Button>
       <span className="text-ink-faint text-xs">
         Recorded with your name, your sign-in address and the time.

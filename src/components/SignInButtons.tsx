@@ -65,6 +65,25 @@ export const SignInButtons = ({
         </Link>
       )}
     </div>
+    {signInEnabled && (
+      <p
+        className={`text-ink-faint mt-3 text-xs ${centered ? "text-center" : ""}`}
+      >
+        By signing in you agree to the{" "}
+        <Link href="/terms" className="hover:text-ink underline">
+          Terms
+        </Link>
+        , including the{" "}
+        <Link href="/dpa" className="hover:text-ink underline">
+          data processing agreement
+        </Link>
+        , and the{" "}
+        <Link href="/privacy" className="hover:text-ink underline">
+          privacy policy
+        </Link>
+        .
+      </p>
+    )}
     {showNote && (
       <p className="text-ink-faint mt-3 text-xs">
         Free to use, with no time limit. No credit card, read-only access. The
