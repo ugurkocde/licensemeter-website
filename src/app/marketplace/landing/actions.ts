@@ -4,7 +4,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { marketplaceEnabled, signInPath } from "~/env";
+import { marketplaceEnabled } from "~/env";
+import { signInStartHref } from "~/lib/signIn";
 import {
   apiAccess,
   WORKSPACE_COOKIE,
@@ -68,12 +69,9 @@ export async function activateMarketplacePurchase(
 
   const ctx = await apiAccess();
   if (!ctx) {
+    // Same single sign-on entry as the landing page itself.
     const returnTo = safeReturnPath(landingPath(token));
-    redirect(
-      returnTo
-        ? `${signInPath()}?returnTo=${encodeURIComponent(returnTo)}`
-        : signInPath(),
-    );
+    redirect(signInStartHref(returnTo));
   }
   if (ctx.user.isDemo) fail("demo");
 

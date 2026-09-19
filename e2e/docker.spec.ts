@@ -5,7 +5,7 @@ test.skip(
   "Runs against the built Docker stack only",
 );
 
-test("self-hosted image uses runtime configuration and opens the sample tenant without WorkOS", async ({
+test("self-hosted image uses runtime configuration and opens the sample tenant", async ({
   page,
   request,
 }) => {
