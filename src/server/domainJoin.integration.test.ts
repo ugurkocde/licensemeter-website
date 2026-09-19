@@ -88,6 +88,47 @@ const auditActions = async (tenantId: string) =>
       .where(eq(schema.auditLog.tenantId, tenantId))
   ).map((r) => r.action);
 
+describe("first sign-in race", () => {
+  it("creates one workspace when several requests provision the same user at once", async () => {
+    const who: SignInIdentity = {
+      email: "solo@gmail.com",
+      emailVerified: true,
+      workosUserId: "user_solo",
+      name: "Sam Solo",
+    };
+
+    const results = await Promise.all([
+      provisionForSignIn(db, who),
+      provisionForSignIn(db, who),
+      provisionForSignIn(db, who),
+    ]);
+
+    expect(results.every((r) => r.provisioned)).toBe(true);
+    const owned = await db
+      .select()
+      .from(schema.memberships)
+      .where(eq(schema.memberships.workosUserId, who.workosUserId));
+    expect(owned).toHaveLength(1);
+    expect(await db.select().from(schema.tenants)).toHaveLength(1);
+  });
+
+  it("still gives a second person their own workspace", async () => {
+    await provisionForSignIn(db, {
+      email: "a@gmail.com",
+      emailVerified: true,
+      workosUserId: "user_a",
+      name: null,
+    });
+    await provisionForSignIn(db, {
+      email: "b@gmail.com",
+      emailVerified: true,
+      workosUserId: "user_b",
+      name: null,
+    });
+    expect(await db.select().from(schema.tenants)).toHaveLength(2);
+  });
+});
+
 describe("first sign-in from a domain", () => {
   it("creates the domain's workspace with approval as the default", async () => {
     const result = await provisionForSignIn(db, OWNER);

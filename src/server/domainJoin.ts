@@ -238,6 +238,20 @@ export const createOwnedWorkspace = async (
   domain: string | null,
 ): Promise<boolean> =>
   db.transaction(async (tx) => {
+    // A first sign-in fires several requests at once (layout, page, prefetch),
+    // and every one of them arrives here with no membership yet. Serialise per
+    // user and look again inside the lock: the first request creates the
+    // workspace, the others adopt it instead of creating an empty twin.
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`workspace-provision:${who.workosUserId}`}, 0))`,
+    );
+    const [existing] = await tx
+      .select({ id: memberships.id })
+      .from(memberships)
+      .where(eq(memberships.workosUserId, who.workosUserId))
+      .limit(1);
+    if (existing) return true;
+
     const [created] = await tx
       .insert(tenants)
       .values({ name: domain, domain })

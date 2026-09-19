@@ -1,4 +1,14 @@
-import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -279,7 +289,11 @@ const resolveWorkos = async (
               )
             : sql`false`,
         ),
-      );
+      )
+      // Oldest first, so the workspace someone lands on without a workspace
+      // cookie is the same on every request instead of whatever order the
+      // database returns.
+      .orderBy(asc(tenants.createdAt), asc(tenants.id));
 
   let rows = await accessible();
   if (rows.length === 0) {
