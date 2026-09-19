@@ -83,4 +83,6 @@ export type EntraIdTokenClaims = {
   name?: string;
   email?: string;
   preferred_username?: string;
+  /** Email domain owner verified; see VerifiedEntraClaims.emailProven. */
+  xms_edov?: boolean;
 };

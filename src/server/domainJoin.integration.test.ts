@@ -40,16 +40,24 @@ beforeEach(async () => {
   db = drizzle(client, { schema }) as unknown as Db;
 });
 
+const ACME_TID = "aaaaaaaa-0000-4000-8000-000000000001";
+const OTHER_TID = "bbbbbbbb-0000-4000-8000-000000000002";
+const OWNER_OID = "00000000-0000-4000-8000-0000000000a1";
+const CASEY_OID = "00000000-0000-4000-8000-0000000000c1";
+const MALLORY_OID = "00000000-0000-4000-8000-0000000000e1";
+
 const OWNER: SignInIdentity = {
+  oid: OWNER_OID,
+  tid: ACME_TID,
   email: "owner@acme.com",
   emailVerified: true,
-  workosUserId: "user_owner",
   name: "Olivia Owner",
 };
 const COLLEAGUE: SignInIdentity = {
+  oid: CASEY_OID,
+  tid: ACME_TID,
   email: "casey@acme.com",
   emailVerified: true,
-  workosUserId: "user_casey",
   name: "Casey Colleague",
 };
 
@@ -71,14 +79,14 @@ const seedDomainWorkspace = async (mode: DomainJoinMode) => {
   return { tenantId: tenant!.id, ownerMembershipId: owner!.id };
 };
 
-const membershipsOf = (workosUserId: string) =>
+const membershipsOf = (oid: string) =>
   db
     .select({
       tenantId: schema.memberships.tenantId,
       role: schema.memberships.role,
     })
     .from(schema.memberships)
-    .where(eq(schema.memberships.workosUserId, workosUserId));
+    .where(eq(schema.memberships.oid, oid));
 
 const auditActions = async (tenantId: string) =>
   (
@@ -100,7 +108,7 @@ describe("first sign-in from a domain", () => {
     expect(await holdsJoinableDomain(db, tenant!)).toBe(true);
   });
 
-  it("gives consumer and unverified addresses a workspace without a domain", async () => {
+  it("gives consumer and unproven addresses a workspace without a domain", async () => {
     await provisionForSignIn(db, { ...OWNER, email: "someone@gmail.com" });
     await provisionForSignIn(db, {
       ...COLLEAGUE,
@@ -129,7 +137,9 @@ describe("approval mode", () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
       email: "casey@acme.com",
-      workosUserId: "user_casey",
+      oid: CASEY_OID,
+      tid: ACME_TID,
+      workosUserId: null,
       status: "pending",
     });
     expect(await auditActions(tenantId)).toEqual(["member_join_requested"]);
@@ -140,7 +150,7 @@ describe("approval mode", () => {
     const result = await provisionForSignIn(db, COLLEAGUE);
 
     expect(result.provisioned).toBe(true);
-    const own = await membershipsOf("user_casey");
+    const own = await membershipsOf(CASEY_OID);
     expect(own).toHaveLength(1);
     expect(own[0]!.role).toBe("owner");
     expect(own[0]!.tenantId).not.toBe(tenantId);
@@ -150,7 +160,7 @@ describe("approval mode", () => {
       .where(eq(schema.tenants.id, own[0]!.tenantId));
     expect(ownTenant!.domain).toBeNull();
     expect(await holdsJoinableDomain(db, ownTenant!)).toBe(false);
-    expect(await pendingJoinRequestsOf(db, "user_casey")).toEqual([
+    expect(await pendingJoinRequestsOf(db, CASEY_OID)).toEqual([
       { id: expect.any(String) as string, tenantName: "acme.com" },
     ]);
   });
@@ -186,7 +196,7 @@ describe("approval mode", () => {
       status: "declined",
       decidedByMembershipId: ownerMembershipId,
     });
-    expect(await pendingJoinRequestsOf(db, "user_casey")).toEqual([]);
+    expect(await pendingJoinRequestsOf(db, CASEY_OID)).toEqual([]);
   });
 });
 
@@ -197,7 +207,7 @@ describe("auto mode", () => {
 
     expect(result.provisioned).toBe(true);
     expect(result.outcome.kind).toBe("joined");
-    expect(await membershipsOf("user_casey")).toEqual([
+    expect(await membershipsOf(CASEY_OID)).toEqual([
       { tenantId, role: "viewer" },
     ]);
     expect(await db.select().from(schema.tenants)).toHaveLength(1);
@@ -212,13 +222,13 @@ describe("auto mode", () => {
       .where(
         and(
           eq(schema.memberships.tenantId, tenantId),
-          eq(schema.memberships.workosUserId, "user_casey"),
+          eq(schema.memberships.oid, CASEY_OID),
         ),
       );
 
     const again = await provisionForSignIn(db, COLLEAGUE);
     expect(again.outcome.kind).toBe("none");
-    const own = await membershipsOf("user_casey");
+    const own = await membershipsOf(CASEY_OID);
     expect(own).toHaveLength(1);
     expect(own[0]!.tenantId).not.toBe(tenantId);
   });
@@ -232,7 +242,7 @@ describe("auto mode", () => {
       createdAt: new Date("2020-01-01T00:00:00Z"),
     });
     await provisionForSignIn(db, COLLEAGUE);
-    expect(await membershipsOf("user_casey")).toEqual([
+    expect(await membershipsOf(CASEY_OID)).toEqual([
       { tenantId, role: "viewer" },
     ]);
   });
@@ -246,7 +256,7 @@ describe("off mode", () => {
     expect(result).toEqual({ provisioned: true, outcome: { kind: "none" } });
     expect(await db.select().from(schema.joinRequests)).toHaveLength(0);
     expect(await auditActions(tenantId)).toEqual([]);
-    const own = await membershipsOf("user_casey");
+    const own = await membershipsOf(CASEY_OID);
     expect(own).toHaveLength(1);
     expect(own[0]!.tenantId).not.toBe(tenantId);
     const holders = await db
@@ -279,7 +289,7 @@ describe("approving a request", () => {
       [first, second].filter((r) => "changed" in r && r.changed),
     ).toHaveLength(1);
     expect(third).toMatchObject({ status: "done", changed: false });
-    const inWorkspace = (await membershipsOf("user_casey")).filter(
+    const inWorkspace = (await membershipsOf(CASEY_OID)).filter(
       (m) => m.tenantId === tenantId,
     );
     expect(inWorkspace).toEqual([{ tenantId, role: "viewer" }]);
@@ -298,15 +308,16 @@ describe("approving a request", () => {
 
     // An admin of an unrelated workspace guesses the request id.
     await provisionForSignIn(db, {
+      oid: MALLORY_OID,
+      tid: OTHER_TID,
       email: "mallory@other.example",
       emailVerified: true,
-      workosUserId: "user_mallory",
       name: null,
     });
     const [other] = await db
       .select()
       .from(schema.memberships)
-      .where(eq(schema.memberships.workosUserId, "user_mallory"));
+      .where(eq(schema.memberships.oid, MALLORY_OID));
 
     const result = await approveJoinRequestRow(db, {
       tenantId: other!.tenantId,
@@ -316,8 +327,258 @@ describe("approving a request", () => {
 
     expect(result).toEqual({ status: "not_found" });
     expect(await pendingJoinRequests(db, tenantId)).toHaveLength(1);
-    const casey = await membershipsOf("user_casey");
+    const casey = await membershipsOf(CASEY_OID);
     expect(casey.map((m) => m.tenantId)).not.toContain(tenantId);
     expect(casey.map((m) => m.tenantId)).not.toContain(other!.tenantId);
+  });
+});
+
+describe("an unproven email", () => {
+  it("never reaches the workspace that holds the domain it names", async () => {
+    const { tenantId } = await seedDomainWorkspace("auto");
+    // Another tenant's admin set a user's mail attribute to an acme.com address.
+    const result = await provisionForSignIn(db, {
+      oid: MALLORY_OID,
+      tid: OTHER_TID,
+      email: "casey@acme.com",
+      emailVerified: false,
+      name: "Mallory",
+    });
+
+    expect(result).toEqual({ provisioned: true, outcome: { kind: "none" } });
+    const own = await membershipsOf(MALLORY_OID);
+    expect(own).toHaveLength(1);
+    expect(own[0]).toMatchObject({ role: "owner" });
+    expect(own[0]!.tenantId).not.toBe(tenantId);
+    expect(await db.select().from(schema.joinRequests)).toHaveLength(0);
+    expect(await auditActions(tenantId)).toEqual([]);
+  });
+});
+
+describe("join by Microsoft tenant", () => {
+  /** A workspace connected to the acme tenant, holding no email domain. */
+  const seedTenantWorkspace = async (mode: DomainJoinMode) => {
+    const [tenant] = await db
+      .insert(schema.tenants)
+      .values({ name: "Acme", tid: ACME_TID, domainJoinMode: mode })
+      .returning();
+    await db.insert(schema.memberships).values({
+      tenantId: tenant!.id,
+      oid: OWNER_OID,
+      email: OWNER.email,
+      role: "owner",
+    });
+    return tenant!;
+  };
+  // The token proves the tid; the email does not have to be proven at all.
+  const SAME_TENANT: SignInIdentity = { ...COLLEAGUE, emailVerified: false };
+
+  it("joins a colleague from the same tenant in auto mode", async () => {
+    const tenant = await seedTenantWorkspace("auto");
+    expect(await holdsJoinableDomain(db, tenant)).toBe(true);
+
+    const result = await provisionForSignIn(db, SAME_TENANT);
+
+    expect(result.outcome.kind).toBe("joined");
+    expect(await membershipsOf(CASEY_OID)).toEqual([
+      { tenantId: tenant.id, role: "viewer" },
+    ]);
+    expect(await db.select().from(schema.tenants)).toHaveLength(1);
+  });
+
+  it("files a request in approval mode and keeps the domain with the organization", async () => {
+    const tenant = await seedTenantWorkspace("approval");
+    const result = await provisionForSignIn(db, COLLEAGUE);
+
+    expect(result.outcome).toMatchObject({ kind: "requested" });
+    const own = await membershipsOf(CASEY_OID);
+    expect(own).toHaveLength(1);
+    expect(own[0]!.tenantId).not.toBe(tenant.id);
+    // The organization already has a workspace, so the newcomer's own one
+    // does not claim acme.com.
+    const [ownTenant] = await db
+      .select()
+      .from(schema.tenants)
+      .where(eq(schema.tenants.id, own[0]!.tenantId));
+    expect(ownTenant!.domain).toBeNull();
+  });
+
+  it("prefers the tenant match over the email domain", async () => {
+    await seedDomainWorkspace("auto");
+    // Casey's account lives in another tenant that has its own workspace.
+    const [theirs] = await db
+      .insert(schema.tenants)
+      .values({ name: "Other", tid: OTHER_TID, domainJoinMode: "auto" })
+      .returning();
+    const result = await provisionForSignIn(db, {
+      ...COLLEAGUE,
+      tid: OTHER_TID,
+    });
+    expect(result.outcome).toMatchObject({
+      kind: "joined",
+      tenant: { id: theirs!.id },
+    });
+  });
+
+  it("does nothing for a different tenant or in off mode", async () => {
+    const tenant = await seedTenantWorkspace("off");
+    await provisionForSignIn(db, SAME_TENANT);
+    await provisionForSignIn(db, {
+      ...SAME_TENANT,
+      oid: MALLORY_OID,
+      tid: OTHER_TID,
+    });
+    const members = await db
+      .select()
+      .from(schema.memberships)
+      .where(eq(schema.memberships.tenantId, tenant.id));
+    expect(members).toHaveLength(1);
+    expect(await db.select().from(schema.joinRequests)).toHaveLength(0);
+  });
+
+  it("never matches the demo workspace", async () => {
+    await db.insert(schema.tenants).values({
+      name: "Demo",
+      tid: ACME_TID,
+      isDemo: true,
+      domainJoinMode: "auto",
+    });
+    const result = await provisionForSignIn(db, SAME_TENANT);
+    expect(result.outcome.kind).toBe("none");
+  });
+});
+
+describe("rows that belong to someone else", () => {
+  it("does not take over a membership another person holds under the same address", async () => {
+    const { tenantId } = await seedDomainWorkspace("auto");
+    await db.insert(schema.memberships).values({
+      tenantId,
+      oid: MALLORY_OID,
+      email: "casey@acme.com",
+      role: "admin",
+    });
+
+    const result = await provisionForSignIn(db, COLLEAGUE);
+
+    expect(result.outcome.kind).toBe("none");
+    const own = await membershipsOf(CASEY_OID);
+    expect(own.map((m) => m.tenantId)).not.toContain(tenantId);
+    const [kept] = await membershipsOf(MALLORY_OID);
+    expect(kept).toEqual({ tenantId, role: "admin" });
+  });
+
+  it("leaves an unlinked legacy member's row alone", async () => {
+    const { tenantId } = await seedDomainWorkspace("auto");
+    await db.insert(schema.memberships).values({
+      tenantId,
+      workosUserId: "user_casey",
+      email: "casey@acme.com",
+      role: "admin",
+    });
+
+    const result = await provisionForSignIn(db, {
+      ...COLLEAGUE,
+      emailVerified: false,
+    });
+
+    expect(result.outcome.kind).toBe("none");
+    const [row] = await db
+      .select()
+      .from(schema.memberships)
+      .where(eq(schema.memberships.workosUserId, "user_casey"));
+    expect(row).toMatchObject({ oid: null, role: "admin" });
+  });
+
+  it("honours a decision recorded before sign-in moved to Entra, for a proven email only", async () => {
+    const { tenantId } = await seedDomainWorkspace("approval");
+    await db.insert(schema.joinRequests).values({
+      tenantId,
+      email: "casey@acme.com",
+      workosUserId: "user_casey",
+      status: "declined",
+      decidedAt: new Date(),
+    });
+
+    const proven = await provisionForSignIn(db, COLLEAGUE);
+    expect(proven.outcome.kind).toBe("none");
+    expect(await db.select().from(schema.joinRequests)).toHaveLength(1);
+  });
+
+  it("approves a request from before the move as a legacy membership", async () => {
+    const { tenantId, ownerMembershipId } =
+      await seedDomainWorkspace("approval");
+    const [legacy] = await db
+      .insert(schema.joinRequests)
+      .values({
+        tenantId,
+        email: "casey@acme.com",
+        workosUserId: "user_casey",
+      })
+      .returning();
+
+    const result = await approveJoinRequestRow(db, {
+      tenantId,
+      requestId: legacy!.id,
+      decidedByMembershipId: ownerMembershipId,
+    });
+
+    expect(result).toMatchObject({ status: "done", changed: true });
+    const [row] = await db
+      .select()
+      .from(schema.memberships)
+      .where(eq(schema.memberships.workosUserId, "user_casey"));
+    expect(row).toMatchObject({ tenantId, oid: null, role: "viewer" });
+  });
+});
+
+describe("approving when the address is taken", () => {
+  it("writes nothing and leaves the request pending", async () => {
+    const { tenantId, ownerMembershipId } =
+      await seedDomainWorkspace("approval");
+    const filed = await provisionForSignIn(db, COLLEAGUE);
+    if (filed.outcome.kind !== "requested") throw new Error("expected request");
+    // Between the request and the approval someone else got that address.
+    await db.insert(schema.memberships).values({
+      tenantId,
+      oid: MALLORY_OID,
+      email: "casey@acme.com",
+      role: "admin",
+    });
+
+    const result = await approveJoinRequestRow(db, {
+      tenantId,
+      requestId: filed.outcome.requestId,
+      decidedByMembershipId: ownerMembershipId,
+    });
+
+    expect(result).toEqual({ status: "address_taken" });
+    expect(await pendingJoinRequests(db, tenantId)).toHaveLength(1);
+    const casey = await membershipsOf(CASEY_OID);
+    expect(casey.map((m) => m.tenantId)).not.toContain(tenantId);
+    expect(await membershipsOf(MALLORY_OID)).toEqual([
+      { tenantId, role: "admin" },
+    ]);
+  });
+});
+
+describe("concurrent first sign-ins", () => {
+  it("create exactly one workspace for the same person", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () => provisionForSignIn(db, OWNER)),
+    );
+
+    expect(results.every((r) => r.provisioned)).toBe(true);
+    expect(await db.select().from(schema.tenants)).toHaveLength(1);
+    expect(await membershipsOf(OWNER_OID)).toHaveLength(1);
+  });
+
+  it("gives two different people from one new domain one workspace each, and the domain to one", async () => {
+    await Promise.all([
+      provisionForSignIn(db, OWNER),
+      provisionForSignIn(db, { ...COLLEAGUE, tid: OTHER_TID }),
+    ]);
+    const tenants = await db.select().from(schema.tenants);
+    expect(tenants).toHaveLength(2);
+    expect(tenants.filter((t) => t.domain === "acme.com")).toHaveLength(1);
   });
 });

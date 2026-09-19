@@ -18,15 +18,9 @@ jobs:
     timeout-minutes: 30
     env:
       # Build-time env validation runs with NODE_ENV=production; these are
-      # CI-only values, never used at runtime. WorkOS is the default auth
-      # provider, so its credentials are required at build; dummy values here
-      # satisfy the schema (cookie password must be >=32 chars).
+      # CI-only values, never used at runtime.
       AUTH_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
       DEMO_MODE: "true"
-      WORKOS_API_KEY: sk_ci_only
-      WORKOS_CLIENT_ID: client_ci_only
-      WORKOS_COOKIE_PASSWORD: ci-only-cookie-password-0123456789abcdef
-      NEXT_PUBLIC_WORKOS_REDIRECT_URI: http://127.0.0.1:3100/auth/callback
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -67,6 +61,14 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - name: Keep the Playwright traces and screenshots of a failed run
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
 
   docker:
     runs-on: ubuntu-latest

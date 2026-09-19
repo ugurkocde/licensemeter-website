@@ -32,6 +32,7 @@ const ACTION_LABELS: Record<string, string> = {
   member_join_approved: "Access request approved",
   member_join_declined: "Access request declined",
   member_domain_joined: "Colleague joined by company email",
+  member_identity_linked: "Member confirmed with Microsoft",
   domain_join_mode_changed: "Who can join changed",
   threshold_changed: "Inactivity threshold changed",
   currency_changed: "Reporting currency changed",
@@ -41,6 +42,12 @@ const ACTION_LABELS: Record<string, string> = {
   leak_alerts_changed: "Leak alerts changed",
   monthly_report_changed: "Monthly report changed",
   email_preference_changed: "Personal email preference changed",
+  mcp_token_created: "MCP token created",
+  mcp_token_revoked: "MCP token revoked",
+  dpa_accepted: "Data processing agreement accepted",
+  dpa_signed: "Data processing agreement signed",
+  branding_updated: "Report branding updated",
+  branding_cleared: "Report branding reset",
   trial_reminders_changed: "Trial reminders changed",
 };
 

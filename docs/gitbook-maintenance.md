@@ -38,7 +38,7 @@ Do not run the initial content-generation scratch script again: the Markdown fil
 
 ## Refresh screenshots
 
-Use a clean copy of the intended application revision with a fresh embedded database, `AUTH_PROVIDER=entra`, `DEMO_MODE=true`, a disposable `AUTH_SECRET`, and `APP_BASE_URL=http://localhost:3217`. Do not copy production environment files. Initialize its schema with `drizzle-kit push`, then start the local Next.js server on port 3217. Keep outbound email, chat and operational integrations unconfigured.
+Use a clean copy of the intended application revision with a fresh embedded database, `DEMO_MODE=true`, a disposable `AUTH_SECRET`, and `APP_BASE_URL=http://localhost:3217`. Do not copy production environment files. Initialize its schema with `drizzle-kit push`, then start the local Next.js server on port 3217. Keep outbound email, chat and operational integrations unconfigured.
 
 From this repository, with the Playwright CLI skill installed:
 

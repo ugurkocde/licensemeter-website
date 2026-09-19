@@ -36,6 +36,27 @@
       "when": 1789817801798,
       "tag": "0004_entitlements",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789817884368,
+      "tag": "0005_paid_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789817901286,
+      "tag": "0006_entitlements_plan_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789827834924,
+      "tag": "0007_entra_identity",
+      "breakpoints": true
     }
   ]
 }
