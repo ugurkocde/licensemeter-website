@@ -23,6 +23,20 @@ Sign-in is Microsoft only: select the Microsoft button and sign in with your wor
 
 Signing in asks only for your basic profile: your name and email address. It needs no administrator rights and reads nothing in your organization's Microsoft 365. Connecting Microsoft 365 for the license data is a separate, later step that an administrator approves.
 
+### What Microsoft asks the first time
+
+The first time you sign in, Microsoft may show a **Permissions requested** dialog for the application **LicenseMeter Sign-in**, published by **Ugurlabs UG (haftungsbeschränkt)** with a verified badge. It asks for your own basic details only:
+
+| Line in Microsoft's dialog | What it covers |
+| --- | --- |
+| Sign in as you | Confirms your identity to LicenseMeter |
+| View your basic profile | Your name and username |
+| View your email address | Your work email address |
+
+Microsoft can word or group these lines slightly differently, and may add **Maintain access to data you have given it access to**, which keeps the sign-in working and grants no additional data. Accepting applies to your account only and adds an enterprise application named **LicenseMeter Sign-in** (application ID `782cdfc5-6fdb-43a6-85b4-2940baf26ac5`) to your organization's tenant. It does not connect Microsoft 365 data. If the dialog shown during sign-in names another application or publisher, or asks to read other people's data, cancel. Only an [instant scan](instant-scan.md) that you start yourself asks for organization-wide read permissions under this application name.
+
+If Microsoft shows **Need admin approval** or **Approval required** instead, your organization does not let users approve applications themselves. Send the request from that screen if it offers one. Your administrator then finds it in the Entra admin center under **Enterprise apps > Admin consent requests**. If no request option is offered, ask an administrator to sign in to LicenseMeter once and select **Consent on behalf of your organization** in Microsoft's dialog. After that, **LicenseMeter Sign-in** appears under **Enterprise applications**. This approval covers sign-in only. It is not the [connector's admin consent](../connectors/microsoft-managed.md), which is a separate, later decision. Microsoft documents the process in [Review admin consent requests](https://learn.microsoft.com/entra/identity/enterprise-apps/review-admin-consent-requests).
+
 Use the invited work account for an invitation. Do not assume that two accounts reach the same workspace, even when they share an email address. LicenseMeter recognizes you by your Microsoft account, not by the address you type.
 
 If you see **Request scan access** rather than a working sign-in action, use [Support](https://www.licensemeter.com/support) or contact your installation's operator. The sample workspace remains a way to explore. Do not grant Microsoft consent to solve a missing LicenseMeter login option.

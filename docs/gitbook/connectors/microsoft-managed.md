@@ -23,7 +23,31 @@ Select **Connectors > Microsoft 365** and confirm the active workspace. Select *
 {% step %}
 ## Review Microsoft's approval screen
 
-Use the intended administrator account and tenant. Check the application identity and requested read permissions before accepting. Cancel if the organization or application is unexpected.
+Use the intended administrator account and tenant. Microsoft shows a **Permissions requested** dialog with the subtitle **Review for your organization**. Check these points before accepting, and cancel if any of them differs.
+
+| What to check | Expected on hosted LicenseMeter |
+| --- | --- |
+| Account at the top | The administrator account of the tenant you intend to connect |
+| Application name | **LicenseMeter Connector** |
+| Publisher | **Ugurlabs UG (haftungsbeschränkt)** with Microsoft's blue verified badge |
+| Permissions | The six lines listed below, all of them read access |
+
+<figure><img src="../.gitbook/assets/microsoft-consent-connector.webp" alt="Microsoft Permissions requested dialog for LicenseMeter Connector, published by Ugurlabs UG (haftungsbeschränkt) with a verified badge, listing six read permissions"><figcaption><p>Microsoft's admin consent dialog for the hosted LicenseMeter Connector. The signed-in account line is removed from this image.</p></figcaption></figure>
+
+Microsoft describes each permission in its own words. The lines map to the connector's permissions like this:
+
+| Line in Microsoft's dialog | Permission | Type |
+| --- | --- | --- |
+| Read all users' full profiles | `User.Read.All` | Application |
+| Read all audit log data | `AuditLog.Read.All` | Application |
+| Read all usage reports | `Reports.Read.All` | Application |
+| Read all license assignments. | `LicenseAssignment.Read.All` | Application |
+| Read all admin report settings | `ReportSettings.Read.All` | Application |
+| Sign in and read user profile | `User.Read` | Delegated |
+
+The first five are the application permissions the connector registration declares; their purpose is on the [Microsoft connector overview](microsoft.md). Microsoft adds the sixth line to the dialog itself. The connector registration does not declare it, and the connector authenticates as an application without a signed-in user, so it never reads data on behalf of the approving administrator.
+
+A publisher shown as **unverified**, a different application name, or any permission containing **write**, **manage** or mail, file and chat content is not the LicenseMeter connector. Select **Cancel** and contact [Support](https://www.licensemeter.com/support). Expand a line with its arrow to read Microsoft's full description. Select the publisher name to see more about the application: for the hosted connector, the publisher domain is `ugurlabs.com` and the reply URLs include `https://www.licensemeter.com/api/connect/callback`. Its application ID, visible in Entra after consent, is `1a1a346a-05d5-4f54-87a5-5b5e63f9c610`. A self-hosted installation shows the name, publisher and application ID of its operator's own registration instead.
 
 The consent response must return to the initiating flow. A consent link is time-limited; if it expires or has already been used, start again from the connector page.
 {% endstep %}
@@ -38,6 +62,12 @@ LicenseMeter returns to the Microsoft connector with **Tenant connected** and st
 Check Detection capabilities, verify inventory and [enter contract prices](../licenses-and-prices.md). Then follow [Review your first finding](../getting-started/first-review.md). Add other provider connectors after the live Microsoft connection is working.
 {% endstep %}
 {% endstepper %}
+
+## Find the grant in Entra afterwards
+
+Accepting creates an enterprise application named **LicenseMeter Connector** in your tenant. In the Microsoft Entra admin center, open **Enterprise applications**, clear the application type filter or search by name or application ID, and open **Permissions**. The **Admin consent** tab lists the five Microsoft Graph application permissions. No client secret or certificate is created in your tenant.
+
+Revoke the permissions there, or delete the enterprise application, to end the connector's access. Account sign-in uses a second enterprise application, **LicenseMeter Sign-in**, described in [Sign in and find your workspace](../getting-started/sign-in.md). Removing the connector does not affect sign-in or instant scans, and removing sign-in does not revoke the connector.
 
 ## When consent does not finish
 

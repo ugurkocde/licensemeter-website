@@ -33,7 +33,18 @@ The live connector reads directory users and assigned licenses, purchased and as
 | LicenseAssignment.Read.All | Purchased versus assigned seat counts |
 | ReportSettings.Read.All | Whether reports conceal user identities |
 
-These are the live connector's **application** permissions. Account sign-in and a delegated instant scan are separate authorization flows. Read access is tenant-wide for the approved data, not limited to the person who signs in.
+These are the live connector's **application** permissions. [Connect with managed consent](microsoft-managed.md) shows how Microsoft words each one in its approval dialog and how to confirm the application's identity. Account sign-in and a delegated instant scan are separate authorization flows. Read access is tenant-wide for the approved data, not limited to the person who signs in.
+
+## Two Microsoft applications
+
+Hosted LicenseMeter uses two separate multi-tenant applications, both published by **Ugurlabs UG (haftungsbeschränkt)** as a Microsoft verified publisher. Each appears as its own enterprise application in your tenant once someone has used it.
+
+| Enterprise application | Application ID | Created when | Access |
+| --- | --- | --- | --- |
+| LicenseMeter Sign-in | `782cdfc5-6fdb-43a6-85b4-2940baf26ac5` | A person first signs in to LicenseMeter | The signed-in person's name and email address. If someone runs an instant scan, also the delegated read permissions that person approves for the scan |
+| LicenseMeter Connector | `1a1a346a-05d5-4f54-87a5-5b5e63f9c610` | An administrator grants managed consent | The tenant-wide read permissions above |
+
+Signing in never grants the connector's access, and connector consent is not needed to sign in. An [instant scan](../getting-started/instant-scan.md) does not use a third application. It asks for delegated read permissions under **LicenseMeter Sign-in**, in a separate dialog that appears only when someone starts a scan. With your own registration or a self-hosted installation, the names and application IDs are those of the registrations your organization created.
 
 ## Verify and stop access
 
