@@ -30,6 +30,7 @@ const {
   completeDelivery,
   deliveryIdempotencyKey,
   failDelivery,
+  isBlocked,
   pruneDeliveries,
   MAX_ATTEMPTS,
   STALE_CLAIM_MS,
@@ -174,6 +175,48 @@ describe("claimDelivery", () => {
     const row = await rowFor();
     expect(row?.error).not.toContain("contoso");
     expect(row?.error?.length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe("completeDelivery", () => {
+  it("stores the provider id, and keeps a stored one when none is given", async () => {
+    const claim = await claimDelivery(KEY);
+    if (!claim.won) throw new Error("expected the claim to win");
+    await completeDelivery(claim.id, "re_123");
+    expect(await rowFor()).toMatchObject({
+      status: "sent",
+      providerId: "re_123",
+    });
+    await completeDelivery(claim.id);
+    expect((await rowFor())?.providerId).toBe("re_123");
+  });
+
+  it("claims and completes a leak alert under its own timestamp key", async () => {
+    const first = {
+      ...KEY,
+      job: "leak",
+      periodKey: "2026-09-14T03:00:00.000Z",
+    } as const;
+    const second = { ...first, periodKey: "2026-09-14T15:00:00.000Z" };
+    expect((await claimDelivery(first)).won).toBe(true);
+    // Same day, later alert: its own delivery.
+    expect((await claimDelivery(second)).won).toBe(true);
+    expect((await claimDelivery(first)).won).toBe(false);
+  });
+});
+
+describe("isBlocked", () => {
+  it("matches the address case-insensitively, per workspace", async () => {
+    const OTHER = "22222222-2222-2222-2222-222222222222";
+    await currentDb.insert(schema.tenants).values({ id: OTHER, name: "Beta" });
+    await currentDb.insert(schema.emailBlocks).values({
+      tenantId: TENANT_ID,
+      email: "admin@contoso.test",
+      reason: "bounced",
+    });
+    expect(await isBlocked(TENANT_ID, " Admin@Contoso.test")).toBe(true);
+    expect(await isBlocked(TENANT_ID, "other@contoso.test")).toBe(false);
+    expect(await isBlocked(OTHER, "admin@contoso.test")).toBe(false);
   });
 });
 

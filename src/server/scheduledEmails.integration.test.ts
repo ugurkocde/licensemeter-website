@@ -9,8 +9,8 @@ import type * as EmailModule from "~/server/email";
 
 /**
  * Digest and report orchestration against a real Drizzle/PGlite database.
- * Only what leaves the process is stubbed: the Resend call (sendEmail), ops
- * notifications and the PDF renderer. Templates, recipient rules, the ledger
+ * Only what leaves the process is stubbed: the Resend call
+ * (sendEmailWithReceipt), ops notifications and the PDF renderer. Templates, recipient rules, the ledger
  * and the unsubscribe tokens are the real thing.
  */
 
@@ -23,8 +23,12 @@ type SendArgs = {
   headers?: Record<string, string>;
   attachments?: { filename: string; content: string }[];
   idempotencyKey?: string;
+  tags?: { name: string; value: string }[];
 };
-const sendEmailMock = vi.fn((_args: SendArgs) => Promise.resolve(true));
+// Every accepted message gets its own provider id, like the real API.
+let receipts = 0;
+const receipt = () => Promise.resolve({ id: `re_${++receipts}` });
+const sendEmailMock = vi.fn((_args: SendArgs) => receipt());
 const notifyOpsMock = vi.fn((_text: string, _opts?: unknown) =>
   Promise.resolve(),
 );
@@ -57,7 +61,7 @@ vi.mock("~/server/db", () => {
 vi.mock("~/server/email", async (original) => ({
   ...(await original<typeof EmailModule>()),
   emailEnabled: () => true,
-  sendEmail: (args: SendArgs) => sendEmailMock(args),
+  sendEmailWithReceipt: (args: SendArgs) => sendEmailMock(args),
 }));
 
 vi.mock("~/server/ops", () => ({
@@ -122,7 +126,7 @@ beforeEach(async () => {
   for (const stmt of await schemaDdl()) await client.exec(stmt);
   currentDb = makeDb(client);
   sendEmailMock.mockReset();
-  sendEmailMock.mockImplementation(() => Promise.resolve(true));
+  sendEmailMock.mockImplementation(receipt);
   notifyOpsMock.mockClear();
   renderPdfMock.mockClear();
   await currentDb
@@ -145,6 +149,7 @@ describe("runDigestJob", () => {
       sent: 2,
       skippedAlreadySent: 0,
       skippedOptedOut: 1,
+      skippedBlocked: 0,
       failed: 0,
       unprocessedTenants: 0,
     });
@@ -195,6 +200,67 @@ describe("runDigestJob", () => {
       ["anna@contoso.test", "sent", "2026-W38"],
       ["ben@contoso.test", "sent", "2026-W38"],
     ]);
+
+    // Each message carries its ledger row id as a tag, and the row keeps the
+    // provider id of exactly that message.
+    const sentIds = await Promise.all(
+      sendEmailMock.mock.results.map((r) => r.value as Promise<{ id: string }>),
+    );
+    for (const [i, [args]] of sendEmailMock.mock.calls.entries()) {
+      const row = rows.find((r) => r.recipient === args.to[0])!;
+      expect(args.tags).toEqual([{ name: "lm_delivery", value: row.id }]);
+      expect(row.providerId).toBe(sentIds[i]!.id);
+      expect(row.deliveryStatus).toBeNull();
+    }
+  });
+
+  it("skips and counts an address the provider reported as permanently failing", async () => {
+    await seedMember("anna@contoso.test");
+    await seedMember("Bounced@contoso.test");
+    await seedFinding();
+    await currentDb.insert(schema.emailBlocks).values({
+      tenantId: TENANT_ID,
+      email: "bounced@contoso.test",
+      reason: "bounced",
+    });
+
+    const totals = await runDigestJob({ now: NOW });
+    expect(totals).toMatchObject({ sent: 1, skippedBlocked: 1, failed: 0 });
+    expect(recipientsOf()).toEqual(["anna@contoso.test"]);
+    // Skipped before the claim: no ledger row, and nothing for ops to chase.
+    expect(await currentDb.query.emailDeliveries.findMany()).toHaveLength(1);
+    expect(notifyOpsMock).not.toHaveBeenCalled();
+  });
+
+  it("does not apply another workspace's block", async () => {
+    const SECOND = "22222222-2222-2222-2222-222222222222";
+    await currentDb.insert(schema.tenants).values({ id: SECOND, name: "Beta" });
+    await seedMember("anna@contoso.test");
+    await seedFinding();
+    await currentDb.insert(schema.emailBlocks).values({
+      tenantId: SECOND,
+      email: "anna@contoso.test",
+      reason: "complained",
+    });
+
+    expect(await runDigestJob({ now: NOW })).toMatchObject({
+      sent: 1,
+      skippedBlocked: 0,
+    });
+  });
+
+  it("fails the delivery when the provider returns no receipt", async () => {
+    await seedMember("anna@contoso.test");
+    await seedFinding();
+    sendEmailMock.mockImplementation(() =>
+      Promise.resolve(null as unknown as { id: string }),
+    );
+    expect(await runDigestJob({ now: NOW })).toMatchObject({
+      sent: 0,
+      failed: 1,
+    });
+    const [row] = await currentDb.query.emailDeliveries.findMany();
+    expect(row).toMatchObject({ status: "failed", providerId: null });
   });
 
   it("sends again in the next week", async () => {
@@ -212,7 +278,7 @@ describe("runDigestJob", () => {
     sendEmailMock.mockImplementation((args) =>
       args.to[0] === "bad@contoso.test"
         ? Promise.reject(new Error("Resend responded 422"))
-        : Promise.resolve(true),
+        : receipt(),
     );
 
     const first = await runDigestJob({ now: NOW });
@@ -222,7 +288,7 @@ describe("runDigestJob", () => {
       key: "digest:incomplete",
     });
 
-    sendEmailMock.mockImplementation(() => Promise.resolve(true));
+    sendEmailMock.mockImplementation(receipt);
     const second = await runDigestJob({ now: NOW });
     expect(second).toMatchObject({ sent: 1, skippedAlreadySent: 1, failed: 0 });
     expect(recipientsOf()).toEqual([
@@ -308,6 +374,23 @@ describe("runReportJob", () => {
 
     const rows = await currentDb.query.emailDeliveries.findMany();
     expect(new Set(rows.map((r) => r.periodKey))).toEqual(new Set(["2026-09"]));
+  });
+
+  it("skips and counts a blocked address", async () => {
+    await seedMember("anna@contoso.test");
+    await seedMember("bounced@contoso.test");
+    await seedFinding();
+    await currentDb.insert(schema.emailBlocks).values({
+      tenantId: TENANT_ID,
+      email: "bounced@contoso.test",
+      reason: "suppressed",
+    });
+
+    const totals = await runReportJob({
+      now: new Date("2026-10-01T07:00:00Z"),
+    });
+    expect(totals).toMatchObject({ sent: 1, skippedBlocked: 1, failed: 0 });
+    expect(recipientsOf()).toEqual(["anna@contoso.test"]);
   });
 
   it("leaves out workspaces that did not turn the report on", async () => {

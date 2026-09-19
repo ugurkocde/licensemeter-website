@@ -3,11 +3,12 @@ import { createHash } from "node:crypto";
 import { and, eq, lt, or, sql } from "drizzle-orm";
 
 import { db } from "~/server/db";
-import { emailDeliveries } from "~/server/db/schema";
+import { emailBlocks, emailDeliveries } from "~/server/db/schema";
 import type { EmailJob } from "~/server/emailPeriods";
 
 /**
- * Delivery ledger for the scheduled emails. Every send is claimed first:
+ * Delivery ledger for the scheduled emails and the leak alerts. Every send is
+ * claimed first:
  * one row per (tenant, job, period, recipient), guarded by a unique index, so
  * two overlapping runs can never both win the same recipient and a repeated
  * run only reaches people who have not received this period's email yet.
@@ -20,9 +21,15 @@ export const STALE_CLAIM_MS = 15 * 60 * 1000;
 /** Ledger rows older than this are deleted by the monthly report run. */
 export const LEDGER_RETENTION_MS = 400 * 24 * 60 * 60 * 1000;
 
+/**
+ * Everything the ledger records. A leak alert has no period: its key is the
+ * alert's ISO timestamp, so two alerts on one day are two deliveries.
+ */
+export type LedgerJob = EmailJob | "leak";
+
 export type DeliveryKey = {
   tenantId: string;
-  job: EmailJob;
+  job: LedgerJob;
   periodKey: string;
   /** Any casing; the ledger stores and compares the lowercased address. */
   recipient: string;
@@ -94,14 +101,23 @@ export const claimDelivery = async (
   return { won: false, status: blocking?.status ?? "claimed" };
 };
 
-/** The claimed delivery went out. */
+/**
+ * The claimed delivery went out. The provider id is what delivery webhooks
+ * refer to later; a webhook that got here first has already stored it.
+ */
 export const completeDelivery = async (
   id: string,
+  providerId?: string,
   now: Date = new Date(),
 ): Promise<void> => {
   await db
     .update(emailDeliveries)
-    .set({ status: "sent", sentAt: now, error: null })
+    .set({
+      status: "sent",
+      sentAt: now,
+      error: null,
+      ...(providerId ? { providerId } : {}),
+    })
     .where(eq(emailDeliveries.id, id));
 };
 
@@ -121,6 +137,24 @@ export const failDelivery = async (id: string, err: unknown): Promise<void> => {
       error: shortError(err),
     })
     .where(eq(emailDeliveries.id, id));
+};
+
+/** True when the provider reported a permanent failure for this address. */
+export const isBlocked = async (
+  tenantId: string,
+  recipient: string,
+): Promise<boolean> => {
+  const [block] = await db
+    .select({ email: emailBlocks.email })
+    .from(emailBlocks)
+    .where(
+      and(
+        eq(emailBlocks.tenantId, tenantId),
+        eq(emailBlocks.email, normalize(recipient)),
+      ),
+    )
+    .limit(1);
+  return Boolean(block);
 };
 
 /**

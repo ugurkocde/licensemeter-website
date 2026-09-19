@@ -20,7 +20,7 @@ import { escapeHtml } from "~/lib/html";
 export const emailEnabled = (): boolean =>
   Boolean(env.RESEND_API_KEY && env.EMAIL_FROM);
 
-export const sendEmail = async (args: {
+export type EmailArgs = {
   to: string[];
   subject: string;
   html: string;
@@ -36,8 +36,21 @@ export const sendEmail = async (args: {
    * hours is not delivered a second time.
    */
   idempotencyKey?: string;
-}): Promise<boolean> => {
-  if (!emailEnabled()) return false;
+  /**
+   * Resend tags, echoed back in delivery webhooks. Names and values may only
+   * hold ASCII letters, digits, underscore and dash.
+   */
+  tags?: { name: string; value: string }[];
+};
+
+/**
+ * Sends and returns the provider's message id, the handle that later delivery
+ * webhooks refer to. Null when email is not configured.
+ */
+export const sendEmailWithReceipt = async (
+  args: EmailArgs,
+): Promise<{ id: string } | null> => {
+  if (!emailEnabled()) return null;
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -57,14 +70,23 @@ export const sendEmail = async (args: {
       ...(args.replyTo ? { reply_to: args.replyTo } : {}),
       ...(args.headers ? { headers: args.headers } : {}),
       ...(args.attachments ? { attachments: args.attachments } : {}),
+      ...(args.tags ? { tags: args.tags } : {}),
     }),
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
     throw new Error(`Resend responded ${res.status}`);
   }
-  return true;
+  const body = (await res.json().catch(() => null)) as { id?: unknown } | null;
+  if (typeof body?.id !== "string" || !body.id) {
+    throw new Error("Resend response carried no message id");
+  }
+  return { id: body.id };
 };
+
+/** For callers that only need to know whether the mail went out. */
+export const sendEmail = async (args: EmailArgs): Promise<boolean> =>
+  (await sendEmailWithReceipt(args)) !== null;
 
 /** Workspace invitation: who invited you, where, as what. One click to sign in. */
 export const inviteHtml = (args: {

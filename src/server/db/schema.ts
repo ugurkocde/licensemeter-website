@@ -18,7 +18,9 @@ import type {
   AggregateUsage,
   AuditAction,
   BillingProvider,
+  DeliveryStatus,
   DomainJoinMode,
+  EmailBlockReason,
   EntitlementSource,
   EntitlementStatus,
   FindingStatus,
@@ -1133,11 +1135,11 @@ export const stripeEvents = pgTable("stripe_events", {
 });
 
 /**
- * Delivery ledger for the scheduled emails (weekly digest, monthly report).
- * One row per (tenant, job, period, recipient): the row is claimed before the
- * send and marked sent afterwards, so a repeated cron run, a scheduler restart
- * or a run cut off by the function time limit never sends the same email
- * twice. Claim rules live in ~/server/emailLedger.
+ * Delivery ledger for the scheduled emails (weekly digest, monthly report) and
+ * the immediate leak alerts. One row per (tenant, job, period, recipient): the
+ * row is claimed before the send and marked sent afterwards, so a repeated
+ * cron run, a scheduler restart or a run cut off by the function time limit
+ * never sends the same email twice. Claim rules live in ~/server/emailLedger.
  */
 export const emailDeliveries = pgTable(
   "email_deliveries",
@@ -1146,11 +1148,15 @@ export const emailDeliveries = pgTable(
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
-    job: text("job").$type<"digest" | "report">().notNull(),
-    /** Digest: ISO week in UTC ("2026-W38"). Report: reported month ("2026-08"). */
+    job: text("job").$type<"digest" | "report" | "leak">().notNull(),
+    /**
+     * Digest: ISO week in UTC ("2026-W38"). Report: reported month ("2026-08").
+     * Leak: ISO timestamp of the alert, so every alert is its own delivery.
+     */
     periodKey: text("period_key").notNull(),
     /** Lowercased email address. */
     recipient: text("recipient").notNull(),
+    /** Our own send attempt. What the provider reports later is deliveryStatus. */
     status: text("status").$type<"claimed" | "sent" | "failed">().notNull(),
     attempts: integer("attempts").notNull().default(0),
     /** Short failure reason, never a secret or a response body. */
@@ -1163,6 +1169,12 @@ export const emailDeliveries = pgTable(
       .notNull()
       .defaultNow(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
+    /** Message id the provider returned; delivery webhooks refer to it. */
+    providerId: text("provider_id"),
+    /** Latest state reported by a delivery webhook; null until one arrives. */
+    deliveryStatus: text("delivery_status").$type<DeliveryStatus>(),
+    /** Provider timestamp of the event behind deliveryStatus. */
+    deliveryEventAt: timestamp("delivery_event_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("email_deliveries_key_idx").on(
@@ -1172,10 +1184,47 @@ export const emailDeliveries = pgTable(
       t.recipient,
     ),
     index("email_deliveries_created_idx").on(t.createdAt),
-    check("email_deliveries_job_check", sql`${t.job} in ('digest', 'report')`),
+    // Postgres treats NULLs as distinct, so unsent rows never collide here.
+    uniqueIndex("email_deliveries_provider_id_idx").on(t.providerId),
+    check(
+      "email_deliveries_job_check",
+      sql`${t.job} in ('digest', 'report', 'leak')`,
+    ),
     check(
       "email_deliveries_status_check",
       sql`${t.status} in ('claimed', 'sent', 'failed')`,
     ),
+    check(
+      "email_deliveries_delivery_status_check",
+      sql`${t.deliveryStatus} in ('accepted', 'delivered', 'delayed', 'failed', 'bounced', 'suppressed', 'complained')`,
+    ),
   ],
 );
+
+/**
+ * Addresses a workspace no longer mails because the provider reported a
+ * permanent failure (hard bounce, suppression, spam complaint). Written by the
+ * delivery webhook, read before every ledger send. Scoped per workspace: a
+ * block in one workspace says nothing about the same address in another.
+ */
+export const emailBlocks = pgTable(
+  "email_blocks",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /** Lowercased email address. */
+    email: text("email").notNull(),
+    reason: text("reason").$type<EmailBlockReason>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.email] }),
+    check(
+      "email_blocks_reason_check",
+      sql`${t.reason} in ('bounced', 'suppressed', 'complained')`,
+    ),
+  ],
+).enableRLS();
