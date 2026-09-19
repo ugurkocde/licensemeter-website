@@ -59,8 +59,26 @@ node scripts/docs-check.mjs
 
 The capture command uses a separate browser session, selects the sample tenant, disables animations, saves original PNGs under `output/playwright/licensemeter-docs/`, and writes optimized WebP assets. Inspect screenshots for loading states, clipped content and accidental private data before upload. Captions explicitly identify sample data.
 
-## Optional Git Sync
+## Connecting Git Sync
 
-Connect this existing site to the repository only when ready. Scope the content mapping to `docs/gitbook/`, preserve the current live content, and choose the initial sync direction deliberately. Do not map the repository root or all of `docs/`, which also contains internal notes and announcement drafts. Verify the imported tree and rendered pages before treating the Git repository as the publishing source.
+Git Sync is prepared but not connected. Once it is, a documentation change merged to `main` publishes by itself, and the change-request workflow above becomes obsolete. The steps below are for the owner, in the GitBook and GitHub web interfaces. They were checked against GitBook's documentation on 2026-09-19; GitBook's screens change, so read the labels on screen rather than trusting this order blindly.
 
-The product changelog uses the repository's existing entry-file workflow. Do not manually publish a duplicate announcement.
+`docs/gitbook/.gitbook.yaml` is already committed. Do not add a second `.gitbook.yaml` at the repository root, and do not write `gitbook-docs.yaml` by hand: GitBook generates it during the first sync, and it carries the permanent key that ties the file to the published space.
+
+1. Make sure `main` is green and `node scripts/docs-check.mjs` passes. Note the current commit of `main`.
+2. In GitBook, open the change requests of the documentation space. Confirm the two change requests listed above are merged. Archive every change request that is still open or a draft. Do not merge them: the repository already contains those changes, and a change request merged after the sync would push older content to `main`.
+3. Record the rollback point. Open the version history, select the newest entry and copy the identifier at the end of the address. Check that `https://docs.licensemeter.com/~/revisions/<id>` shows the current site.
+4. On GitHub, install the `gitbook-com` app on the `ugurkocde` account with "Only select repositories" set to `licensemeter-website`. The app needs write access to contents, pull requests and statuses. Check under Settings, Applications that it lists exactly this repository.
+5. In GitBook, open the site and choose Git Sync. Connect GitHub, select `ugurkocde/licensemeter-website` and the branch `main`.
+6. Set the direction so that the repository replaces the GitBook content (GitHub to GitBook). GitBook's own sources contradict each other about which way the swap button flips, so read the arrow and the labels. This direction replaces the content of the space; the other direction would overwrite the Markdown in the repository with the older published text. Do not start the sync yet.
+7. In the advanced options leave the project directory blank, keep previews for forks off (the repository is public), and turn the agent instruction files option off, because the repository already has its own `AGENTS.md` and `CLAUDE.md`.
+8. Under content mapping, map the single space to `./docs/gitbook`. Never `./docs` or `/`: `docs/` also holds internal notes and announcement drafts, and only the mapped directory is published.
+9. Start the sync and wait. Then run `git pull`. Expect one commit by the GitBook bot that adds `gitbook-docs.yaml` at the repository root and nothing else. If a Markdown file under `docs/gitbook/` was rewritten with older text, the direction was wrong: revert that commit and go to the rollback step.
+10. Check the result. The space shows 36 pages in the order of `SUMMARY.md`. The welcome page carries the plan wording (what is free, what paid plans add). The managed consent page shows the consent dialog screenshot. Cards, hints and steppers render and no image is broken. Open `/getting-started/first-sync`, `/connectors/microsoft-managed`, `/self-hosting/microsoft-setup` and `/welcome` on the public site.
+11. Test the round trip: open a pull request with a trivial documentation edit, confirm a GitBook status with a preview link appears on it, merge it and confirm the public page changes.
+12. Optional: add a merge rule on the space so nobody merges change requests in GitBook. A merged change request becomes a bot commit on `main`, which runs CI and a production deployment.
+13. Then update this file: remove this section, the pending publication sections and the change-request instructions, and describe the new workflow.
+
+Rollback, if step 9 or 10 looks wrong: first remove the Git Sync connection from the site, so the rollback itself is not exported to `main`. Then roll back in the version history to the entry recorded in step 3, check the public site, and revert any bot commits on `main`.
+
+Not confirmed by GitBook's documentation: whether page identifiers, feedback and comments survive the first import; whether the image files uploaded earlier through the API remain in the space as orphans (every image is also in the repository, so nothing is lost); whether `/welcome` keeps working, which is why the redirect exists; and which plan Git Sync and the custom domain need after the trial ends on 2026-10-02.
