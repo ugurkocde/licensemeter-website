@@ -467,7 +467,7 @@ const en: PricingContent = {
       },
       {
         q: "Can I cancel?",
-        a: "Any time, from Microsoft Marketplace or the Polar customer portal. Your workspace drops back to Free at the end of the period and nothing is deleted.",
+        a: "Any time, under Plan and billing in your workspace. Your workspace drops back to Free at the end of the period and nothing is deleted.",
       },
     ],
   },
@@ -731,7 +731,7 @@ const de: PricingContent = {
       },
       {
         q: "Kann ich kündigen?",
-        a: "Jederzeit, im Microsoft Marketplace oder im Kundenportal von Polar. Ihr Workspace fällt zum Ende des Abrechnungszeitraums auf Free zurück, und es wird nichts gelöscht.",
+        a: "Jederzeit, unter „Plan and billing“ in Ihrem Workspace. Ihr Workspace fällt zum Ende des Abrechnungszeitraums auf Free zurück, und es wird nichts gelöscht.",
       },
     ],
   },
