@@ -160,8 +160,11 @@ test("German pricing page is localized", async ({ page }) => {
       .getByRole("link", { name: "Preise", exact: true }),
   ).toBeVisible();
   await expect(page.locator('[data-plan="pro"]')).toContainText("99\u00a0€");
-  await expect(page.locator('[data-plan="msp"]')).toContainText(
+  await expect(page.locator('[data-plan="pro"]')).toContainText(
     "Auftragsverarbeitungsvertrag",
+  );
+  await expect(page.locator('[data-plan="msp"]')).toContainText(
+    "AVV, der Ihre Kunden-Tenants abdeckt",
   );
   await expect(page.locator('[data-group="soon"]')).toContainText(
     "In Vorbereitung",
