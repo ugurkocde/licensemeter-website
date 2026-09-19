@@ -29,7 +29,7 @@ Use **Members** to invite colleagues, resend expired invitations and manage thei
 
 ## Preferences and history
 
-Settings exposes leak alert emails and monthly PDF report preferences where supported. Self-hosted email delivery also depends on the operator's configured email service and scheduler. Use **Product tour** to replay the walkthrough.
+Settings exposes leak alert emails and monthly PDF report preferences where supported. [Emails from LicenseMeter](emails.md) shows each email, who receives it and how to turn it off. Self-hosted email delivery also depends on the operator's configured email service and scheduler. Use **Product tour** to replay the walkthrough.
 
 The activity log records workspace actions. Its purpose is to explain changes inside LicenseMeter; it is not a replacement for a provider's own audit trail.
 
