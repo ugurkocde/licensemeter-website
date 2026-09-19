@@ -119,7 +119,9 @@ test("pricing page renders the three plans and is linked from the header", async
   await expect(
     page.locator('link[rel="alternate"][hreflang="de"]'),
   ).toHaveAttribute("href", /\/de\/pricing$/);
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+  // In <head>, where crawlers read it: the dev server can stream the layout's
+  // own metadata into the body on a page's first compile.
+  await expect(page.locator('head link[rel="canonical"]')).toHaveAttribute(
     "href",
     /\/pricing$/,
   );
@@ -177,7 +179,12 @@ test("German pricing page is localized", async ({ page }) => {
 test("yearly billing toggle switches the price without JavaScript", async ({
   browser,
 }) => {
-  const context = await browser.newContext({ javaScriptEnabled: false });
+  // Reduced motion switches the entrance animation off, so the toggle does not
+  // move while it is being clicked. Any other layout movement still fails here.
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    reducedMotion: "reduce",
+  });
   const page = await context.newPage();
   await page.goto("/pricing");
   const pro = page.locator('[data-plan="pro"]');
