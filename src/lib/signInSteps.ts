@@ -47,7 +47,7 @@ export const SIGN_IN_STEPS: SignInStep[] = [
     time: "About 30 seconds",
     sentences: [
       "Use your work or school account. There is no signup form and no password for us to store.",
-      "We receive your name, your email address and the IDs of your account and your organisation, and nothing else.",
+      "We receive your name, your username and email address, and the IDs of your account and your organisation, and nothing else.",
       'Nothing in your tenant is read, and you normally need no admin rights. If Microsoft shows "Need admin approval", your organisation reviews every new app first: an admin can approve this sign-in, which covers your basic profile only.',
     ],
   },

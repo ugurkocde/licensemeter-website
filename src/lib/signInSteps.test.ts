@@ -62,6 +62,7 @@ describe("sign-in steps", () => {
   it("names what sign-in shares beyond name and email", () => {
     const signin = SIGN_IN_STEPS.find((s) => s.id === "signin")!;
     const copy = signin.sentences.join(" ");
+    expect(copy).toMatch(/your username and email address/);
     expect(copy).toMatch(/IDs of your account and your organisation/);
     // Tenants with user consent switched off stop at this Microsoft screen.
     expect(copy).toMatch(/Need admin approval/);
