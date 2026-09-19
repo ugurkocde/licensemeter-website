@@ -10,8 +10,7 @@ export const FREE_HISTORY_MONTHS = 12;
 export const FULL_HISTORY_MONTHS = 24;
 
 export type HistoryMonths =
-  | typeof FREE_HISTORY_MONTHS
-  | typeof FULL_HISTORY_MONTHS;
+  typeof FREE_HISTORY_MONTHS | typeof FULL_HISTORY_MONTHS;
 
 /** Only the features are read, so a caller can pass any entitlement-like value. */
 type HistoryEntitlement = Pick<Entitlement, "features">;

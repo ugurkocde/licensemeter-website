@@ -1,0 +1,8 @@
+{
+  "title": "Pro and MSP plans are here, and Free stays free",
+  "summary": "LicenseMeter now has two paid plans on top of the free product. Pro costs EUR 99 per month or EUR 990 per year for one tenant and adds support by email, a 99.9% uptime target tracked on the public status page, a data processing agreement (AVV) signed with your company, an MCP server and 24 months of waste history. MSP costs EUR 299 per month or EUR 2,990 per year, covers 10 client tenants (each further tenant is EUR 25 per month) and adds an agreement that covers your client tenants plus white-label PDF reports. Both plans start with a 30-day trial and are paid by card; you upgrade under Plan and billing in your workspace. Nothing moves out of Free: scans, findings, reports and exports stay free, and Free comes without support. The new pricing page compares the plans in English and German.",
+  "type": "new",
+  "publishedOn": "2026-09-19",
+  "idempotencyKey": "licensemeter:2026-09-19-pro-and-msp-plans",
+  "sourceUrl": "https://licensemeter.com/pricing"
+}

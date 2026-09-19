@@ -267,7 +267,7 @@ test("finding details expose friendly data and link to the affected user", async
   ).toBeVisible();
 });
 
-test("free workspaces expose exports and retire billing routes", async ({
+test("an install without billing exposes exports and has nothing to buy", async ({
   page,
 }) => {
   await openDemo(page);
@@ -286,17 +286,24 @@ test("free workspaces expose exports and retire billing routes", async ({
     const response = await page.request.get(`/api/export/${path}`);
     expect(response.status(), path).toBe(200);
   }
+  // BILLING_ENABLED is unset here, which is the self-hosted case: every
+  // feature is included, so the billing page offers no plan and no checkout.
   await page.goto("/app/billing");
-  await expect(page).toHaveURL(/\/app$/);
+  await expect(page.locator("main")).toContainText("nothing to buy");
+  await expect(page.getByRole("button", { name: /Upgrade|Start/ })).toHaveCount(
+    0,
+  );
   await page.goto("/app/msp");
   await expect(page).toHaveURL(/\/app\/portfolio$/);
-  for (const path of [
-    "checkout",
-    "portal",
-    "msp/checkout",
-    "msp/portal",
-    "webhook",
-  ]) {
+  // Checkout and portal exist for hosted plans but refuse without billing.
+  for (const path of ["checkout", "portal"]) {
+    const response = await page.request.post(`/api/billing/${path}`, {
+      data: {},
+      headers: { origin: new URL(page.url()).origin },
+    });
+    expect(response.status(), path).toBe(503);
+  }
+  for (const path of ["msp/checkout", "msp/portal", "webhook"]) {
     const response = await page.request.post(`/api/billing/${path}`, {
       data: {},
     });

@@ -46,7 +46,7 @@ The web service waits for successful migrations. Restarts do not run destructive
 6. Apply the changed environment with `docker compose --env-file .env.docker up -d`.
 7. Sign in and open Connectors to complete consent.
 
-Compose selects `AUTH_PROVIDER=entra`. WorkOS is not required. Do not reuse LicenseMeter's hosted client IDs or credentials.
+Sign-in is Microsoft Entra ID and needs no other identity service. Do not reuse LicenseMeter's hosted client IDs or credentials.
 
 ### Reverse proxy
 

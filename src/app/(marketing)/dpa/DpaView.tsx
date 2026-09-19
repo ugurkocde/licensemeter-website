@@ -2,18 +2,25 @@ import Link from "next/link";
 
 import { ButtonAnchor } from "~/components/ui";
 import {
+  annexLabel,
   DPA,
+  LEGACY_ANNEX_ANCHOR,
   type DpaAnnex,
   type DpaBlock,
   type DpaDoc,
   type DpaLang,
 } from "~/lib/dpa";
+import type { SccBlock, SccListItem } from "~/lib/dpaClauses";
 
 /**
  * Renders the DPA / AVV from the single source of truth in ~/lib/dpa. Each
  * language is a real, server-rendered URL (/dpa and /de/dpa); the language
  * toggle links between them so crawlers see both versions, and the download
  * button fetches the PDF matching the page language.
+ *
+ * The clauses are the Commission's standard contractual clauses and are
+ * rendered exactly as ~/lib/dpaClauses holds them: markers, headings and
+ * wording come from the data, nothing is composed here.
  */
 
 const Blocks = ({ blocks }: { blocks: DpaBlock[] }) => (
@@ -33,33 +40,115 @@ const Blocks = ({ blocks }: { blocks: DpaBlock[] }) => (
             ))}
           </ul>
         );
-      return (
-        <dl key={i} className="border-line bg-card mt-1 border">
-          {b.items.map((it, j) => (
-            <div
-              key={j}
-              className="border-line flex flex-col gap-1 border-b px-4 py-3 last:border-b-0 sm:flex-row sm:gap-6"
-            >
-              <dt className="text-ink shrink-0 font-medium sm:w-48">
-                {it.term}
-              </dt>
-              <dd>{it.def}</dd>
-            </div>
-          ))}
-        </dl>
-      );
+      return <Defs key={i} items={b.items} />;
     })}
   </div>
 );
 
-const Annex = ({ annex, label }: { annex: DpaAnnex; label: string }) => {
-  const { toms, subprocessors: sub } = annex;
+const Defs = ({ items }: { items: { term: string; def: string }[] }) => (
+  <dl className="border-line bg-card mt-1 border">
+    {items.map((it, j) => (
+      <div
+        key={j}
+        className="border-line flex flex-col gap-1 border-b px-4 py-3 last:border-b-0 sm:flex-row sm:gap-6"
+      >
+        <dt className="text-ink shrink-0 font-medium sm:w-48">{it.term}</dt>
+        <dd>{it.def}</dd>
+      </div>
+    ))}
+  </dl>
+);
+
+/** Lettered and numbered points with the markers the Clauses publish. */
+const ClauseItems = ({ items }: { items: SccListItem[] }) => (
+  <ol className="flex flex-col gap-2">
+    {items.map((it, i) => (
+      <li key={i} className="flex gap-3">
+        <span className="text-ink w-7 shrink-0">{it.marker}</span>
+        <div className="flex min-w-0 flex-col gap-2">
+          {it.paragraphs.map((p, j) => (
+            <p key={j}>{p}</p>
+          ))}
+          {it.items && <ClauseItems items={it.items} />}
+        </div>
+      </li>
+    ))}
+  </ol>
+);
+
+const ClauseBlocks = ({ blocks }: { blocks: SccBlock[] }) => (
+  <div className="text-ink-soft mt-2 flex flex-col gap-2 text-sm leading-relaxed">
+    {blocks.map((b, i) =>
+      b.kind === "p" ? (
+        <p key={i}>{b.text}</p>
+      ) : (
+        <ClauseItems key={i} items={b.items} />
+      ),
+    )}
+  </div>
+);
+
+const Clauses = ({ doc }: { doc: DpaDoc }) => (
+  <section id="clauses" className="mt-10 scroll-mt-24">
+    <h2 className="font-display text-2xl tracking-tight">{doc.clausesTitle}</h2>
+    {doc.sections.map((sec) => (
+      <div key={sec.id} className="mt-8">
+        <h3 className="text-ink-faint text-xs font-medium tracking-[0.14em] uppercase">
+          {sec.label}
+          {sec.title ? `: ${sec.title}` : ""}
+        </h3>
+        {doc.clauses
+          .filter((c) => c.section === sec.id)
+          .map((c) => (
+            <article
+              key={c.number}
+              id={`clause-${c.number}`}
+              className="mt-6 scroll-mt-24"
+            >
+              <h4 className="text-ink font-medium">
+                {c.label}: {c.heading}
+              </h4>
+              {c.blocks.length > 0 && <ClauseBlocks blocks={c.blocks} />}
+              {c.parts.map((part) => (
+                <div key={part.number} className="mt-4">
+                  <h5 className="text-ink text-sm font-medium">
+                    {part.number} {part.heading}
+                  </h5>
+                  <ClauseBlocks blocks={part.blocks} />
+                </div>
+              ))}
+            </article>
+          ))}
+      </div>
+    ))}
+  </section>
+);
+
+const Annex = ({ annex, lang }: { annex: DpaAnnex; lang: DpaLang }) => {
+  const { toms, subprocessors: sub, parties } = annex;
+  const legacy = LEGACY_ANNEX_ANCHOR[annex.id];
   return (
-    <section id={`annex-${annex.id}`} className="mt-10 scroll-mt-24">
+    <section
+      id={`annex-${annex.id.toLowerCase()}`}
+      className="mt-10 scroll-mt-24"
+    >
+      {/* Older links point at the pre-2.0 annex numbers. */}
+      {legacy && <span id={legacy} className="block scroll-mt-24" />}
       <h2 className="font-display text-2xl tracking-tight">
-        {label} {annex.id}: {annex.title}
+        {annexLabel(lang, annex.id)}: {annex.title}
       </h2>
       {annex.intro && <Blocks blocks={annex.intro} />}
+
+      {parties?.map((p) => (
+        <div
+          key={p.heading}
+          className="text-ink-soft mt-4 text-sm leading-relaxed"
+        >
+          <h3 className="text-ink text-sm font-medium">{p.heading}</h3>
+          <Defs items={p.fields} />
+        </div>
+      ))}
+
       {annex.body && <Blocks blocks={annex.body} />}
 
       {toms && (
@@ -111,6 +200,8 @@ const Annex = ({ annex, label }: { annex: DpaAnnex; label: string }) => {
           <Blocks blocks={sub.note} />
         </>
       )}
+
+      {annex.outro && <Blocks blocks={annex.outro} />}
     </section>
   );
 };
@@ -128,47 +219,20 @@ const SignParty = ({ label, lines }: { label: string; lines: string[] }) => (
   </div>
 );
 
-const Doc = ({ doc }: { doc: DpaDoc }) => (
+const Doc = ({ doc, lang }: { doc: DpaDoc; lang: DpaLang }) => (
   <>
-    {/* Parties */}
+    {/* Our framing; not part of the Clauses */}
     <section className="mt-10">
       <h2 className="font-display text-2xl tracking-tight">
-        {doc.parties.title}
+        {doc.preamble.title}
       </h2>
-      <Blocks blocks={doc.parties.intro} />
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <SignParty
-          label={doc.parties.processor.label}
-          lines={doc.parties.processor.lines}
-        />
-        <SignParty
-          label={doc.parties.controller.label}
-          lines={doc.parties.controller.lines}
-        />
-      </div>
+      <Blocks blocks={doc.preamble.body} />
     </section>
 
-    {/* Recitals */}
-    <section className="mt-10">
-      <h2 className="font-display text-2xl tracking-tight">
-        {doc.recitals.title}
-      </h2>
-      <Blocks blocks={doc.recitals.body} />
-    </section>
+    <Clauses doc={doc} />
 
-    {/* Clauses */}
-    {doc.clauses.map((c) => (
-      <section key={c.n} className="mt-8">
-        <h2 className="text-ink font-medium">
-          {c.n}. {c.title}
-        </h2>
-        <Blocks blocks={c.body} />
-      </section>
-    ))}
-
-    {/* Annexes */}
     {doc.annexes.map((a) => (
-      <Annex key={a.id} annex={a} label={doc.annexLabel} />
+      <Annex key={a.id} annex={a} lang={lang} />
     ))}
 
     {/* Signatures */}
@@ -257,7 +321,23 @@ export const DpaView = ({ lang }: { lang: DpaLang }) => {
         </ol>
       </div>
 
-      <Doc doc={doc} />
+      {/* Annex jump links */}
+      <nav
+        aria-label={doc.ui.annexNav}
+        className="text-ink-soft mt-6 flex flex-wrap gap-x-4 gap-y-1 text-sm"
+      >
+        {doc.annexes.map((a) => (
+          <a
+            key={a.id}
+            href={`#annex-${a.id.toLowerCase()}`}
+            className="hover:text-ink underline underline-offset-4"
+          >
+            {annexLabel(lang, a.id)}
+          </a>
+        ))}
+      </nav>
+
+      <Doc doc={doc} lang={lang} />
     </main>
   );
 };

@@ -115,7 +115,7 @@ const EN: TrustContent = {
   },
   security: {
     title: "Security measures",
-    body: "Access to a workspace is invite-based and role-based (owner, admin, viewer); sign-in uses OpenID Connect with PKCE and signed, httpOnly, short-lived session cookies. Data is encrypted in transit (TLS, HSTS) and at rest (AES-256), with bring-your-own connector credentials additionally encrypted at the application layer (AES-256-GCM). Tenants are logically separated in the application layer on every query. PostgreSQL row-level security additionally blocks every database role other than the application role. State-changing requests are CSRF-protected and rate-limited, and a per-workspace audit log records exports and administrative actions.",
+    body: "Access to a workspace is invite-based and role-based (owner, admin, viewer); sign-in is Microsoft Entra ID over OpenID Connect with PKCE, with a signed, httpOnly session cookie that expires after 30 days. Data is encrypted in transit (TLS, HSTS) and at rest (AES-256), with bring-your-own connector credentials additionally encrypted at the application layer (AES-256-GCM). Tenants are logically separated in the application layer on every query. PostgreSQL row-level security additionally blocks every database role other than the application role. State-changing requests are CSRF-protected and rate-limited, and a per-workspace audit log records exports and administrative actions.",
     linked: {
       pre: "The full technical and organizational measures are ",
       linkText: "Annex 2 of the DPA",
@@ -256,7 +256,7 @@ const DE: TrustContent = {
   },
   security: {
     title: "Sicherheitsmaßnahmen",
-    body: "Der Zugang zu einem Workspace erfolgt einladungs- und rollenbasiert (Inhaber, Administrator, Betrachter); die Anmeldung nutzt OpenID Connect mit PKCE sowie signierte, httpOnly- und kurzlebige Sitzungscookies. Daten werden bei der Übertragung (TLS, HSTS) und im Ruhezustand (AES-256) verschlüsselt; selbst bereitgestellte Connector-Anmeldedaten werden zusätzlich auf Anwendungsebene verschlüsselt (AES-256-GCM). Mandanten werden in der Anwendungsschicht bei jeder Abfrage logisch getrennt. PostgreSQL Row-Level Security blockiert zusätzlich jede Datenbankrolle außer der Anwendungsrolle. Zustandsändernde Anfragen sind CSRF-geschützt und ratenbegrenzt, und ein Audit-Log je Workspace protokolliert Exporte und administrative Aktionen.",
+    body: "Der Zugang zu einem Workspace erfolgt einladungs- und rollenbasiert (Inhaber, Administrator, Betrachter); die Anmeldung erfolgt über Microsoft Entra ID per OpenID Connect mit PKCE, mit einem signierten httpOnly-Sitzungscookie, das nach 30 Tagen abläuft. Daten werden bei der Übertragung (TLS, HSTS) und im Ruhezustand (AES-256) verschlüsselt; selbst bereitgestellte Connector-Anmeldedaten werden zusätzlich auf Anwendungsebene verschlüsselt (AES-256-GCM). Mandanten werden in der Anwendungsschicht bei jeder Abfrage logisch getrennt. PostgreSQL Row-Level Security blockiert zusätzlich jede Datenbankrolle außer der Anwendungsrolle. Zustandsändernde Anfragen sind CSRF-geschützt und ratenbegrenzt, und ein Audit-Log je Workspace protokolliert Exporte und administrative Aktionen.",
     linked: {
       pre: "Die vollständigen technischen und organisatorischen Maßnahmen finden Sie in ",
       linkText: "Anhang 2 des AVV",

@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -81,13 +81,7 @@ export const submitCsvImport = async (
 ): Promise<CsvImportResult> => {
   const session = await requireSession();
   const { oid, tid, upn, name, email } = session.user;
-  const workosUserId = session.user.workosUserId;
-
-  // Either provider may run the CSV import. entra keys the workspace on the
-  // signer's Microsoft tenant id (colleagues share one); workos has no Microsoft
-  // tenant, so the imported workspace is keyed on the WorkOS user (a personal
-  // workspace; org sharing arrives later with WorkOS organizations).
-  if (!oid && !workosUserId) {
+  if (!oid) {
     return fail("Please sign in again to start a CSV import.");
   }
 
@@ -107,10 +101,8 @@ export const submitCsvImport = async (
     return fail("Each file must be 5 MB or smaller.");
   }
 
-  // Keyed by organization (entra tenant) or by user (workos): one uploader gets
-  // 10 uploads per hour either way.
-  const rlKey = tid ? `csvimport:${tid}` : `csvimport:ws:${workosUserId}`;
-  if (!(await rateLimitDurable(rlKey, 10, 60 * 60 * 1000))) {
+  // Keyed by organization (the signer's Microsoft tenant): 10 uploads per hour.
+  if (!(await rateLimitDurable(`csvimport:${tid}`, 10, 60 * 60 * 1000))) {
     return fail(
       "Too many uploads for your organization. Please try again later.",
     );
@@ -148,23 +140,21 @@ export const submitCsvImport = async (
     typeof orgNameRaw === "string" ? orgNameRaw.trim().slice(0, 200) : "";
 
   // --- Tenant resolution --------------------------------------------------
-  // The owner membership is matched/created by whichever identity the session
-  // carries. entra resolves the workspace by Microsoft tenant id (shared across
-  // colleagues); workos has none, so it resolves this user's own non-consented
-  // imported workspace, or creates a fresh tid-less one.
-  const matchActor = oid
-    ? eq(memberships.oid, oid)
-    : eq(memberships.workosUserId, workosUserId!);
-  const existing = tid
-    ? await db.query.tenants.findFirst({ where: eq(tenants.tid, tid) })
-    : (
-        await db
-          .select({ tenant: tenants })
-          .from(memberships)
-          .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
-          .where(and(matchActor, isNull(tenants.consentedAt)))
-          .limit(1)
-      )[0]?.tenant;
+  // Workspace-first: everyone has a workspace from their first sign-in on, so
+  // the import goes into this user's own non-consented workspace (the oldest
+  // one), and only creates a fresh one when they have none. The workspace is
+  // never keyed on the signer's Microsoft tenant id: a CSV proves nothing
+  // about that tenant, and tenants.tid is what colleagues are matched by.
+  const matchActor = eq(memberships.oid, oid);
+  const existing = (
+    await db
+      .select({ tenant: tenants })
+      .from(memberships)
+      .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
+      .where(and(matchActor, isNull(tenants.consentedAt)))
+      .orderBy(asc(tenants.createdAt), asc(tenants.id))
+      .limit(1)
+  )[0]?.tenant;
 
   // Typed name wins; a re-upload without one keeps the current name; new
   // workspaces default to the dominant UPN domain of the export.
@@ -209,14 +199,11 @@ export const submitCsvImport = async (
     await db.delete(tenantUsers).where(eq(tenantUsers.tenantId, tenantId));
     await db.delete(tenantSkus).where(eq(tenantSkus.tenantId, tenantId));
   } else {
-    // Create the workspace and its owner membership together. onConflictDoNothing
-    // guards the entra race (two colleagues, same tid); workos rows have a null
-    // tid (partial-unique index ignores nulls) and never collide.
+    // Create the workspace and its owner membership together.
     const created = await db.transaction(async (tx) => {
       const [inserted] = await tx
         .insert(tenants)
         .values({
-          tid: tid ?? null,
           name: orgName,
           consentedAt: null,
 
@@ -232,17 +219,14 @@ export const submitCsvImport = async (
         .insert(memberships)
         .values({
           tenantId: inserted.id,
-          oid: oid ?? null,
-          workosUserId: workosUserId ?? null,
+          oid,
           email: email ?? upn,
           name: name || null,
           role: "owner",
         })
         .onConflictDoUpdate({
           target: [memberships.tenantId, memberships.email],
-          set: oid
-            ? { oid, role: "owner" }
-            : { workosUserId: workosUserId!, role: "owner" },
+          set: { oid, role: "owner" },
         });
       return inserted.id;
     });

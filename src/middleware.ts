@@ -1,21 +1,9 @@
-import {
-  NextResponse,
-  type NextFetchEvent,
-  type NextRequest,
-} from "next/server";
-import { authkitMiddleware } from "@workos-inc/authkit-nextjs";
+import { NextResponse, type NextRequest } from "next/server";
 
-// WorkOS AuthKit is the default sign-in, so its middleware runs on every
-// matched request. The one exception is the entra opt-out (AUTH_PROVIDER=entra),
-// where AuthKit isn't configured and its middleware would throw per-request
-// (it requires WORKOS_COOKIE_PASSWORD >=32 chars + a redirect URI); there it is
-// a pass-through. Gated on the same flag the auth layer uses.
-const workosMiddleware = authkitMiddleware();
-
-export default function middleware(
-  request: NextRequest,
-  event: NextFetchEvent,
-) {
+// Sign-in needs nothing here: the session is a signed cookie that the access
+// layer verifies on every protected request, so there is no token to refresh
+// and no header to inject. The middleware only handles the status subdomain.
+export default function middleware(request: NextRequest) {
   // The status subdomain (status.licensemeter.com) is a single-purpose entry
   // point: "/" serves the status page (rewritten in next.config.js). Any other
   // path is a marketing route that belongs on the canonical site, so bounce the
@@ -34,11 +22,10 @@ export default function middleware(
     return NextResponse.redirect(new URL(pathname + search, apex), 308);
   }
 
-  if (process.env.AUTH_PROVIDER === "entra") return NextResponse.next();
-  return workosMiddleware(request, event);
+  return NextResponse.next();
 }
 
-// Match against pages that require auth, excluding static assets
+// Every page and API path, excluding static assets.
 export const config = {
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|opengraph-image).*)",
