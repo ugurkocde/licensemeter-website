@@ -35,6 +35,8 @@ import {
 } from "~/server/emailLedger";
 import { periodKeyFor, type EmailJob } from "~/server/emailPeriods";
 import { notifyOps } from "~/server/ops";
+import { getBranding } from "~/server/billing/branding";
+import { loadEntitlement } from "~/server/entitlementStore";
 import { renderWasteReportPdf } from "~/server/report/renderReport";
 import { makeMembershipUnsubToken } from "~/server/unsubToken";
 import {
@@ -440,7 +442,14 @@ const reportForTenant = async (
   if (audience.recipients.length === 0) return;
 
   const build = async (): Promise<Message> => {
-    const pdf = await renderWasteReportPdf(tenant.id);
+    // White-label branding of the MSP account, for a covered client workspace
+    // only. Workspaces outside an MSP account never pay for the lookups, and
+    // the plan decides: an expired or over-quantity workspace gets the
+    // LicenseMeter report.
+    const branding = tenant.mspAccountId
+      ? await getBranding(tenant, await loadEntitlement(tenant))
+      : null;
+    const pdf = await renderWasteReportPdf(tenant.id, branding);
     const tenantLabel = tenant.name ?? "your tenant";
     // With unpriced SKUs the waste is 0. Lead with the findings count
     // instead of an underwhelming zero (same fallback as the digest).
