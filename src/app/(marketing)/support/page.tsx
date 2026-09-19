@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { SupportForm } from "~/components/SupportForm";
 import { env } from "~/env";
 
@@ -18,9 +19,20 @@ export default function SupportPage() {
       <h1 className="font-display mt-4 text-4xl tracking-tight">
         Contact support
       </h1>
-      <p className="text-ink-soft mt-5 mb-10 max-w-xl text-lg leading-8">
+      <p className="text-ink-soft mt-5 max-w-xl text-lg leading-8">
         Need a hand with LicenseMeter? Tell us what you’re working on and where
         you got stuck.
+      </p>
+      <p className="text-ink-soft mt-3 mb-10 max-w-xl text-sm leading-relaxed">
+        Support by email is part of the Pro and MSP plans. The Free plan comes
+        without support. See{" "}
+        <Link
+          href="/pricing"
+          className="text-ink hover:text-brand-text font-medium underline underline-offset-4"
+        >
+          pricing
+        </Link>{" "}
+        for what each plan includes.
       </p>
       {env.SELF_HOSTED === "true" && !env.SUPPORT_TO_EMAIL ? (
         <p className="text-ink-soft border-line rounded-xl border p-5 text-sm">

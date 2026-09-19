@@ -131,10 +131,12 @@ export default function PrivacyPolicyPage() {
         </p>
       </Section>
 
-      <Section title="5. Free service">
+      <Section title="5. Free and paid plans">
         <p>
-          LicenseMeter is free to use. We do not collect payment methods or
-          process subscription payments for the Service.
+          The Free plan requires no payment method. Paid plans are bought
+          through Microsoft Marketplace or through Polar, which sells them as
+          merchant of record. Payment details are entered with and processed by
+          those providers; we do not receive or store card details.
         </p>
       </Section>
 

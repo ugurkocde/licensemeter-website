@@ -112,12 +112,13 @@ export default function TermsPage() {
         </p>
       </Section>
 
-      <Section title="6. Free access">
+      <Section title="6. Free and paid plans">
         <p>
-          The Service is provided free of charge. All features, including
-          continuous monitoring, reports and exports, are available without a
-          paid subscription or time-limited trial. No payment method is
-          required.
+          The Free plan is provided free of charge and without a time limit. It
+          includes continuous monitoring, reports and exports, and requires no
+          payment method. The optional Pro and MSP plans add further features
+          for a fee, at the prices shown on the pricing page. When a paid plan
+          ends, the workspace returns to the Free plan and no data is deleted.
         </p>
       </Section>
 
