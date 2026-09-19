@@ -5,6 +5,7 @@ import { fmtDate, fmtMoney, workspaceLabel } from "~/lib/format";
 import { RULE_META } from "~/lib/rules";
 import { db } from "~/server/db";
 import { findings, priceBook, tenants, tenantSkus } from "~/server/db/schema";
+import type { ReportBranding } from "~/server/report/brandStyle";
 import { reportFilename } from "~/server/report/filename";
 import { WasteReport } from "~/server/report/WasteReport";
 import type { WasteRuleId } from "~/server/types";
@@ -21,10 +22,13 @@ export type WasteReportPdf = {
 
 /**
  * Loads a tenant's license data and renders the branded waste-report PDF,
- * shared by the authenticated export route and the monthly report cron.
+ * shared by the authenticated export route and the monthly report cron. The
+ * caller resolves `branding` (getBranding), so the plan check lives in one
+ * place; null renders the LicenseMeter report.
  */
 export const renderWasteReportPdf = async (
   tenantId: string,
+  branding: ReportBranding | null = null,
 ): Promise<WasteReportPdf> => {
   const tenant = await db.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
@@ -61,6 +65,7 @@ export const renderWasteReportPdf = async (
 
   const buffer = await renderToBuffer(
     WasteReport({
+      branding,
       data: {
         tenantName: workspaceLabel(tenant),
         generatedOn: fmtDate(new Date()),

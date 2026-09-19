@@ -20,6 +20,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   return [
     "",
     "/msp",
+    "/pricing",
+    "/de/pricing",
     "/roi",
     "/sample-report",
     "/compare/powershell-audit",

@@ -68,8 +68,7 @@ import {
   sendWorkspaceDeleted,
   workspaceAdminEmails,
 } from "~/server/workspaceEmail";
-import { teardownTenantWorkosOrg } from "~/server/auth/workos";
-import { authProvider, byoConnectorEnabled, siteUrl } from "~/env";
+import { byoConnectorEnabled, siteUrl } from "~/env";
 import { runAnalysis, runSync } from "~/server/sync/runSync";
 import { fetchEcbReferenceRates } from "~/server/exchangeRates";
 import type {
@@ -511,8 +510,9 @@ export const addMember = async (formData: FormData): Promise<ActionResult> => {
       eq(sql`lower(${memberships.email})`, email),
     ),
   });
-  // Claimed via either provider (entra oid / workos workosUserId) means the
-  // person has signed in; an invite must not re-role a signed-in member.
+  // An object id means the person has signed in; a legacy id means they did
+  // before sign-in moved to Microsoft and have not linked yet. Either way they
+  // are a member, and an invite must not re-role a member.
   if (existing?.oid || existing?.workosUserId) {
     return fail("That address is already a member of this workspace");
   }
@@ -709,8 +709,9 @@ const joinRequestIdSchema = z.string().uuid();
 
 /**
  * Owner-only: how verified colleagues on the workspace's email domain get in.
- * Only meaningful for the workspace that holds a corporate domain under WorkOS
- * sign-in; everywhere else the setting is refused rather than stored unused.
+ * Only meaningful for the workspace colleagues are matched to (connected to a
+ * Microsoft tenant, or holding a corporate email domain); everywhere else the
+ * setting is refused rather than stored unused.
  */
 export const setDomainJoinMode = async (
   mode: DomainJoinMode,
@@ -720,10 +721,7 @@ export const setDomainJoinMode = async (
   if (ctx.tenant.isDemo) return fail(MEMBERS_DEMO_READONLY);
   const parsed = domainJoinModeSchema.safeParse(mode);
   if (!parsed.success) return fail("Invalid option");
-  if (
-    authProvider() !== "workos" ||
-    !(await holdsJoinableDomain(db, ctx.tenant))
-  ) {
+  if (!(await holdsJoinableDomain(db, ctx.tenant))) {
     return fail("This workspace has no company email domain to join by");
   }
   if (ctx.tenant.domainJoinMode === parsed.data) return ok();
@@ -773,6 +771,11 @@ export const approveJoinRequest = async (
   if (result.status === "conflict") {
     return fail(
       "This request was already declined. Invite the person instead.",
+    );
+  }
+  if (result.status === "address_taken") {
+    return fail(
+      "Another member of this workspace already uses that email address. Remove that member first, or decline the request.",
     );
   }
   if (result.changed) {
@@ -1732,12 +1735,6 @@ export const disconnectTenant = async (): Promise<ActionResult> => {
   void notifyOps(
     `workspace deleted: ${ctx.tenant.id} "${workspaceLabel(ctx.tenant)}" by ${actor}`,
   );
-
-  // Erase the WorkOS Organization + its IdP/Directory records (GDPR). Only set
-  // under WorkOS auth. A WorkOS outage must not block local deletion.
-  if (ctx.tenant.workosOrgId) {
-    await teardownTenantWorkosOrg(ctx.tenant.workosOrgId);
-  }
 
   await db.delete(tenants).where(eq(tenants.id, ctx.tenant.id));
   revalidatePath("/", "layout");

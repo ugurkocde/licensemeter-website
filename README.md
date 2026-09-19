@@ -47,7 +47,7 @@ npm run db:push
 npm run dev
 ```
 
-The example selects Microsoft sign-in (`AUTH_PROVIDER=entra`) and enables the sample workspace. Provider credentials are not needed for the demo. Without `DATABASE_URL`, development uses an ignored PGlite database in `.pglite/`.
+The example enables the sample workspace. Sign-in is Microsoft Entra ID, and its app registration is not needed for the demo. Without `DATABASE_URL`, development uses an ignored PGlite database in `.pglite/`.
 
 ```bash
 npm run check
@@ -62,7 +62,7 @@ Browser tests isolate chat and support services. Never run tests against a produ
 
 - Next.js 15 App Router, React 19, TypeScript, Tailwind CSS.
 - PostgreSQL through Drizzle. Tenant isolation is enforced in application code.
-- Microsoft Entra sign-in in Docker. The hosted service uses WorkOS AuthKit; [SETUP.md](SETUP.md) describes both options.
+- Microsoft Entra ID sign-in with work and school accounts, the same as the hosted service. [SETUP.md](SETUP.md) describes the sign-in and connector app registrations.
 - Encrypted connector credentials. Retain `DATA_ENCRYPTION_KEY` with your secured backups.
 - [SECURITY.md](SECURITY.md) covers vulnerability reporting and deployment boundaries.
 - [CONTRIBUTING.md](CONTRIBUTING.md) covers validation and schema changes.
