@@ -34,6 +34,8 @@ export const LANDING_ERRORS = {
     "This workspace already has a paid plan that is billed another way. Cancel that plan first, or choose a different workspace, so you are never charged twice.",
   otherSubscription:
     "This workspace already has a different Microsoft Marketplace subscription. Choose another workspace, or cancel the older subscription in Microsoft Marketplace first.",
+  attachFailed:
+    "This workspace could not be added to your MSP plan. It may belong to another MSP account, or your owner role on it has changed. Nothing was activated and you have not been charged.",
   activateFailed:
     "Microsoft Marketplace did not accept the activation. You have not been charged. Please try again, and contact us if it keeps failing.",
 } as const;

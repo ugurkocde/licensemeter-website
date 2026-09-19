@@ -119,8 +119,15 @@ export async function activateMarketplacePurchase(
         ? await ownerConflict({ mspAccountId: existing.id }, subscription.id)
         : null;
       if (taken) fail(taken);
-      const account = await ensureMspAccount(ctx);
-      await attachWorkspace(ctx, chosen.id);
+      // Only the workspace the buyer picked joins the plan; the workspace the
+      // session happens to be in must not take a coverage slot on the side.
+      const account = await ensureMspAccount(ctx, { attachActive: false });
+      const attached = await attachWorkspace(ctx, chosen.id);
+      if (!attached.ok) {
+        return fail(
+          attached.reason === "attachedElsewhere" ? "attachFailed" : "notOwner",
+        );
+      }
       owner = { mspAccountId: account.id };
     }
   }

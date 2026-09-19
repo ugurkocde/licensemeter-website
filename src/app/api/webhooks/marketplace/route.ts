@@ -30,18 +30,25 @@ const MAX_BODY_BYTES = 64 * 1024;
 const answer = (body: Record<string, unknown>, status = 200) =>
   NextResponse.json(body, { status });
 
-/** Acknowledging is best effort: an unanswered operation is auto-accepted after 10 seconds. */
+/**
+ * An unanswered operation is auto-accepted after 10 seconds. A lost Success
+ * therefore changes nothing, but a lost Failure would let Microsoft apply a
+ * change the entitlement refused, so the caller answers 5xx in that case and
+ * Microsoft retries the whole notification.
+ */
 const acknowledge = async (
   subscriptionId: string,
   operationId: string,
   status: "Success" | "Failure",
-) => {
+): Promise<boolean> => {
   try {
     await acknowledgeOperation(subscriptionId, operationId, status);
+    return true;
   } catch (err) {
     console.error(
       `[marketplace] acknowledge ${status} failed: ${err instanceof Error ? err.message : "unknown error"}`,
     );
+    return false;
   }
 };
 
@@ -169,8 +176,11 @@ export const POST = async (req: NextRequest) => {
   if (!event) {
     // A plan we do not sell, or a status the docs do not list. Refuse the
     // change where Microsoft lets us, keep the current plan, and tell ops.
-    if (isPendingAction(action)) {
-      await acknowledge(subscriptionId, operationId, "Failure");
+    if (
+      isPendingAction(action) &&
+      !(await acknowledge(subscriptionId, operationId, "Failure"))
+    ) {
+      return answer({ error: "rejection not acknowledged" }, 502);
     }
     void notifyOps(
       `Marketplace ${action} could not be mapped (plan "${subscription.planId ?? ""}", status "${subscription.saasSubscriptionStatus}"). The entitlement was left unchanged.`,

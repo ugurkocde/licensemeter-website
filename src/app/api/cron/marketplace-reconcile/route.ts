@@ -16,6 +16,7 @@ import { entitlements } from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
 
 export const maxDuration = 300;
+const RECONCILE_CONCURRENCY = 5;
 
 /**
  * Daily safety net under the Marketplace webhook: reads every linked
@@ -45,14 +46,14 @@ export const GET = async (req: NextRequest) => {
   const day = now.toISOString().slice(0, 10);
   const counts = { checked: 0, applied: 0, skipped: 0, failed: 0 };
 
-  for (const row of rows) {
+  const reconcile = async (row: (typeof rows)[number]) => {
     const subscriptionId = row.providerSubscriptionId;
     const owner: EntitlementOwner | null = row.tenantId
       ? { tenantId: row.tenantId }
       : row.mspAccountId
         ? { mspAccountId: row.mspAccountId }
         : null;
-    if (!subscriptionId || !owner) continue;
+    if (!subscriptionId || !owner) return;
     counts.checked += 1;
     try {
       const subscription = await getSubscription(subscriptionId);
@@ -60,7 +61,7 @@ export const GET = async (req: NextRequest) => {
       // page already wrote the activated state, so leave it for the next run.
       if (subscription.saasSubscriptionStatus === "PendingFulfillmentStart") {
         counts.skipped += 1;
-        continue;
+        return;
       }
       const event = subscriptionToEvent(subscription, {
         owner,
@@ -70,7 +71,7 @@ export const GET = async (req: NextRequest) => {
       });
       if (!event) {
         counts.skipped += 1;
-        continue;
+        return;
       }
       if ((await applyEntitlementEvent(event)) === "applied") {
         counts.applied += 1;
@@ -83,7 +84,18 @@ export const GET = async (req: NextRequest) => {
         `[marketplace] reconcile failed for ${subscriptionId}: ${err instanceof Error ? err.message : "unknown error"}`,
       );
     }
-  }
+  };
+
+  // A few subscriptions at a time: one Get subscription call each, so the run
+  // stays well inside the function limit without hammering the API.
+  const queue = [...rows];
+  await Promise.all(
+    Array.from({ length: RECONCILE_CONCURRENCY }, async () => {
+      for (let row = queue.shift(); row; row = queue.shift()) {
+        await reconcile(row);
+      }
+    }),
+  );
 
   if (counts.failed > 0) {
     void notifyOps(
