@@ -32,6 +32,12 @@ export default defineConfig({
         timeout: 120_000,
         // Exercise the support form with mocked providers, never real email delivery.
         env: {
+          // Placeholders so the sign-in entry points render; no spec signs in.
+          AUTH_MICROSOFT_ENTRA_ID_ID:
+            process.env.AUTH_MICROSOFT_ENTRA_ID_ID ??
+            "00000000-0000-0000-0000-000000000000",
+          AUTH_MICROSOFT_ENTRA_ID_SECRET:
+            process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET ?? "e2e-placeholder",
           RESEND_API_KEY: "test-support-key",
           EMAIL_FROM: "Support <support@example.com>",
           SUPPORT_TURNSTILE_SITE_KEY: "",

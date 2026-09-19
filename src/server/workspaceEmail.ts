@@ -30,7 +30,8 @@ export const workspaceEmailRecipients = async (
     where: and(
       eq(memberships.tenantId, tenantId),
       inArray(memberships.role, ["owner", "admin"]),
-      // Claimed via either provider (entra oid / workos workosUserId); pending
+      // Claimed means an object id. A member from before sign-in moved to
+      // Microsoft (legacy id only) keeps getting mail until they link; pending
       // invites have neither and are excluded.
       or(isNotNull(memberships.oid), isNotNull(memberships.workosUserId)),
     ),

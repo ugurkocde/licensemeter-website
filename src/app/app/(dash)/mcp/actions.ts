@@ -18,8 +18,7 @@ import { audit } from "~/server/audit";
 import { rateLimitDurable } from "~/server/rateLimit";
 
 export type CreateMcpTokenResult =
-  | { ok: true; token: string; name: string }
-  | { ok: false; error: string };
+  { ok: true; token: string; name: string } | { ok: false; error: string };
 
 export type RevokeMcpTokenResult = { ok: boolean; error?: string };
 

@@ -79,7 +79,7 @@ const EN: SecurityContent = {
     },
     scopeWhy: {},
     consentNote:
-      "The consent is recorded in your tenant’s audit log. Sign-in to the dashboard itself uses a separate app registration with only openid, profile and email.",
+      "The consent is recorded in your tenant’s audit log. Sign-in to the dashboard itself is Microsoft Entra ID with a work or school account, through a separate app registration with only openid, profile and email. Microsoft receives the sign-in request and authenticates the person under your own rules, including multi-factor authentication. LicenseMeter receives their name, email address, object ID and tenant ID, and never a password. Signing in needs no administrator rights and reads nothing in your tenant.",
   },
   delegate: {
     title:
@@ -192,7 +192,7 @@ const DE: SecurityContent = {
       "ReportSettings.Read.All": "ob Namen in Berichten verborgen sind",
     },
     consentNote:
-      "Die Einwilligung wird im Audit-Log Ihres Tenants protokolliert. Die Anmeldung am Dashboard selbst nutzt eine separate App-Registrierung mit lediglich openid, profile und email.",
+      "Die Einwilligung wird im Audit-Log Ihres Tenants protokolliert. Die Anmeldung am Dashboard selbst erfolgt über Microsoft Entra ID mit einem Geschäfts-, Schul- oder Unikonto, über eine separate App-Registrierung mit lediglich openid, profile und email. Microsoft erhält die Anmeldeanfrage und authentifiziert die Person nach Ihren eigenen Regeln, einschließlich Multi-Faktor-Authentifizierung. LicenseMeter erhält Name, E-Mail-Adresse, Objekt-ID und Tenant-ID, niemals ein Passwort. Die Anmeldung erfordert keine Administratorrechte und liest nichts in Ihrem Tenant.",
   },
   delegate: {
     title:

@@ -145,8 +145,7 @@ type GroupId = (typeof COMPARISON_GROUPS)[number]["id"];
 type RowId = (typeof COMPARISON_GROUPS)[number]["rows"][number]["id"];
 
 export type ComparisonCell =
-  | { kind: "yes" | "no" | "na" }
-  | { kind: "text"; text: string };
+  { kind: "yes" | "no" | "na" } | { kind: "text"; text: string };
 
 export type ComparisonGroup = {
   id: GroupId;
@@ -193,7 +192,12 @@ export type PricingContent = {
     eyebrow: string;
     h2: string;
     sub: string;
-    options: { kicker: string; title: string; body: string }[];
+    options: {
+      kicker: string;
+      title: string;
+      body: string;
+      channel?: "marketplace";
+    }[];
   };
   compare: {
     eyebrow: string;
@@ -212,7 +216,11 @@ export type PricingContent = {
     sub: RichText;
     items: { label: string; value: string; detail: string }[];
   };
-  faq: { eyebrow: string; h2: string; items: { q: string; a: string }[] };
+  faq: {
+    eyebrow: string;
+    h2: string;
+    items: { q: string; a: string; channel?: "marketplace" }[];
+  };
   closing: { h2: string; body: string };
 };
 
@@ -332,6 +340,7 @@ const en: PricingContent = {
     options: [
       {
         kicker: "Option 01",
+        channel: "marketplace",
         title: "Microsoft Marketplace",
         body: "The charge lands on your existing Microsoft invoice under the agreement you already have. No new vendor to onboard, no card, no separate purchase order.",
       },
@@ -444,6 +453,7 @@ const en: PricingContent = {
         a: "Pro and MSP include a Model Context Protocol server for your workspace. Connect it to Claude, Copilot or any MCP client and ask questions in plain language, such as which SKUs wasted the most last quarter. Access is read-only and scoped to the tenants you can already see.",
       },
       {
+        channel: "marketplace",
         q: "How does buying through Microsoft Marketplace work?",
         a: `You subscribe in Microsoft Marketplace or the Azure portal, sign in to LicenseMeter with the same Microsoft account, and your plan activates on your tenant. The charge appears on your Microsoft invoice. The ${TRIAL_DAYS}-day trial runs there too.`,
       },
@@ -457,7 +467,7 @@ const en: PricingContent = {
       },
       {
         q: "Can I cancel?",
-        a: "Any time, from Microsoft Marketplace or the Polar customer portal. Your workspace drops back to Free at the end of the period and nothing is deleted.",
+        a: "Any time, under Plan and billing in your workspace. Your workspace drops back to Free at the end of the period and nothing is deleted.",
       },
     ],
   },
@@ -589,6 +599,7 @@ const de: PricingContent = {
     options: [
       {
         kicker: "Option 01",
+        channel: "marketplace",
         title: "Microsoft Marketplace",
         body: "Der Betrag erscheint auf Ihrer bestehenden Microsoft-Rechnung, im Rahmen des Vertrags, den Sie bereits haben. Kein neuer Lieferant, keine Kreditkarte, keine gesonderte Bestellung.",
       },
@@ -706,6 +717,7 @@ const de: PricingContent = {
         a: "Pro und MSP enthalten einen Model-Context-Protocol-Server für Ihren Workspace. Verbinden Sie ihn mit Claude, Copilot oder einem anderen MCP-Client und stellen Sie Fragen in natürlicher Sprache, etwa welche SKUs im letzten Quartal am meisten Verschwendung verursacht haben. Der Zugriff ist nur lesend und auf die Tenants beschränkt, die Sie ohnehin sehen dürfen.",
       },
       {
+        channel: "marketplace",
         q: "Wie funktioniert der Kauf über den Microsoft Marketplace?",
         a: `Sie schließen das Abonnement im Microsoft Marketplace oder im Azure-Portal ab, melden sich mit demselben Microsoft-Konto bei LicenseMeter an, und Ihr Tarif wird für Ihren Tenant aktiviert. Der Betrag erscheint auf Ihrer Microsoft-Rechnung. Die Testphase von ${TRIAL_DAYS} Tagen gilt dort ebenfalls.`,
       },
@@ -719,7 +731,7 @@ const de: PricingContent = {
       },
       {
         q: "Kann ich kündigen?",
-        a: "Jederzeit, im Microsoft Marketplace oder im Kundenportal von Polar. Ihr Workspace fällt zum Ende des Abrechnungszeitraums auf Free zurück, und es wird nichts gelöscht.",
+        a: "Jederzeit, unter „Plan and billing“ in Ihrem Workspace. Ihr Workspace fällt zum Ende des Abrechnungszeitraums auf Free zurück, und es wird nichts gelöscht.",
       },
     ],
   },
@@ -731,23 +743,48 @@ const de: PricingContent = {
 
 export const PRICING_CONTENT: Record<PricingLang, PricingContent> = { en, de };
 
+/** Which purchase channels can complete a purchase right now. */
+export type PricingChannels = { marketplace: boolean };
+
+/**
+ * The page content for one language. A channel that cannot take an order yet
+ * is left out entirely, so the page never describes a purchase nobody can make.
+ */
+export const pricingContent = (
+  lang: PricingLang,
+  channels: PricingChannels,
+): PricingContent => {
+  const c = PRICING_CONTENT[lang];
+  if (channels.marketplace) return c;
+  const open = (item: { channel?: "marketplace" }) => !item.channel;
+  return {
+    ...c,
+    buy: { ...c.buy, options: c.buy.options.filter(open) },
+    faq: { ...c.faq, items: c.faq.items.filter(open) },
+  };
+};
+
 /** The comparison table for one language, built from the shared structure. */
-export const comparisonGroups = (lang: PricingLang): ComparisonGroup[] => {
+export const comparisonGroups = (
+  lang: PricingLang,
+  channels: PricingChannels,
+): ComparisonGroup[] => {
   const c = PRICING_CONTENT[lang].compare;
   return COMPARISON_GROUPS.map((group) => ({
     id: group.id,
     label: c.groups[group.id],
     soon: group.id === "soon",
-    rows: group.rows.map((row) => ({
-      id: row.id,
-      label: c.rows[row.id],
-      cells: row.cells.map(
-        (cell): ComparisonCell =>
+    rows: group.rows
+      .filter((row) => channels.marketplace || row.id !== "marketplace")
+      .map((row) => ({
+        id: row.id,
+        label: c.rows[row.id],
+        cells: row.cells.map((cell): ComparisonCell =>
           typeof cell === "string"
             ? { kind: cell }
             : { kind: "text", text: c.text[cell.text] },
-      ),
-    })),
+        ),
+      })),
   }));
 };
 

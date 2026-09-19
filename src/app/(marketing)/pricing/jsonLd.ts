@@ -1,5 +1,6 @@
+import { marketplaceOfferUrl } from "~/env";
 import {
-  PRICING_CONTENT,
+  pricingContent,
   PRICING_PATHS,
   type PricingLang,
 } from "~/lib/pricingContent";
@@ -10,7 +11,9 @@ import {
  * script element.
  */
 export const pricingJsonLd = (lang: PricingLang, base: string): string => {
-  const c = PRICING_CONTENT[lang];
+  const c = pricingContent(lang, {
+    marketplace: marketplaceOfferUrl() !== null,
+  });
   return JSON.stringify({
     "@context": "https://schema.org",
     "@graph": [

@@ -2,15 +2,14 @@ import Link from "next/link";
 
 import { buttonClass } from "~/components/ui";
 import {
-  env,
-  marketplaceEnabled,
+  marketplaceOfferUrl,
   polarEnabled,
   signInEnabled,
   signInPath,
 } from "~/env";
 import {
   PLAN_IDS,
-  PRICING_CONTENT,
+  pricingContent,
   PRICING_PATHS,
   comparisonGroups,
   formatEuro,
@@ -164,8 +163,10 @@ const Cell = ({
 );
 
 export const PricingView = ({ lang }: { lang: PricingLang }) => {
-  const c = PRICING_CONTENT[lang];
-  const groups = comparisonGroups(lang);
+  const marketplaceHref = marketplaceOfferUrl();
+  const channels = { marketplace: marketplaceHref !== null };
+  const c = pricingContent(lang, channels);
+  const groups = comparisonGroups(lang, channels);
   const langs: { id: PricingLang; label: string }[] = [
     { id: "en", label: "English" },
     { id: "de", label: "Deutsch" },
@@ -183,10 +184,6 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
   const cardHref = (interval: "month" | "year") =>
     `${signInPath()}?returnTo=${encodeURIComponent(`${UPGRADE_PATH}?interval=${interval}`)}`;
   const cardOk = signInOk && polarEnabled();
-  const marketplaceHref =
-    marketplaceEnabled() && env.MARKETPLACE_OFFER_URL
-      ? env.MARKETPLACE_OFFER_URL
-      : null;
 
   return (
     <main
@@ -461,27 +458,30 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
         })}
       </section>
 
-      <section id="buy" className="scroll-mt-24 pt-14 md:pt-20">
-        <p className={EYEBROW}>{c.buy.eyebrow}</p>
-        <h2 className={SECTION_H2}>{c.buy.h2}</h2>
-        <p className="text-ink-soft mt-3 max-w-2xl">{c.buy.sub}</p>
-        <div className="mt-6 grid gap-3 md:grid-cols-2">
-          {c.buy.options.map((option) => (
-            <div
-              key={option.title}
-              className="border-line bg-card shadow-card rounded-2xl border p-5"
-            >
-              <p className="text-ink-faint font-mono text-[11px] tracking-[0.14em] uppercase">
-                {option.kicker}
-              </p>
-              <h3 className="mt-1.5 text-[17px] font-semibold tracking-tight">
-                {option.title}
-              </h3>
-              <p className="text-ink-soft mt-2 text-[15px]">{option.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* "Two ways to buy" only while there are two. */}
+      {c.buy.options.length > 1 && (
+        <section id="buy" className="scroll-mt-24 pt-14 md:pt-20">
+          <p className={EYEBROW}>{c.buy.eyebrow}</p>
+          <h2 className={SECTION_H2}>{c.buy.h2}</h2>
+          <p className="text-ink-soft mt-3 max-w-2xl">{c.buy.sub}</p>
+          <div className="mt-6 grid gap-3 md:grid-cols-2">
+            {c.buy.options.map((option) => (
+              <div
+                key={option.title}
+                className="border-line bg-card shadow-card rounded-2xl border p-5"
+              >
+                <p className="text-ink-faint font-mono text-[11px] tracking-[0.14em] uppercase">
+                  {option.kicker}
+                </p>
+                <h3 className="mt-1.5 text-[17px] font-semibold tracking-tight">
+                  {option.title}
+                </h3>
+                <p className="text-ink-soft mt-2 text-[15px]">{option.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section id="compare" className="scroll-mt-24 pt-14 md:pt-20">
         <p className={EYEBROW}>{c.compare.eyebrow}</p>

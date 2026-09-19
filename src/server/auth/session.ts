@@ -22,28 +22,25 @@ const OAUTH_MAX_AGE = 10 * 60; // state+verifier live only for the redirect leg
 const key = new TextEncoder().encode(env.AUTH_SECRET);
 
 export type SessionUser = {
-  /**
-   * Stable actor id. In entra mode: the Entra object id (or demo constant).
-   * In workos mode: empty here; the WorkOS identity travels in workosUserId,
-   * and the access layer projects it onto the actor id it returns.
-   */
+  /** Entra object id (or the demo constant): the one identity everything keys on. */
   oid: string;
-  /**
-   * Entra tenant id (or the demo constant) in entra mode. Empty in workos mode:
-   * the Microsoft tenant is a property of the connector, not of the login.
-   */
+  /** Entra home tenant id (or the demo constant). */
   tid: string;
-  /** UPN / preferred_username (entra) or email (workos). */
+  /** preferred_username. A display value, never an authorization input. */
   upn: string;
   name: string;
+  /**
+   * The email claim. Proven (and lower-cased) only when emailProven is true;
+   * otherwise a display value that must never grant access to anything.
+   */
   email: string | null;
   isDemo: boolean;
-  /** WorkOS user id, present only when AUTH_PROVIDER=workos. */
-  workosUserId?: string;
-  /** Active WorkOS Organization id, when the token carries one. */
-  workosOrgId?: string;
-  /** Whether WorkOS reports the email as verified (gates email-based linking). */
-  emailVerified?: boolean;
+  /**
+   * True only when the id token carried xms_edov === true together with an
+   * email claim (see verifyIdToken). Sessions minted before this field existed
+   * read as false.
+   */
+  emailProven: boolean;
 };
 
 export type Session = { user: SessionUser };
@@ -144,7 +141,7 @@ const verifyToken = async <T>(token: string | undefined): Promise<T | null> => {
 /** Current session from the request cookies; null when absent or invalid. */
 export const auth = async (): Promise<Session | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  const payload = await verifyToken<SessionUser>(token);
+  const payload = await verifyToken<Partial<SessionUser>>(token);
   if (!payload?.oid || !payload?.tid) return null;
   return {
     user: {
@@ -154,6 +151,9 @@ export const auth = async (): Promise<Session | null> => {
       name: payload.name ?? "",
       email: payload.email ?? null,
       isDemo: payload.isDemo ?? false,
+      // Strictly the boolean: a cookie from before this field existed, or any
+      // other shape, is not proven. Such sessions stay valid.
+      emailProven: payload.emailProven === true,
     },
   };
 };

@@ -76,21 +76,25 @@ export default function PrivacyPolicyPage() {
 
       <Section title="3. Sign-in">
         <p>
-          Sign-in is handled through our authentication provider, WorkOS, Inc.
-          (AuthKit). You can sign in with a Microsoft work or school account,
-          Google, Apple, a passkey, a one-time email link, or email and
-          password. Whichever method you choose, we process the profile data it
-          returns, in particular your display name and email address, together
-          with the identifier WorkOS assigns to your account. Where you sign in
-          with a Microsoft account, we additionally receive your Microsoft
-          object ID and tenant ID. This data is required to provide the account
-          (Art. 6(1)(b) GDPR).
+          You sign in with a Microsoft work or school account through Microsoft
+          Entra ID. There is no other sign-in method and LicenseMeter never sees
+          or stores a password. Microsoft receives the sign-in request: which
+          application is asking (LicenseMeter), the address to return you to,
+          and the three permissions requested (openid, profile, email).
+          Microsoft then authenticates you under your organization&rsquo;s own
+          rules, including multi-factor authentication.
         </p>
         <p>
-          WorkOS processes this sign-in data in the United States; the transfer
-          is based on the EU Standard Contractual Clauses (see the subprocessor
-          list below). Sessions are then maintained by a first-party, HTTP-only
-          cookie set by LicenseMeter (see our{" "}
+          LicenseMeter receives your display name, your username, your email
+          address where Microsoft releases it, your Microsoft object ID and your
+          tenant ID. Signing in requires no administrator rights and reads
+          nothing in your organization&rsquo;s Microsoft 365. This data is
+          required to provide the account (Art. 6(1)(b) GDPR).
+        </p>
+        <p>
+          Microsoft is listed as a subprocessor below. Sessions are then
+          maintained by a first-party, HTTP-only cookie set by LicenseMeter (see
+          our{" "}
           <a
             href="/cookies"
             className="hover:text-ink underline underline-offset-4"
