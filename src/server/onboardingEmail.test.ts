@@ -52,9 +52,11 @@ describe("onboardingHtml", () => {
     expect(neutral).toContain("The three steps below");
   });
 
-  it("opens the workspace on the canonical origin", () => {
+  it("opens the workspace through sign-in on the canonical origin", () => {
     const html = onboardingHtml(ARGS);
-    expect(html).toContain('href="https://licensemeter.com/app?utm_source=');
+    expect(html).toContain(
+      'href="https://licensemeter.com/sign-in?returnTo=%2Fapp&amp;utm_source=',
+    );
     expect(html).toContain('src="https://licensemeter.com/brand-mark.png"');
   });
 

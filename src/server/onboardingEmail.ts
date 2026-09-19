@@ -158,7 +158,12 @@ export const onboardingHtml = (args: {
   baseUrl: string;
 }): string => {
   const first = greetingName(args.name);
-  const appUrl = escapeHtml(`${args.baseUrl}/app?${UTM}`);
+  // Through the sign-in page rather than /app itself: a signed-in reader is
+  // forwarded to the workspace at once, and one opening the mail on another
+  // device gets the sign-in instead of the marketing home page.
+  const appUrl = escapeHtml(
+    `${args.baseUrl}/sign-in?returnTo=${encodeURIComponent("/app")}&${UTM}`,
+  );
   const securityUrl = escapeHtml(`${args.baseUrl}/security?${UTM}`);
   const markUrl = escapeHtml(`${args.baseUrl}/brand-mark.png`);
   const half = Math.ceil(MORE.length / 2);
