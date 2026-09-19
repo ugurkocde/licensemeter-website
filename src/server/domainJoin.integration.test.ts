@@ -99,7 +99,11 @@ const auditActions = async (tenantId: string) =>
 describe("first sign-in from a domain", () => {
   it("creates the domain's workspace with approval as the default", async () => {
     const result = await provisionForSignIn(db, OWNER);
-    expect(result).toEqual({ provisioned: true, outcome: { kind: "none" } });
+    expect(result).toEqual({
+      provisioned: true,
+      createdWorkspace: true,
+      outcome: { kind: "none" },
+    });
     const [tenant] = await db.select().from(schema.tenants);
     expect(tenant).toMatchObject({
       domain: "acme.com",
@@ -170,7 +174,11 @@ describe("approval mode", () => {
     const result = await provisionForSignIn(db, COLLEAGUE, {
       allowRequest: () => Promise.resolve(false),
     });
-    expect(result).toEqual({ provisioned: true, outcome: { kind: "none" } });
+    expect(result).toEqual({
+      provisioned: true,
+      createdWorkspace: true,
+      outcome: { kind: "none" },
+    });
     expect(await pendingJoinRequests(db, tenantId)).toHaveLength(0);
   });
 
@@ -253,7 +261,11 @@ describe("off mode", () => {
     const { tenantId } = await seedDomainWorkspace("off");
     const result = await provisionForSignIn(db, COLLEAGUE);
 
-    expect(result).toEqual({ provisioned: true, outcome: { kind: "none" } });
+    expect(result).toEqual({
+      provisioned: true,
+      createdWorkspace: true,
+      outcome: { kind: "none" },
+    });
     expect(await db.select().from(schema.joinRequests)).toHaveLength(0);
     expect(await auditActions(tenantId)).toEqual([]);
     const own = await membershipsOf(CASEY_OID);
@@ -345,7 +357,11 @@ describe("an unproven email", () => {
       name: "Mallory",
     });
 
-    expect(result).toEqual({ provisioned: true, outcome: { kind: "none" } });
+    expect(result).toEqual({
+      provisioned: true,
+      createdWorkspace: true,
+      outcome: { kind: "none" },
+    });
     const own = await membershipsOf(MALLORY_OID);
     expect(own).toHaveLength(1);
     expect(own[0]).toMatchObject({ role: "owner" });
@@ -568,6 +584,9 @@ describe("concurrent first sign-ins", () => {
     );
 
     expect(results.every((r) => r.provisioned)).toBe(true);
+    // Exactly one of the racing sign-ins created the workspace, so the
+    // onboarding email that keys off this flag goes out once.
+    expect(results.filter((r) => r.createdWorkspace)).toHaveLength(1);
     expect(await db.select().from(schema.tenants)).toHaveLength(1);
     expect(await membershipsOf(OWNER_OID)).toHaveLength(1);
   });

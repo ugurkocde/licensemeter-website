@@ -30,6 +30,7 @@ import {
 } from "~/server/entitlement";
 import { loadEntitlement } from "~/server/entitlementStore";
 import { linkLegacyMemberships } from "~/server/identityLink";
+import { sendOnboardingEmail } from "~/server/onboarding";
 import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import type { MembershipRole } from "~/server/types";
 import {
@@ -139,7 +140,7 @@ const provisionWorkspace = async (session: Session): Promise<boolean> => {
     .toLowerCase();
   if (!email) return false;
 
-  const { provisioned, outcome } = await provisionForSignIn(
+  const { provisioned, createdWorkspace, outcome } = await provisionForSignIn(
     db,
     {
       oid,
@@ -174,6 +175,13 @@ const provisionWorkspace = async (session: Session): Promise<boolean> => {
         console.error("[domain-join] admin notice failed", err);
       }
     });
+  }
+  // Only the sign-in that created the person's own workspace welcomes them;
+  // a colleague who joined an existing one is not onboarding from zero.
+  if (createdWorkspace) {
+    after(() =>
+      sendOnboardingEmail({ oid, email, name: session.user.name || null }),
+    );
   }
   return provisioned;
 };

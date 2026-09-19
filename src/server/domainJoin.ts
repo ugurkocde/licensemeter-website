@@ -318,7 +318,7 @@ export const createOwnedWorkspace = async (
   db: Db,
   who: SignInIdentity,
   domain: string | null,
-): Promise<boolean> =>
+): Promise<{ provisioned: boolean; created: boolean }> =>
   db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${"workspace-provision:" + who.oid}, 0))`,
@@ -328,7 +328,7 @@ export const createOwnedWorkspace = async (
       .from(memberships)
       .where(eq(memberships.oid, who.oid))
       .limit(1);
-    if (mine) return true;
+    if (mine) return { provisioned: true, created: false };
 
     // The domain can have been taken while this request waited for its lock.
     const held = domain ? await findDomainWorkspace(tx, domain) : null;
@@ -337,7 +337,7 @@ export const createOwnedWorkspace = async (
       .insert(tenants)
       .values({ name: claimed, domain: claimed })
       .returning({ id: tenants.id });
-    if (!created) return false;
+    if (!created) return { provisioned: false, created: false };
     await tx.insert(memberships).values({
       tenantId: created.id,
       oid: who.oid,
@@ -345,7 +345,7 @@ export const createOwnedWorkspace = async (
       name: who.name,
       role: "owner",
     });
-    return true;
+    return { provisioned: true, created: true };
   });
 
 /**
@@ -358,20 +358,33 @@ export const provisionForSignIn = async (
   db: Db,
   who: SignInIdentity,
   opts: { allowRequest?: (tenantId: string) => Promise<boolean> } = {},
-): Promise<{ provisioned: boolean; outcome: DomainJoinOutcome }> => {
+): Promise<{
+  provisioned: boolean;
+  /** True only for the one sign-in that created this person's own workspace. */
+  createdWorkspace: boolean;
+  outcome: DomainJoinOutcome;
+}> => {
   if (!who.oid || !who.email) {
-    return { provisioned: false, outcome: { kind: "none" } };
+    return {
+      provisioned: false,
+      createdWorkspace: false,
+      outcome: { kind: "none" },
+    };
   }
   const result = await applyDomainJoin(db, who, opts);
   if (result.outcome.kind === "joined") {
-    return { provisioned: true, outcome: result.outcome };
+    return {
+      provisioned: true,
+      createdWorkspace: false,
+      outcome: result.outcome,
+    };
   }
-  const provisioned = await createOwnedWorkspace(
+  const { provisioned, created } = await createOwnedWorkspace(
     db,
     who,
     result.domainHeld ? null : result.domain,
   );
-  return { provisioned, outcome: result.outcome };
+  return { provisioned, createdWorkspace: created, outcome: result.outcome };
 };
 
 export type DecisionResult =

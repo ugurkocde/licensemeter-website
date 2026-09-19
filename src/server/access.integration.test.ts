@@ -679,6 +679,34 @@ describe("first sign-in", () => {
     expect(ctx!.tenant.domain).toBeNull();
   });
 
+  it("welcomes the person who got their own workspace, exactly once", async () => {
+    session = victimSession(true);
+
+    await Promise.all(Array.from({ length: 5 }, () => apiAccess()));
+    await apiAccess();
+    for (const task of afterTasks) await task();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.to).toEqual([VICTIM_EMAIL]);
+    expect(sent[0]!.subject).toContain("Welcome to LicenseMeter");
+    expect(sent[0]!.html).toContain("Hi Vera, the three steps");
+  });
+
+  it("sends no onboarding mail to a colleague who joined an existing workspace", async () => {
+    await currentDb.insert(schema.tenants).values({
+      id: tenantId(1),
+      name: "Victim",
+      domain: "victim.example",
+      domainJoinMode: "auto",
+    });
+    session = victimSession(true);
+
+    await apiAccess();
+    for (const task of afterTasks) await task();
+
+    expect(sent).toHaveLength(0);
+  });
+
   it("notifies admins once about a request from their own Microsoft tenant", async () => {
     await currentDb
       .insert(schema.tenants)
@@ -689,8 +717,10 @@ describe("first sign-in", () => {
     await apiAccess();
 
     expect(ctx!.tenant.id).not.toBe(tenantId(1));
-    expect(afterTasks).toHaveLength(1);
-    await afterTasks[0]!();
+    // The admin notice, plus the onboarding mail for the requester's own
+    // workspace; the second sign-in queues nothing.
+    expect(afterTasks).toHaveLength(2);
+    for (const task of afterTasks) await task();
     expect(joinRequestNotice).toHaveBeenCalledTimes(1);
     expect(domainJoinedNotice).not.toHaveBeenCalled();
     const requests = await currentDb.select().from(schema.joinRequests);

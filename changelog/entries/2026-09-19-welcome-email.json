@@ -1,0 +1,8 @@
+{
+  "title": "A welcome email that gets you to your first findings",
+  "summary": "When your first sign-in creates your workspace, LicenseMeter now sends you one welcome email. It walks you through three steps: connecting your data, reviewing your first findings and entering your contract prices. Each step links the matching guide in the documentation. Colleagues who join an existing workspace do not receive it, and self-hosted installations never send it.",
+  "type": "new",
+  "publishedOn": "2026-09-19",
+  "idempotencyKey": "licensemeter:2026-09-19-welcome-email",
+  "sourceUrl": "https://docs.licensemeter.com/getting-started"
+}
