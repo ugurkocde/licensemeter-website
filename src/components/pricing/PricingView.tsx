@@ -1,7 +1,13 @@
 import Link from "next/link";
 
 import { buttonClass } from "~/components/ui";
-import { env, signInEnabled, signInPath } from "~/env";
+import {
+  env,
+  marketplaceEnabled,
+  polarEnabled,
+  signInEnabled,
+  signInPath,
+} from "~/env";
 import {
   PLAN_IDS,
   PRICING_CONTENT,
@@ -31,6 +37,8 @@ import { UPGRADE_PATH } from "~/lib/upgrade";
 const SHOW_MONTHLY = "group-has-[#bill-y:checked]/pricing:hidden";
 const SHOW_YEARLY_FLEX = "hidden group-has-[#bill-y:checked]/pricing:flex";
 const SHOW_YEARLY_BLOCK = "hidden group-has-[#bill-y:checked]/pricing:block";
+const SHOW_YEARLY_INLINE_FLEX =
+  "hidden group-has-[#bill-y:checked]/pricing:inline-flex";
 
 const EYEBROW =
   "text-brand-text text-xs font-medium tracking-[0.2em] uppercase";
@@ -163,15 +171,22 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
     { id: "de", label: "Deutsch" },
   ];
 
-  /* Free starts at the sign-in entry every marketing page uses. Buying always
-   * ends on the portal billing page, reached through sign-in, except that the
-   * Marketplace button goes straight to the offer once it is published. */
+  /* Free starts at the sign-in entry every marketing page uses. A paid plan
+   * is only offered through a channel that can complete the purchase: card
+   * checkout needs Polar to be live, the Marketplace button needs both the
+   * published listing and the fulfillment integration. Without either, the
+   * cards point at support instead of promising a checkout that would fail.
+   * The card link carries the chosen billing interval, switched by the same
+   * CSS-only state as the prices. */
   const signInOk = signInEnabled();
   const startHref = signInOk ? signInPath() : "/#get-started";
-  const billingHref = signInOk
-    ? `${signInPath()}?returnTo=${encodeURIComponent(UPGRADE_PATH)}`
-    : SUPPORT_MAILTO;
-  const marketplaceHref = env.MARKETPLACE_OFFER_URL ?? billingHref;
+  const cardHref = (interval: "month" | "year") =>
+    `${signInPath()}?returnTo=${encodeURIComponent(`${UPGRADE_PATH}?interval=${interval}`)}`;
+  const cardOk = signInOk && polarEnabled();
+  const marketplaceHref =
+    marketplaceEnabled() && env.MARKETPLACE_OFFER_URL
+      ? env.MARKETPLACE_OFFER_URL
+      : null;
 
   return (
     <main
@@ -345,12 +360,32 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
               <div className="mt-5 flex flex-col gap-2.5">
                 {paid ? (
                   <>
-                    <a href={marketplaceHref} className={style.primary}>
-                      {c.cta.marketplace}
-                    </a>
-                    <a href={billingHref} className={style.secondary}>
-                      {c.cta.card}
-                    </a>
+                    {marketplaceHref && (
+                      <a href={marketplaceHref} className={style.primary}>
+                        {c.cta.marketplace}
+                      </a>
+                    )}
+                    {cardOk && (
+                      <>
+                        <a
+                          href={cardHref("month")}
+                          className={`${marketplaceHref ? style.secondary : style.primary} ${SHOW_MONTHLY}`}
+                        >
+                          {c.cta.card}
+                        </a>
+                        <a
+                          href={cardHref("year")}
+                          className={`${marketplaceHref ? style.secondary : style.primary} ${SHOW_YEARLY_INLINE_FLEX}`}
+                        >
+                          {c.cta.card}
+                        </a>
+                      </>
+                    )}
+                    {!marketplaceHref && !cardOk && (
+                      <a href={SUPPORT_MAILTO} className={style.primary}>
+                        {c.cta.talk}
+                      </a>
+                    )}
                   </>
                 ) : (
                   <a href={startHref} className={style.primary}>

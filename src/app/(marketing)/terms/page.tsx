@@ -129,7 +129,9 @@ export default function TermsPage() {
           level). Maintenance, ongoing development and disruptions outside the
           Provider&rsquo;s control (in particular at third parties such as
           Microsoft or the connected source systems) may temporarily limit use.
-          Support is provided by email at {SUPPORT_EMAIL}.
+          Support by email at {SUPPORT_EMAIL} is included in the Pro and MSP
+          plans. The Free plan comes without support; messages from Free
+          workspaces are answered as time allows, without any commitment.
         </p>
       </Section>
 

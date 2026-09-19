@@ -25,7 +25,8 @@ export default function SupportPage() {
       </p>
       <p className="text-ink-soft mt-3 mb-10 max-w-xl text-sm leading-relaxed">
         Support by email is part of the Pro and MSP plans. The Free plan comes
-        without support. See{" "}
+        without support: you can still write to us here, and we answer as time
+        allows, with no commitment. See{" "}
         <Link
           href="/pricing"
           className="text-ink hover:text-brand-text font-medium underline underline-offset-4"
