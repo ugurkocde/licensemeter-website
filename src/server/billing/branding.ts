@@ -38,10 +38,7 @@ export const sniffLogoType = (bytes: Uint8Array): LogoMediaType | null => {
 };
 
 export type LogoRefusal =
-  | "notDataUrl"
-  | "unsupportedType"
-  | "tooLarge"
-  | "contentMismatch";
+  "notDataUrl" | "unsupportedType" | "tooLarge" | "contentMismatch";
 
 const DATA_URL = /^data:([a-z0-9.+/-]+);base64,([A-Za-z0-9+/]+={0,2})$/;
 
@@ -170,8 +167,7 @@ export type BrandingRefusal =
   | "invalid";
 
 export type BrandingResult =
-  | { ok: true }
-  | { ok: false; reason: BrandingRefusal; message?: string };
+  { ok: true } | { ok: false; reason: BrandingRefusal; message?: string };
 
 /**
  * The account is the caller's when its owner is their Entra object id. An

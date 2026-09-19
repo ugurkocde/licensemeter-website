@@ -145,8 +145,7 @@ type GroupId = (typeof COMPARISON_GROUPS)[number]["id"];
 type RowId = (typeof COMPARISON_GROUPS)[number]["rows"][number]["id"];
 
 export type ComparisonCell =
-  | { kind: "yes" | "no" | "na" }
-  | { kind: "text"; text: string };
+  { kind: "yes" | "no" | "na" } | { kind: "text"; text: string };
 
 export type ComparisonGroup = {
   id: GroupId;
@@ -741,11 +740,10 @@ export const comparisonGroups = (lang: PricingLang): ComparisonGroup[] => {
     rows: group.rows.map((row) => ({
       id: row.id,
       label: c.rows[row.id],
-      cells: row.cells.map(
-        (cell): ComparisonCell =>
-          typeof cell === "string"
-            ? { kind: cell }
-            : { kind: "text", text: c.text[cell.text] },
+      cells: row.cells.map((cell): ComparisonCell =>
+        typeof cell === "string"
+          ? { kind: cell }
+          : { kind: "text", text: c.text[cell.text] },
       ),
     })),
   }));

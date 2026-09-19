@@ -11,12 +11,7 @@
  */
 
 export type StatusLevel =
-  | "operational"
-  | "degraded"
-  | "partial"
-  | "outage"
-  | "maintenance"
-  | "unknown";
+  "operational" | "degraded" | "partial" | "outage" | "maintenance" | "unknown";
 
 export type StatusProvider = {
   key: string;

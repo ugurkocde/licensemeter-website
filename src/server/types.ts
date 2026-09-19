@@ -30,11 +30,7 @@ export type EntitlementSource = "marketplace" | "polar" | "comped";
 
 /** Provider-neutral lifecycle of an entitlement row. */
 export type EntitlementStatus =
-  | "trialing"
-  | "active"
-  | "past_due"
-  | "canceled"
-  | "suspended";
+  "trialing" | "active" | "past_due" | "canceled" | "suspended";
 
 /** Payment providers that deliver webhooks into billing_events. */
 export type BillingProvider = "marketplace" | "polar";
@@ -138,10 +134,7 @@ export type AiSpendRow = {
 
 /** Human workflow layered over an automatically detected finding. */
 export type RemediationStatus =
-  | "unassigned"
-  | "planned"
-  | "requested"
-  | "in_progress";
+  "unassigned" | "planned" | "requested" | "in_progress";
 
 /** One Adobe Admin Console user as returned by the User Management API. */
 export type AdobeUser = {

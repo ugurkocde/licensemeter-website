@@ -181,8 +181,7 @@ export const pruneClaims = async (db: Db, now = new Date()): Promise<void> => {
 };
 
 export type RedeemResult =
-  | { ok: true; linkedTenantIds: string[] }
-  | { ok: false };
+  { ok: true; linkedTenantIds: string[] } | { ok: false };
 
 /**
  * Redeems a claim token for the signed-in identity. The token is looked up by
