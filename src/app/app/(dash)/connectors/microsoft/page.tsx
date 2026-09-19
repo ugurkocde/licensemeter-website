@@ -67,7 +67,8 @@ const SetupOptions = ({
         </p>
       )}
       <p className="text-ink-faint text-xs">
-        Not a Global Administrator? Invite one to this workspace as Admin under{" "}
+        Not a Global Administrator or Privileged Role Administrator? Invite one
+        to this workspace as Admin under{" "}
         <Link
           href="/app/settings"
           className="hover:text-ink underline underline-offset-4"
