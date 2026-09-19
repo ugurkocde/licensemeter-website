@@ -21,7 +21,7 @@ Open [LicenseMeter](https://www.licensemeter.com/) and select **Start free**, th
 
 Sign-in is Microsoft only: select the Microsoft button and sign in with your work or school account. Personal Microsoft accounts are not accepted. Complete whatever password and multi-factor steps your organization requires; those happen at Microsoft, and LicenseMeter never sees them.
 
-Signing in asks only for your basic profile: your name and email address. It needs no administrator rights and reads nothing in your organization's Microsoft 365. Connecting Microsoft 365 for the license data is a separate, later step that an administrator approves.
+Signing in asks only for your basic profile: your name, username and email address, together with the IDs of your account and your organization. It reads nothing in your organization's Microsoft 365 and normally needs no administrator rights. If Microsoft shows **Need admin approval**, your organization does not let people approve apps themselves: ask an administrator to approve the LicenseMeter sign-in, which covers the basic profile only. Connecting Microsoft 365 for the license data is a separate, later step: a second Microsoft dialog for a separate app, LicenseMeter Connector, that a Global Administrator or Privileged Role Administrator approves.
 
 ### What Microsoft asks the first time
 

@@ -47,8 +47,8 @@ export const SIGN_IN_STEPS: SignInStep[] = [
     time: "About 30 seconds",
     sentences: [
       "Use your work or school account. There is no signup form and no password for us to store.",
-      "We receive your name and email address and nothing else.",
-      "You need no admin rights for this step, and nothing in your tenant is read.",
+      "We receive your name, your username and email address, and the IDs of your account and your organisation, and nothing else.",
+      'Nothing in your tenant is read, and you normally need no admin rights. If Microsoft shows "Need admin approval", your organisation does not let people approve apps themselves: an admin can approve this sign-in, which covers your basic profile only.',
     ],
   },
   {
@@ -66,9 +66,9 @@ export const SIGN_IN_STEPS: SignInStep[] = [
     time: "A few minutes",
     needs: "Needs an admin",
     sentences: [
-      "One read-only admin consent, given by a Global Administrator in Microsoft's own dialog.",
-      "LicenseMeter cannot change anything in your tenant: every permission below only reads.",
-      "You can revoke the consent at any time in Entra, under Enterprise applications.",
+      "One read-only admin consent, given by a Global Administrator or a Privileged Role Administrator.",
+      "It is a second Microsoft dialog, for a separate app called LicenseMeter Connector: signing in alone never grants access to your tenant.",
+      "LicenseMeter cannot change anything in your tenant: every permission below only reads. You can revoke the consent at any time in Entra, under Enterprise applications.",
     ],
   },
   {
