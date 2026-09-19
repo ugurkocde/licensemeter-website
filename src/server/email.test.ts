@@ -91,6 +91,10 @@ const TEMPLATES: Record<string, string> = {
     leakCount: 12,
     totalImpact: HOSTILE,
     items: [{ title: HOSTILE, impact: HOSTILE }],
+    shownImpact: HOSTILE,
+    omittedCount: 11,
+    omittedImpact: HOSTILE,
+    zeroCount: 2,
     appUrl,
   }),
   workspaceDeleted: workspaceDeletedHtml({
@@ -180,8 +184,16 @@ describe("scheduled email footer", () => {
 });
 
 describe("leak alert", () => {
-  it("summarises the rows that did not fit", () => {
-    expect(TEMPLATES.leakAlert).toContain("And 11 more in the app.");
+  it("summarises the rows that did not fit and the ones without a price", () => {
+    expect(TEMPLATES.leakAlert).toContain("11 additional findings:");
+    expect(TEMPLATES.leakAlert).toContain(
+      "2 findings currently contribute zero",
+    );
+  });
+
+  it("calls the figure an estimate, not a bill increase", () => {
+    expect(TEMPLATES.leakAlert).toContain("not a measured increase");
+    expect(TEMPLATES.leakAlert).toContain("not confirmed savings");
   });
 });
 

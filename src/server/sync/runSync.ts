@@ -1,7 +1,6 @@
 import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 
-import { siteUrl } from "~/env";
-import { fmtMoney, workspaceLabel } from "~/lib/format";
+import { workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
 import {
   adobeConnections,
@@ -45,7 +44,8 @@ import {
   type GraphUser,
   type UsageReportRow,
 } from "~/server/graph/types";
-import { emailEnabled, leakAlertHtml, sendEmail } from "~/server/email";
+import { emailEnabled, sendEmail } from "~/server/email";
+import { leakAlertMessage } from "~/server/leakAlertMessage";
 import { pickLeakFindings } from "~/server/leakAlerts";
 import { notifyOps } from "~/server/ops";
 import { workspaceAdminEmails } from "~/server/workspaceEmail";
@@ -1256,21 +1256,7 @@ const sendLeakAlert = async (
     const to = await workspaceAdminEmails(tenant.id);
     if (to.length === 0) return;
 
-    const totalCents = leaks.reduce((s, f) => s + f.monthlyImpactCents, 0);
-    await sendEmail({
-      to,
-      subject: `LicenseMeter: ${leaks.length} new offboarding leak${leaks.length === 1 ? "" : "s"} in ${tenant.name ?? "your tenant"} (+${fmtMoney(totalCents, tenant.currency)}/mo)`,
-      html: leakAlertHtml({
-        tenantName: workspaceLabel(tenant),
-        leakCount: leaks.length,
-        totalImpact: fmtMoney(totalCents, tenant.currency),
-        items: leaks.slice(0, 10).map((f) => ({
-          title: f.title,
-          impact: fmtMoney(f.monthlyImpactCents, tenant.currency),
-        })),
-        appUrl: siteUrl(),
-      }),
-    });
+    await sendEmail({ to, ...leakAlertMessage(tenant, leaks) });
   } catch (err) {
     void notifyOps(
       `leak alert failed for tenant ${workspaceLabel(tenant)}: ${err instanceof Error ? err.message : String(err)}`,

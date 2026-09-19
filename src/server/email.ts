@@ -342,30 +342,59 @@ ${emailButton(emailAppLink(args.appUrl, "/app"), "Open LicenseMeter")}`,
   });
 
 /**
- * Immediate alert when a sync inserts new offboarding-leak findings:
- * seats that keep billing after the user was disabled or removed.
+ * Immediate alert when a sync inserts new offboarding-leak findings: seats
+ * that keep billing after the user was disabled or removed. The wording stays
+ * careful on purpose. A first scan reports leaks that are months old, so the
+ * figure is an estimate from the price book, not a measured bill increase,
+ * and a finding is a license to review, not a distinct person.
  */
 export const leakAlertHtml = (args: {
   tenantName: string;
   leakCount: number;
   totalImpact: string;
-  /** Up to 10 rows; the remainder is summarized below the table. */
+  /** Highest cost first, at most ten; the rest is the omitted subtotal. */
   items: { title: string; impact: string }[];
+  shownImpact: string;
+  omittedCount: number;
+  omittedImpact: string;
+  /** Findings that add nothing to the estimate. */
+  zeroCount: number;
   appUrl: string;
 }): string =>
   emailShell({
     baseUrl: args.appUrl,
-    title: `New offboarding leaks: ${args.tenantName}`,
-    body: `${emailHeading(`New offboarding leaks: ${escapeHtml(args.tenantName)}`)}
-${emailText(`The last sync found ${args.leakCount} seat${args.leakCount === 1 ? "" : "s"} still paid for
-after the user was disabled or removed:
-${emailWaste(`${args.totalImpact}/mo`)} until reclaimed.`)}
+    title: `Potential license leaks: ${args.tenantName}`,
+    body: `${emailHeading(`Potential license leaks: ${escapeHtml(args.tenantName)}`)}
+${emailText(`The latest sync detected ${args.leakCount} finding${args.leakCount === 1 ? "" : "s"} involving
+licenses associated with disabled accounts or application accounts without a
+matching directory user. Combined estimated monthly impact:
+${emailWaste(`${args.totalImpact}/mo`)}. Review each finding before reclaiming
+licenses. Findings are not a count of distinct people.`)}
+${emailText(
+  `Newly detected findings may reflect existing issues, especially on a first
+scan. This is not a measured increase in your bill. Estimates depend on your
+price book and are not confirmed savings. Highest-cost findings appear first.`,
+  { size: "small" },
+)}
 ${emailRows(args.items.map((f) => ({ label: f.title, value: `${f.impact}/mo` })))}
+${emailText(
+  `${args.items.length} displayed finding${args.items.length === 1 ? "" : "s"}: ${escapeHtml(args.shownImpact)}/mo estimated.`,
+  { tone: "ink", size: "small" },
+)}
 ${
-  args.leakCount > args.items.length
-    ? emailText(`And ${args.leakCount - args.items.length} more in the app.`, {
-        size: "small",
-      })
+  args.omittedCount > 0
+    ? emailText(
+        `${args.omittedCount} additional finding${args.omittedCount === 1 ? "" : "s"}: ${escapeHtml(args.omittedImpact)}/mo estimated. View them in the app.`,
+        { size: "small" },
+      )
+    : ""
+}
+${
+  args.zeroCount > 0
+    ? emailText(
+        `${args.zeroCount} finding${args.zeroCount === 1 ? "" : "s"} currently contribute${args.zeroCount === 1 ? "s" : ""} zero to this estimate. Check the price book: zero may mean a free license or missing pricing.`,
+        { size: "small" },
+      )
     : ""
 }
 ${emailButton(emailAppLink(args.appUrl, "/app/findings"), "Open the findings")}`,
