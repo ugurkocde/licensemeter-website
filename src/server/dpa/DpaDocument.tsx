@@ -1,13 +1,22 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 
-import { DPA, type DpaBlock, type DpaLang } from "~/lib/dpa";
+import {
+  annexLabel,
+  buildDpa,
+  type DpaBlock,
+  type DpaCounterparty,
+  type DpaLang,
+} from "~/lib/dpa";
+import type { SccBlock, SccListItem } from "~/lib/dpaClauses";
 
 /**
  * The downloadable, pre-signed DPA / AVV, rendered server-side with
  * @react-pdf/renderer in the same ledger style as WasteReport.tsx. Built-in
  * Helvetica / Times-Roman cover German umlauts (WinAnsi), so no font
  * registration is needed. Content comes from the single source of truth in
- * ~/lib/dpa, so the PDF can never drift from the web page.
+ * ~/lib/dpa, so the PDF can never drift from the web page. The clauses are the
+ * Commission's standard contractual clauses, printed as ~/lib/dpaClauses holds
+ * them. With a counterparty it is the copy signed with a named company.
  */
 
 const C = {
@@ -58,6 +67,18 @@ const s = StyleSheet.create({
     marginTop: 11,
   },
   p: { marginTop: 3, textAlign: "justify" },
+  sectionLabel: {
+    fontSize: 8,
+    color: C.inkFaint,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginTop: 14,
+  },
+  partTitle: { fontSize: 9.5, fontFamily: "Helvetica-Bold", marginTop: 7 },
+  item: { flexDirection: "row", marginTop: 3 },
+  itemMarker: { width: 20 },
+  itemBody: { flex: 1 },
+  partyHeading: { fontFamily: "Helvetica-Bold", fontSize: 9.5, marginTop: 8 },
   li: { flexDirection: "row", marginTop: 2, paddingRight: 6 },
   bullet: { width: 10, color: C.brand },
   liText: { flex: 1 },
@@ -121,11 +142,16 @@ const s = StyleSheet.create({
     marginBottom: 6,
   },
   signLine: { marginTop: 3 },
+  // maxHeight matters: a fixed view anchored by `bottom` without a bound gets
+  // its height compounded page after page by the layout engine, and past ten
+  // pages (the German text) the numbers exceed what pdfkit accepts. A fixed
+  // `height` would cap it too, but then the text inside is never laid out.
   footer: {
     position: "absolute",
     bottom: 30,
     left: 46,
     right: 46,
+    maxHeight: 20,
     flexDirection: "row",
     justifyContent: "space-between",
     borderTopWidth: 1,
@@ -170,6 +196,38 @@ const Blocks = ({ blocks }: { blocks: DpaBlock[] }) => (
   </>
 );
 
+const ClauseItems = ({ items }: { items: SccListItem[] }) => (
+  <>
+    {items.map((it, i) => (
+      <View key={i} style={s.item}>
+        <Text style={s.itemMarker}>{it.marker}</Text>
+        <View style={s.itemBody}>
+          {it.paragraphs.map((p, j) => (
+            <Text key={j} style={j === 0 ? { textAlign: "justify" } : s.p}>
+              {p}
+            </Text>
+          ))}
+          {it.items && <ClauseItems items={it.items} />}
+        </View>
+      </View>
+    ))}
+  </>
+);
+
+const ClauseBlocks = ({ blocks }: { blocks: SccBlock[] }) => (
+  <>
+    {blocks.map((b, i) =>
+      b.kind === "p" ? (
+        <Text key={i} style={s.p}>
+          {b.text}
+        </Text>
+      ) : (
+        <ClauseItems key={i} items={b.items} />
+      ),
+    )}
+  </>
+);
+
 const SignBox = ({ label, lines }: { label: string; lines: string[] }) => (
   <View style={s.signBox}>
     <Text style={s.signLabel}>{label}</Text>
@@ -181,8 +239,14 @@ const SignBox = ({ label, lines }: { label: string; lines: string[] }) => (
   </View>
 );
 
-export const DpaDocument = ({ lang }: { lang: DpaLang }) => {
-  const doc = DPA[lang];
+export const DpaDocument = ({
+  lang,
+  counterparty,
+}: {
+  lang: DpaLang;
+  counterparty?: DpaCounterparty;
+}) => {
+  const doc = buildDpa(lang, counterparty);
   const footerLeft = `LicenseMeter ${lang === "de" ? "AVV" : "DPA"} v${doc.version} - Ugurlabs UG`;
 
   return (
@@ -203,41 +267,52 @@ export const DpaDocument = ({ lang }: { lang: DpaLang }) => {
           </View>
         </View>
 
-        {/* Parties */}
-        <Text style={s.h2}>{doc.parties.title}</Text>
-        <Blocks blocks={doc.parties.intro} />
-        <View style={s.signRow}>
-          <SignBox
-            label={doc.parties.processor.label}
-            lines={doc.parties.processor.lines}
-          />
-          <SignBox
-            label={doc.parties.controller.label}
-            lines={doc.parties.controller.lines}
-          />
-        </View>
-
-        {/* Recitals */}
-        <Text style={s.h2}>{doc.recitals.title}</Text>
-        <Blocks blocks={doc.recitals.body} />
+        {/* Our framing; not part of the Clauses */}
+        <Text style={s.h2}>{doc.preamble.title}</Text>
+        <Blocks blocks={doc.preamble.body} />
 
         {/* Clauses */}
-        {doc.clauses.map((c) => (
-          <View key={c.n} wrap={false}>
-            <Text style={s.clauseTitle}>
-              {c.n}. {c.title}
+        <Text style={s.h2}>{doc.clausesTitle}</Text>
+        {doc.sections.map((sec) => (
+          <View key={sec.id}>
+            <Text style={s.sectionLabel}>
+              {sec.label}
+              {sec.title ? `: ${sec.title}` : ""}
             </Text>
-            <Blocks blocks={c.body} />
+            {doc.clauses
+              .filter((c) => c.section === sec.id)
+              .map((c) => (
+                <View key={c.number}>
+                  <Text style={s.clauseTitle} minPresenceAhead={30}>
+                    {c.label}: {c.heading}
+                  </Text>
+                  <ClauseBlocks blocks={c.blocks} />
+                  {c.parts.map((part) => (
+                    <View key={part.number}>
+                      <Text style={s.partTitle} minPresenceAhead={30}>
+                        {part.number} {part.heading}
+                      </Text>
+                      <ClauseBlocks blocks={part.blocks} />
+                    </View>
+                  ))}
+                </View>
+              ))}
           </View>
         ))}
 
         {/* Annexes */}
         {doc.annexes.map((a) => (
           <View key={a.id}>
-            <Text style={s.h2}>
-              {doc.annexLabel} {a.id}: {a.title}
+            <Text style={s.h2} minPresenceAhead={40}>
+              {annexLabel(lang, a.id)}: {a.title}
             </Text>
             {a.intro && <Blocks blocks={a.intro} />}
+            {a.parties?.map((p) => (
+              <View key={p.heading} wrap={false}>
+                <Text style={s.partyHeading}>{p.heading}</Text>
+                <Blocks blocks={[{ kind: "defs", items: p.fields }]} />
+              </View>
+            ))}
             {a.body && <Blocks blocks={a.body} />}
 
             {a.toms?.map((g) => (

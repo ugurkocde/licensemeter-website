@@ -24,10 +24,9 @@ import {
  */
 export const GET = async (req: Request) => {
   const session = await auth();
-  // A signed-in user via either provider (workos user id or entra oid); the
-  // delegated Microsoft consent below proves tenant access independently.
-  const actorId = session?.user?.workosUserId ?? session?.user?.oid;
-  if (!session?.user || !actorId) {
+  // Signed-in users only; the delegated Microsoft consent below proves tenant
+  // access independently.
+  if (!session?.user?.oid) {
     return NextResponse.redirect(new URL("/", requestBaseUrl(req)));
   }
   if (session.user.isDemo) {

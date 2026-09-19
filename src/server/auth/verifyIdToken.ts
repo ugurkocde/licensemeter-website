@@ -13,8 +13,31 @@ export type VerifiedEntraClaims = {
   oid: string;
   tid: string;
   name?: string;
+  /** Display value unless emailProven is true. */
   email?: string;
   preferred_username?: string;
+  /**
+   * True only when the token carries xms_edov === true together with an email
+   * claim: Microsoft then vouches that the owner of the email's domain has been
+   * verified. Without it the email claim is a mutable directory attribute that
+   * any tenant admin can set to any address, so it must never grant access.
+   * The claim is optional and has to be enabled on the sign-in app registration
+   * (optional claims, ID token: email and xms_edov).
+   */
+  emailProven: boolean;
+};
+
+/**
+ * Reads the email proof off verified claims. Strictly the boolean true: the
+ * strings "true" or "1" and any other shape count as not proven.
+ */
+export const emailProofOf = (
+  claims: Record<string, unknown>,
+): { email?: string; emailProven: boolean } => {
+  const raw = typeof claims.email === "string" ? claims.email.trim() : "";
+  if (!raw) return { emailProven: false };
+  const emailProven = claims.xms_edov === true;
+  return { email: emailProven ? raw.toLowerCase() : raw, emailProven };
 };
 
 export const verifyEntraIdToken = async (
@@ -36,10 +59,30 @@ export const verifyEntraIdToken = async (
     oid,
     tid,
     name: typeof claims.name === "string" ? claims.name : undefined,
-    email: typeof claims.email === "string" ? claims.email : undefined,
+    ...emailProofOf(claims),
     preferred_username:
       typeof claims.preferred_username === "string"
         ? claims.preferred_username
         : undefined,
+  };
+};
+
+/**
+ * The session identity of verified claims. `upn` is preferred_username and
+ * nothing else: unclaimed invites match it from any tenant, which is only sound
+ * while it cannot be the free-text email claim. Without it the UPN is empty and
+ * that rule simply does not apply. `email` falls back to the UPN for display;
+ * emailProven says whether it may ever be used to link a membership.
+ */
+export const sessionIdentityOf = (claims: VerifiedEntraClaims) => {
+  const upn = claims.preferred_username ?? "";
+  return {
+    oid: claims.oid,
+    tid: claims.tid,
+    upn,
+    name: claims.name ?? (upn || (claims.email ?? "")),
+    email: claims.email ?? (upn || null),
+    isDemo: false,
+    emailProven: claims.emailProven,
   };
 };
