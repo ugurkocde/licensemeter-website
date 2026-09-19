@@ -5,7 +5,10 @@ import { appBaseUrl, polarEnabled } from "~/env";
 import { apiAccess } from "~/server/access";
 import { audit } from "~/server/audit";
 import { isSameOrigin } from "~/server/auth/origin";
-import type { EntitlementOwner } from "~/server/billing/entitlementWrites";
+import {
+  ownerRef,
+  type EntitlementOwner,
+} from "~/server/billing/entitlementWrites";
 import { ensureMspAccount, MspAccountError } from "~/server/billing/mspAccount";
 import {
   createPolarCheckout,
@@ -55,6 +58,16 @@ export const POST = async (req: Request) => {
 
   let owner: EntitlementOwner;
   if (product.plan === "msp") {
+    // The active workspace becomes a client tenant of the MSP plan. While its
+    // own Pro plan still runs, that plan would keep billing next to the new
+    // one, so it has to end first.
+    const own = await entitlementRowOf({ tenantId: ctx.tenant.id });
+    if (own && grantsNow(own)) {
+      return NextResponse.json(
+        { error: "alreadyEntitled", source: own.source },
+        { status: 409 },
+      );
+    }
     try {
       owner = { mspAccountId: (await ensureMspAccount(ctx)).id };
     } catch (err) {
@@ -76,6 +89,15 @@ export const POST = async (req: Request) => {
       { error: "alreadyEntitled", source: existing.source },
       { status: 409 },
     );
+  }
+
+  // Two clicks or two tabs must not each get a payable checkout for the same
+  // owner before the first webhook lands. Polar checkouts expire on their
+  // own, so a short serialisation per owner is enough.
+  if (
+    !(await rateLimitDurable(`checkout-owner:${ownerRef(owner)}`, 1, 20_000))
+  ) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 
   const base = appBaseUrl();

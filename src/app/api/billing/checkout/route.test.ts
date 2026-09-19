@@ -15,6 +15,12 @@ vi.mock("~/server/billing/mspAccount", () => ({
   MspAccountError: class extends Error {},
   ensureMspAccount: vi.fn(),
 }));
+// ownerRef is pure; the module also pulls in the database client, so the
+// real writer is kept out of this unit test.
+vi.mock("~/server/billing/entitlementWrites", () => ({
+  ownerRef: (owner: { tenantId?: string; mspAccountId?: string }) =>
+    owner.tenantId ? `t_${owner.tenantId}` : `m_${owner.mspAccountId}`,
+}));
 vi.mock("~/server/billing/polar", () => ({
   PolarApiError: class extends Error {},
   createPolarCheckout: vi.fn(),
@@ -135,6 +141,43 @@ describe("billing checkout", () => {
     expect(polar.createPolarCheckout).toHaveBeenCalledWith(
       expect.objectContaining({ owner: { mspAccountId: MSP_ID } }),
     );
+  });
+
+  it("refuses an MSP checkout while the workspace's own Pro plan still runs", async () => {
+    vi.mocked(polar.entitlementRowOf).mockImplementation(async (owner) =>
+      "tenantId" in owner
+        ? ({ source: "polar" } as Awaited<
+            ReturnType<typeof polar.entitlementRowOf>
+          >)
+        : null,
+    );
+    vi.mocked(polar.grantsNow).mockReturnValue(true);
+
+    const res = await POST(request({ plan: "msp", interval: "month" }));
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "alreadyEntitled",
+      source: "polar",
+    });
+    expect(ensureMspAccount).not.toHaveBeenCalled();
+    expect(polar.createPolarCheckout).not.toHaveBeenCalled();
+  });
+
+  it("serialises checkouts per owner so a double click cannot buy twice", async () => {
+    vi.mocked(rateLimitDurable).mockImplementation(
+      async (key) => !key.startsWith("checkout-owner:"),
+    );
+
+    const res = await POST(request({ plan: "pro", interval: "month" }));
+
+    expect(res.status).toBe(429);
+    expect(rateLimitDurable).toHaveBeenCalledWith(
+      `checkout-owner:t_${ctx.tenant.id}`,
+      1,
+      20_000,
+    );
+    expect(polar.createPolarCheckout).not.toHaveBeenCalled();
   });
 
   it("refuses when another source already grants the owner a plan", async () => {
