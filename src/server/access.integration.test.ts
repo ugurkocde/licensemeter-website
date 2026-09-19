@@ -679,6 +679,44 @@ describe("first sign-in", () => {
     expect(ctx!.tenant.domain).toBeNull();
   });
 
+  it("welcomes the person who got their own workspace, exactly once", async () => {
+    session = victimSession(true);
+
+    await Promise.all(Array.from({ length: 5 }, () => apiAccess()));
+    await apiAccess();
+    for (const task of afterTasks) await task();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.to).toEqual([VICTIM_EMAIL]);
+    expect(sent[0]!.subject).toContain("Welcome to LicenseMeter");
+    expect(sent[0]!.html).toContain("Hi Vera, the three steps");
+  });
+
+  it("sends no onboarding mail to an unproven address", async () => {
+    session = attackerSession();
+
+    const ctx = await apiAccess();
+    for (const task of afterTasks) await task();
+
+    expect(ctx!.membership.role).toBe("owner");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("sends no onboarding mail to a colleague who joined an existing workspace", async () => {
+    await currentDb.insert(schema.tenants).values({
+      id: tenantId(1),
+      name: "Victim",
+      domain: "victim.example",
+      domainJoinMode: "auto",
+    });
+    session = victimSession(true);
+
+    await apiAccess();
+    for (const task of afterTasks) await task();
+
+    expect(sent).toHaveLength(0);
+  });
+
   it("notifies admins once about a request from their own Microsoft tenant", async () => {
     await currentDb
       .insert(schema.tenants)
