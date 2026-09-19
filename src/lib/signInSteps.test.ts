@@ -59,6 +59,22 @@ describe("sign-in steps", () => {
     ]);
   });
 
+  it("names what sign-in shares beyond name and email", () => {
+    const signin = SIGN_IN_STEPS.find((s) => s.id === "signin")!;
+    const copy = signin.sentences.join(" ");
+    expect(copy).toMatch(/IDs of your account and your organisation/);
+    // Tenants with user consent switched off stop at this Microsoft screen.
+    expect(copy).toMatch(/Need admin approval/);
+  });
+
+  it("says the connector consent is a second dialog for a separate app", () => {
+    const connect = SIGN_IN_STEPS.find((s) => s.id === "connect")!;
+    const copy = connect.sentences.join(" ");
+    expect(copy).toMatch(/second Microsoft dialog/);
+    expect(copy).toMatch(/LicenseMeter Connector/);
+    expect(copy).toMatch(/Privileged Role Administrator/);
+  });
+
   it("follows the writing rules", () => {
     const copy = [
       ...SIGN_IN_STEPS.flatMap((s) => [s.title, s.time, ...s.sentences]),
