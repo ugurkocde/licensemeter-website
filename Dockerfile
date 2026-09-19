@@ -23,7 +23,7 @@ FROM dependencies AS builder
 COPY . .
 # Build without deployment secrets. Self-hosted pages read configuration at
 # request time, so the same image can be used with a different public URL.
-RUN SKIP_ENV_VALIDATION=true SELF_HOSTED=true AUTH_PROVIDER=entra npm run build
+RUN SKIP_ENV_VALIDATION=true SELF_HOSTED=true npm run build
 
 FROM node:24-bookworm-slim AS runner
 WORKDIR /app

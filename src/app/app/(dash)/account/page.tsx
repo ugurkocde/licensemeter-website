@@ -1,26 +1,23 @@
-import { withAuth } from "@workos-inc/authkit-nextjs";
 import Link from "next/link";
 
 import { signOutAction } from "~/app/auth/actions";
-import { AccountSessionSync } from "~/components/workspace/AccountSessionSync";
-import { AccountWidgets } from "~/components/workspace/AccountWidgets";
-import { Button, ButtonLink, Card } from "~/components/ui";
-import { authProvider } from "~/env";
+import { Button, Card, Pill } from "~/components/ui";
 import { requireAccess } from "~/server/access";
+import { auth } from "~/server/auth";
 
 export const metadata = { title: "Account" };
 
+const MICROSOFT_ACCOUNT_URL = "https://myaccount.microsoft.com/";
+
 /**
- * Self-service account page: the signed-in user manages their own name, password
- * and MFA via the WorkOS widgets. WorkOS-only; under the entra opt-out there is
- * no WorkOS profile to manage (those users manage it in Entra / Microsoft).
+ * Read-only account page. Sign-in is Microsoft Entra ID, so LicenseMeter holds
+ * no password, no multi-factor setup and no editable profile: it shows what the
+ * sign-in told us and points to Microsoft for everything else.
  */
 export default async function AccountPage() {
   // Same gate as the rest of /app (also keeps the sidebar/layout consistent).
   const ctx = await requireAccess("viewer");
 
-  // A demo session has no WorkOS session behind it, so there is no profile to
-  // manage; explain that instead of falling into the withAuth() error path.
   if (ctx.tenant.isDemo) {
     return (
       <div className="mx-auto flex max-w-3xl flex-col gap-6">
@@ -31,23 +28,14 @@ export default async function AccountPage() {
           <Card title="Demo workspace">
             <div className="flex flex-col gap-4">
               <p className="text-ink-soft text-sm">
-                This shared demo has no personal identity to edit. A real
-                account exposes the following self-service security controls.
+                This shared demo has no personal identity behind it. In a real
+                workspace this page shows the name, email and Microsoft tenant
+                you signed in with, your role, and the workspaces you belong to.
               </p>
-              <ul className="border-line bg-subtle grid gap-px border sm:grid-cols-3">
-                {[
-                  "Profile & name",
-                  "Password",
-                  "Multi-factor authentication",
-                ].map((item) => (
-                  <li key={item} className="bg-card p-4 text-sm font-medium">
-                    {item}
-                  </li>
-                ))}
-              </ul>
               <p className="text-ink-faint text-xs">
-                Changes apply to your login across every workspace. The demo
-                remains read-only so one visitor cannot affect another.
+                Password, multi-factor authentication and profile stay in your
+                Microsoft account. The demo remains read-only so one visitor
+                cannot affect another.
               </p>
               <Link
                 href="/app"
@@ -62,56 +50,92 @@ export default async function AccountPage() {
     );
   }
 
-  if (authProvider() !== "workos") {
-    return (
-      <div className="mx-auto flex max-w-3xl flex-col gap-6 pb-8">
-        <header className="rise rise-1">
-          <h1 className="font-display text-3xl tracking-tight">Account</h1>
-          <p className="text-ink-soft mt-1 text-sm">
-            Your profile, password and sign-in security are managed by Microsoft
-            Entra ID. Update them in your Microsoft account; changes apply
-            across every workspace you belong to.
-          </p>
-        </header>
-      </div>
-    );
-  }
-
-  const { user, accessToken } = await withAuth();
-  if (!user || !accessToken) {
-    return (
-      <div className="mx-auto flex max-w-3xl flex-col gap-6 pb-8">
-        <header className="rise rise-1">
-          <h1 className="font-display text-3xl tracking-tight">Account</h1>
-          <p className="text-ink-soft mt-1 text-sm">
-            We couldn&rsquo;t load your account details. Signing out and back in
-            usually fixes this.
-          </p>
-        </header>
-        <div className="rise rise-2 flex flex-wrap items-center gap-3">
-          <form action={signOutAction}>
-            <Button variant="primary">Sign out</Button>
-          </form>
-          <ButtonLink href="/">Back to home</ButtonLink>
-        </div>
-      </div>
-    );
-  }
+  // The email is a display value from the Microsoft sign-in. It is never used
+  // to decide access; membership is keyed on the Entra object id.
+  const session = await auth();
+  const email = session?.user.email ?? ctx.user.upn;
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 pb-8">
       <header className="rise rise-1">
         <h1 className="font-display text-3xl tracking-tight">Account</h1>
         <p className="text-ink-soft mt-1 text-sm">
-          Manage your name, password and sign-in security. These apply to your
-          personal login across every workspace you belong to.
+          What LicenseMeter received when you signed in with Microsoft.
         </p>
       </header>
+
       <div className="rise rise-2">
-        <AccountWidgets accessToken={accessToken} />
+        <Card title="Signed in as">
+          <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-ink-faint">Name</dt>
+              <dd className="mt-0.5 font-medium">
+                {ctx.user.name || "Not provided"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-ink-faint">Email</dt>
+              <dd className="mt-0.5 break-all">{email || "Not provided"}</dd>
+            </div>
+            <div>
+              <dt className="text-ink-faint">Microsoft tenant ID</dt>
+              <dd className="mt-0.5 font-mono text-xs break-all">
+                {ctx.user.tid}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-ink-faint">Role in this workspace</dt>
+              <dd className="mt-0.5 capitalize">{ctx.membership.role}</dd>
+            </div>
+          </dl>
+        </Card>
       </div>
-      {/* Re-seal the session after widget edits so the sidebar name stays current. */}
-      <AccountSessionSync />
+
+      <div className="rise rise-3">
+        <Card title="Workspaces">
+          <ul className="divide-line divide-y text-sm">
+            {ctx.workspaces.map((w) => (
+              <li
+                key={w.id}
+                className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+              >
+                <span className="min-w-0 truncate font-medium">{w.name}</span>
+                <span className="flex shrink-0 items-center gap-2">
+                  {w.id === ctx.tenant.id && <Pill tone="brand">Active</Pill>}
+                  <Pill tone="outline">{w.role}</Pill>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+
+      <div className="rise rise-4">
+        <Card title="Password and security">
+          <div className="flex flex-col gap-4">
+            <p className="text-ink-soft text-sm">
+              Your password, multi-factor authentication and profile are managed
+              in your Microsoft account, not in LicenseMeter. Change them at{" "}
+              <a
+                href={MICROSOFT_ACCOUNT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-ink hover:text-brand-text font-medium underline underline-offset-4"
+              >
+                myaccount.microsoft.com
+              </a>
+              . A new name or email shows here the next time you sign in.
+            </p>
+            <form action={signOutAction}>
+              <Button>Sign out</Button>
+            </form>
+            <p className="text-ink-faint text-xs">
+              Signing out ends your LicenseMeter session on this browser. You
+              stay signed in to Microsoft.
+            </p>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

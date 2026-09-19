@@ -38,10 +38,7 @@ export const sniffLogoType = (bytes: Uint8Array): LogoMediaType | null => {
 };
 
 export type LogoRefusal =
-  | "notDataUrl"
-  | "unsupportedType"
-  | "tooLarge"
-  | "contentMismatch";
+  "notDataUrl" | "unsupportedType" | "tooLarge" | "contentMismatch";
 
 const DATA_URL = /^data:([a-z0-9.+/-]+);base64,([A-Za-z0-9+/]+={0,2})$/;
 
@@ -170,30 +167,21 @@ export type BrandingRefusal =
   | "invalid";
 
 export type BrandingResult =
-  | { ok: true }
-  | { ok: false; reason: BrandingRefusal; message?: string };
+  { ok: true } | { ok: false; reason: BrandingRefusal; message?: string };
 
 /**
- * The owner column that matches this sign-in. resolveWorkos projects the WorkOS
- * user id onto ctx.user.oid and links the active membership to it, so an equal
- * workosUserId means a WorkOS sign-in; otherwise it is an Entra object id.
+ * The account is the caller's when its owner is their Entra object id. An
+ * account from before sign-in moved to Entra gets that id when its owner's
+ * membership is linked (identityLink.ts), so the legacy owner column is never
+ * consulted here.
  */
 const ownedByCaller = (ctx: AccessContext) =>
-  ctx.membership.workosUserId === ctx.user.oid
-    ? eq(mspAccounts.ownerWorkosUserId, ctx.user.oid)
-    : eq(mspAccounts.ownerOid, ctx.user.oid);
+  eq(mspAccounts.ownerOid, ctx.user.oid);
 
 const isAccountOwner = (
   ctx: AccessContext,
-  account: Pick<
-    typeof mspAccounts.$inferSelect,
-    "ownerWorkosUserId" | "ownerOid"
-  >,
-) =>
-  !ctx.user.isDemo &&
-  (ctx.membership.workosUserId === ctx.user.oid
-    ? account.ownerWorkosUserId === ctx.user.oid
-    : account.ownerOid === ctx.user.oid);
+  account: Pick<typeof mspAccounts.$inferSelect, "ownerOid">,
+) => !ctx.user.isDemo && account.ownerOid === ctx.user.oid;
 
 /**
  * Writes the brand columns of the account the active workspace is attached to.

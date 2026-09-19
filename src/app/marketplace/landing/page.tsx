@@ -2,8 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Button, ButtonLink } from "~/components/ui";
-import { marketplaceEnabled, signInPath } from "~/env";
+import { marketplaceEnabled } from "~/env";
 import { planName } from "~/lib/planLabel";
+import { signInStartHref } from "~/lib/signIn";
 import { apiAccess } from "~/server/access";
 import { auth } from "~/server/auth";
 import {
@@ -102,15 +103,13 @@ export default async function MarketplaceLandingPage({
     );
   }
 
-  // Sign in first, and come back with the token intact.
+  // Sign in first, and come back with the token intact. A buyer goes straight
+  // to Microsoft, past the sign-in page: Marketplace certification expects
+  // single sign-on from the landing page.
   const session = await auth();
   if (!session?.user) {
     const returnTo = safeReturnPath(landingPath(token));
-    redirect(
-      returnTo
-        ? `${signInPath()}?returnTo=${encodeURIComponent(returnTo)}`
-        : signInPath(),
-    );
+    redirect(signInStartHref(returnTo));
   }
 
   if (!token) {

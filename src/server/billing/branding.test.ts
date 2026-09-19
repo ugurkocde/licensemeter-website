@@ -102,16 +102,18 @@ const dataUrl = (mediaType: string, bytes: Buffer) =>
 const PNG_LOGO = dataUrl("image/png", PNG_BYTES);
 const BRAND = { name: "Northwind IT", color: "#FFE600", logo: PNG_LOGO };
 
-type User = { kind: "workos" | "entra"; id: string; email: string };
+/** `id` is the Entra object id. */
+type User = { id: string; email: string };
 
 const ALICE: User = {
-  kind: "workos",
-  id: "user_alice",
+  id: "00000000-aaaa-bbbb-cccc-00000000000a",
   email: "a@msp.example",
 };
-const BOB: User = { kind: "workos", id: "user_bob", email: "b@client.example" };
+const BOB: User = {
+  id: "00000000-aaaa-bbbb-cccc-00000000000b",
+  email: "b@client.example",
+};
 const ERIN: User = {
-  kind: "entra",
   id: "00000000-aaaa-bbbb-cccc-000000000001",
   email: "erin@entra.example",
 };
@@ -143,9 +145,7 @@ async function seedMspAccount(
   await currentDb.insert(schema.mspAccounts).values({
     id: MSP_ID,
     name: "Partner",
-    ...(owner.kind === "workos"
-      ? { ownerWorkosUserId: owner.id }
-      : { ownerOid: owner.id }),
+    ownerOid: owner.id,
     ...brand,
   });
 }
@@ -181,9 +181,7 @@ async function ctxFor(
       tenantId: tenant.id,
       email: user.email,
       role,
-      ...(user.kind === "workos"
-        ? { workosUserId: user.id }
-        : { oid: user.id }),
+      oid: user.id,
     })
     .returning();
   const entitlement = await loadEntitlement(tenant, NOW);
@@ -191,7 +189,7 @@ async function ctxFor(
   return {
     user: {
       oid: user.id,
-      tid: user.kind === "entra" ? "entra-home-tid" : "",
+      tid: "entra-home-tid",
       upn: user.email,
       name: "",
       isDemo,
@@ -468,8 +466,14 @@ describe("saveBranding", () => {
     expect((await storedBrand()).brandName).toBeNull();
   });
 
-  it("does not match a WorkOS id against the Entra owner column", async () => {
-    await seedMspAccount({ ...ERIN, id: ALICE.id });
+  it("does not match the object id against the legacy owner column", async () => {
+    // An account from before the move whose legacy owner id happens to hold
+    // the same string as Alice's object id, and that nobody adopted yet.
+    await currentDb.insert(schema.mspAccounts).values({
+      id: MSP_ID,
+      name: "Partner",
+      ownerWorkosUserId: ALICE.id,
+    });
     const tenant = await seedTenant(1, { mspAccountId: MSP_ID });
     await seedEntitlement({ mspAccountId: MSP_ID, plan: "msp", quantity: 10 });
     const ctx = await ctxFor(ALICE, tenant);

@@ -29,14 +29,12 @@ export type ScanTenantResult =
 
 /**
  * The Microsoft identity the scan token proves (from the delegated id_token's
- * claims) and the LicenseMeter actor to bind as owner. The actor is the WorkOS
- * user (workos sign-in) or the Entra object id (entra opt-out), decoupled from
- * the Microsoft tenant being scanned, since under WorkOS the person signs in
- * with any method and only proves Microsoft access here.
+ * claims) and the LicenseMeter actor to bind as owner: the Entra object id of
+ * the session, which the callback has matched against the scan token.
  */
 export type ScanIdentity = {
   ms: { tid: string; upn: string; name?: string | null; email?: string | null };
-  actor: { workosUserId?: string; oid?: string };
+  actor: { oid: string };
   isDemo: boolean;
 };
 
@@ -54,10 +52,7 @@ export const resolveScanTenant = async (
   const { ms, actor } = identity;
   const tid = ms.tid;
 
-  // The actor owns the membership by whichever identity the session carries.
-  const matchActor = actor.workosUserId
-    ? eq(memberships.workosUserId, actor.workosUserId)
-    : eq(memberships.oid, actor.oid!);
+  const matchActor = eq(memberships.oid, actor.oid);
 
   const existing = await db.query.tenants.findFirst({
     where: eq(tenants.tid, tid),
@@ -115,17 +110,14 @@ export const resolveScanTenant = async (
       .insert(memberships)
       .values({
         tenantId: inserted.id,
-        oid: actor.oid ?? null,
-        workosUserId: actor.workosUserId ?? null,
+        oid: actor.oid,
         email: ms.email ?? ms.upn,
         name: ms.name ?? null,
         role: "owner",
       })
       .onConflictDoUpdate({
         target: [memberships.tenantId, memberships.email],
-        set: actor.workosUserId
-          ? { workosUserId: actor.workosUserId, role: "owner" }
-          : { oid: actor.oid, role: "owner" },
+        set: { oid: actor.oid, role: "owner" },
       });
 
     return { ok: true, tenantId: inserted.id } as const;
