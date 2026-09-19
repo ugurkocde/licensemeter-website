@@ -1,0 +1,12 @@
+# Read by GitBook Git Sync. This directory is the mapped content root of the
+# documentation space, so every path here is relative to it.
+root: ./
+
+structure:
+  readme: README.md
+  summary: SUMMARY.md
+
+# The root page was published as /welcome before Git Sync. A redirect only
+# applies while no page exists at that path.
+redirects:
+  welcome: README.md
