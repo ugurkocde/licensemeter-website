@@ -10,6 +10,7 @@ import {
   signInRedirectUri,
 } from "~/server/auth/msal";
 import {
+  sessionIdentityOf,
   verifyEntraIdToken,
   type VerifiedEntraClaims,
 } from "~/server/auth/verifyIdToken";
@@ -32,10 +33,17 @@ import { sql } from "drizzle-orm";
 /** The delegated instant scan runs inside after() on this route. */
 export const maxDuration = 300;
 
-const backToLanding = (req: NextRequest, reason: string) => {
-  console.error(`[auth] sign-in failed: ${reason}`);
+/** The ?error= codes the sign-in page has a message for. */
+type SignInErrorCode = "failed" | "declined" | "expired";
+
+const backToSignIn = (
+  req: NextRequest,
+  code: SignInErrorCode,
+  reason: string,
+) => {
+  console.error(`[auth] sign-in failed (${code}): ${reason}`);
   const res = NextResponse.redirect(
-    new URL(`/?signin=failed`, requestBaseUrl(req)),
+    new URL(`/sign-in?error=${code}`, requestBaseUrl(req)),
   );
   res.cookies.set(expiredOAuthCookie());
   return res;
@@ -70,8 +78,7 @@ const handleScanCallback = async (
   const error = params.get("error");
 
   const session = await auth();
-  const actorId = session?.user?.workosUserId ?? session?.user?.oid;
-  if (!session?.user || !actorId) {
+  if (!session?.user?.oid) {
     const res = NextResponse.redirect(new URL("/", requestBaseUrl(req)));
     res.cookies.set(expiredOAuthCookie());
     return res;
@@ -116,15 +123,9 @@ const handleScanCallback = async (
     );
   }
 
-  // Entra opt-out only: the session IS a Microsoft identity, so the scan token
-  // must belong to that same signed-in user. Under WorkOS the session carries
-  // no Microsoft identity (oid/tid empty); the freshly consented scan token is
-  // itself the proof of tenant access, so there is nothing to cross-check.
-  const entraSession = !!session.user.oid && !!session.user.tid;
-  if (
-    entraSession &&
-    (claims.tid !== session.user.tid || claims.oid !== session.user.oid)
-  ) {
+  // The session IS a Microsoft identity, so the scan token must belong to that
+  // same signed-in user.
+  if (claims.tid !== session.user.tid || claims.oid !== session.user.oid) {
     return backToConnect(req, "scan_mismatch", "token identity != session");
   }
 
@@ -136,9 +137,7 @@ const handleScanCallback = async (
       name: claims.name,
       email: claims.email ?? claims.preferred_username ?? null,
     },
-    actor: session.user.workosUserId
-      ? { workosUserId: session.user.workosUserId }
-      : { oid: session.user.oid },
+    actor: { oid: session.user.oid },
     isDemo: session.user.isDemo,
   });
   if (!resolved.ok) return backToConnect(req, resolved.error, "guard matrix");
@@ -178,15 +177,18 @@ export const GET = async (req: NextRequest) => {
   if (oauth?.kind === "scan") return handleScanCallback(req, oauth);
 
   if (error) {
-    return backToLanding(
+    return backToSignIn(
       req,
+      error === "access_denied" ? "declined" : "failed",
       `${error}: ${params.get("error_description") ?? ""}`,
     );
   }
 
-  if (!oauth) return backToLanding(req, "missing or expired oauth cookie");
+  if (!oauth) {
+    return backToSignIn(req, "expired", "missing or expired oauth cookie");
+  }
   if (!code || !state || state !== oauth.state) {
-    return backToLanding(req, "state mismatch");
+    return backToSignIn(req, "failed", "state mismatch");
   }
 
   let claims: VerifiedEntraClaims;
@@ -203,13 +205,16 @@ export const GET = async (req: NextRequest) => {
       env.AUTH_MICROSOFT_ENTRA_ID_ID ?? "",
     );
   } catch (err) {
-    return backToLanding(
+    return backToSignIn(
       req,
+      "failed",
       `token redemption failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
-  const upn = claims.preferred_username ?? claims.email ?? "";
+  const identity = sessionIdentityOf(claims);
+  // Label for the sign-in statistics and the ops note only.
+  const upn = identity.upn || (claims.email ?? "");
 
   // First-time identities are a founder signal; returning ones just update stats.
   try {
@@ -232,14 +237,7 @@ export const GET = async (req: NextRequest) => {
     console.error("[auth] sign-in tracking failed", err);
   }
 
-  const token = await createSessionToken({
-    oid: claims.oid,
-    tid: claims.tid,
-    upn,
-    name: claims.name ?? upn,
-    email: claims.email ?? claims.preferred_username ?? null,
-    isDemo: false,
-  });
+  const token = await createSessionToken(identity);
 
   // returnTo was validated again inside readOAuthCookie; absent or invalid
   // values fall back to the default landing.

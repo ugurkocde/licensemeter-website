@@ -4,7 +4,7 @@
  * status page can show their live health instead of a static claim. Keep the
  * list a subset of the definitive subprocessor list in dpa.ts.
  *
- * All five publish the Atlassian Statuspage v2 schema:
+ * All three publish the Atlassian Statuspage v2 schema:
  *   { status: { indicator: "none"|"minor"|"major"|"critical"|"maintenance",
  *               description: string } }
  * Verified live against each endpoint.
@@ -42,14 +42,6 @@ export const STATUS_PROVIDERS: StatusProvider[] = [
     statusPageUrl: "https://status.supabase.com",
   },
   {
-    key: "workos",
-    name: "WorkOS",
-    purpose: "Authentication and sign-in (AuthKit)",
-    location: "US",
-    statusApiUrl: "https://status.workos.com/api/v2/status.json",
-    statusPageUrl: "https://status.workos.com",
-  },
-  {
     key: "resend",
     name: "Resend",
     purpose: "Transactional email",
@@ -60,14 +52,15 @@ export const STATUS_PROVIDERS: StatusProvider[] = [
 ];
 
 /**
- * Subprocessors without a public machine-readable feed. Microsoft 365 / Entra
- * status needs tenant-admin auth, so it is a link-out rather than a live dot.
+ * Subprocessors without a public machine-readable feed. Sign-in depends on
+ * Microsoft Entra ID, but Microsoft 365 / Entra status needs tenant-admin auth,
+ * so it is a link-out rather than a live dot.
  */
 export const EXTERNAL_STATUS_LINKS = [
   {
     key: "microsoft",
     name: "Microsoft 365 / Entra ID",
-    purpose: "Identity platform and Microsoft Graph API",
+    purpose: "Sign-in (Microsoft Entra ID) and Microsoft Graph API",
     location: "EU Data Boundary; US fallback",
     statusPageUrl: "https://status.cloud.microsoft/",
   },

@@ -1,0 +1,7 @@
+{
+  "title": "Sign in with your Microsoft work account",
+  "summary": "LicenseMeter now signs you in with your Microsoft work or school account only. There is no separate password or signup form, and the new sign-in page explains each step, which permissions are asked for and why. Signing in shares your name and email address and reads nothing from your tenant; connecting Microsoft 365 stays a separate, read-only admin consent. Existing members keep their workspaces: when Microsoft confirms your email address the account is linked automatically, otherwise we send a one-time confirmation link to that address. Password, multi-factor and profile settings are managed in your Microsoft account.",
+  "type": "improved",
+  "publishedOn": "2026-09-19",
+  "idempotencyKey": "licensemeter:2026-09-19-sign-in-with-microsoft"
+}

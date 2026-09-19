@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { fmtMoney } from "~/lib/format";
 
 export type TrendPoint = {
@@ -33,15 +35,31 @@ const buildPath = (
     .join(" ");
 
 /**
+ * One quiet line for a chart the 12-month history window cut short. The page
+ * decides when that is the case; older snapshots stay stored either way.
+ */
+const HistoryWindowHint = ({ href }: { href: string }) => (
+  <p className="text-ink-faint mt-2 text-xs">
+    Showing the last 12 months.{" "}
+    <Link href={href} className="hover:text-ink underline underline-offset-4">
+      Pro and MSP show 24 months.
+    </Link>
+  </p>
+);
+
+/**
  * Spend vs waste over the collected daily snapshots. Server-rendered SVG:
  * the ledger aesthetic wants a precise line, not an animated chart library.
  */
 export const TrendChart = ({
   points,
   currency,
+  windowUpgradeHref,
 }: {
   points: TrendPoint[];
   currency: string;
+  /** Set only when the plan's history window hides older snapshots. */
+  windowUpgradeHref?: string;
 }) => {
   // A line needs at least three daily snapshots to be meaningful. Rather than
   // vanish on a fresh workspace, show a short placeholder so the section stays
@@ -55,6 +73,7 @@ export const TrendChart = ({
         <div className="border-line bg-card text-ink-soft mt-3 border border-dashed px-4 py-8 text-center text-sm">
           Spend and waste trends appear here after a few daily syncs.
         </div>
+        {windowUpgradeHref && <HistoryWindowHint href={windowUpgradeHref} />}
       </section>
     );
   }
@@ -252,6 +271,7 @@ export const TrendChart = ({
           </a>
         </div>
       </div>
+      {windowUpgradeHref && <HistoryWindowHint href={windowUpgradeHref} />}
     </section>
   );
 };

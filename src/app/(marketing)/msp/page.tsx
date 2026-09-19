@@ -16,7 +16,7 @@ const STEPS = [
   {
     n: "01",
     title: "You start the connection",
-    body: "Sign in with your own account and open a connect link for the client tenant. No client passwords, no shared admin accounts, no partner delegation to set up.",
+    body: "Sign in with your own Microsoft work account and open a connect link for the client tenant. Signing in shares only your name and email address. No client passwords, no shared admin accounts, no partner delegation to set up.",
   },
   {
     n: "02",
@@ -74,7 +74,7 @@ const MSP_LD = {
 };
 
 /* CTA hierarchy mirrors the rest of the marketing site: the primary action is
- * self-serve sign-in (WorkOS AuthKit), landing the MSP on the portfolio page
+ * self-serve Microsoft sign-in, landing the MSP on the portfolio page
  * where they can review connected client workspaces. The live demo and support
  * are available when sign-in is not configured. */
 const Ctas = ({

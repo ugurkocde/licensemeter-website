@@ -6,8 +6,10 @@ import { useEffect, useRef, useState } from "react";
 import { BrandMark } from "~/components/BrandMark";
 import { ChangelogBell } from "~/components/changelog/ChangelogBell";
 import { NavLinks } from "./NavLinks";
+import { PlanBadge } from "./PlanBadge";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import type { WorkspaceSummary } from "~/server/access";
+import type { Entitlement } from "~/server/entitlement";
 import { signOutAction } from "~/app/auth/actions";
 
 const FOCUSABLE =
@@ -23,6 +25,7 @@ export const MobileNav = ({
   showPortfolio = false,
   workspaces,
   activeId,
+  entitlement,
 }: {
   tenantName: string;
   isDemo: boolean;
@@ -32,6 +35,7 @@ export const MobileNav = ({
   showPortfolio?: boolean;
   workspaces: WorkspaceSummary[];
   activeId: string;
+  entitlement: Entitlement;
 }) => {
   const [open, setOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
@@ -149,10 +153,17 @@ export const MobileNav = ({
           <div className="text-sidebar-soft mt-0.5 text-[11px] tracking-wider uppercase">
             {isDemo ? "Demo workspace" : "Connected tenant"}
           </div>
+          {/* In the drawer, not the top bar: the bar has no room at 320px. */}
+          <PlanBadge
+            entitlement={entitlement}
+            onNavigate={() => setOpen(false)}
+            className="mt-2"
+          />
         </div>
         <NavLinks
           onNavigate={() => setOpen(false)}
           showPortfolio={showPortfolio}
+          entitlement={entitlement}
           navLabel="Mobile workspace navigation"
         />
         <div className="border-sidebar-line mt-3 flex items-center justify-between border-t px-4 pt-3">

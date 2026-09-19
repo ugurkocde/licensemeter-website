@@ -1,17 +1,35 @@
-import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 
 import { env } from "~/env";
 import { workspaceLabel } from "~/lib/format";
+import { upgradePath } from "~/lib/upgrade";
 import { auth, type Session } from "~/server/auth";
 import { cookieOptions } from "~/server/auth/session";
 import { db } from "~/server/db";
 import { memberships, tenants } from "~/server/db/schema";
 import { ensureDemoWorkspace } from "~/server/demo/seed";
 import { provisionForSignIn } from "~/server/domainJoin";
-import { entitlementOf, type Entitlement } from "~/server/entitlement";
+import {
+  hasFeature,
+  planFor,
+  type Entitlement,
+  type Feature,
+} from "~/server/entitlement";
+import { loadEntitlement } from "~/server/entitlementStore";
+import { linkLegacyMemberships } from "~/server/identityLink";
 import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import type { MembershipRole } from "~/server/types";
 import {
@@ -51,7 +69,8 @@ export type AccessContext = {
   /** Every workspace this user can open (MSP/consultant support). */
   workspaces: WorkspaceSummary[];
   /**
-   * Permanent free access for the active workspace.
+   * Plan and paid features of the active workspace. Free keeps everything it
+   * has today; a self-hosted install resolves to every feature.
    */
   entitlement: Entitlement;
 };
@@ -64,91 +83,6 @@ const ROLE_RANK: Record<MembershipRole, number> = {
 
 export const hasRole = (ctx: AccessContext, minRole: MembershipRole) =>
   ROLE_RANK[ctx.membership.role] >= ROLE_RANK[minRole];
-
-/**
- * Resolves every workspace the signed-in user may open, then the active one.
- *
- * Membership matching is invite-based and deliberately asymmetric:
- * - by Entra object id: the user has opened this workspace before;
- * - unclaimed invites by UPN: valid from ANY tenant, because UPN domains are
- *   verified by Microsoft (a consultant invited as consultant@msp.example can
- *   only be the account whose home tenant owns msp.example);
- * - unclaimed invites by email claim: valid only when signing in FROM the
- *   workspace tenant itself, because the email attribute is admin/user-mutable
- *   and must not grant cross-tenant access.
- *
- * Same-tenant sign-in alone still grants nothing.
- */
-const resolveEntra = async (
-  session: Session | null,
-): Promise<AccessContext | null> => {
-  if (!session?.user?.oid) return null;
-  const { oid, tid, upn, isDemo } = session.user;
-
-  if (isDemo) await ensureDemoWorkspace();
-
-  const upnLower = upn.toLowerCase();
-  const identifiers = [upn, session.user.email ?? ""]
-    .filter(Boolean)
-    .map((s) => s.toLowerCase());
-  const inviteCutoff = new Date(Date.now() - INVITE_TTL_DAYS * 86_400_000);
-
-  const rows = await db
-    .select({ membership: memberships, tenant: tenants })
-    .from(memberships)
-    .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
-    .where(
-      or(
-        eq(memberships.oid, oid),
-        upnLower
-          ? and(
-              isNull(memberships.oid),
-              gt(memberships.createdAt, inviteCutoff),
-              eq(sql`lower(${memberships.email})`, upnLower),
-            )
-          : sql`false`,
-        identifiers.length > 0
-          ? and(
-              isNull(memberships.oid),
-              gt(memberships.createdAt, inviteCutoff),
-              inArray(sql`lower(${memberships.email})`, identifiers),
-              eq(tenants.tid, tid),
-            )
-          : sql`false`,
-      ),
-    );
-  if (rows.length === 0) return null;
-
-  // Active workspace: cookie choice if still valid, else the home-tenant
-  // workspace, else the first one.
-  const cookieWs = (await cookies()).get(WORKSPACE_COOKIE)?.value;
-  const active =
-    rows.find((r) => r.tenant.id === cookieWs) ??
-    rows.find((r) => r.tenant.tid === tid) ??
-    rows[0]!;
-
-  // First sign-in of an invited user: claim the membership row.
-  if (!active.membership.oid) {
-    await db
-      .update(memberships)
-      .set({ oid, name: session.user.name ?? null })
-      .where(eq(memberships.id, active.membership.id));
-    active.membership.oid = oid;
-  }
-
-  return {
-    user: { oid, tid, upn, name: session.user.name ?? "", isDemo },
-    tenant: active.tenant,
-    membership: active.membership,
-    workspaces: rows.map((r) => ({
-      id: r.tenant.id,
-      name: workspaceLabel(r.tenant),
-      role: r.membership.role,
-      isDemo: r.tenant.isDemo,
-    })),
-    entitlement: entitlementOf(active.tenant),
-  };
-};
 
 /** Limits on new access requests, so sign-in loops cannot flood admins. */
 const JOIN_REQUESTS_PER_WORKSPACE_PER_DAY = 20;
@@ -183,28 +117,36 @@ const allowJoinRequest = async (tenantId: string): Promise<boolean> => {
 };
 
 /**
- * First WorkOS sign-in with no membership: provision access so the user lands on
- * a dashboard instead of a dead end. A verified corporate-domain user is matched
- * to the workspace holding that domain, and its owner decides what happens:
- * join as viewer ('auto'), file an access request ('approval') or nothing
- * ('off'). Everyone who did not join gets a fresh workspace they own, so nobody
- * waits on an approval to use the product. The workspace starts without a
- * connected service. Returns true when a membership now exists for this user.
+ * First sign-in with no membership: provision access so the user lands on a
+ * dashboard instead of a dead end. A colleague is matched to the workspace
+ * connected to their Microsoft tenant, else to the one holding their proven
+ * email domain, and its owner decides what happens: join as viewer ('auto'),
+ * file an access request ('approval') or nothing ('off'). Everyone who did not
+ * join gets a fresh workspace they own, so nobody waits on an approval to use
+ * the product. The workspace starts without a connected service. Returns true
+ * when a membership now exists for this user.
  */
-const provisionWorkspace = async (
-  session: Session,
-  workosUserId: string,
-): Promise<boolean> => {
-  const email = (session.user.email ?? "").toLowerCase();
+const provisionWorkspace = async (session: Session): Promise<boolean> => {
+  const { oid, tid, upn } = session.user;
+  const emailProven = session.user.emailProven === true;
+  // The address the membership is stored under. Unproven, the UPN is the
+  // better label (its domain is verified in the home tenant, the email
+  // attribute is free text); either way it only names the row.
+  const email = (
+    emailProven ? (session.user.email ?? "") : upn || (session.user.email ?? "")
+  )
+    .trim()
+    .toLowerCase();
   if (!email) return false;
 
   const { provisioned, outcome } = await provisionForSignIn(
     db,
     {
+      oid,
+      tid,
       email,
-      emailVerified: session.user.emailVerified === true,
-      workosUserId,
-      name: session.user.name ?? null,
+      emailVerified: emailProven,
+      name: session.user.name || null,
     },
     { allowRequest: allowJoinRequest },
   );
@@ -236,26 +178,62 @@ const provisionWorkspace = async (
   return provisioned;
 };
 
-/**
- * WorkOS-mode resolution. Identity is the WorkOS user id; the workspace is
- * matched either by a previously-linked membership (workos_user_id) or, for the
- * user's own verified email, by the email column, which also lazily links that
- * membership (claiming an invite or adopting an entra-era row) on first sign-in.
- * A brand-new user with no membership is provisioned a workspace (domain join or
- * their own) so sign-in always lands on a dashboard, never a forced connect gate.
- * There is no Entra tid here, so the home-tenant heuristic is dropped: active
- * workspace is the cookie choice, else the first accessible one.
- */
-const resolveWorkos = async (
-  session: Session,
-  workosUserId: string,
-): Promise<AccessContext | null> => {
-  const upn = session.user.upn;
-  const email = (session.user.email ?? "").toLowerCase();
-  const canLinkByEmail =
-    session.user.emailVerified === true && email.length > 0;
-  const inviteCutoff = new Date(Date.now() - INVITE_TTL_DAYS * 86_400_000);
+type MembershipRow = typeof memberships.$inferSelect;
 
+/** A member from before sign-in moved to Entra who has not been linked yet. */
+const isUnlinkedLegacy = (m: MembershipRow) =>
+  m.oid === null && m.workosUserId !== null;
+
+/**
+ * Resolves every workspace the signed-in user may open, then the active one.
+ * The one identity is the Entra object id.
+ *
+ * Membership matching is deliberately asymmetric:
+ * - by Entra object id: the user has opened this workspace before;
+ * - unclaimed invites from ANY tenant: only by an email the id token proved
+ *   (emailProven), so a consultant invited as consultant@msp.example is the
+ *   account Microsoft vouches for. The UPN alone opens nothing across tenants:
+ *   Microsoft documents preferred_username as mutable and not to be used for
+ *   authorization;
+ * - unclaimed invites by UPN or unproven email claim: valid only when signing
+ *   in FROM the workspace tenant itself, because both are admin/user-mutable
+ *   and must not grant cross-tenant access;
+ * - legacy memberships (no object id, from before sign-in moved to Entra) by
+ *   email, ONLY when the id token proved that email (emailProven). They are
+ *   linked on the spot, all of them, and keep role, plan and data. Without the
+ *   proof nothing is linked and the person is offered the claim mail instead.
+ *
+ * An invite is a row nobody ever signed in to (no object id and no legacy id),
+ * so the invite rules can never pick up a legacy member's row. Same-tenant
+ * sign-in alone still opens nothing: it goes through the workspace's "who can
+ * join" setting like a domain match. A person with no membership at all is
+ * provisioned (domain join or a workspace of their own), so sign-in always
+ * lands on a dashboard.
+ */
+const resolveAccess = async (
+  session: Session | null,
+): Promise<AccessContext | null> => {
+  if (!session?.user?.oid || !session.user.tid) return null;
+  const { oid, tid, upn, isDemo } = session.user;
+
+  if (isDemo) await ensureDemoWorkspace();
+
+  const identifiers = [upn, session.user.email ?? ""]
+    .filter(Boolean)
+    .map((s) => s.toLowerCase());
+  const inviteCutoff = new Date(Date.now() - INVITE_TTL_DAYS * 86_400_000);
+  // Strictly the boolean: a session from before the field existed is unproven.
+  const provenEmail =
+    !isDemo && session.user.emailProven === true
+      ? (session.user.email ?? "").trim().toLowerCase()
+      : "";
+  const unclaimedInvite = and(
+    isNull(memberships.oid),
+    isNull(memberships.workosUserId),
+    gt(memberships.createdAt, inviteCutoff),
+  );
+
+  // Ordered, so the active workspace without a cookie is stable across requests.
   const accessible = () =>
     db
       .select({ membership: memberships, tenant: tenants })
@@ -263,58 +241,81 @@ const resolveWorkos = async (
       .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
       .where(
         or(
-          eq(memberships.workosUserId, workosUserId),
-          // Link by the user's own verified email, but never resurrect a stale
-          // unclaimed invite: only rows not yet linked to a WorkOS user that are
-          // either an existing (entra-era, already-claimed) membership being
-          // migrated, or a still-fresh invite.
-          canLinkByEmail
+          eq(memberships.oid, oid),
+          provenEmail
             ? and(
-                isNull(memberships.workosUserId),
-                or(
-                  isNotNull(memberships.oid),
-                  gt(memberships.createdAt, inviteCutoff),
-                ),
-                eq(sql`lower(${memberships.email})`, email),
+                unclaimedInvite,
+                eq(sql`lower(${memberships.email})`, provenEmail),
+              )
+            : sql`false`,
+          identifiers.length > 0
+            ? and(
+                unclaimedInvite,
+                inArray(sql`lower(${memberships.email})`, identifiers),
+                eq(tenants.tid, tid),
+              )
+            : sql`false`,
+          provenEmail
+            ? and(
+                isNull(memberships.oid),
+                isNotNull(memberships.workosUserId),
+                eq(sql`lower(${memberships.email})`, provenEmail),
               )
             : sql`false`,
         ),
-      );
+      )
+      .orderBy(asc(tenants.createdAt), asc(tenants.id));
 
   let rows = await accessible();
-  if (rows.length === 0) {
-    // First sign-in, no invite: provision a workspace (domain join or their own)
-    // and re-read, so the user lands on a dashboard rather than a dead end.
-    const provisioned = await provisionWorkspace(session, workosUserId);
-    if (!provisioned) return null;
+  if (provenEmail && rows.some((r) => isUnlinkedLegacy(r.membership))) {
+    await linkLegacyMemberships(
+      db,
+      { oid, email: provenEmail, name: session.user.name || null },
+      "proven_email",
+    );
     rows = await accessible();
+  }
+  // A legacy row that is still unlinked was skipped on purpose (the person
+  // already has a membership in that workspace) and opens nothing.
+  rows = rows.filter((r) => !isUnlinkedLegacy(r.membership));
+
+  if (rows.length === 0) {
+    if (isDemo) return null;
+    // First sign-in, no invite: provision a workspace (domain join or their
+    // own) and re-read, so the user lands on a dashboard rather than a dead end.
+    if (!(await provisionWorkspace(session))) return null;
+    rows = (await accessible()).filter((r) => !isUnlinkedLegacy(r.membership));
     if (rows.length === 0) return null;
   }
 
+  // Active workspace: cookie choice if still valid, else the home-tenant
+  // workspace, else the oldest one.
   const cookieWs = (await cookies()).get(WORKSPACE_COOKIE)?.value;
-  const active = rows.find((r) => r.tenant.id === cookieWs) ?? rows[0]!;
+  const active =
+    rows.find((r) => r.tenant.id === cookieWs) ??
+    rows.find((r) => r.tenant.tid === tid) ??
+    rows[0]!;
 
-  // Link the active membership to this WorkOS identity on first touch.
-  if (active.membership.workosUserId !== workosUserId) {
-    await db
+  // First sign-in of an invited user: claim the membership row. The update
+  // repeats the unclaimed condition, so it can never overwrite an identity.
+  if (!active.membership.oid) {
+    const claimed = await db
       .update(memberships)
-      .set({
-        workosUserId,
-        name: session.user.name ?? active.membership.name,
-      })
-      .where(eq(memberships.id, active.membership.id));
-    active.membership.workosUserId = workosUserId;
+      .set({ oid, name: session.user.name || active.membership.name })
+      .where(
+        and(
+          eq(memberships.id, active.membership.id),
+          isNull(memberships.oid),
+          isNull(memberships.workosUserId),
+        ),
+      )
+      .returning({ id: memberships.id });
+    if (claimed.length === 0) return null;
+    active.membership.oid = oid;
   }
 
   return {
-    // Project the WorkOS user id onto the actor id used for audit/display.
-    user: {
-      oid: workosUserId,
-      tid: "",
-      upn,
-      name: session.user.name ?? "",
-      isDemo: false,
-    },
+    user: { oid, tid, upn, name: session.user.name ?? "", isDemo },
     tenant: active.tenant,
     membership: active.membership,
     workspaces: rows.map((r) => ({
@@ -323,28 +324,14 @@ const resolveWorkos = async (
       role: r.membership.role,
       isDemo: r.tenant.isDemo,
     })),
-    entitlement: entitlementOf(active.tenant),
+    entitlement: await loadEntitlement(active.tenant),
   };
-};
-
-/**
- * Dispatches to the workos or entra resolver based on which identity the
- * session carries, so both login stacks share every downstream consumer.
- */
-const resolveAccess = (
-  session: Session | null,
-): Promise<AccessContext | null> => {
-  const workosUserId = session?.user?.workosUserId;
-  if (session && workosUserId) return resolveWorkos(session, workosUserId);
-  return resolveEntra(session);
 };
 
 /** For pages/layouts: redirects to landing when signed out. */
 export const requireSession = async (): Promise<Session> => {
   const session = await auth();
-  if (!session?.user || (!session.user.oid && !session.user.workosUserId)) {
-    redirect("/");
-  }
+  if (!session?.user?.oid) redirect("/");
   return session;
 };
 
@@ -364,6 +351,16 @@ export const requireAccess = async (
   return ctx;
 };
 
+/** For pages/layouts: like requireAccess, plus an upgrade redirect when the plan lacks the feature. */
+export const requireFeature = async (
+  feature: Feature,
+  minRole: MembershipRole = "viewer",
+): Promise<AccessContext> => {
+  const ctx = await requireAccess(minRole);
+  if (!hasFeature(ctx.entitlement, feature)) redirect(upgradePath(feature));
+  return ctx;
+};
+
 /** For API routes and server actions: returns null instead of redirecting. */
 export const apiAccess = async (
   minRole: MembershipRole = "viewer",
@@ -373,6 +370,44 @@ export const apiAccess = async (
   if (!ctx || !hasRole(ctx, minRole)) return null;
   return ctx;
 };
+
+export type FeatureAccess =
+  | { ctx: AccessContext; denied: null }
+  | { ctx: null; denied: "unauthorized" }
+  /** Signed in with the right role, but the plan lacks the feature: answer 402. */
+  | {
+      ctx: null;
+      denied: "featureRequired";
+      feature: Feature;
+      plan: ReturnType<typeof planFor>;
+    };
+
+/**
+ * For API routes and server actions that serve a paid feature: apiAccess, with
+ * the missing-feature case kept apart so a route can answer 402 instead of 401.
+ */
+export const apiFeatureAccess = async (
+  feature: Feature,
+  minRole: MembershipRole = "viewer",
+): Promise<FeatureAccess> => {
+  const ctx = await apiAccess(minRole);
+  if (!ctx) return { ctx: null, denied: "unauthorized" };
+  if (!hasFeature(ctx.entitlement, feature)) {
+    return {
+      ctx: null,
+      denied: "featureRequired",
+      feature,
+      plan: planFor(feature),
+    };
+  }
+  return { ctx, denied: null };
+};
+
+/**
+ * Whether memberships exist that could be this person's but were not linked
+ * for lack of proof, so the UI can offer the claim mail. Boolean only.
+ */
+export { pendingClaimFor } from "~/server/membershipClaims";
 
 /** Workspace-switch cookie options (validated against memberships per request). */
 export const workspaceCookieOptions = () =>

@@ -12,6 +12,14 @@
     {
       "path": "/api/cron/report",
       "schedule": "0 7 1 * *"
+    },
+    {
+      "path": "/api/cron/billing-reconcile",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/marketplace-reconcile",
+      "schedule": "30 4 * * *"
     }
   ]
 }

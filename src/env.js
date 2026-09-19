@@ -1,13 +1,6 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
-// WorkOS is the default sign-in; entra is the flag-only opt-out. Mirrors
-// authProvider() below, but evaluated here so the WorkOS credentials become
-// REQUIRED whenever WorkOS is the live provider: a misconfigured production
-// deploy then fails the build instead of 500-ing every page at runtime (the
-// AuthKit middleware throws without a >=32-char cookie password).
-const workosLogin = process.env.AUTH_PROVIDER !== "entra";
-
 export const env = createEnv({
   /**
    * Server-side environment variables schema. The app fails the build on invalid env.
@@ -52,7 +45,9 @@ export const env = createEnv({
 
     /**
      * Sign-in app registration (delegated, multi-tenant, openid/profile/email only).
-     * Optional so the demo mode works without any Entra setup.
+     * Optional so the demo mode works without any Entra setup. For email-based
+     * linking the registration should emit the optional ID token claims email
+     * and xms_edov; without them every email reads as not proven.
      */
     AUTH_MICROSOFT_ENTRA_ID_ID: z.string().optional(),
     AUTH_MICROSOFT_ENTRA_ID_SECRET: z.string().optional(),
@@ -65,32 +60,37 @@ export const env = createEnv({
     CONNECTOR_CLIENT_SECRET: z.string().optional(),
 
     /**
-     * Which login stack is live. Defaults to "workos" (AuthKit multi-method
-     * sign-in); "entra" is a flag-only opt-out that restores the original MSAL
-     * sign-in. The connector (app-only Graph access) is unaffected either way;
-     * it keys on the Entra tenant id stored on the tenant row, not on the login.
-     */
-    AUTH_PROVIDER: z.enum(["entra", "workos"]).optional(),
-
-    /**
      * Gates the "bring your own app registration" Microsoft connector path.
      * On by default, next to the managed one-click admin-consent path. Set
      * MS_BYO_ENABLED=false to hide the BYO form and offer managed only.
      */
     MS_BYO_ENABLED: z.enum(["true", "false"]).optional(),
-
     /**
-     * WorkOS AuthKit credentials, read by @workos-inc/authkit-nextjs. Required
-     * when WorkOS is the live provider (the default) so a deploy missing them
-     * fails fast; optional under the entra opt-out. The cookie password must be
-     * >=32 chars (AuthKit seals the session with it). NEXT_PUBLIC_WORKOS_REDIRECT_URI
-     * is consumed by the SDK directly from process.env and is not validated here.
+     * Paid hosted plans. Off by default, which gives every workspace the full
+     * feature set (self-hosting). The hosted service sets BILLING_ENABLED=true
+     * so workspaces without an entitlement row are on Free.
      */
-    WORKOS_API_KEY: workosLogin ? z.string().min(1) : z.string().optional(),
-    WORKOS_CLIENT_ID: workosLogin ? z.string().min(1) : z.string().optional(),
-    WORKOS_COOKIE_PASSWORD: workosLogin
-      ? z.string().min(32)
-      : z.string().min(32).optional(),
+    BILLING_ENABLED: z.enum(["true", "false"]).optional(),
+    /** Polar (card payments, merchant of record). All optional; see polarEnabled(). */
+    POLAR_ACCESS_TOKEN: z.string().optional(),
+    POLAR_WEBHOOK_SECRET: z.string().optional(),
+    POLAR_SERVER: z.enum(["sandbox", "production"]).optional(),
+    POLAR_PRODUCT_PRO_MONTH: z.string().optional(),
+    POLAR_PRODUCT_PRO_YEAR: z.string().optional(),
+    POLAR_PRODUCT_MSP_MONTH: z.string().optional(),
+    POLAR_PRODUCT_MSP_YEAR: z.string().optional(),
+    /**
+     * Microsoft Marketplace transactable SaaS offer. The Entra app registered in
+     * Partner Center for the SaaS Fulfillment API; see marketplaceEnabled().
+     */
+    MARKETPLACE_TENANT_ID: z.string().optional(),
+    MARKETPLACE_CLIENT_ID: z.string().optional(),
+    MARKETPLACE_CLIENT_SECRET: z.string().optional(),
+    /** Public listing URL the portal links to for "buy on your Microsoft invoice". */
+    MARKETPLACE_OFFER_URL: z.string().url().optional(),
+    /** Plan ids as defined in Partner Center. Default to "pro" and "msp". */
+    MARKETPLACE_PLAN_PRO: z.string().optional(),
+    MARKETPLACE_PLAN_MSP: z.string().optional(),
 
     /**
      * Shared secret protecting /api/cron/* routes (Vercel Cron sends it as a
@@ -143,11 +143,21 @@ export const env = createEnv({
     AUTH_MICROSOFT_ENTRA_ID_SECRET: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
     CONNECTOR_CLIENT_ID: process.env.CONNECTOR_CLIENT_ID,
     CONNECTOR_CLIENT_SECRET: process.env.CONNECTOR_CLIENT_SECRET,
-    AUTH_PROVIDER: process.env.AUTH_PROVIDER,
     MS_BYO_ENABLED: process.env.MS_BYO_ENABLED,
-    WORKOS_API_KEY: process.env.WORKOS_API_KEY,
-    WORKOS_CLIENT_ID: process.env.WORKOS_CLIENT_ID,
-    WORKOS_COOKIE_PASSWORD: process.env.WORKOS_COOKIE_PASSWORD,
+    BILLING_ENABLED: process.env.BILLING_ENABLED,
+    POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN,
+    POLAR_WEBHOOK_SECRET: process.env.POLAR_WEBHOOK_SECRET,
+    POLAR_SERVER: process.env.POLAR_SERVER,
+    POLAR_PRODUCT_PRO_MONTH: process.env.POLAR_PRODUCT_PRO_MONTH,
+    POLAR_PRODUCT_PRO_YEAR: process.env.POLAR_PRODUCT_PRO_YEAR,
+    POLAR_PRODUCT_MSP_MONTH: process.env.POLAR_PRODUCT_MSP_MONTH,
+    POLAR_PRODUCT_MSP_YEAR: process.env.POLAR_PRODUCT_MSP_YEAR,
+    MARKETPLACE_TENANT_ID: process.env.MARKETPLACE_TENANT_ID,
+    MARKETPLACE_CLIENT_ID: process.env.MARKETPLACE_CLIENT_ID,
+    MARKETPLACE_CLIENT_SECRET: process.env.MARKETPLACE_CLIENT_SECRET,
+    MARKETPLACE_OFFER_URL: process.env.MARKETPLACE_OFFER_URL,
+    MARKETPLACE_PLAN_PRO: process.env.MARKETPLACE_PLAN_PRO,
+    MARKETPLACE_PLAN_MSP: process.env.MARKETPLACE_PLAN_MSP,
     CRON_SECRET: process.env.CRON_SECRET,
     DEMO_MODE: process.env.DEMO_MODE,
     APP_BASE_URL: process.env.APP_BASE_URL,
@@ -164,28 +174,15 @@ export const env = createEnv({
 export const isDemoMode = () => env.DEMO_MODE === "true";
 
 /**
- * Active login stack. Defaults to "workos": sign-in is WorkOS-only (AuthKit
- * multi-method). "entra" is a flag-only opt-out (AUTH_PROVIDER=entra) that
- * restores the original MSAL sign-in. MSAL otherwise lives only in the
- * Microsoft connector (admin-consent / BYO), never in user sign-in. The
- * connector / Graph access is independent of this flag.
- */
-export const authProvider = () =>
-  env.AUTH_PROVIDER === "entra" ? "entra" : "workos";
-
-/**
- * Whether sign-in is available, for wiring the marketing CTAs: WorkOS needs a
- * client id; the entra opt-out needs the Entra app id. Hides the sign-in button
- * on a deployment that has configured neither.
+ * Whether sign-in is available, for wiring the marketing CTAs: the Entra
+ * sign-in app registration is configured. Hides the sign-in button on a
+ * deployment that has not set it up (demo-only installs).
  */
 export const signInEnabled = () =>
-  authProvider() === "workos"
-    ? Boolean(env.WORKOS_CLIENT_ID)
-    : Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID);
+  Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID && env.AUTH_MICROSOFT_ENTRA_ID_SECRET);
 
-/** Sign-in entry path for the active provider (WorkOS AuthKit by default). */
-export const signInPath = () =>
-  authProvider() === "workos" ? "/auth/sign-in" : "/api/auth/signin";
+/** The sign-in page; its button starts the Microsoft flow at /api/auth/signin. */
+export const signInPath = () => "/sign-in";
 
 /**
  * Whether the bring-your-own Microsoft app-registration path is exposed. On by
@@ -193,6 +190,32 @@ export const signInPath = () =>
  * MS_BYO_ENABLED=false to hide it and offer managed one-click only.
  */
 export const byoConnectorEnabled = () => env.MS_BYO_ENABLED !== "false";
+
+/**
+ * Whether paid hosted plans are in force. Off by default: a self-hosted install
+ * gets every feature without an entitlement row.
+ */
+export const billingEnabled = () => env.BILLING_ENABLED === "true";
+
+/** Card checkout through Polar is offered only when billing is on and Polar is configured. */
+export const polarEnabled = () =>
+  billingEnabled() &&
+  Boolean(env.POLAR_ACCESS_TOKEN && env.POLAR_WEBHOOK_SECRET);
+
+/** The Marketplace landing page and webhook work only with the fulfillment app configured. */
+export const marketplaceEnabled = () =>
+  billingEnabled() &&
+  Boolean(
+    env.MARKETPLACE_TENANT_ID &&
+    env.MARKETPLACE_CLIENT_ID &&
+    env.MARKETPLACE_CLIENT_SECRET,
+  );
+
+/** The published Marketplace listing, or null while nobody can buy there yet. */
+export const marketplaceOfferUrl = () =>
+  marketplaceEnabled() && env.MARKETPLACE_OFFER_URL
+    ? env.MARKETPLACE_OFFER_URL
+    : null;
 
 /**
  * Like appBaseUrl but never throws, for sitemap/OG metadata where a localhost

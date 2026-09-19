@@ -75,32 +75,20 @@ export default function CookiesPage() {
             </thead>
             <tbody className="text-ink-soft">
               <tr className="border-line border-b">
-                <td className="text-ink px-4 py-2 font-mono">wos-session</td>
-                <td className="px-4 py-2">
-                  Keeps you signed in to the application (HTTP-only). Set by our
-                  authentication provider WorkOS when you sign in; contains a
-                  sealed, encrypted session.
-                </td>
-                <td className="px-4 py-2">
-                  While you stay signed in (browser limit: 400 days); the
-                  session inside is short-lived and refreshed as you use the
-                  app.
-                </td>
-              </tr>
-              <tr className="border-line border-b">
                 <td className="text-ink px-4 py-2 font-mono">lm_session</td>
                 <td className="px-4 py-2">
-                  Keeps you signed in for the demo workspace and, where
-                  Microsoft sign-in is used directly, for the application
-                  (HTTP-only).
+                  Keeps you signed in to the application and to the demo
+                  workspace (HTTP-only). Set by LicenseMeter after you sign in
+                  with Microsoft; a signed token holding your name, email,
+                  Microsoft object ID and tenant ID.
                 </td>
                 <td className="px-4 py-2">30 days</td>
               </tr>
               <tr className="border-line border-b">
                 <td className="text-ink px-4 py-2 font-mono">lm_oauth</td>
                 <td className="px-4 py-2">
-                  Protects the sign-in flow (OAuth state / PKCE) against CSRF;
-                  active only during the redirect.
+                  Protects the Microsoft sign-in flow (OAuth state / PKCE)
+                  against CSRF; active only during the redirect.
                 </td>
                 <td className="px-4 py-2">10 minutes</td>
               </tr>

@@ -72,7 +72,15 @@ Write-Host "Creating 'LicenseMeter Sign-in'..." -ForegroundColor Cyan
 $signin = New-MgApplication `
   -DisplayName "LicenseMeter Sign-in" `
   -SignInAudience "AzureADMultipleOrgs" `
-  -Web @{ RedirectUris = @("$BaseUrl/api/auth/callback/microsoft-entra-id") }
+  -Web @{ RedirectUris = @("$BaseUrl/api/auth/callback/microsoft-entra-id") } `
+  -OptionalClaims @{
+    # xms_edov tells LicenseMeter that Microsoft verified the owner of the email
+    # domain. Only then is an existing member linked to the sign-in by email.
+    IdToken = @(
+      @{ Name = "email"; Essential = $false },
+      @{ Name = "xms_edov"; Essential = $false }
+    )
+  }
 
 $signinSecret = Add-MgApplicationPassword -ApplicationId $signin.Id -PasswordCredential @{
   DisplayName = "licensemeter"

@@ -3,11 +3,12 @@ import Link from "next/link";
 
 import { BrandMark } from "~/components/BrandMark";
 import { ChangelogBell } from "~/components/changelog/ChangelogBell";
+import { ClaimMembershipNotice } from "~/components/signin/ClaimMembershipNotice";
 import { JoinRequestNotice } from "~/components/workspace/JoinRequestNotice";
 import { MobileNav } from "~/components/workspace/MobileNav";
 import { NavLinks } from "~/components/workspace/NavLinks";
+import { PlanBadge } from "~/components/workspace/PlanBadge";
 import { WorkspaceSwitcher } from "~/components/workspace/WorkspaceSwitcher";
-import { authProvider } from "~/env";
 import { workspaceLabel } from "~/lib/format";
 import { requireAccess } from "~/server/access";
 import { db } from "~/server/db";
@@ -25,14 +26,12 @@ export default async function WorkspaceLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const ctx = await requireAccess("viewer");
   const tenantName = workspaceLabel(ctx.tenant);
-  // Self-service account page is WorkOS-only; entra users manage profile in Entra.
-  const accountEnabled = authProvider() === "workos";
-  // Access requests only exist under WorkOS sign-in, where the actor id is the
-  // WorkOS user id. The notice disappears once the request is decided.
-  const waitingOn =
-    accountEnabled && !ctx.user.isDemo
-      ? await pendingJoinRequestsOf(db, ctx.user.oid)
-      : [];
+  // The demo sign-in is shared by every visitor, so it has no account page.
+  const accountEnabled = !ctx.user.isDemo;
+  // The notice disappears once the request is decided.
+  const waitingOn = accountEnabled
+    ? await pendingJoinRequestsOf(db, ctx.user.oid)
+    : [];
 
   return (
     <div className="bg-canvas min-h-screen lg:flex">
@@ -51,6 +50,7 @@ export default async function WorkspaceLayout({
         showPortfolio={ctx.workspaces.length > 1}
         workspaces={ctx.workspaces}
         activeId={ctx.tenant.id}
+        entitlement={ctx.entitlement}
       />
 
       <aside className="bg-sidebar border-line sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r lg:flex">
@@ -78,10 +78,14 @@ export default async function WorkspaceLayout({
           <div className="text-sidebar-soft mt-0.5 text-[11px] tracking-wider uppercase">
             {ctx.tenant.isDemo ? "Demo workspace" : "Connected tenant"}
           </div>
+          <PlanBadge entitlement={ctx.entitlement} className="mt-2" />
         </div>
 
         <div className="mt-4 flex-1">
-          <NavLinks showPortfolio={ctx.workspaces.length > 1} />
+          <NavLinks
+            showPortfolio={ctx.workspaces.length > 1}
+            entitlement={ctx.entitlement}
+          />
         </div>
 
         <div className="border-sidebar-line border-t px-5 py-4">
@@ -125,6 +129,7 @@ export default async function WorkspaceLayout({
             workspaceName={request.tenantName ?? "a workspace"}
           />
         ))}
+        <ClaimMembershipNotice />
         {children}
       </main>
     </div>
