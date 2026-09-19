@@ -2,6 +2,9 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // tsconfig keeps jsx "preserve" for Next; tests that render server
+  // components or the PDF report need the transform turned on here.
+  oxc: { jsx: { runtime: "automatic" } },
   resolve: {
     alias: {
       "~": path.resolve(__dirname, "./src"),

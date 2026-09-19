@@ -1,7 +1,10 @@
 -- For deployments using Supabase and the dedicated application role.
--- Run as postgres. Add the two tables behind paid hosted plans: `entitlements`
--- (one row per paid workspace or MSP account; no row means Free) and
--- `billing_events` (the idempotency ledger for payment-provider webhooks).
+-- Run as postgres. Add the tables behind paid hosted plans: `entitlements`
+-- (one row per paid workspace or MSP account; no row means Free),
+-- `billing_events` (the idempotency ledger for payment-provider webhooks),
+-- `dpa_acceptances` and `dpa_agreements` (the online-accepted and the signed
+-- data processing agreement), `api_tokens` (bearer tokens for the MCP server),
+-- and the report branding columns on `msp_accounts`.
 --
 -- Order matters: run this BEFORE setting BILLING_ENABLED=true. With the flag on,
 -- every request reads `entitlements`, so a missing table takes the app down.
@@ -9,10 +12,10 @@
 -- table is queried.
 --
 -- Mirrors the Drizzle schema in src/server/db/schema.ts and the self-host
--- migration docker/migrations/0004_entitlements.sql: same names, types,
+-- migrations docker/migrations/0004_entitlements.sql and 0005_paid_plans.sql: same names, types,
 -- defaults, indexes and constraints. Keep the three in step.
 --
--- Keeps both tables private to the trusted application role, matching the
+-- Keeps every new table private to the trusted application role, matching the
 -- existing database access model: RLS on, no grants to the Data API roles, DML
 -- for `licensemeter_app` through the permissive `app_all` policy. The two
 -- partial unique indexes on tenant_id and msp_account_id double as the covering
@@ -77,19 +80,103 @@ CREATE TABLE IF NOT EXISTS public.billing_events (
   CONSTRAINT billing_events_provider_event_id_pk PRIMARY KEY (provider, event_id)
 );
 
+-- Online acceptance of the standard DPA, one per workspace and document version.
+CREATE TABLE IF NOT EXISTS public.dpa_acceptances (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  tenant_id uuid NOT NULL,
+  version text NOT NULL,
+  language text NOT NULL,
+  accepted_by_key text NOT NULL,
+  accepted_by_email text NOT NULL,
+  accepted_at timestamptz DEFAULT now() NOT NULL,
+  CONSTRAINT dpa_acceptances_tenant_id_tenants_id_fk
+    FOREIGN KEY (tenant_id) REFERENCES public.tenants (id)
+    ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT dpa_acceptances_language_valid
+    CHECK (language in ('en', 'de'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS dpa_acceptances_tenant_version_idx
+  ON public.dpa_acceptances USING btree (tenant_id, version);
+
+-- A DPA signed with a named customer company (Pro and MSP).
+CREATE TABLE IF NOT EXISTS public.dpa_agreements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  tenant_id uuid NOT NULL,
+  kind text NOT NULL,
+  version text NOT NULL,
+  language text NOT NULL,
+  company_name text NOT NULL,
+  company_address text NOT NULL,
+  signer_name text NOT NULL,
+  signer_title text NOT NULL,
+  signer_email text NOT NULL,
+  signed_by_key text NOT NULL,
+  signed_at timestamptz DEFAULT now() NOT NULL,
+  CONSTRAINT dpa_agreements_tenant_id_tenants_id_fk
+    FOREIGN KEY (tenant_id) REFERENCES public.tenants (id)
+    ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT dpa_agreements_kind_valid
+    CHECK (kind in ('controller', 'subprocessor')),
+  CONSTRAINT dpa_agreements_language_valid
+    CHECK (language in ('en', 'de'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS dpa_agreements_tenant_kind_version_idx
+  ON public.dpa_agreements USING btree (tenant_id, kind, version);
+
+-- Bearer tokens for the MCP server; only the SHA-256 hash is stored.
+CREATE TABLE IF NOT EXISTS public.api_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  tenant_id uuid NOT NULL,
+  name text NOT NULL,
+  token_hash text NOT NULL,
+  token_prefix text NOT NULL,
+  created_by_key text NOT NULL,
+  created_at timestamptz DEFAULT now() NOT NULL,
+  last_used_at timestamptz,
+  revoked_at timestamptz,
+  CONSTRAINT api_tokens_tenant_id_tenants_id_fk
+    FOREIGN KEY (tenant_id) REFERENCES public.tenants (id)
+    ON DELETE cascade ON UPDATE no action
+);
+CREATE UNIQUE INDEX IF NOT EXISTS api_tokens_hash_idx
+  ON public.api_tokens USING btree (token_hash);
+CREATE INDEX IF NOT EXISTS api_tokens_tenant_idx
+  ON public.api_tokens USING btree (tenant_id);
+
+-- White-label report branding for MSP accounts.
+ALTER TABLE public.msp_accounts ADD COLUMN IF NOT EXISTS brand_name text;
+ALTER TABLE public.msp_accounts ADD COLUMN IF NOT EXISTS brand_color text;
+ALTER TABLE public.msp_accounts ADD COLUMN IF NOT EXISTS brand_logo text;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'msp_accounts_brand_color_hex') THEN
+    ALTER TABLE public.msp_accounts ADD CONSTRAINT msp_accounts_brand_color_hex
+      CHECK (brand_color is null or brand_color ~ '^#[0-9a-fA-F]{6}$');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'msp_accounts_brand_logo_size') THEN
+    ALTER TABLE public.msp_accounts ADD CONSTRAINT msp_accounts_brand_logo_size
+      CHECK (brand_logo is null or length(brand_logo) <= 400000);
+  END IF;
+END $$;
+
 ALTER TABLE public.entitlements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dpa_acceptances ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dpa_agreements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.api_tokens ENABLE ROW LEVEL SECURITY;
 
-REVOKE ALL ON TABLE public.entitlements FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON TABLE public.billing_events FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.entitlements TO licensemeter_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.billing_events TO licensemeter_app;
+REVOKE ALL ON TABLE public.entitlements, public.billing_events,
+  public.dpa_acceptances, public.dpa_agreements, public.api_tokens
+  FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.entitlements,
+  public.billing_events, public.dpa_acceptances, public.dpa_agreements,
+  public.api_tokens TO licensemeter_app;
 
 DO $$
 DECLARE
   t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['entitlements', 'billing_events']
+  FOREACH t IN ARRAY ARRAY['entitlements', 'billing_events', 'dpa_acceptances', 'dpa_agreements', 'api_tokens']
   LOOP
     IF NOT EXISTS (
       SELECT 1 FROM pg_policies
@@ -104,7 +191,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- Verification: expect two rows, each with rls_enabled = true,
+-- Verification: expect five rows, each with rls_enabled = true,
 -- app_all_policy = true, app_role_dml = true and api_role_access = false.
 SELECT
   c.relname AS table_name,
@@ -127,7 +214,7 @@ FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE n.nspname = 'public'
   AND c.relkind = 'r'
-  AND c.relname IN ('entitlements', 'billing_events')
+  AND c.relname IN ('entitlements', 'billing_events', 'dpa_acceptances', 'dpa_agreements', 'api_tokens')
 ORDER BY c.relname;
 
 -- Comping a workspace by hand. `source = 'comped'` is only ever set here by the

@@ -36,6 +36,13 @@
       "when": 1789817801798,
       "tag": "0004_entitlements",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789817884368,
+      "tag": "0005_paid_plans",
+      "breakpoints": true
     }
   ]
 }

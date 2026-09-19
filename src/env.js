@@ -84,6 +84,26 @@ export const env = createEnv({
      * so workspaces without an entitlement row are on Free.
      */
     BILLING_ENABLED: z.enum(["true", "false"]).optional(),
+    /** Polar (card payments, merchant of record). All optional; see polarEnabled(). */
+    POLAR_ACCESS_TOKEN: z.string().optional(),
+    POLAR_WEBHOOK_SECRET: z.string().optional(),
+    POLAR_SERVER: z.enum(["sandbox", "production"]).optional(),
+    POLAR_PRODUCT_PRO_MONTH: z.string().optional(),
+    POLAR_PRODUCT_PRO_YEAR: z.string().optional(),
+    POLAR_PRODUCT_MSP_MONTH: z.string().optional(),
+    POLAR_PRODUCT_MSP_YEAR: z.string().optional(),
+    /**
+     * Microsoft Marketplace transactable SaaS offer. The Entra app registered in
+     * Partner Center for the SaaS Fulfillment API; see marketplaceEnabled().
+     */
+    MARKETPLACE_TENANT_ID: z.string().optional(),
+    MARKETPLACE_CLIENT_ID: z.string().optional(),
+    MARKETPLACE_CLIENT_SECRET: z.string().optional(),
+    /** Public listing URL the portal links to for "buy on your Microsoft invoice". */
+    MARKETPLACE_OFFER_URL: z.string().url().optional(),
+    /** Plan ids as defined in Partner Center. Default to "pro" and "msp". */
+    MARKETPLACE_PLAN_PRO: z.string().optional(),
+    MARKETPLACE_PLAN_MSP: z.string().optional(),
 
     /**
      * WorkOS AuthKit credentials, read by @workos-inc/authkit-nextjs. Required
@@ -152,6 +172,19 @@ export const env = createEnv({
     AUTH_PROVIDER: process.env.AUTH_PROVIDER,
     MS_BYO_ENABLED: process.env.MS_BYO_ENABLED,
     BILLING_ENABLED: process.env.BILLING_ENABLED,
+    POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN,
+    POLAR_WEBHOOK_SECRET: process.env.POLAR_WEBHOOK_SECRET,
+    POLAR_SERVER: process.env.POLAR_SERVER,
+    POLAR_PRODUCT_PRO_MONTH: process.env.POLAR_PRODUCT_PRO_MONTH,
+    POLAR_PRODUCT_PRO_YEAR: process.env.POLAR_PRODUCT_PRO_YEAR,
+    POLAR_PRODUCT_MSP_MONTH: process.env.POLAR_PRODUCT_MSP_MONTH,
+    POLAR_PRODUCT_MSP_YEAR: process.env.POLAR_PRODUCT_MSP_YEAR,
+    MARKETPLACE_TENANT_ID: process.env.MARKETPLACE_TENANT_ID,
+    MARKETPLACE_CLIENT_ID: process.env.MARKETPLACE_CLIENT_ID,
+    MARKETPLACE_CLIENT_SECRET: process.env.MARKETPLACE_CLIENT_SECRET,
+    MARKETPLACE_OFFER_URL: process.env.MARKETPLACE_OFFER_URL,
+    MARKETPLACE_PLAN_PRO: process.env.MARKETPLACE_PLAN_PRO,
+    MARKETPLACE_PLAN_MSP: process.env.MARKETPLACE_PLAN_MSP,
     WORKOS_API_KEY: process.env.WORKOS_API_KEY,
     WORKOS_CLIENT_ID: process.env.WORKOS_CLIENT_ID,
     WORKOS_COOKIE_PASSWORD: process.env.WORKOS_COOKIE_PASSWORD,
@@ -206,6 +239,20 @@ export const byoConnectorEnabled = () => env.MS_BYO_ENABLED !== "false";
  * gets every feature without an entitlement row.
  */
 export const billingEnabled = () => env.BILLING_ENABLED === "true";
+
+/** Card checkout through Polar is offered only when billing is on and Polar is configured. */
+export const polarEnabled = () =>
+  billingEnabled() &&
+  Boolean(env.POLAR_ACCESS_TOKEN && env.POLAR_WEBHOOK_SECRET);
+
+/** The Marketplace landing page and webhook work only with the fulfillment app configured. */
+export const marketplaceEnabled = () =>
+  billingEnabled() &&
+  Boolean(
+    env.MARKETPLACE_TENANT_ID &&
+    env.MARKETPLACE_CLIENT_ID &&
+    env.MARKETPLACE_CLIENT_SECRET,
+  );
 
 /**
  * Like appBaseUrl but never throws, for sitemap/OG metadata where a localhost

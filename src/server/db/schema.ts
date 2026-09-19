@@ -72,11 +72,27 @@ export const mspAccounts = pgTable(
     quantity: integer("quantity").notNull().default(0),
     /** event.created of the last applied webhook; gates stale out-of-order writes. */
     lastEventAt: timestamp("last_event_at", { withTimezone: true }),
+    /**
+     * White-label report branding (MSP plan). Applied to the PDF report of every
+     * client workspace attached to this account. Logo is a PNG or JPEG data URL.
+     */
+    brandName: text("brand_name"),
+    brandColor: text("brand_color"),
+    brandLogo: text("brand_logo"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (t) => [
+    check(
+      "msp_accounts_brand_color_hex",
+      sql`${t.brandColor} is null or ${t.brandColor} ~ '^#[0-9a-fA-F]{6}$'`,
+    ),
+    // Keeps an uploaded logo small enough to inline into every PDF render.
+    check(
+      "msp_accounts_brand_logo_size",
+      sql`${t.brandLogo} is null or length(${t.brandLogo}) <= 400000`,
+    ),
     // One Stripe customer per MSP account: a mismatched second customer is a DB
     // error, not a silent overwrite (mirrors tenants.stripeCustomerId).
     uniqueIndex("msp_accounts_stripe_customer_idx")
@@ -960,6 +976,102 @@ export const billingEvents = pgTable(
       .defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.provider, t.eventId] })],
+).enableRLS();
+
+/**
+ * Online acceptance of the standard data processing agreement (AVV). Every
+ * hosted workspace needs one per document version, Free included, because the
+ * hosted service is a processor under GDPR Art. 28 for all of them.
+ */
+export const dpaAcceptances = pgTable(
+  "dpa_acceptances",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /** Document version from src/lib/dpa.ts at the time of acceptance. */
+    version: text("version").notNull(),
+    language: text("language").$type<"en" | "de">().notNull(),
+    /** WorkOS user id or Entra object id of the accepting owner or admin. */
+    acceptedByKey: text("accepted_by_key").notNull(),
+    acceptedByEmail: text("accepted_by_email").notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("dpa_acceptances_tenant_version_idx").on(t.tenantId, t.version),
+    check("dpa_acceptances_language_valid", sql`${t.language} in ('en', 'de')`),
+  ],
+).enableRLS();
+
+/**
+ * A data processing agreement signed with a named customer company (Pro and
+ * MSP). kind "subprocessor" is the MSP variant, where the MSP is the processor
+ * for its clients and LicenseMeter is its sub-processor.
+ */
+export const dpaAgreements = pgTable(
+  "dpa_agreements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<"controller" | "subprocessor">().notNull(),
+    version: text("version").notNull(),
+    language: text("language").$type<"en" | "de">().notNull(),
+    companyName: text("company_name").notNull(),
+    companyAddress: text("company_address").notNull(),
+    signerName: text("signer_name").notNull(),
+    signerTitle: text("signer_title").notNull(),
+    signerEmail: text("signer_email").notNull(),
+    /** WorkOS user id or Entra object id of the owner who signed in the portal. */
+    signedByKey: text("signed_by_key").notNull(),
+    signedAt: timestamp("signed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("dpa_agreements_tenant_kind_version_idx").on(
+      t.tenantId,
+      t.kind,
+      t.version,
+    ),
+    check(
+      "dpa_agreements_kind_valid",
+      sql`${t.kind} in ('controller', 'subprocessor')`,
+    ),
+    check("dpa_agreements_language_valid", sql`${t.language} in ('en', 'de')`),
+  ],
+).enableRLS();
+
+/**
+ * Bearer tokens for the read-only MCP server (Pro and MSP). Only the SHA-256
+ * hash is stored; the plain token is shown once at creation.
+ */
+export const apiTokens = pgTable(
+  "api_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    /** First characters of the token, so owners can tell tokens apart. */
+    tokenPrefix: text("token_prefix").notNull(),
+    createdByKey: text("created_by_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("api_tokens_hash_idx").on(t.tokenHash),
+    index("api_tokens_tenant_idx").on(t.tenantId),
+  ],
 ).enableRLS();
 
 /**
