@@ -133,6 +133,11 @@ describe("status lifecycle", () => {
       { status: "trialing", trialEnd: PAST, currentPeriodEnd: FUTURE },
       "trialing",
     ],
+    [
+      "a cancelled trial that is still running",
+      { status: "trialing", trialEnd: FUTURE, cancelAtPeriodEnd: true },
+      "canceling",
+    ],
     ["active", { status: "active" }, "active"],
     [
       "active with cancelAtPeriodEnd",

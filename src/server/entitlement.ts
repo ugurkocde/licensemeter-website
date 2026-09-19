@@ -109,10 +109,15 @@ const paidState = (
     case "trialing":
       // Either date still ahead keeps the trial: a missed webhook must never
       // cut off a customer the provider has already started billing.
-      return stillRunning(record.trialEnd, now) ||
-        stillRunning(record.currentPeriodEnd, now)
-        ? "trialing"
-        : null;
+      if (
+        !stillRunning(record.trialEnd, now) &&
+        !stillRunning(record.currentPeriodEnd, now)
+      ) {
+        return null;
+      }
+      // Providers keep a cancelled trial in "trialing" until it runs out. It
+      // will not convert, so it reads as ending, not as a trial.
+      return record.cancelAtPeriodEnd ? "canceling" : "trialing";
     case "past_due":
       // The provider is still retrying the payment; access ends when it gives
       // up and reports canceled or suspended.
