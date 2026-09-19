@@ -350,10 +350,12 @@ describe("getBranding", () => {
     expect(await getBranding(tenant, entitlement)).toBeNull();
   });
 
-  it("returns null for an MSP workspace that is not attached to an account", async () => {
+  it("returns null for a workspace with the feature that is not attached to an account", async () => {
+    // Only a self-hosted install has the feature without an MSP plan: the
+    // database refuses an MSP row that belongs to a single workspace.
     await seedMspAccount(ALICE, BRANDED);
     const tenant = await seedTenant(1);
-    await seedEntitlement({ tenantId: tenant.id, plan: "msp" });
+    billing = false;
     const entitlement = await loadEntitlement(tenant, NOW);
     dbQueries = 0;
 
@@ -509,10 +511,10 @@ describe("saveBranding", () => {
     });
   });
 
-  it("answers noAccount for an MSP workspace that is not attached", async () => {
+  it("answers noAccount for a workspace with the feature that is not attached", async () => {
     await seedMspAccount(ALICE);
     const tenant = await seedTenant(1);
-    await seedEntitlement({ tenantId: tenant.id, plan: "msp" });
+    billing = false;
     const ctx = await ctxFor(ALICE, tenant);
 
     expect(await saveBranding(ctx, BRAND)).toEqual({
