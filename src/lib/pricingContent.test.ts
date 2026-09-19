@@ -8,7 +8,11 @@ import {
   comparisonGroups,
   formatEuro,
   planPrice,
+  pricingContent,
 } from "~/lib/pricingContent";
+
+/** The full page, as it reads once the Marketplace listing is published. */
+const ALL_CHANNELS = { marketplace: true };
 
 /** Every string anywhere in a content tree, keys excluded. */
 const strings = (value: unknown): string[] => {
@@ -22,11 +26,13 @@ const strings = (value: unknown): string[] => {
 
 const allStrings = (lang: (typeof PRICING_LANGS)[number]): string[] => [
   ...strings(PRICING_CONTENT[lang]),
-  ...strings(comparisonGroups(lang)),
+  ...strings(comparisonGroups(lang, ALL_CHANNELS)),
 ];
 
 const rowIds = (lang: (typeof PRICING_LANGS)[number]): string[] =>
-  comparisonGroups(lang).flatMap((g) => g.rows.map((r) => `${g.id}/${r.id}`));
+  comparisonGroups(lang, ALL_CHANNELS).flatMap((g) =>
+    g.rows.map((r) => `${g.id}/${r.id}`),
+  );
 
 describe("pricing content", () => {
   it("has the same plan ids in both languages", () => {
@@ -39,7 +45,7 @@ describe("pricing content", () => {
     expect(rowIds("de")).toEqual(rowIds("en"));
     expect(rowIds("en").length).toBeGreaterThan(20);
     for (const lang of PRICING_LANGS) {
-      for (const group of comparisonGroups(lang)) {
+      for (const group of comparisonGroups(lang, ALL_CHANNELS)) {
         expect(group.label).not.toBe("");
         for (const row of group.rows) {
           expect(row.label).not.toBe("");
@@ -51,7 +57,7 @@ describe("pricing content", () => {
 
   it("gives both languages the same cells, apart from the wording", () => {
     const kinds = (lang: (typeof PRICING_LANGS)[number]) =>
-      comparisonGroups(lang).map((g) =>
+      comparisonGroups(lang, ALL_CHANNELS).map((g) =>
         g.rows.map((r) => r.cells.map((cell) => cell.kind)),
       );
     expect(kinds("de")).toEqual(kinds("en"));
@@ -91,7 +97,7 @@ describe("pricing content", () => {
 
   it("never presents unbuilt features as available", () => {
     for (const lang of PRICING_LANGS) {
-      const groups = comparisonGroups(lang);
+      const groups = comparisonGroups(lang, ALL_CHANNELS);
       const soon = groups.filter((g) => g.soon);
       expect(soon.map((g) => g.id)).toEqual(["soon"]);
       expect(soon[0]!.rows.map((r) => r.id)).toEqual([
@@ -121,7 +127,7 @@ describe("pricing content", () => {
 
   it("states the limits and commitments of the model", () => {
     const row = (id: string) =>
-      comparisonGroups("en")
+      comparisonGroups("en", ALL_CHANNELS)
         .flatMap((g) => g.rows)
         .find((r) => r.id === id)!
         .cells.map((cell) => (cell.kind === "text" ? cell.text : cell.kind));
@@ -143,5 +149,28 @@ describe("pricing content", () => {
     /* "2 months off" and "twelve months for the price of ten". */
     expect(PLAN_PRICES.pro.year).toBe(PLAN_PRICES.pro.month * 10);
     expect(PLAN_PRICES.msp.year).toBe(PLAN_PRICES.msp.month * 10);
+  });
+
+  it("describes Microsoft Marketplace only once people can buy there", () => {
+    for (const lang of PRICING_LANGS) {
+      const closed = { marketplace: false };
+      const c = pricingContent(lang, closed);
+      const shown = [
+        ...c.buy.options.map((o) => o.title),
+        ...c.faq.items.map((i) => i.q),
+        ...comparisonGroups(lang, closed).flatMap((g) =>
+          g.rows.map((r) => r.id),
+        ),
+      ].join(" ");
+      expect(shown).not.toMatch(/marketplace/i);
+      // Card checkout is still described, and nothing else went missing.
+      expect(c.buy.options).toHaveLength(
+        PRICING_CONTENT[lang].buy.options.length - 1,
+      );
+      expect(c.faq.items).toHaveLength(
+        PRICING_CONTENT[lang].faq.items.length - 1,
+      );
+      expect(pricingContent(lang, ALL_CHANNELS)).toBe(PRICING_CONTENT[lang]);
+    }
   });
 });

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { BrandMark } from "~/components/BrandMark";
 import { MicrosoftSignInButton } from "~/components/signin/MicrosoftSignInButton";
 import { Pill } from "~/components/ui";
-import { isDemoMode, signInEnabled } from "~/env";
+import { isDemoMode, marketplaceEnabled, signInEnabled } from "~/env";
 import {
   claimNoticeText,
   DOCS_URL,
@@ -321,11 +321,24 @@ export default async function SignInPage({
               <div className="border-line text-ink-soft mt-10 grid gap-3 border-t pt-6 text-sm leading-relaxed">
                 <p>
                   <span className="text-ink font-medium">
-                    Bought LicenseMeter in Microsoft Marketplace?
+                    Signed in another way before?
                   </span>{" "}
-                  Sign in with the account you bought it with and your plan is
-                  linked.
+                  Sign-in is now Microsoft only. If your old account used a
+                  different email address than your work account,{" "}
+                  <a href={SUPPORT_MAILTO} className={TEXT_LINK}>
+                    write to us
+                  </a>{" "}
+                  from that address and we move your workspaces over.
                 </p>
+                {marketplaceEnabled() && (
+                  <p>
+                    <span className="text-ink font-medium">
+                      Bought LicenseMeter in Microsoft Marketplace?
+                    </span>{" "}
+                    Sign in with the account you bought it with and your plan is
+                    linked.
+                  </p>
+                )}
                 <p>
                   <span className="text-ink font-medium">
                     Running LicenseMeter yourself?

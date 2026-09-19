@@ -211,6 +211,12 @@ export const marketplaceEnabled = () =>
     env.MARKETPLACE_CLIENT_SECRET,
   );
 
+/** The published Marketplace listing, or null while nobody can buy there yet. */
+export const marketplaceOfferUrl = () =>
+  marketplaceEnabled() && env.MARKETPLACE_OFFER_URL
+    ? env.MARKETPLACE_OFFER_URL
+    : null;
+
 /**
  * Like appBaseUrl but never throws, for sitemap/OG metadata where a localhost
  * fallback during local production builds is harmless.
