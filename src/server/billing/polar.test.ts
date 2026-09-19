@@ -231,7 +231,13 @@ describe("polarSubscriptionSchema", () => {
 });
 
 describe("verifyPolarSignature", () => {
-  const SECRET = "polar_whs_placeholder";
+  // A Standard Webhooks secret: whsec_ plus the base64 of the key.
+  const SECRET = `whsec_${Buffer.from("placeholder-key-for-tests-only-32b").toString("base64")}`;
+  const LEGACY_SECRET = "polar_whs_placeholder";
+  const keyOf = (secret: string) =>
+    secret.startsWith("whsec_")
+      ? Buffer.from(secret.slice(6), "base64")
+      : Buffer.from(secret, "utf-8");
   const NOW = new Date("2026-09-18T10:00:00Z");
   const BODY = '{"type":"subscription.active"}';
   const seconds = (date: Date) => String(Math.floor(date.getTime() / 1000));
@@ -240,8 +246,7 @@ describe("verifyPolarSignature", () => {
     options: { body?: string; secret?: string; sentAt?: string } = {},
   ) => {
     const sentAt = options.sentAt ?? seconds(NOW);
-    // The key is the secret string itself, as UTF-8 bytes.
-    const signature = createHmac("sha256", options.secret ?? SECRET)
+    const signature = createHmac("sha256", keyOf(options.secret ?? SECRET))
       .update(`msg_1.${sentAt}.${options.body ?? BODY}`)
       .digest("base64");
     return new Headers({
@@ -255,6 +260,31 @@ describe("verifyPolarSignature", () => {
     expect(verifyPolarSignature(SECRET, headers(), BODY, NOW)).toEqual({
       ok: true,
     });
+  });
+
+  it("uses the base64-decoded key of a whsec_ secret, never its text", () => {
+    // Polar signs with the decoded key; a signature made with the secret text
+    // as the key is what an endpoint would see from someone guessing.
+    const wrongKey = createHmac("sha256", Buffer.from(SECRET, "utf-8"))
+      .update(`msg_1.${seconds(NOW)}.${BODY}`)
+      .digest("base64");
+    const h = headers();
+    h.set("webhook-signature", `v1,${wrongKey}`);
+    expect(verifyPolarSignature(SECRET, h, BODY, NOW)).toEqual({
+      ok: false,
+      reason: "badSignature",
+    });
+  });
+
+  it("still verifies a legacy polar_whs_ secret with the secret text as key", () => {
+    expect(
+      verifyPolarSignature(
+        LEGACY_SECRET,
+        headers({ secret: LEGACY_SECRET }),
+        BODY,
+        NOW,
+      ).ok,
+    ).toBe(true);
   });
 
   it("accepts any valid entry of a rotated signature list", () => {

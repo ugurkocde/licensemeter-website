@@ -12,7 +12,12 @@ import * as schema from "~/server/db/schema";
  * "nothing written" and "applied once" are read back from the actual tables.
  */
 
-const SECRET = "polar_whs_placeholder";
+// A Standard Webhooks secret: whsec_ plus the base64 of the key.
+const SECRET = `whsec_${Buffer.from("placeholder-key-for-tests-only-32b").toString("base64")}`;
+const keyOf = (secret: string) =>
+  secret.startsWith("whsec_")
+    ? Buffer.from(secret.slice(6), "base64")
+    : Buffer.from(secret, "utf-8");
 const testEnv: Record<string, string | undefined> = {};
 let currentDb: ReturnType<typeof makeDb>;
 
@@ -81,7 +86,7 @@ const request = (
   const raw = options.raw ?? JSON.stringify(body);
   const id = options.id ?? "msg_1";
   const sentAt = String(options.sentAt ?? Math.floor(Date.now() / 1000));
-  const signature = createHmac("sha256", options.secret ?? SECRET)
+  const signature = createHmac("sha256", keyOf(options.secret ?? SECRET))
     .update(`${id}.${sentAt}.${raw}`)
     .digest("base64");
   return new Request("https://licensemeter.com/api/webhooks/polar", {

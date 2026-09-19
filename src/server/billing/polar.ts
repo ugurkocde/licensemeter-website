@@ -330,12 +330,26 @@ export type WebhookVerification =
   | { ok: true }
   | { ok: false; reason: "missingHeaders" | "staleTimestamp" | "badSignature" };
 
+const STANDARD_SECRET_PREFIX = "whsec_";
+
+/**
+ * The HMAC key behind a Polar webhook secret. Endpoints created today report
+ * `uses_standard_webhook_signature` and hand out a Standard Webhooks secret,
+ * `whsec_` followed by the base64 of the key: checked against a real sandbox
+ * delivery on 2026-09-19, only the base64-decoded remainder verifies. Older
+ * endpoints have a raw `polar_whs_` string, which Polar's guides base64-encode
+ * only because the reference libraries decode it again, so there the key is
+ * the UTF-8 bytes of the secret itself.
+ */
+export const polarWebhookKey = (secret: string): Buffer =>
+  secret.startsWith(STANDARD_SECRET_PREFIX)
+    ? Buffer.from(secret.slice(STANDARD_SECRET_PREFIX.length), "base64")
+    : Buffer.from(secret, "utf-8");
+
 /**
  * Standard Webhooks verification: HMAC-SHA256 over `id.timestamp.body` with
  * the raw body, compared in constant time against every `v1,` signature in
- * the header. Polar uses the secret string itself as the key (its guides
- * base64-encode the secret only because the reference libraries decode it
- * again), so the key is the UTF-8 bytes of POLAR_WEBHOOK_SECRET.
+ * the header.
  */
 export function verifyPolarSignature(
   secret: string,
@@ -358,7 +372,7 @@ export function verifyPolarSignature(
     return { ok: false, reason: "staleTimestamp" };
   }
 
-  const expected = createHmac("sha256", Buffer.from(secret, "utf-8"))
+  const expected = createHmac("sha256", polarWebhookKey(secret))
     .update(`${id}.${sentAt}.${rawBody}`)
     .digest();
   const match = signatures.split(" ").some((entry) => {
