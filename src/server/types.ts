@@ -35,6 +35,19 @@ export type EntitlementStatus =
 /** Payment providers that deliver webhooks into billing_events. */
 export type BillingProvider = "marketplace" | "polar";
 
+/** What the mail provider reports about a message after it accepted it. */
+export type DeliveryStatus =
+  | "accepted"
+  | "delivered"
+  | "delayed"
+  | "failed"
+  | "bounced"
+  | "suppressed"
+  | "complained";
+
+/** The permanent failures: the address is not mailed again. */
+export type EmailBlockReason = "bounced" | "suppressed" | "complained";
+
 /** Historical column type, read-only. Legacy plan tiers still referenced by the schema. */
 export type PlanTier = "starter" | "growth" | "scale";
 

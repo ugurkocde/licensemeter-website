@@ -93,12 +93,25 @@ Nothing is shared until you sign in. If you did not expect the invitation, ignor
 | Confirm your account | The address of an existing membership | Someone signed in and asked to open the workspaces that belong to this address. The link works once and for a limited time |
 | Workspace deleted | The remaining Owners and Admins | A workspace was deleted. This notice cannot be turned off |
 
+## Delivery status
+
+Owners and Admins find **Email delivery** under **Settings**. It lists the latest digests, reports and leak alerts for the workspace, each with the recipient and what the mail provider reported back: delivered, delayed, bounced or marked as spam.
+
+When an address bounces permanently, is held back by the mail provider, or a recipient marks an email as spam, LicenseMeter stops sending email to it and shows it under **Blocked addresses** with the reason. One dead mailbox then no longer affects delivery for everyone else in the workspace. Blocks are per workspace: the same address can still receive mail in another workspace.
+
+{% hint style="info" %}
+There is no unblock button yet. If a blocked address works again, ask your operator, or write to support for the hosted service.
+{% endhint %}
+
+On a self-hosted installation the section is only filled in when the operator configured the mail provider webhook. Without it, **sent** means the mail provider accepted the message, not that it arrived, and the section says so.
+
 ## If an email does not arrive
 
 - Check the spam folder and any quarantine your organization runs, then allow the sender.
 - Confirm the address. LicenseMeter writes to the address of your membership, shown under **Settings**, **Email me**.
 - Only Owners and Admins receive the digest, the report and leak alerts. Viewers do not.
 - The digest and the report respect your personal switch, and leak alerts respect the workspace switch.
+- Check **Settings**, **Email delivery** for what the mail provider reported, and whether the address is listed under **Blocked addresses**.
 - The sample workspace never sends email.
 
 On a self-hosted installation, email works only when the operator has configured a mail service and the scheduler is running. See [Self-hosting with Docker](../self-hosting/README.md).

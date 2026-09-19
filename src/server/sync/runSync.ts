@@ -44,7 +44,8 @@ import {
   type GraphUser,
   type UsageReportRow,
 } from "~/server/graph/types";
-import { emailEnabled, sendEmail } from "~/server/email";
+import { emailEnabled } from "~/server/email";
+import { deliverOnce } from "~/server/emailDelivery";
 import { leakAlertMessage } from "~/server/leakAlertMessage";
 import { pickLeakFindings } from "~/server/leakAlerts";
 import { notifyOps } from "~/server/ops";
@@ -854,7 +855,7 @@ export const runSync = async (
     });
 
     const inserted = await diffFindings(tenantId, allFindings, now);
-    await sendLeakAlert(tenant, inserted);
+    await sendLeakAlert(tenant, inserted, now);
 
     // --- Snapshot + tenant capabilities ------------------------------------
     const totalMonthlySpendCents = skus.reduce(
@@ -1242,11 +1243,14 @@ const diffFindings = async (
 /**
  * Immediate email when a sync inserts new offboarding-leak findings, the
  * finding class that recurs forever, so it should not wait for the digest.
+ * One ledger-tracked message per owner/admin, keyed by the alert's timestamp;
+ * addresses the provider reported as permanently failing are skipped.
  * Fully isolated: any failure goes to ops and never affects the sync result.
  */
-const sendLeakAlert = async (
+export const sendLeakAlert = async (
   tenant: typeof tenants.$inferSelect,
   inserted: InsertedFinding[],
+  now: Date,
 ): Promise<void> => {
   try {
     if (!tenant.leakAlerts || tenant.isDemo || !emailEnabled()) return;
@@ -1256,7 +1260,25 @@ const sendLeakAlert = async (
     const to = await workspaceAdminEmails(tenant.id);
     if (to.length === 0) return;
 
-    await sendEmail({ to, ...leakAlertMessage(tenant, leaks) });
+    const message = leakAlertMessage(tenant, leaks);
+    let failed = 0;
+    for (const recipient of to) {
+      // A throw here is a ledger error, not a send error; the next recipient
+      // still gets a turn.
+      const outcome = await deliverOnce(
+        {
+          tenantId: tenant.id,
+          job: "leak",
+          periodKey: now.toISOString(),
+          recipient,
+        },
+        () => Promise.resolve(message),
+      ).catch(() => "failed" as const);
+      if (outcome === "failed") failed++;
+    }
+    if (failed > 0) {
+      throw new Error(`${failed} of ${to.length} message(s) not sent`);
+    }
   } catch (err) {
     void notifyOps(
       `leak alert failed for tenant ${workspaceLabel(tenant)}: ${err instanceof Error ? err.message : String(err)}`,

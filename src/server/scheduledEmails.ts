@@ -24,16 +24,10 @@ import {
   allClearHtml,
   digestHtml,
   reportHtml,
-  sendEmail,
   type EmailFooter,
 } from "~/server/email";
-import {
-  claimDelivery,
-  completeDelivery,
-  deliveryIdempotencyKey,
-  failDelivery,
-  pruneDeliveries,
-} from "~/server/emailLedger";
+import { deliverOnce } from "~/server/emailDelivery";
+import { pruneDeliveries } from "~/server/emailLedger";
 import { periodKeyFor, type EmailJob } from "~/server/emailPeriods";
 import { notifyOps } from "~/server/ops";
 import { getBranding } from "~/server/billing/branding";
@@ -53,6 +47,7 @@ import {
  *  - every send is claimed in the delivery ledger first (~/server/emailLedger),
  *    so running a job again only reaches people who did not get this period's
  *    email yet;
+ *  - an address the provider reported as permanently failing is skipped;
  *  - no new tenant is started once the time budget is used up. The remainder
  *    is reported as unprocessedTenants and finished by simply running the job
  *    again.
@@ -71,6 +66,8 @@ export type JobTotals = {
   /** Recipients this period's email already went to, or is going to right now. */
   skippedAlreadySent: number;
   skippedOptedOut: number;
+  /** Recipients left out because the provider reported a permanent failure. */
+  skippedBlocked: number;
   failed: number;
   /** Tenants not started because the time budget ran out. Run the job again. */
   unprocessedTenants: number;
@@ -104,9 +101,9 @@ type Message = {
 };
 
 /**
- * Claim, send and record one message per recipient; failures stay isolated.
- * The message is built on the first won claim and reused for everyone after,
- * so a repeated run with nothing left to send never renders a PDF.
+ * One ledger-tracked message per recipient; failures stay isolated. The
+ * message is built on the first won claim and reused for everyone after, so a
+ * repeated run with nothing left to send never renders a PDF.
  */
 const deliver = async (
   tenant: TenantRow,
@@ -124,22 +121,13 @@ const deliver = async (
       periodKey,
       recipient: recipient.email,
     };
-    const claim = await claimDelivery(key);
-    if (!claim.won) {
-      // "failed" here means the retries are used up; "claimed" means another
-      // run is sending to this person right now.
-      if (claim.status === "failed") totals.failed++;
-      else totals.skippedAlreadySent++;
-      continue;
-    }
-    try {
+    const outcome = await deliverOnce(key, async () => {
       const message = await (built ??= build());
       const unsubscribeUrl = membershipUnsubscribeUrl(
         recipient.membershipId,
         job,
       );
-      const delivered = await sendEmail({
-        to: [recipient.email],
+      return {
         subject: message.subject,
         html: message.html({
           workspaceName: workspaceLabel(tenant),
@@ -152,17 +140,9 @@ const deliver = async (
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
         attachments: message.attachments,
-        idempotencyKey: deliveryIdempotencyKey(key),
-      });
-      if (!delivered) throw new Error("email is not configured");
-      await completeDelivery(claim.id);
-      totals.sent++;
-    } catch (err) {
-      totals.failed++;
-      await failDelivery(claim.id, err).catch((ledgerErr: unknown) => {
-        console.error("[email] ledger update failed", ledgerErr);
-      });
-    }
+      };
+    });
+    totals[outcome]++;
   }
 };
 
@@ -188,6 +168,7 @@ const runJob = async (
     sent: 0,
     skippedAlreadySent: 0,
     skippedOptedOut: 0,
+    skippedBlocked: 0,
     failed: 0,
     unprocessedTenants: 0,
   };

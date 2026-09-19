@@ -57,6 +57,13 @@
       "when": 1789827834924,
       "tag": "0007_entra_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789850318461,
+      "tag": "0008_email_delivery_tracking",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 
 import { CurrencySelect } from "~/components/workspace/CurrencySelect";
@@ -14,11 +14,23 @@ import { MonthlyReportToggle } from "~/components/workspace/MonthlyReportToggle"
 import { ReplayTourButton } from "~/components/workspace/ReplayTourButton";
 import { RoleSelect } from "~/components/workspace/RoleSelect";
 import { Card, Pill } from "~/components/ui";
+import { env } from "~/env";
+import {
+  BLOCK_REASON_LABELS,
+  deliveryLabel,
+  EMAIL_JOB_LABELS,
+} from "~/lib/emailDeliveryLabels";
 import { fmtDate, fmtDateTime, workspaceLabel } from "~/lib/format";
 import { ROLE_DESCRIPTION } from "~/lib/roles";
 import { hasRole, inviteExpiry, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
-import { auditLog, memberships, syncRuns } from "~/server/db/schema";
+import {
+  auditLog,
+  emailBlocks,
+  emailDeliveries,
+  memberships,
+  syncRuns,
+} from "~/server/db/schema";
 import { holdsJoinableDomain, pendingJoinRequests } from "~/server/domainJoin";
 import { emailEnabled } from "~/server/email";
 import { syncStepLabel } from "~/lib/activityLabels";
@@ -66,33 +78,54 @@ export default async function SettingsPage() {
   const canEdit = isAdmin && !ctx.tenant.isDemo;
   const inviteEmailsActive = emailEnabled() && !ctx.tenant.isDemo;
 
-  const [members, runs, activity, joinRequests, joinByDomain] =
-    await Promise.all([
-      db.query.memberships.findMany({
-        where: eq(memberships.tenantId, ctx.tenant.id),
-      }),
-      db.query.syncRuns.findMany({
-        where: eq(syncRuns.tenantId, ctx.tenant.id),
-        orderBy: desc(syncRuns.startedAt),
-        limit: 8,
-      }),
-      isAdmin
-        ? db.query.auditLog.findMany({
-            where: eq(auditLog.tenantId, ctx.tenant.id),
-            orderBy: desc(auditLog.createdAt),
-            limit: 30,
-          })
-        : Promise.resolve([]),
-      // Access requests and the "Who can join" setting are for owners and
-      // admins only. Domain join runs for the one workspace colleagues are
-      // matched to (connected to their Microsoft tenant, or holding their
-      // company email domain); elsewhere the control would do nothing, so it
-      // is not shown.
-      isAdmin && !ctx.tenant.isDemo
-        ? pendingJoinRequests(db, ctx.tenant.id)
-        : Promise.resolve([]),
-      isAdmin ? holdsJoinableDomain(db, ctx.tenant) : Promise.resolve(false),
-    ]);
+  const [
+    members,
+    runs,
+    activity,
+    joinRequests,
+    joinByDomain,
+    deliveries,
+    blocks,
+  ] = await Promise.all([
+    db.query.memberships.findMany({
+      where: eq(memberships.tenantId, ctx.tenant.id),
+    }),
+    db.query.syncRuns.findMany({
+      where: eq(syncRuns.tenantId, ctx.tenant.id),
+      orderBy: desc(syncRuns.startedAt),
+      limit: 8,
+    }),
+    isAdmin
+      ? db.query.auditLog.findMany({
+          where: eq(auditLog.tenantId, ctx.tenant.id),
+          orderBy: desc(auditLog.createdAt),
+          limit: 30,
+        })
+      : Promise.resolve([]),
+    // Access requests and the "Who can join" setting are for owners and
+    // admins only. Domain join runs for the one workspace colleagues are
+    // matched to (connected to their Microsoft tenant, or holding their
+    // company email domain); elsewhere the control would do nothing, so it
+    // is not shown.
+    isAdmin && !ctx.tenant.isDemo
+      ? pendingJoinRequests(db, ctx.tenant.id)
+      : Promise.resolve([]),
+    isAdmin ? holdsJoinableDomain(db, ctx.tenant) : Promise.resolve(false),
+    // Email delivery names recipients, so it is for owners and admins only.
+    canEdit
+      ? db.query.emailDeliveries.findMany({
+          where: eq(emailDeliveries.tenantId, ctx.tenant.id),
+          orderBy: desc(emailDeliveries.createdAt),
+          limit: 8,
+        })
+      : Promise.resolve([]),
+    canEdit
+      ? db.query.emailBlocks.findMany({
+          where: eq(emailBlocks.tenantId, ctx.tenant.id),
+          orderBy: asc(emailBlocks.email),
+        })
+      : Promise.resolve([]),
+  ]);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 pb-8">
@@ -235,6 +268,73 @@ export default async function SettingsPage() {
             )}
           </dl>
         </Card>
+
+        {canEdit && (
+          <Card title="Email delivery">
+            <p className="text-ink-soft text-sm">
+              {env.RESEND_WEBHOOK_SECRET
+                ? "The weekly digest, the monthly report and leak alerts, with what the mail provider reported back."
+                : "Delivery tracking is not available on this installation. Sent only means the mail provider accepted the message, not that it arrived."}
+            </p>
+            {deliveries.length === 0 ? (
+              <p className="text-ink-soft mt-3 text-sm">No emails sent yet.</p>
+            ) : (
+              <ul className="mt-3 flex flex-col">
+                {deliveries.map((d) => (
+                  <li
+                    key={d.id}
+                    className="border-line flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 border-b py-2 text-sm last:border-b-0"
+                  >
+                    <span className="min-w-0">
+                      <span className="font-medium">
+                        {EMAIL_JOB_LABELS[d.job]}
+                      </span>
+                      <span className="text-ink-faint ml-2 text-xs break-all">
+                        {d.recipient}
+                      </span>
+                    </span>
+                    <span className="text-ink-soft text-xs">
+                      {deliveryLabel(d)}
+                      <span className="text-ink-faint ml-2 font-mono text-[11px] whitespace-nowrap">
+                        {fmtDateTime(
+                          d.deliveryEventAt ?? d.sentAt ?? d.createdAt,
+                        )}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {blocks.length > 0 && (
+              <div className="border-line mt-4 border-t pt-4">
+                <h3 className="text-sm font-medium">Blocked addresses</h3>
+                <p className="text-ink-faint mt-0.5 text-xs">
+                  LicenseMeter no longer sends the digest, the report or leak
+                  alerts to these addresses, because the mail provider reported
+                  a permanent failure.
+                </p>
+                <ul className="mt-1 flex flex-col">
+                  {blocks.map((b) => (
+                    <li
+                      key={b.email}
+                      className="border-line flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 border-b py-2 text-sm last:border-b-0"
+                    >
+                      <span className="min-w-0 font-medium break-all">
+                        {b.email}
+                      </span>
+                      <span className="text-ink-soft text-xs">
+                        {BLOCK_REASON_LABELS[b.reason]}
+                        <span className="text-ink-faint ml-2 font-mono text-[11px] whitespace-nowrap">
+                          {fmtDate(b.createdAt)}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </Card>
+        )}
 
         <Card title="Detection capabilities">
           <Capability

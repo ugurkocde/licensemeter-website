@@ -118,6 +118,11 @@ export const env = createEnv({
     RESEND_API_KEY: z.string().optional(),
     /** From address for outgoing mail, e.g. "LicenseMeter <digest@licensemeter.com>". */
     EMAIL_FROM: z.string().optional(),
+    /**
+     * Signing secret of the Resend webhook ("whsec_..."). Optional: without it
+     * /api/webhooks/resend answers 503 and delivery tracking stays off.
+     */
+    RESEND_WEBHOOK_SECRET: z.string().optional(),
 
     /**
      * Public base URL, used to build the admin-consent redirect URI.
@@ -165,6 +170,7 @@ export const env = createEnv({
     ALERT_EMAIL: process.env.ALERT_EMAIL,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     EMAIL_FROM: process.env.EMAIL_FROM,
+    RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
   },
 
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,

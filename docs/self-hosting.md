@@ -73,6 +73,17 @@ A containerized proxy should join the web service's network. Do not publish Post
 - Operational alerts optionally use `ALERT_EMAIL` and/or `ALERT_WEBHOOK_URL`. Configure destinations you control. Alerts are only sent when `NODE_ENV=production` (the Docker image sets this); on Vercel, preview deployments additionally stay silent.
 - Vercel Analytics is not enabled by the Docker setup.
 
+### Email delivery tracking
+
+Optional. Without it LicenseMeter only knows that Resend accepted a message, and Settings says that delivery tracking is not available. With it, owners and admins see under Settings, Email delivery whether the digest, the report and leak alerts arrived, and the instance stops mailing addresses that bounce permanently, are suppressed by Resend, or report an email as spam.
+
+1. In Resend, add a webhook with the endpoint URL `https://<your-app-host>/api/webhooks/resend`. The URL must be reachable from the internet over HTTPS.
+2. Subscribe it to these seven events: `email.sent`, `email.delivered`, `email.delivery_delayed`, `email.failed`, `email.bounced`, `email.suppressed`, `email.complained`.
+3. Copy the webhook's signing secret (it starts with `whsec_`) into `RESEND_WEBHOOK_SECRET` in `.env.docker`.
+4. Apply it with `docker compose --env-file .env.docker up -d`.
+
+The route verifies the signature of every request and answers 503 while the secret is unset. Treat the secret like a password. Blocked addresses are kept per workspace and are deleted with the workspace. There is no unblock control yet, so once an address works again, remove it from Resend's suppression list and delete its row from `email_blocks`.
+
 Marketing/legal content, contact details, and the external provider-status page describe licensemeter.com. Adapt them to your organization and infrastructure before presenting them as your policies. The self-hosted `robots.txt` asks crawlers to avoid the instance; this is not access control.
 
 ## Scheduled jobs
@@ -85,7 +96,7 @@ Schedules use UTC, matching `vercel.json`:
 | Digest email                 | Monday 06:00              |
 | Monthly report               | Day 1 of the month, 07:00 |
 
-Run one scheduler. It does not backfill missed times. The digest and report jobs are safe to invoke again: every recipient's email for the week or the reported month is recorded in a delivery ledger before it is sent, so a restart within the scheduled minute, a manual re-trigger or a second run never sends the same email twice. Each job stops starting new workspaces after 240 seconds and returns JSON totals (`sent`, `skippedAlreadySent`, `skippedOptedOut`, `failed`, `unprocessedTenants`). If `unprocessedTenants` or `failed` is above zero, call the same route again to finish the remainder; a failed recipient is retried up to three times per period. Inspect scheduler logs after operational changes. You can replace it with an external scheduler calling the same routes with `Authorization: Bearer <CRON_SECRET>`; disable the bundled service to avoid duplicate scheduling.
+Run one scheduler. It does not backfill missed times. The digest and report jobs are safe to invoke again: every recipient's email for the week or the reported month is recorded in a delivery ledger before it is sent, so a restart within the scheduled minute, a manual re-trigger or a second run never sends the same email twice. Each job stops starting new workspaces after 240 seconds and returns JSON totals (`sent`, `skippedAlreadySent`, `skippedOptedOut`, `skippedBlocked`, `failed`, `unprocessedTenants`). `skippedBlocked` counts addresses left out because the mail provider reported a permanent failure (see Email delivery tracking). If `unprocessedTenants` or `failed` is above zero, call the same route again to finish the remainder; a failed recipient is retried up to three times per period. Inspect scheduler logs after operational changes. You can replace it with an external scheduler calling the same routes with `Authorization: Bearer <CRON_SECRET>`; disable the bundled service to avoid duplicate scheduling.
 
 ## Backups
 

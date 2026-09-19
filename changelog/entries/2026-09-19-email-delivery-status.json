@@ -1,0 +1,7 @@
+{
+  "title": "See whether your emails arrived",
+  "summary": "Owners and admins now find an Email delivery section under Settings. It lists the latest weekly digests, monthly reports and leak alerts for the workspace with what the mail provider reported back: delivered, delayed, bounced or marked as spam. When an address bounces permanently or a recipient reports an email as spam, LicenseMeter stops sending to that address and shows it under Blocked addresses with the reason, so one dead mailbox no longer hurts delivery for everyone else. Leak alerts now go out as one message per person, like the digest and the report. Self-hosted installations get delivery tracking after they configure the mail provider webhook; without it the section says so plainly.",
+  "type": "new",
+  "publishedOn": "2026-09-19",
+  "idempotencyKey": "licensemeter:2026-09-19-email-delivery-status"
+}
