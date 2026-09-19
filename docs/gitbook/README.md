@@ -7,7 +7,7 @@ icon: house
 
 LicenseMeter brings Microsoft 365 license findings, SaaS seats and AI API spending into one workspace. Use it to identify accounts that still hold licenses, investigate inactivity, prepare for renewals, and track whether a later sync confirms an issue has been resolved.
 
-LicenseMeter is free to use. The hosted application has no paid tiers or trial limits. You can also run your own installation with Docker.
+Scans, findings, reports and exports are free on the hosted application, with no time limit. Paid plans add 24 months of history instead of 12, a signed data processing agreement, MCP access and features for managed service providers; see [pricing](https://www.licensemeter.com/pricing). You can also run your own installation with Docker, which includes every feature.
 
 <figure><img src=".gitbook/assets/overview.webp" alt="LicenseMeter Overview showing estimated monthly waste, price accuracy and next best actions"><figcaption><p>LicenseMeter sample workspace. All names, costs and findings shown are demonstration data.</p></figcaption></figure>
 

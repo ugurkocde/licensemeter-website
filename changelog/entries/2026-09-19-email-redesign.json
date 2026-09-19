@@ -1,0 +1,7 @@
+{
+  "title": "Emails in the new look, with links that always get you in",
+  "summary": "Every email from LicenseMeter now matches the look of the app: the weekly digest, the monthly report, leak alerts, invitations and access notices. Buttons in these emails now take you to the page they are about even when you are signed out. You sign in first and land on the findings, the settings or your workspace, instead of the home page.",
+  "type": "improved",
+  "publishedOn": "2026-09-19",
+  "idempotencyKey": "licensemeter:2026-09-19-email-redesign"
+}

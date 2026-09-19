@@ -180,7 +180,9 @@ describe("runDigestJob", () => {
       "You get this because you are an admin of Acme.",
     );
     expect(annaCall.html).toContain("Unsubscribe from the weekly digest");
-    expect(annaCall.html).toContain("https://licensemeter.test/app/settings");
+    expect(annaCall.html).toContain(
+      "https://licensemeter.test/sign-in?returnTo=%2Fapp%2Fsettings",
+    );
     expect(annaCall.html).not.toContain("ben@contoso.test");
     expect(annaCall.idempotencyKey).toMatch(
       /^licensemeter-digest-[0-9a-f]{64}$/,

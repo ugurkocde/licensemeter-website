@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
 
 import { env, siteUrl } from "~/env";
+import { emailAppUrl } from "~/lib/emailLayout";
 import { fmtMoney, workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
 import {
@@ -144,7 +145,7 @@ const deliver = async (
           workspaceName: workspaceLabel(tenant),
           emailLabel: EMAIL_LABEL[job],
           unsubscribeUrl,
-          settingsUrl: `${siteUrl()}/app/settings`,
+          settingsUrl: emailAppUrl(siteUrl(), "/app/settings"),
         }),
         headers: {
           "List-Unsubscribe": `<${unsubscribeUrl}>`,
