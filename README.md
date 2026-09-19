@@ -14,6 +14,7 @@ LicenseMeter is free to use. There are no subscriptions, paid tiers, or trial li
 - OpenAI and Anthropic daily API spend, kept separate from per-seat costs.
 - Findings workflows, renewal tracking, CSV/PDF exports, and multiple workspaces.
 - A sample workspace and clearly labeled AI previews that need no provider keys.
+- Optional hosted plans (Pro and MSP) with support, a signed data processing agreement, a read-only MCP endpoint at `/api/mcp` and white-label PDF reports. Self-hosted instances get every feature without a plan.
 
 Connectors read provider data. LicenseMeter does not automatically remove licenses or change tenant configuration. Exported remediation scripts require separate review and execution.
 

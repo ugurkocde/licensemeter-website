@@ -25,6 +25,7 @@ const ITEMS: NavItem[] = [
   { href: "/app/connectors", label: "Connectors" },
   { href: "/app/billing", label: "Plan and billing" },
   { href: "/app/agreement", label: "Agreement" },
+  { href: "/app/mcp", label: "MCP server", feature: "mcp" },
   { href: "/app/settings", label: "Settings" },
   { href: "https://docs.licensemeter.com/", label: "Docs" },
   { href: "/support", label: "Support" },
