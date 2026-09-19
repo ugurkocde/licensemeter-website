@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import { ButtonLink } from "~/components/ui";
+import { SIGN_IN_PAGE } from "~/lib/signIn";
 
 /**
  * Session-aware header CTA, resolved client-side so the marketing pages can
@@ -45,11 +46,22 @@ export const HeaderAuthCta = () => {
       </span>
     </ButtonLink>
   ) : (
-    <ButtonLink href="/#get-started" variant="ink" className={compact}>
-      <span className="min-[400px]:hidden">Start</span>
-      <span className="hidden min-[400px]:inline">
-        {german ? "Kostenlos starten" : "Start free"}
-      </span>
-    </ButtonLink>
+    <>
+      {/* No room next to brand, bell, burger and CTA below sm, nor beside the
+          full link row at lg: there the sign-in page is one click behind the
+          CTA. A plain anchor, because the page is rendered per request. */}
+      <a
+        href={SIGN_IN_PAGE}
+        className="text-ink-soft hover:text-ink hidden min-h-11 items-center text-sm font-medium whitespace-nowrap underline-offset-4 hover:underline sm:inline-flex lg:hidden xl:inline-flex"
+      >
+        {german ? "Anmelden" : "Sign in"}
+      </a>
+      <ButtonLink href="/#get-started" variant="ink" className={compact}>
+        <span className="min-[400px]:hidden">Start</span>
+        <span className="hidden min-[400px]:inline">
+          {german ? "Kostenlos starten" : "Start free"}
+        </span>
+      </ButtonLink>
+    </>
   );
 };

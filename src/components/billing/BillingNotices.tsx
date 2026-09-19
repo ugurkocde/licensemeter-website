@@ -1,4 +1,5 @@
 import { CircleCheck, Lock } from "lucide-react";
+import Link from "next/link";
 
 import {
   isComingSoon,
@@ -32,6 +33,13 @@ export const ConfirmationNotice = ({ notice }: { notice: BillingNotice }) => {
       <div className="min-w-0 text-sm">
         <p className="font-medium">{title}</p>
         <p className="mt-0.5">{body}</p>
+        <p className="mt-0.5">
+          Next: sign your{" "}
+          <Link href="/app/agreement" className="font-medium underline">
+            data processing agreement
+          </Link>
+          , which is part of your plan.
+        </p>
       </div>
     </div>
   );

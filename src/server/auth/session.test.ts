@@ -131,6 +131,20 @@ describe("validateReturnTo", () => {
     );
   });
 
+  it("accepts the Marketplace landing page with its purchase token", () => {
+    expect(validateReturnTo("/marketplace/landing")).toBe(
+      "/marketplace/landing",
+    );
+    expect(validateReturnTo("/marketplace/landing?token=abc%2Bdef%3D")).toBe(
+      "/marketplace/landing?token=abc%2Bdef%3D",
+    );
+    expect(validateReturnTo("/marketplace/landing-evil")).toBeNull();
+    expect(validateReturnTo("/marketplace")).toBeNull();
+    expect(
+      validateReturnTo("/marketplace/landing?token=https://evil.example"),
+    ).toBeNull();
+  });
+
   it("rejects absent values and anything outside /app", () => {
     expect(validateReturnTo(null)).toBeNull();
     expect(validateReturnTo(undefined)).toBeNull();

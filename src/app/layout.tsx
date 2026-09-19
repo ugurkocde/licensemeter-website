@@ -5,10 +5,9 @@ import { type Metadata, type Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { Analytics } from "@vercel/analytics/react";
-import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import { connection } from "next/server";
 
-import { authProvider, env, siteUrl } from "~/env";
+import { env, siteUrl } from "~/env";
 import { SITE_DEFINITION, SITE_DESCRIPTION, SITE_TITLE } from "~/lib/site";
 import { SUPPORT_EMAIL } from "~/lib/support";
 
@@ -128,11 +127,7 @@ export default async function RootLayout({
         />
       </head>
       <body className="font-sans antialiased">
-        {authProvider() === "workos" ? (
-          <AuthKitProvider>{children}</AuthKitProvider>
-        ) : (
-          children
-        )}
+        {children}
         {crispId && <CrispChat websiteId={crispId} />}
         <script
           type="application/ld+json"

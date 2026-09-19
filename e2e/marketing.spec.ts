@@ -87,18 +87,131 @@ test("home metadata and conversion labels describe the product consistently", as
   expect(openGraphUrl).toMatch(/^https?:\/\//);
 });
 
-test("pricing pages and references are removed", async ({ page }) => {
-  for (const path of ["/", "/msp", "/de/security"]) {
-    await page.goto(path);
-    await expect(page.locator('a[href*="pricing"]')).toHaveCount(0);
-    await expect(page.locator("#pricing")).toHaveCount(0);
+test("pricing page renders the three plans and is linked from the header", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "Main", exact: true })
+    .getByRole("link", { name: "Pricing", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/pricing$/);
+  await expect(page).toHaveTitle(/Pricing/);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(
+    "Finding the waste costs",
+  );
+  for (const plan of ["Free", "Pro", "MSP"]) {
+    await expect(
+      page.getByRole("heading", { level: 2, name: plan, exact: true }),
+    ).toBeVisible();
   }
-  const removed = await page.request.get("/pricing");
-  expect(removed.status()).toBe(404);
+  await expect(page.locator('[data-plan="pro"]')).toContainText("€99");
+  await expect(page.locator('[data-plan="msp"]')).toContainText("€299");
+  await expect(page.locator('[data-plan="free"]')).toContainText("No support");
+
+  /* Unbuilt features sit in their own group and never carry a checkmark. */
+  const soon = page.locator('[data-group="soon"]');
+  await expect(soon).toContainText("Coming soon");
+  await expect(soon).toContainText("Portfolio alerts");
+  await expect(soon.getByText("Included", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Team roles and delegation")).toHaveCount(0);
+
+  await expect(
+    page.locator('link[rel="alternate"][hreflang="de"]'),
+  ).toHaveAttribute("href", /\/de\/pricing$/);
+  // In <head>, where crawlers read it: the dev server can stream the layout's
+  // own metadata into the body on a page's first compile.
+  await expect(page.locator('head link[rel="canonical"]')).toHaveAttribute(
+    "href",
+    /\/pricing$/,
+  );
+  await expect(
+    page.locator("main").getByRole("link", { name: "status page" }),
+  ).toHaveAttribute("href", "/status");
+  await expect(
+    page
+      .locator("main")
+      .getByRole("link", { name: "data processing agreement" }),
+  ).toHaveAttribute("href", "/dpa");
+
   for (const path of ["/sitemap.xml", "/llms.txt"]) {
     const response = await page.request.get(path);
     expect(response.ok()).toBe(true);
-    expect(await response.text()).not.toContain("/pricing");
+    expect(await response.text()).toContain("/pricing");
+  }
+});
+
+test("the MSP page carries no pricing", async ({ page }) => {
+  await page.goto("/msp");
+  const main = page.locator("main");
+  await expect(main.locator('a[href*="pricing"]')).toHaveCount(0);
+  await expect(main).not.toContainText("€99");
+  await expect(main).not.toContainText("€299");
+});
+
+test("German pricing page is localized", async ({ page }) => {
+  await page.goto("/de/pricing");
+  await expect(page.locator("html")).toHaveAttribute("lang", "de");
+  await expect(page).toHaveTitle(/Preise/);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(
+    "Verschwendung zu finden kostet",
+  );
+  await expect(
+    page
+      .getByRole("navigation", { name: "Hauptnavigation" })
+      .getByRole("link", { name: "Preise", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('[data-plan="pro"]')).toContainText("99\u00a0€");
+  await expect(page.locator('[data-plan="pro"]')).toContainText(
+    "Auftragsverarbeitungsvertrag",
+  );
+  await expect(page.locator('[data-plan="msp"]')).toContainText(
+    "AVV, der Ihre Kunden-Tenants abdeckt",
+  );
+  await expect(page.locator('[data-group="soon"]')).toContainText(
+    "In Vorbereitung",
+  );
+  await expect(
+    page.locator("main").getByRole("link", { name: "English", exact: true }),
+  ).toHaveAttribute("href", "/pricing");
+});
+
+test("yearly billing toggle switches the price without JavaScript", async ({
+  browser,
+}) => {
+  // Reduced motion switches the entrance animation off, so the toggle does not
+  // move while it is being clicked. Any other layout movement still fails here.
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    reducedMotion: "reduce",
+  });
+  const page = await context.newPage();
+  await page.goto("/pricing");
+  const pro = page.locator('[data-plan="pro"]');
+  await expect(pro.locator('[data-price="month"]')).toBeVisible();
+  await expect(pro.locator('[data-price="year"]')).toBeHidden();
+  /* The label also holds the saving badge, so address it by its input. */
+  await page.locator('label[for="bill-y"]').click();
+  await expect(pro.locator('[data-price="year"]')).toBeVisible();
+  await expect(pro.locator('[data-price="year"]')).toContainText("€990");
+  await expect(pro.locator('[data-price="month"]')).toBeHidden();
+  await expect(
+    page.locator('[data-plan="msp"] [data-price="year"]'),
+  ).toContainText("€2,990");
+  await page.locator('label[for="bill-m"]').click();
+  await expect(pro.locator('[data-price="month"]')).toBeVisible();
+  await context.close();
+});
+
+test("pricing pages fit a 320px viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  for (const path of ["/pricing", "/de/pricing"]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
   }
 });
 
@@ -314,4 +427,95 @@ test("support form handles delivery failure and successful retry", async ({
     .click();
   await expect(page.getByRole("status")).toContainText("Support request sent");
   expect(submissions).toBe(2);
+});
+
+test("sign-in page explains the steps and starts the Microsoft flow", async ({
+  page,
+}) => {
+  await page.goto("/sign-in?returnTo=%2Fapp%2Fconnect%2Fcsv");
+
+  await expect(page).toHaveTitle("Sign in | LicenseMeter");
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
+    "content",
+    /noindex/,
+  );
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Sign in to LicenseMeter",
+  );
+
+  const card = page.locator("#sign-in");
+  const button = card.getByRole("link", {
+    name: "Sign in with Microsoft",
+    exact: true,
+  });
+  await expect(button).toHaveAttribute(
+    "href",
+    "/api/auth/signin?returnTo=%2Fapp%2Fconnect%2Fcsv",
+  );
+  const box = await button.boundingBox();
+  expect(box?.height).toBeGreaterThanOrEqual(44);
+
+  await expect(card.getByRole("link", { name: "Terms" })).toHaveAttribute(
+    "href",
+    "/terms",
+  );
+  await expect(
+    card.getByRole("link", { name: "data processing agreement" }),
+  ).toHaveAttribute("href", "/dpa");
+  await expect(
+    card.getByRole("link", { name: "privacy policy" }),
+  ).toHaveAttribute("href", "/privacy");
+  await expect(
+    card.getByRole("link", { name: "Read the docs" }),
+  ).toHaveAttribute("href", "https://docs.licensemeter.com/");
+
+  await expect(page.getByRole("heading", { level: 3 })).toHaveText([
+    "Step 1: Sign in with Microsoft",
+    "Step 2: Your workspace is ready",
+    "Step 3: Connect Microsoft 365",
+    "Step 4: See what the unused licenses cost",
+  ]);
+  await expect(page.getByText("User.Read.All", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "security overview" }),
+  ).toHaveAttribute("href", "/security");
+});
+
+test("sign-in page drops a foreign returnTo and never echoes an error code", async ({
+  page,
+}) => {
+  await page.goto(
+    "/sign-in?returnTo=https%3A%2F%2Fevil.example%2Fapp&error=%3Cb%3Ex%3C%2Fb%3E",
+  );
+  await expect(
+    page
+      .locator("#sign-in")
+      .getByRole("link", { name: "Sign in with Microsoft", exact: true }),
+  ).toHaveAttribute("href", "/api/auth/signin");
+  await expect(page.locator("#sign-in").getByRole("alert")).toContainText(
+    "Microsoft could not complete the sign-in",
+  );
+  await expect(page.locator("body")).not.toContainText("<b>x</b>");
+});
+
+test("sign-in page leads with the button and fits a 320px viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/sign-in");
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+
+  const button = await page
+    .getByRole("link", { name: "Sign in with Microsoft", exact: true })
+    .boundingBox();
+  const steps = await page
+    .getByRole("heading", { level: 2, name: /Four steps/ })
+    .boundingBox();
+  expect(button).not.toBeNull();
+  expect(steps).not.toBeNull();
+  expect(button!.y).toBeLessThan(steps!.y);
 });
