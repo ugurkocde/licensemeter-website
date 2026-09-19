@@ -3,7 +3,7 @@
 /**
  * Human label for a workspace. Prefers the org display name, falls back to the
  * Entra tenant id, then a generic word for workspaces with neither (a fresh
- * WorkOS workspace before any Microsoft tenant is connected; tid is nullable).
+ * workspace before any Microsoft tenant is connected; tid is nullable).
  */
 export const workspaceLabel = (t: {
   name: string | null;

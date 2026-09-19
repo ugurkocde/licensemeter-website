@@ -67,18 +67,18 @@ export default function TermsPage() {
 
       <Section title="3. Registration and access">
         <p>
-          Sign-in is handled through our authentication provider (WorkOS
-          AuthKit) and supports several methods, including a Microsoft work or
-          school account, Google, Apple, a passkey, a one-time email link, or
-          email and password. Connecting a Microsoft 365 tenant for analysis is
-          a separate step: the Customer ensures that the individuals acting are
-          authorized to grant the required administrator consent and to connect
-          the tenant. The Customer may use the Provider&rsquo;s managed
-          application or register its own application (&ldquo;bring your
-          own&rdquo;); any credentials supplied for the latter are stored
-          encrypted and used solely for the read-only sync. Access credentials
-          must be kept confidential; the Customer is responsible for actions
-          taken under its account.
+          Sign-in is with a Microsoft work or school account through Microsoft
+          Entra ID; personal Microsoft accounts and other sign-in methods are
+          not supported. Signing in shares only the user&rsquo;s name and email
+          address and requires no administrator rights. Connecting a Microsoft
+          365 tenant for analysis is a separate step: the Customer ensures that
+          the individuals acting are authorized to grant the required
+          administrator consent and to connect the tenant. The Customer may use
+          the Provider&rsquo;s managed application or register its own
+          application (&ldquo;bring your own&rdquo;); any credentials supplied
+          for the latter are stored encrypted and used solely for the read-only
+          sync. Access credentials must be kept confidential; the Customer is
+          responsible for actions taken under its account.
         </p>
       </Section>
 

@@ -52,8 +52,8 @@ every query.
 - GDPR processor (Art. 28): DPA/AVV with TOMs and subprocessor annexes
   available before production data is connected
 - Subprocessors: Vercel (hosting, EU functions), Supabase (database,
-  Frankfurt), Microsoft (identity + Graph), WorkOS (AuthKit sign-in, US,
-  EU SCCs), Resend (admin notifications, EU)
+  Frankfurt), Microsoft (Entra ID sign-in + Graph), Resend (admin
+  notifications, EU)
 - Breach notification to the controller within 72 hours
 - Data-subject requests routed via you as controller
 

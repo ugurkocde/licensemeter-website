@@ -121,7 +121,7 @@ export type DpaDoc = {
   };
 };
 
-// 1.1: added WorkOS as a sub-processor (AuthKit sign-in) and the BYO
+// 1.1: added a separate sign-in sub-processor (removed again in 2.1) and the BYO
 // encrypted-credential custody statement to the sub-processor annex.
 // 1.2: added the purpose-limitation commitment (no use of the data to evaluate
 // individual employees' performance or behavior), for works-council (BetrVG)
@@ -132,7 +132,9 @@ export type DpaDoc = {
 // Annex II. Accepted online per workspace; signed with a named company on Pro
 // and MSP. Carries over 1.3: the Processor's registered company name and its
 // commercial register entry in the party and signature blocks.
-export const DPA_VERSION = "2.0";
+// 2.1: removed the separate sign-in sub-processor. Sign-in is Microsoft Entra
+// ID only, already covered by the Microsoft row, so no sub-processor was added.
+export const DPA_VERSION = "2.1";
 const EFFECTIVE_EN = "19 September 2026";
 const EFFECTIVE_DE = "19. September 2026";
 
@@ -175,13 +177,6 @@ const SUBPROCESSOR_ROWS: Record<DpaLang, DpaSubprocessor[]> = {
         "EU Standard Contractual Clauses (Microsoft Products and Services DPA)",
     },
     {
-      name: "WorkOS, Inc.",
-      purpose:
-        "Authentication and user identity management (AuthKit sign-in), where enabled",
-      location: "US",
-      basis: "EU Standard Contractual Clauses (WorkOS DPA)",
-    },
-    {
       name: "Resend Inc.",
       purpose: "Transactional and notification email delivery",
       location: "EU (Ireland region)",
@@ -210,13 +205,6 @@ const SUBPROCESSOR_ROWS: Record<DpaLang, DpaSubprocessor[]> = {
       location: "EU Data Boundary; US als Rückfallebene",
       basis:
         "EU-Standardvertragsklauseln (Microsoft Products and Services DPA)",
-    },
-    {
-      name: "WorkOS, Inc.",
-      purpose:
-        "Authentifizierung und Identitätsverwaltung (AuthKit-Anmeldung), soweit aktiviert",
-      location: "USA",
-      basis: "EU-Standardvertragsklauseln (WorkOS DPA)",
     },
     {
       name: "Resend Inc.",
@@ -340,7 +328,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
     ],
     // src/server/auth/**, src/lib/roles.ts, src/server/access.ts
     4: [
-      "Sign-in runs through WorkOS AuthKit or Microsoft Entra ID with OpenID Connect and PKCE. ID tokens are verified against the issuer's published keys with the algorithm, audience and issuer pinned.",
+      "Sign-in runs through Microsoft Entra ID with OpenID Connect and PKCE, limited to work and school accounts. ID tokens are verified against the issuer's published keys with the algorithm, audience and issuer pinned.",
       "Sessions are signed tokens in cookies that are httpOnly, SameSite and, in production, Secure and bound to the exact host. A session lasts at most 30 days.",
       "Workspace access is invite-based: signing in with an account from the same tenant grants nothing by itself. Invitations that are not claimed expire after 14 days. The roles owner, admin and viewer enforce least privilege, and the server checks the role on every page, route and action.",
     ],
@@ -406,7 +394,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
       "Sicherheitsmeldungen werden nach der in SECURITY.md veröffentlichten Richtlinie entgegengenommen.",
     ],
     4: [
-      "Die Anmeldung erfolgt über WorkOS AuthKit oder Microsoft Entra ID mit OpenID Connect und PKCE. ID-Token werden gegen die veröffentlichten Schlüssel des Ausstellers geprüft; Algorithmus, Zielgruppe und Aussteller sind fest vorgegeben.",
+      "Die Anmeldung erfolgt über Microsoft Entra ID mit OpenID Connect und PKCE, ausschließlich mit Geschäfts-, Schul- oder Unikonten. ID-Token werden gegen die veröffentlichten Schlüssel des Ausstellers geprüft; Algorithmus, Zielgruppe und Aussteller sind fest vorgegeben.",
       "Sitzungen sind signierte Token in Cookies, die httpOnly und SameSite sowie in der Produktion Secure und an den genauen Host gebunden sind. Eine Sitzung dauert höchstens 30 Tage.",
       "Der Zugang zum Arbeitsbereich erfolgt auf Einladung: Die Anmeldung mit einem Konto aus demselben Tenant gewährt für sich genommen nichts. Nicht angenommene Einladungen verfallen nach 14 Tagen. Die Rollen Owner, Admin und Viewer setzen das Prinzip der geringsten Rechte durch, und der Server prüft die Rolle auf jeder Seite, Route und Aktion.",
     ],
