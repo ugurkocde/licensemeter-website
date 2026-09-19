@@ -87,7 +87,13 @@ export const validateReturnTo = (
   value: string | null | undefined,
 ): string | null => {
   if (!value) return null;
-  if (!value.startsWith("/app") || value.startsWith("//")) return null;
+  // The Marketplace landing page carries the purchase token in its query, so a
+  // buyer who has to sign in first must come back to that exact path.
+  const marketplaceLanding =
+    value === "/marketplace/landing" ||
+    value.startsWith("/marketplace/landing?");
+  if (!value.startsWith("/app") && !marketplaceLanding) return null;
+  if (value.startsWith("//")) return null;
   if (value.includes("://") || /[\\\r\n]/.test(value)) return null;
   return value;
 };
