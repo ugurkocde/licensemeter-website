@@ -22,7 +22,7 @@ import type { SaasSeat } from "~/server/types";
  * partial unique index, the FK cascade rules and the diffFindings transaction
  * all execute with genuine Postgres semantics. Everything that leaves the
  * process is stubbed: Graph (injected fake client), MSAL,
- * WorkOS teardown, email and ops notifications, and the Next.js request
+ * email and ops notifications, and the Next.js request
  * surface (apiAccess, headers, revalidate, redirect, after).
  *
  * Covered contracts:
@@ -74,7 +74,6 @@ let currentCtx: TestCtx | null = null;
 const notifyOpsMock = vi.fn(() => Promise.resolve());
 const sendWorkspaceDeletedMock = vi.fn(() => Promise.resolve());
 const workspaceAdminEmailsMock = vi.fn(() => Promise.resolve([] as string[]));
-const teardownWorkosMock = vi.fn(() => Promise.resolve());
 const revalidatePathMock = vi.fn();
 // Deferred callbacks are captured, never executed: the disconnect paths under
 // test do not depend on them (email is disabled via the ~/server/email mock).
@@ -87,7 +86,6 @@ const redirectMock = vi.fn((url: string): never => {
 vi.mock("~/env", () => ({
   env: { NODE_ENV: "test", AUTH_SECRET: "test-secret-test-secret-test-secret" },
   byoConnectorEnabled: () => true,
-  authProvider: () => "entra",
   siteUrl: () => "http://localhost:3000",
   appBaseUrl: () => "http://localhost:3000",
 }));
@@ -130,11 +128,6 @@ vi.mock("~/server/workspaceEmail", () => ({
 
 vi.mock("~/server/welcome", () => ({
   maybeSendWelcome: vi.fn(() => Promise.resolve()),
-}));
-
-vi.mock("~/server/auth/workos", () => ({
-  teardownTenantWorkosOrg: (...args: unknown[]) =>
-    teardownWorkosMock(...(args as [])),
 }));
 
 // actions.ts is imported for disconnect coverage; currency conversion itself
@@ -346,7 +339,6 @@ beforeEach(async () => {
   notifyOpsMock.mockClear();
   sendWorkspaceDeletedMock.mockClear();
   workspaceAdminEmailsMock.mockClear();
-  teardownWorkosMock.mockClear();
   revalidatePathMock.mockClear();
   afterMock.mockClear();
   redirectMock.mockClear();
@@ -535,13 +527,15 @@ describe("runSync without a Microsoft connection", () => {
             "dana@contoso.test",
             "ghost@contoso.test",
           ] as const
-        ).map((email): SaasSeat => ({
-          email,
-          displayName: null,
-          status: "active",
-          products: ["Licensed"],
-          lastActiveAt: recent,
-        })),
+        ).map(
+          (email): SaasSeat => ({
+            email,
+            displayName: null,
+            status: "active",
+            products: ["Licensed"],
+            lastActiveAt: recent,
+          }),
+        ),
       ),
     );
     buildSaasClientMock.mockImplementation(() => Promise.resolve({ getSeats }));

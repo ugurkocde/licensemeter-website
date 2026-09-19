@@ -1,4 +1,14 @@
-import { and, asc, eq, exists, isNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { billingEnabled } from "~/env";
 import { workspaceLabel } from "~/lib/format";
@@ -69,43 +79,36 @@ export class MspAccountError extends Error {
 }
 
 /**
- * The identity column that matches this sign-in. resolveWorkos projects the
- * WorkOS user id onto ctx.user.oid and always links the active membership to
- * it, so an equal workosUserId means a WorkOS sign-in; otherwise it is an
- * Entra object id. A membership that was created under Entra and linked to
- * WorkOS later still carries its object id, which is how an account created
- * before the link is found again.
+ * The caller is their Entra object id and nothing else. An account from before
+ * sign-in moved to Entra carries only a legacy owner id; it still belongs to
+ * the caller when one of THEIR linked memberships carries that same legacy id.
+ * A membership only ever gets an object id through proof (proven email or the
+ * claim mail), so this never reaches an account of someone else. Such an
+ * account is adopted at link time (identityLink.ts) and, as a fallback, the
+ * next time ensureMspAccount runs.
  */
-const identityOf = (ctx: AccessContext) =>
-  ctx.membership.workosUserId === ctx.user.oid
-    ? ({
-        kind: "workos",
-        id: ctx.user.oid,
-        linkedOid: ctx.membership.oid,
-      } as const)
-    : ({ kind: "entra", id: ctx.user.oid, linkedOid: null } as const);
+type Identity = { oid: string };
 
-type Identity = ReturnType<typeof identityOf>;
+const identityOf = (ctx: AccessContext): Identity => ({ oid: ctx.user.oid });
+
+const linkedLegacyIds = (who: Identity) =>
+  db
+    .select({ id: memberships.workosUserId })
+    .from(memberships)
+    .where(
+      and(eq(memberships.oid, who.oid), isNotNull(memberships.workosUserId)),
+    );
 
 const accountOwnedBy = (who: Identity) =>
-  who.kind === "workos"
-    ? who.linkedOid
-      ? or(
-          eq(mspAccounts.ownerWorkosUserId, who.id),
-          eq(mspAccounts.ownerOid, who.linkedOid),
-        )
-      : eq(mspAccounts.ownerWorkosUserId, who.id)
-    : eq(mspAccounts.ownerOid, who.id);
+  or(
+    eq(mspAccounts.ownerOid, who.oid),
+    and(
+      isNull(mspAccounts.ownerOid),
+      inArray(mspAccounts.ownerWorkosUserId, linkedLegacyIds(who)),
+    ),
+  );
 
-const membershipOf = (who: Identity) =>
-  who.kind === "workos"
-    ? who.linkedOid
-      ? or(
-          eq(memberships.workosUserId, who.id),
-          eq(memberships.oid, who.linkedOid),
-        )
-      : eq(memberships.workosUserId, who.id)
-    : eq(memberships.oid, who.id);
+const membershipOf = (who: Identity) => eq(memberships.oid, who.oid);
 
 /** The caller holds the owner role on the tenants row of the outer query. */
 const callerOwnsTenant = (who: Identity) =>
@@ -132,10 +135,16 @@ export const coveredIds = (
 const findAccount = async (
   who: Identity,
 ): Promise<MspAccountSummary | null> => {
+  // An account already keyed on the object id wins over a legacy one.
   const [row] = await db
     .select({ id: mspAccounts.id, name: mspAccounts.name })
     .from(mspAccounts)
     .where(accountOwnedBy(who))
+    .orderBy(
+      sql`${mspAccounts.ownerOid} is null`,
+      asc(mspAccounts.createdAt),
+      asc(mspAccounts.id),
+    )
     .limit(1);
   return row ?? null;
 };
@@ -179,9 +188,9 @@ export async function getMspAccount(
  * workspace when the caller owns it and no other account holds it, unless
  * `attachActive` is false (the Marketplace landing page attaches the workspace
  * the buyer picked instead). The unique owner indexes make a concurrent
- * double-create collapse into one row. An account created under the caller's
- * Entra object id before the sign-in was linked to WorkOS is adopted: its
- * owner column moves to the WorkOS user id so both lookups keep matching.
+ * double-create collapse into one row. An account from before sign-in moved to
+ * Entra that is still keyed on the caller's legacy id only is adopted: it gets
+ * their object id, so from then on it resolves without the membership detour.
  */
 export async function ensureMspAccount(
   ctx: AccessContext,
@@ -195,27 +204,16 @@ export async function ensureMspAccount(
   if (!account) {
     await db
       .insert(mspAccounts)
-      .values(
-        who.kind === "workos"
-          ? { ownerWorkosUserId: who.id }
-          : { ownerOid: who.id },
-      )
+      .values({ ownerOid: who.oid })
       .onConflictDoNothing();
     account = await findAccount(who);
   }
   if (!account) throw new Error("MSP account missing after create");
 
-  if (who.kind === "workos") {
-    await db
-      .update(mspAccounts)
-      .set({ ownerWorkosUserId: who.id })
-      .where(
-        and(
-          eq(mspAccounts.id, account.id),
-          isNull(mspAccounts.ownerWorkosUserId),
-        ),
-      );
-  }
+  await db
+    .update(mspAccounts)
+    .set({ ownerOid: who.oid })
+    .where(and(eq(mspAccounts.id, account.id), isNull(mspAccounts.ownerOid)));
 
   if (options.attachActive !== false) {
     await attachIfAllowed(who, account.id, ctx.tenant.id);

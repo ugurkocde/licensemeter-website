@@ -211,7 +211,8 @@ export type AuditAction =
   | "member_join_approved"
   | "member_join_declined"
   | "member_domain_joined"
-  | "domain_join_mode_changed";
+  | "domain_join_mode_changed"
+  | "member_identity_linked";
 
 /** Aggregate counts captured when user identities are concealed in usage reports. */
 export type AggregateUsage = {

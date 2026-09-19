@@ -50,6 +50,13 @@
       "when": 1789817901286,
       "tag": "0006_entitlements_plan_owner",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789827834924,
+      "tag": "0007_entra_identity",
+      "breakpoints": true
     }
   ]
 }

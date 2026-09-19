@@ -1,13 +1,6 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
-// WorkOS is the default sign-in; entra is the flag-only opt-out. Mirrors
-// authProvider() below, but evaluated here so the WorkOS credentials become
-// REQUIRED whenever WorkOS is the live provider: a misconfigured production
-// deploy then fails the build instead of 500-ing every page at runtime (the
-// AuthKit middleware throws without a >=32-char cookie password).
-const workosLogin = process.env.AUTH_PROVIDER !== "entra";
-
 export const env = createEnv({
   /**
    * Server-side environment variables schema. The app fails the build on invalid env.
@@ -52,7 +45,9 @@ export const env = createEnv({
 
     /**
      * Sign-in app registration (delegated, multi-tenant, openid/profile/email only).
-     * Optional so the demo mode works without any Entra setup.
+     * Optional so the demo mode works without any Entra setup. For email-based
+     * linking the registration should emit the optional ID token claims email
+     * and xms_edov; without them every email reads as not proven.
      */
     AUTH_MICROSOFT_ENTRA_ID_ID: z.string().optional(),
     AUTH_MICROSOFT_ENTRA_ID_SECRET: z.string().optional(),
@@ -63,14 +58,6 @@ export const env = createEnv({
      */
     CONNECTOR_CLIENT_ID: z.string().optional(),
     CONNECTOR_CLIENT_SECRET: z.string().optional(),
-
-    /**
-     * Which login stack is live. Defaults to "workos" (AuthKit multi-method
-     * sign-in); "entra" is a flag-only opt-out that restores the original MSAL
-     * sign-in. The connector (app-only Graph access) is unaffected either way;
-     * it keys on the Entra tenant id stored on the tenant row, not on the login.
-     */
-    AUTH_PROVIDER: z.enum(["entra", "workos"]).optional(),
 
     /**
      * Gates the "bring your own app registration" Microsoft connector path.
@@ -104,19 +91,6 @@ export const env = createEnv({
     /** Plan ids as defined in Partner Center. Default to "pro" and "msp". */
     MARKETPLACE_PLAN_PRO: z.string().optional(),
     MARKETPLACE_PLAN_MSP: z.string().optional(),
-
-    /**
-     * WorkOS AuthKit credentials, read by @workos-inc/authkit-nextjs. Required
-     * when WorkOS is the live provider (the default) so a deploy missing them
-     * fails fast; optional under the entra opt-out. The cookie password must be
-     * >=32 chars (AuthKit seals the session with it). NEXT_PUBLIC_WORKOS_REDIRECT_URI
-     * is consumed by the SDK directly from process.env and is not validated here.
-     */
-    WORKOS_API_KEY: workosLogin ? z.string().min(1) : z.string().optional(),
-    WORKOS_CLIENT_ID: workosLogin ? z.string().min(1) : z.string().optional(),
-    WORKOS_COOKIE_PASSWORD: workosLogin
-      ? z.string().min(32)
-      : z.string().min(32).optional(),
 
     /**
      * Shared secret protecting /api/cron/* routes (Vercel Cron sends it as a
@@ -169,7 +143,6 @@ export const env = createEnv({
     AUTH_MICROSOFT_ENTRA_ID_SECRET: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
     CONNECTOR_CLIENT_ID: process.env.CONNECTOR_CLIENT_ID,
     CONNECTOR_CLIENT_SECRET: process.env.CONNECTOR_CLIENT_SECRET,
-    AUTH_PROVIDER: process.env.AUTH_PROVIDER,
     MS_BYO_ENABLED: process.env.MS_BYO_ENABLED,
     BILLING_ENABLED: process.env.BILLING_ENABLED,
     POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN,
@@ -185,9 +158,6 @@ export const env = createEnv({
     MARKETPLACE_OFFER_URL: process.env.MARKETPLACE_OFFER_URL,
     MARKETPLACE_PLAN_PRO: process.env.MARKETPLACE_PLAN_PRO,
     MARKETPLACE_PLAN_MSP: process.env.MARKETPLACE_PLAN_MSP,
-    WORKOS_API_KEY: process.env.WORKOS_API_KEY,
-    WORKOS_CLIENT_ID: process.env.WORKOS_CLIENT_ID,
-    WORKOS_COOKIE_PASSWORD: process.env.WORKOS_COOKIE_PASSWORD,
     CRON_SECRET: process.env.CRON_SECRET,
     DEMO_MODE: process.env.DEMO_MODE,
     APP_BASE_URL: process.env.APP_BASE_URL,
@@ -204,28 +174,15 @@ export const env = createEnv({
 export const isDemoMode = () => env.DEMO_MODE === "true";
 
 /**
- * Active login stack. Defaults to "workos": sign-in is WorkOS-only (AuthKit
- * multi-method). "entra" is a flag-only opt-out (AUTH_PROVIDER=entra) that
- * restores the original MSAL sign-in. MSAL otherwise lives only in the
- * Microsoft connector (admin-consent / BYO), never in user sign-in. The
- * connector / Graph access is independent of this flag.
- */
-export const authProvider = () =>
-  env.AUTH_PROVIDER === "entra" ? "entra" : "workos";
-
-/**
- * Whether sign-in is available, for wiring the marketing CTAs: WorkOS needs a
- * client id; the entra opt-out needs the Entra app id. Hides the sign-in button
- * on a deployment that has configured neither.
+ * Whether sign-in is available, for wiring the marketing CTAs: the Entra
+ * sign-in app registration is configured. Hides the sign-in button on a
+ * deployment that has not set it up (demo-only installs).
  */
 export const signInEnabled = () =>
-  authProvider() === "workos"
-    ? Boolean(env.WORKOS_CLIENT_ID)
-    : Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID);
+  Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID && env.AUTH_MICROSOFT_ENTRA_ID_SECRET);
 
-/** Sign-in entry path for the active provider (WorkOS AuthKit by default). */
-export const signInPath = () =>
-  authProvider() === "workos" ? "/auth/sign-in" : "/api/auth/signin";
+/** The sign-in page; its button starts the Microsoft flow at /api/auth/signin. */
+export const signInPath = () => "/sign-in";
 
 /**
  * Whether the bring-your-own Microsoft app-registration path is exposed. On by
