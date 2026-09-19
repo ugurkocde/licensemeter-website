@@ -1,0 +1,8 @@
+{
+  "title": "A guide to every email LicenseMeter sends",
+  "summary": "The documentation now shows the welcome email, the weekly digest, the leak alert and the invitation, each with an example. For every email it says who receives it, when it is sent, what it contains and how to turn it off, and it lists the remaining emails such as the monthly report and access notices. A short checklist helps when an email does not arrive.",
+  "type": "improved",
+  "publishedOn": "2026-09-19",
+  "idempotencyKey": "licensemeter:2026-09-19-email-reference",
+  "sourceUrl": "https://docs.licensemeter.com/workspace/emails"
+}

@@ -2,7 +2,7 @@
 
 Public site: https://docs.licensemeter.com/
 
-The documentation contains 36 English pages and 30 screenshots. Content is in `docs/gitbook/`, with navigation in `SUMMARY.md` and optimized WebP images in `.gitbook/assets/`. This directory is the documentation source. Publication uses GitBook change requests; **Git Sync is not connected**.
+The documentation contains 37 English pages and 34 images. Content is in `docs/gitbook/`, with navigation in `SUMMARY.md` and optimized WebP images in `.gitbook/assets/`. This directory is the documentation source. Publication uses GitBook change requests; **Git Sync is not connected**.
 
 ## Pending publication: plan wording on the welcome page
 
@@ -59,6 +59,17 @@ node scripts/docs-check.mjs
 
 The capture command uses a separate browser session, selects the sample tenant, disables animations, saves original PNGs under `output/playwright/licensemeter-docs/`, and writes optimized WebP assets. Inspect screenshots for loading states, clipped content and accidental private data before upload. Captions explicitly identify sample data.
 
+## Refresh email examples
+
+The four images on the "Emails from LicenseMeter" page are rendered from the real templates with fictional data. Nothing is sent and no database or mail service is touched. Rerun this after changing a template or its copy, then inspect the images:
+
+```sh
+SKIP_ENV_VALIDATION=1 npx tsx scripts/docs-email-screenshots.ts
+node scripts/docs-check.mjs
+```
+
+It needs a Playwright Chromium (`npx playwright install chromium`). When a new kind of email reaches users, add it to that page, at least to the table of other emails.
+
 ## Connecting Git Sync
 
 Git Sync is prepared but not connected. Once it is, a documentation change merged to `main` publishes by itself, and the change-request workflow above becomes obsolete. The steps below are for the owner, in the GitBook and GitHub web interfaces. They were checked against GitBook's documentation on 2026-09-19; GitBook's screens change, so read the labels on screen rather than trusting this order blindly.
@@ -74,7 +85,7 @@ Git Sync is prepared but not connected. Once it is, a documentation change merge
 7. In the advanced options leave the project directory blank, keep previews for forks off (the repository is public), and turn the agent instruction files option off, because the repository already has its own `AGENTS.md` and `CLAUDE.md`.
 8. Under content mapping, map the single space to `./docs/gitbook`. Never `./docs` or `/`: `docs/` also holds internal notes and announcement drafts, and only the mapped directory is published.
 9. Start the sync and wait. Then run `git pull`. Expect one commit by the GitBook bot that adds `gitbook-docs.yaml` at the repository root and nothing else. If a Markdown file under `docs/gitbook/` was rewritten with older text, the direction was wrong: revert that commit and go to the rollback step.
-10. Check the result. The space shows 36 pages in the order of `SUMMARY.md`. The welcome page carries the plan wording (what is free, what paid plans add). The managed consent page shows the consent dialog screenshot. Cards, hints and steppers render and no image is broken. Open `/getting-started/first-sync`, `/connectors/microsoft-managed`, `/self-hosting/microsoft-setup` and `/welcome` on the public site.
+10. Check the result. The space shows 37 pages in the order of `SUMMARY.md`. The welcome page carries the plan wording (what is free, what paid plans add). The managed consent page shows the consent dialog screenshot. Cards, hints and steppers render and no image is broken. Open `/getting-started/first-sync`, `/connectors/microsoft-managed`, `/self-hosting/microsoft-setup` and `/welcome` on the public site.
 11. Test the round trip: open a pull request with a trivial documentation edit, confirm a GitBook status with a preview link appears on it, merge it and confirm the public page changes.
 12. Optional: add a merge rule on the space so nobody merges change requests in GitBook. A merged change request becomes a bot commit on `main`, which runs CI and a production deployment.
 13. Then update this file: remove this section, the pending publication sections and the change-request instructions, and describe the new workflow.

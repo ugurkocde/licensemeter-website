@@ -13,6 +13,7 @@
   * [Roles and access](workspace/roles.md)
   * [Invite colleagues and manage access](workspace/members.md)
   * [Settings and sync history](workspace/settings.md)
+  * [Emails from LicenseMeter](workspace/emails.md)
 * [Review findings](findings/README.md)
   * [Detection rules](findings/rules.md)
   * [Remediation workflow](findings/workflow.md)
