@@ -11,7 +11,7 @@ Use this checklist for any release that changes navigation, onboarding, account,
 
 ## Staging-only third-party states
 
-- WorkOS: signed out, sign-in success, callback error, expired session, and sign-out.
+- Microsoft sign-in: signed out, sign-in success, callback error, personal account rejected, expired session, and sign-out.
 - Microsoft: consent success, consent denial, partial permission grant, first-sync pending, and expired BYO credential.
 - Email/invitations: send success, provider failure, expired invite, resend, and unsubscribe.
 

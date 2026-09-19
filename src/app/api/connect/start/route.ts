@@ -13,26 +13,22 @@ import { consentStates } from "~/server/db/schema";
 export const GET = async () => {
   const session = await auth();
   const user = session?.user;
-  // Accept either login stack: entra carries oid, workos carries workosUserId.
-  if (!user || (!user.oid && !user.workosUserId)) redirect("/");
+  if (!user?.oid) redirect("/");
   if (user.isDemo) redirect("/app");
   if (!env.CONNECTOR_CLIENT_ID) redirect("/app/connect?error=not_configured");
 
-  // Workos flow: pin the consent to the workspace it starts from so the
-  // callback cannot attach the tenant to a different active workspace.
-  const ctx = user.workosUserId ? await apiAccess("admin") : null;
-  if (user.workosUserId && !ctx)
-    redirect("/app/connectors/microsoft?error=not_allowed");
+  // Pin the consent to the workspace it starts from so the callback cannot
+  // attach the tenant to a different active workspace. Everyone has a
+  // workspace from their first sign-in on; connecting needs the admin role.
+  const ctx = await apiAccess("admin");
+  if (!ctx) redirect("/app/connectors/microsoft?error=not_allowed");
 
   const state = crypto.randomUUID();
   await db.insert(consentStates).values({
     state,
-    tenantId: ctx?.tenant.id ?? null,
-    // Exactly one identity is populated; the empty entra fields collapse to null
-    // in workos mode and vice-versa.
-    oid: user.oid || null,
-    tid: user.tid || null,
-    workosUserId: user.workosUserId ?? null,
+    tenantId: ctx.tenant.id,
+    oid: user.oid,
+    tid: user.tid,
     email: user.upn !== "" ? user.upn : (user.email ?? ""),
     name: user.name ?? null,
   });

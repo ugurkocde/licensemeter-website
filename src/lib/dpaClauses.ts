@@ -39,8 +39,7 @@ export type SccListItem = {
 };
 
 export type SccBlock =
-  | { kind: "p"; text: string }
-  | { kind: "list"; items: SccListItem[] };
+  { kind: "p"; text: string } | { kind: "list"; items: SccListItem[] };
 
 /** A numbered part of a clause, such as 7.1. or 9.2. */
 export type SccPart = { number: string; heading: string; blocks: SccBlock[] };

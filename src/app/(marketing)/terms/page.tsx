@@ -67,18 +67,18 @@ export default function TermsPage() {
 
       <Section title="3. Registration and access">
         <p>
-          Sign-in is handled through our authentication provider (WorkOS
-          AuthKit) and supports several methods, including a Microsoft work or
-          school account, Google, Apple, a passkey, a one-time email link, or
-          email and password. Connecting a Microsoft 365 tenant for analysis is
-          a separate step: the Customer ensures that the individuals acting are
-          authorized to grant the required administrator consent and to connect
-          the tenant. The Customer may use the Provider&rsquo;s managed
-          application or register its own application (&ldquo;bring your
-          own&rdquo;); any credentials supplied for the latter are stored
-          encrypted and used solely for the read-only sync. Access credentials
-          must be kept confidential; the Customer is responsible for actions
-          taken under its account.
+          Sign-in is with a Microsoft work or school account through Microsoft
+          Entra ID; personal Microsoft accounts and other sign-in methods are
+          not supported. Signing in shares only the user&rsquo;s name and email
+          address and requires no administrator rights. Connecting a Microsoft
+          365 tenant for analysis is a separate step: the Customer ensures that
+          the individuals acting are authorized to grant the required
+          administrator consent and to connect the tenant. The Customer may use
+          the Provider&rsquo;s managed application or register its own
+          application (&ldquo;bring your own&rdquo;); any credentials supplied
+          for the latter are stored encrypted and used solely for the read-only
+          sync. Access credentials must be kept confidential; the Customer is
+          responsible for actions taken under its account.
         </p>
       </Section>
 
@@ -112,12 +112,13 @@ export default function TermsPage() {
         </p>
       </Section>
 
-      <Section title="6. Free access">
+      <Section title="6. Free and paid plans">
         <p>
-          The Service is provided free of charge. All features, including
-          continuous monitoring, reports and exports, are available without a
-          paid subscription or time-limited trial. No payment method is
-          required.
+          The Free plan is provided free of charge and without a time limit. It
+          includes continuous monitoring, reports and exports, and requires no
+          payment method. The optional Pro and MSP plans add further features
+          for a fee, at the prices shown on the pricing page. When a paid plan
+          ends, the workspace returns to the Free plan and no data is deleted.
         </p>
       </Section>
 
@@ -128,7 +129,9 @@ export default function TermsPage() {
           level). Maintenance, ongoing development and disruptions outside the
           Provider&rsquo;s control (in particular at third parties such as
           Microsoft or the connected source systems) may temporarily limit use.
-          Support is provided by email at {SUPPORT_EMAIL}.
+          Support by email at {SUPPORT_EMAIL} is included in the Pro and MSP
+          plans. The Free plan comes without support; messages from Free
+          workspaces are answered as time allows, without any commitment.
         </p>
       </Section>
 

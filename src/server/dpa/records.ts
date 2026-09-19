@@ -35,11 +35,7 @@ export type AgreementResult =
   | {
       ok: false;
       error:
-        | "forbidden"
-        | "demo"
-        | "selfHosted"
-        | "invalid"
-        | "kindNotAvailable";
+        "forbidden" | "demo" | "selfHosted" | "invalid" | "kindNotAvailable";
     }
   | { ok: false; error: "featureRequired"; plan: PaidPlan };
 
