@@ -67,8 +67,17 @@ const SetupOptions = ({
         </p>
       )}
       <p className="text-ink-faint text-xs">
-        Not a Global Administrator? Forward this page to one. They complete the
-        Microsoft dialog and you become the workspace owner.
+        Not a Global Administrator or Privileged Role Administrator? Invite one
+        to this workspace as Admin under{" "}
+        <Link
+          href="/app/settings"
+          className="hover:text-ink underline underline-offset-4"
+        >
+          Settings
+        </Link>
+        . They sign in with their own account and grant the consent from this
+        page. A forwarded link does not work: the consent has to finish in the
+        session that started it.
       </p>
     </div>
 
