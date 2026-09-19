@@ -81,7 +81,7 @@ export const OnboardingEmptyState = () => (
         LicenseMeter reads your seats read-only and prices every wasted,
         inactive or orphaned license in euros. Connect Microsoft 365 for the
         complete analysis, or upload its license export for a no-admin preview.
-        All features are free, with no time limit.
+        Scans, findings, reports and exports are free, with no time limit.
       </p>
     </header>
 
