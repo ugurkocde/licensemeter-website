@@ -14,6 +14,12 @@
 -- names that index), so such a sign-in fails until the new release is live.
 -- Everything else in the previous release is unaffected.
 --
+-- Rolling back to the previous release: recreate that index, then redeploy.
+-- It fails if two requests in one workspace share an email by then; decide
+-- those rows first.
+--   CREATE UNIQUE INDEX IF NOT EXISTS join_requests_tenant_email_idx
+--     ON public.join_requests USING btree (tenant_id, email);
+--
 -- Nothing is dropped: `memberships.workos_user_id`, `tenants.workos_org_id`,
 -- `msp_accounts.owner_workos_user_id`, `join_requests.workos_user_id` and
 -- `consent_states.workos_user_id` stay for one release, because linking finds
