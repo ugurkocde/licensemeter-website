@@ -1,0 +1,7 @@
+{
+  "title": "Leak alerts that add up",
+  "summary": "The immediate alert for offboarding leaks now lists the ten most expensive findings first, so the table always matches the headline figure. It shows the subtotal of the listed findings, the subtotal of the ones left out, and how many findings add nothing because a license is free or has no price yet. The wording now says plainly that the figure is an estimate from your price book and not a measured increase in your bill.",
+  "type": "improved",
+  "publishedOn": "2026-09-19",
+  "idempotencyKey": "licensemeter:2026-09-19-leak-alert-accuracy"
+}

@@ -42,11 +42,16 @@ const createDb = (): Db => {
   return drizzlePglite(client, { schema }) as unknown as Db;
 };
 
-/** Cache the connection in dev so Next.js HMR doesn't open a new one per reload. */
+/**
+ * Cache the connection in dev so Next.js HMR doesn't open a new one per
+ * reload, and always share the embedded database across route bundles:
+ * separate PGlite instances on one data directory can read stale values after
+ * a server action saves, even inside one production process.
+ */
 const globalForDb = globalThis as unknown as { db?: Db };
 
 export const db: Db = globalForDb.db ?? createDb();
 
-if (env.NODE_ENV !== "production") globalForDb.db = db;
+if (env.NODE_ENV !== "production" || !env.DATABASE_URL) globalForDb.db = db;
 
 export { schema };
