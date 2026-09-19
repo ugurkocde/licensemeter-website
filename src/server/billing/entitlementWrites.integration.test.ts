@@ -171,7 +171,7 @@ describe("applyEntitlementEvent", () => {
   it("never overwrites a comped row", async () => {
     await currentDb.insert(schema.entitlements).values({
       tenantId: TENANT_ID,
-      plan: "msp",
+      plan: "pro",
       source: "comped",
       status: "active",
     });

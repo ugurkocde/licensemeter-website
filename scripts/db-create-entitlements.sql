@@ -55,8 +55,24 @@ CREATE TABLE IF NOT EXISTS public.entitlements (
   CONSTRAINT entitlements_status_valid
     CHECK (status in ('trialing', 'active', 'past_due', 'canceled', 'suspended')),
   CONSTRAINT entitlements_quantity_positive
-    CHECK (quantity > 0)
+    CHECK (quantity > 0),
+  CONSTRAINT entitlements_plan_owner
+    CHECK ((plan = 'pro' and tenant_id is not null and quantity = 1)
+      or (plan = 'msp' and msp_account_id is not null))
 );
+-- Existing databases created before this constraint existed get it here.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'entitlements_plan_owner'
+      AND conrelid = 'public.entitlements'::regclass
+  ) THEN
+    ALTER TABLE public.entitlements ADD CONSTRAINT entitlements_plan_owner
+      CHECK ((plan = 'pro' and tenant_id is not null and quantity = 1)
+        or (plan = 'msp' and msp_account_id is not null));
+  END IF;
+END $$;
 
 -- At most one row per workspace and per MSP account.
 CREATE UNIQUE INDEX IF NOT EXISTS entitlements_tenant_idx
@@ -149,11 +165,19 @@ ALTER TABLE public.msp_accounts ADD COLUMN IF NOT EXISTS brand_color text;
 ALTER TABLE public.msp_accounts ADD COLUMN IF NOT EXISTS brand_logo text;
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'msp_accounts_brand_color_hex') THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'msp_accounts_brand_color_hex'
+      AND conrelid = 'public.msp_accounts'::regclass
+  ) THEN
     ALTER TABLE public.msp_accounts ADD CONSTRAINT msp_accounts_brand_color_hex
       CHECK (brand_color is null or brand_color ~ '^#[0-9a-fA-F]{6}$');
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'msp_accounts_brand_logo_size') THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'msp_accounts_brand_logo_size'
+      AND conrelid = 'public.msp_accounts'::regclass
+  ) THEN
     ALTER TABLE public.msp_accounts ADD CONSTRAINT msp_accounts_brand_logo_size
       CHECK (brand_logo is null or length(brand_logo) <= 400000);
   END IF;

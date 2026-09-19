@@ -1,0 +1,1 @@
+ALTER TABLE "entitlements" ADD CONSTRAINT "entitlements_plan_owner" CHECK (("entitlements"."plan" = 'pro' and "entitlements"."tenant_id" is not null and "entitlements"."quantity" = 1) or ("entitlements"."plan" = 'msp' and "entitlements"."msp_account_id" is not null));

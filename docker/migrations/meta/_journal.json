@@ -43,6 +43,13 @@
       "when": 1789817884368,
       "tag": "0005_paid_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789817901286,
+      "tag": "0006_entitlements_plan_owner",
+      "breakpoints": true
     }
   ]
 }

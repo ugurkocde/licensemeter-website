@@ -954,6 +954,13 @@ export const entitlements = pgTable(
       sql`${t.status} in ('trialing', 'active', 'past_due', 'canceled', 'suspended')`,
     ),
     check("entitlements_quantity_positive", sql`${t.quantity} > 0`),
+    // A Pro plan belongs to one workspace and covers exactly it; an MSP plan
+    // belongs to an MSP account. The database refuses the other combinations
+    // so no writer can grant MSP features to a single workspace by mistake.
+    check(
+      "entitlements_plan_owner",
+      sql`(${t.plan} = 'pro' and ${t.tenantId} is not null and ${t.quantity} = 1) or (${t.plan} = 'msp' and ${t.mspAccountId} is not null)`,
+    ),
   ],
 ).enableRLS();
 
