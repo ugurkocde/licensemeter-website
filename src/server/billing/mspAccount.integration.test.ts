@@ -212,6 +212,39 @@ describe("ensureMspAccount", () => {
     expect(account!.ownerWorkosUserId).toBeNull();
   });
 
+  it("finds an account created under the Entra object id after the sign-in moved to WorkOS", async () => {
+    // Erin created her account while signing in with Entra.
+    const { tenant, ctx: entraCtx } = await seedOwned(1, ERIN);
+    const { id } = await ensureMspAccount(entraCtx);
+
+    // Later sign-ins go through WorkOS; resolveWorkos links the existing
+    // membership to the WorkOS user id and keeps the object id on the row.
+    const [linked] = await currentDb
+      .update(schema.memberships)
+      .set({ workosUserId: ALICE.id })
+      .where(eq(schema.memberships.tenantId, tenant.id))
+      .returning();
+    const workosCtx = ctxFor(ALICE, tenant, linked!);
+
+    expect(await getMspAccount(workosCtx)).toEqual({ id, name: null });
+    expect(await ensureMspAccount(workosCtx)).toEqual({ id });
+
+    const accounts = await currentDb.select().from(schema.mspAccounts);
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0]!.ownerWorkosUserId).toBe(ALICE.id);
+    expect(accounts[0]!.ownerOid).toBe(ERIN.id);
+    // Both lookups keep matching once the owner column has moved.
+    expect(await getMspAccount(entraCtx)).toEqual({ id, name: null });
+  });
+
+  it("can create the account without attaching the active workspace", async () => {
+    const { tenant, ctx } = await seedOwned(1, ALICE);
+
+    await ensureMspAccount(ctx, { attachActive: false });
+
+    expect(await accountOf(tenant)).toBeNull();
+  });
+
   it("collapses a concurrent double create into one account", async () => {
     const { ctx } = await seedOwned(1, ALICE);
 

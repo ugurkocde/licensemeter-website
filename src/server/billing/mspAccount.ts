@@ -72,23 +72,39 @@ export class MspAccountError extends Error {
  * The identity column that matches this sign-in. resolveWorkos projects the
  * WorkOS user id onto ctx.user.oid and always links the active membership to
  * it, so an equal workosUserId means a WorkOS sign-in; otherwise it is an
- * Entra object id.
+ * Entra object id. A membership that was created under Entra and linked to
+ * WorkOS later still carries its object id, which is how an account created
+ * before the link is found again.
  */
 const identityOf = (ctx: AccessContext) =>
   ctx.membership.workosUserId === ctx.user.oid
-    ? ({ kind: "workos", id: ctx.user.oid } as const)
-    : ({ kind: "entra", id: ctx.user.oid } as const);
+    ? ({
+        kind: "workos",
+        id: ctx.user.oid,
+        linkedOid: ctx.membership.oid,
+      } as const)
+    : ({ kind: "entra", id: ctx.user.oid, linkedOid: null } as const);
 
 type Identity = ReturnType<typeof identityOf>;
 
 const accountOwnedBy = (who: Identity) =>
   who.kind === "workos"
-    ? eq(mspAccounts.ownerWorkosUserId, who.id)
+    ? who.linkedOid
+      ? or(
+          eq(mspAccounts.ownerWorkosUserId, who.id),
+          eq(mspAccounts.ownerOid, who.linkedOid),
+        )
+      : eq(mspAccounts.ownerWorkosUserId, who.id)
     : eq(mspAccounts.ownerOid, who.id);
 
 const membershipOf = (who: Identity) =>
   who.kind === "workos"
-    ? eq(memberships.workosUserId, who.id)
+    ? who.linkedOid
+      ? or(
+          eq(memberships.workosUserId, who.id),
+          eq(memberships.oid, who.linkedOid),
+        )
+      : eq(memberships.workosUserId, who.id)
     : eq(memberships.oid, who.id);
 
 /** The caller holds the owner role on the tenants row of the outer query. */
@@ -160,28 +176,50 @@ export async function getMspAccount(
 
 /**
  * Creates or returns the caller's MSP account, then attaches the active
- * workspace when the caller owns it and no other account holds it. The unique
- * owner indexes make a concurrent double-create collapse into one row.
+ * workspace when the caller owns it and no other account holds it, unless
+ * `attachActive` is false (the Marketplace landing page attaches the workspace
+ * the buyer picked instead). The unique owner indexes make a concurrent
+ * double-create collapse into one row. An account created under the caller's
+ * Entra object id before the sign-in was linked to WorkOS is adopted: its
+ * owner column moves to the WorkOS user id so both lookups keep matching.
  */
 export async function ensureMspAccount(
   ctx: AccessContext,
+  options: { attachActive?: boolean } = {},
 ): Promise<{ id: string }> {
   // The demo sign-in is shared by every visitor, so it never owns an account.
   if (ctx.user.isDemo) throw new MspAccountError("demoUser");
   const who = identityOf(ctx);
 
-  await db
-    .insert(mspAccounts)
-    .values(
-      who.kind === "workos"
-        ? { ownerWorkosUserId: who.id }
-        : { ownerOid: who.id },
-    )
-    .onConflictDoNothing();
-  const account = await findAccount(who);
+  let account = await findAccount(who);
+  if (!account) {
+    await db
+      .insert(mspAccounts)
+      .values(
+        who.kind === "workos"
+          ? { ownerWorkosUserId: who.id }
+          : { ownerOid: who.id },
+      )
+      .onConflictDoNothing();
+    account = await findAccount(who);
+  }
   if (!account) throw new Error("MSP account missing after create");
 
-  await attachIfAllowed(who, account.id, ctx.tenant.id);
+  if (who.kind === "workos") {
+    await db
+      .update(mspAccounts)
+      .set({ ownerWorkosUserId: who.id })
+      .where(
+        and(
+          eq(mspAccounts.id, account.id),
+          isNull(mspAccounts.ownerWorkosUserId),
+        ),
+      );
+  }
+
+  if (options.attachActive !== false) {
+    await attachIfAllowed(who, account.id, ctx.tenant.id);
+  }
   return { id: account.id };
 }
 
