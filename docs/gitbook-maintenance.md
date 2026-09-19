@@ -4,6 +4,10 @@ Public site: https://docs.licensemeter.com/
 
 The documentation contains 36 English pages and 30 screenshots. Content is in `docs/gitbook/`, with navigation in `SUMMARY.md` and optimized WebP images in `.gitbook/assets/`. This directory is the documentation source. Publication uses GitBook change requests; **Git Sync is not connected**.
 
+## Pending publication: plan wording on the welcome page
+
+Changed on 2026-09-19, not yet published to GitBook. The welcome page (`README.md`) no longer says that LicenseMeter has no paid tiers. It now states what is free on the hosted application, what paid plans add, and that a self-hosted installation includes every feature, with a link to the pricing page. Until this is published, the live welcome page still carries the old sentence, and the onboarding email links new users to the documentation.
+
 ## Microsoft consent and sign-in update
 
 Added on 2026-09-19, not yet published to GitBook. It documents Microsoft's admin consent dialog for the hosted connector (application identity, verified publisher, the six dialog lines mapped to permissions), the first-time sign-in prompt including the admin approval case, and the two enterprise applications. Application names, application IDs, the publisher, the publisher domain and the permission wording were read from Microsoft Graph on that date; re-check them if either registration changes.

@@ -26,6 +26,12 @@ import {
  * reveal whether the address or membership exists.
  */
 
+// The confirm page shares the look of the emails that link to it
+// (src/lib/emailLayout.ts); a browser renders it, so plain CSS is enough.
+const SANS =
+  "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
+const TEXT = "font-size:15px;line-height:23px;color:#555e69;margin:0 0 16px";
+
 const page = (title: string, body: string): Response =>
   new Response(
     `<!doctype html>
@@ -36,13 +42,17 @@ const page = (title: string, body: string): Response =>
 <meta name="robots" content="noindex">
 <title>${escapeHtml(title)} | LicenseMeter</title>
 </head>
-<body style="margin:0;background:#faf8f3;color:#1c1a16;font-family:Georgia,serif">
-<div style="max-width:560px;margin:0 auto;padding:96px 24px">
-  <p style="font-size:17px;margin:0 0 28px">License<span style="color:#a8330d">Meter</span></p>
-  <h1 style="font-size:24px;font-weight:normal;margin:0 0 12px">${escapeHtml(title)}</h1>
-  ${body}
-  <p style="font-family:Arial,sans-serif;font-size:13px;margin-top:32px">
-    <a href="/" style="color:#6b665d">licensemeter.com</a>
+<body style="margin:0;background:#f7f8fa;color:#171b23;${SANS}">
+<div style="max-width:600px;margin:0 auto;padding:64px 16px">
+  <p style="font-size:17px;font-weight:600;letter-spacing:-0.2px;margin:0 0 20px 8px">
+    <img src="/brand-mark.png" width="28" height="28" alt="" style="vertical-align:-7px;margin-right:10px">LicenseMeter
+  </p>
+  <div style="background:#ffffff;border:1px solid #e8ebef;border-top:4px solid #0d9488;border-radius:14px;padding:40px 44px 36px">
+    <h1 style="font-size:24px;line-height:31px;font-weight:600;letter-spacing:-0.4px;margin:0 0 16px">${escapeHtml(title)}</h1>
+    ${body}
+  </div>
+  <p style="font-size:12px;margin:22px 0 0 8px">
+    <a href="/" style="color:#67717e">licensemeter.com</a>
   </p>
 </div>
 </body>
@@ -101,7 +111,7 @@ const workspaceNameFor = async (membershipId: string): Promise<string> => {
 const invalid = (): Response =>
   page(
     "This link is not valid",
-    `<p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+    `<p style="${TEXT}">
       The unsubscribe link is incomplete or expired. Reply to the email instead
       and we take you off the list by hand.
     </p>`,
@@ -109,7 +119,7 @@ const invalid = (): Response =>
 
 const unsubscribeForm = `<form method="post" style="margin-top:20px">
       <button type="submit"
-        style="font-family:Arial,sans-serif;font-size:14px;background:#1c1a16;color:#faf8f3;padding:12px 20px;border:0;cursor:pointer">
+        style="${SANS};font-size:15px;font-weight:600;background:#0f766e;color:#ffffff;line-height:46px;padding:0 26px;border:0;border-radius:8px;cursor:pointer">
         Unsubscribe
       </button>
     </form>`;
@@ -121,9 +131,9 @@ export const GET = async (req: NextRequest): Promise<Response> => {
     const workspace = await workspaceNameFor(parsed.membershipId);
     return page(
       `Unsubscribe from the ${JOB_LABEL[parsed.job]}`,
-      `<p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+      `<p style="${TEXT}">
       No more ${JOB_LABEL[parsed.job]} emails for
-      <strong style="color:#1c1a16">${escapeHtml(workspace)}</strong>.
+      <strong style="color:#171b23;font-weight:600">${escapeHtml(workspace)}</strong>.
       Other admins of the workspace keep getting theirs. Confirm below.
     </p>
     ${unsubscribeForm}`,
@@ -131,8 +141,8 @@ export const GET = async (req: NextRequest): Promise<Response> => {
   }
   return page(
     "Unsubscribe",
-    `<p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
-      No more emails to <strong style="color:#1c1a16">${escapeHtml(parsed.email)}</strong>.
+    `<p style="${TEXT}">
+      No more emails to <strong style="color:#171b23;font-weight:600">${escapeHtml(parsed.email)}</strong>.
       Confirm below and you are off the list.
     </p>
     ${unsubscribeForm}`,
@@ -155,7 +165,7 @@ export const POST = async (req: NextRequest): Promise<Response> => {
       .where(eq(memberships.id, parsed.membershipId));
     return page(
       "You are unsubscribed",
-      `<p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+      `<p style="${TEXT}">
       You get no further ${JOB_LABEL[parsed.job]} emails for
       ${escapeHtml(workspace)}. You can turn them back on any time under
       Settings in LicenseMeter.
@@ -171,7 +181,7 @@ export const POST = async (req: NextRequest): Promise<Response> => {
     .where(sql`lower(${emailSignups.email}) = lower(${parsed.email})`);
   return page(
     "You are unsubscribed",
-    `<p style="font-family:Arial,sans-serif;font-size:14px;color:#6b665d;line-height:1.55">
+    `<p style="${TEXT}">
       ${escapeHtml(parsed.email)} gets no further emails from us. If this was
       a mistake, just sign up again on the homepage.
     </p>`,

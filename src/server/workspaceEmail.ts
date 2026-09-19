@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
-import { signInPath, siteUrl } from "~/env";
+import { siteUrl } from "~/env";
 import { workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
 import { memberships, type TenantRow } from "~/server/db/schema";
@@ -152,7 +152,6 @@ export const sendJoinApproved = async (
       html: joinApprovedHtml({
         tenantName: name,
         appUrl: siteUrl(),
-        signInUrl: `${siteUrl()}${signInPath()}`,
       }),
     },
     "join-approved",

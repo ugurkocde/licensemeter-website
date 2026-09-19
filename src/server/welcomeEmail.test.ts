@@ -48,7 +48,12 @@ describe("welcomeHtml", () => {
   });
 
   it("links connect, security and home with the campaign tag, and unsubscribe", () => {
-    expect(html).toContain("/app/connect?utm_source=welcome_email");
+    // App links go through sign-in: the reader has no account yet, and a
+    // signed-out request to an /app path lands on the marketing home page.
+    expect(html).toContain(
+      "/sign-in?returnTo=%2Fapp%2Fconnect&amp;utm_source=welcome_email",
+    );
+    expect(html).not.toContain('href="https://licensemeter.com/app/');
     expect(html).toContain("/security?utm_source=welcome_email");
     expect(html).toContain("/dpa?utm_source=welcome_email");
     expect(html).toContain("pre-signed AVV (DPA)");
@@ -86,7 +91,7 @@ describe("welcomeHtml", () => {
 
   it("names the accurate consent role and links the CSV import", () => {
     expect(html).toContain("Privileged Role Administrator");
-    expect(html).toContain("/app/connect/csv");
+    expect(html).toContain("returnTo=%2Fapp%2Fconnect%2Fcsv");
   });
 
   it("offers the instant scan to Application Administrators via the chooser page", () => {
@@ -95,9 +100,10 @@ describe("welcomeHtml", () => {
     // The scan sentence links the connect chooser, never /api/scan/start
     // directly: a scan must start from a signed-in browser session.
     expect(html).not.toContain("/api/scan/start");
+    // The button (plus its Outlook twin) and the instant-scan sentence.
     const connectLinks = html.match(
-      /href="https:\/\/licensemeter\.com\/app\/connect\?utm_source=welcome_email/g,
+      /href="https:\/\/licensemeter\.com\/sign-in\?returnTo=%2Fapp%2Fconnect&amp;utm_source=welcome_email/g,
     );
-    expect(connectLinks).toHaveLength(2);
+    expect(connectLinks).toHaveLength(3);
   });
 });
