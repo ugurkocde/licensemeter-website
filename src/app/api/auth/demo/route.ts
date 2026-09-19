@@ -38,6 +38,7 @@ export const POST = async (req: Request) => {
     name: "Demo Admin",
     email: DEMO_EMAIL,
     isDemo: true,
+    emailProven: false,
   });
   const res = NextResponse.redirect(new URL("/app", requestBaseUrl(req)), 303);
   res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());

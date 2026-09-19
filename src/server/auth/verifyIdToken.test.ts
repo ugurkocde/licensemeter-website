@@ -46,7 +46,8 @@ vi.mock("jose", () => ({
   jwtVerify: jwtVerifyMock,
 }));
 
-const { verifyEntraIdToken } = await import("~/server/auth/verifyIdToken");
+const { sessionIdentityOf, verifyEntraIdToken } =
+  await import("~/server/auth/verifyIdToken");
 
 const TID = "11111111-1111-1111-1111-111111111111";
 const AUD = "api://licensemeter-app";
@@ -72,6 +73,7 @@ describe("verifyEntraIdToken: happy path", () => {
       tid: validClaims.tid,
       name: "Ada Lovelace",
       email: "ada@contoso.com",
+      emailProven: false,
       preferred_username: "ada@contoso.com",
     });
     // Verify the options handed to jose pin audience and algorithm.
@@ -92,7 +94,70 @@ describe("verifyEntraIdToken: happy path", () => {
       }),
       AUD,
     );
-    expect(result).toEqual({ oid: validClaims.oid, tid: TID });
+    expect(result).toEqual({
+      oid: validClaims.oid,
+      tid: TID,
+      emailProven: false,
+    });
+  });
+});
+
+describe("verifyEntraIdToken: email proof (xms_edov)", () => {
+  it("proves the email only with xms_edov === true, and lower-cases it", async () => {
+    const result = await verifyEntraIdToken(
+      makeToken({ ...validClaims, email: "Ada@Contoso.com", xms_edov: true }),
+      AUD,
+    );
+    expect(result.emailProven).toBe(true);
+    expect(result.email).toBe("ada@contoso.com");
+  });
+
+  it("reads an absent or false xms_edov as not proven and keeps the email as display value", async () => {
+    for (const extra of [{}, { xms_edov: false }]) {
+      const result = await verifyEntraIdToken(
+        makeToken({ ...validClaims, email: "Ada@Contoso.com", ...extra }),
+        AUD,
+      );
+      expect(result.emailProven).toBe(false);
+      expect(result.email).toBe("Ada@Contoso.com");
+    }
+  });
+
+  it("accepts nothing but the boolean true", async () => {
+    for (const xms_edov of ["true", "True", 1, "1", {}, [true], null]) {
+      const result = await verifyEntraIdToken(
+        makeToken({ ...validClaims, xms_edov }),
+        AUD,
+      );
+      expect(result.emailProven).toBe(false);
+    }
+  });
+
+  it("proves nothing without an email claim, whatever xms_edov says", async () => {
+    for (const email of [undefined, "", "   ", 42]) {
+      const result = await verifyEntraIdToken(
+        makeToken({ ...validClaims, email, xms_edov: true }),
+        AUD,
+      );
+      expect(result.emailProven).toBe(false);
+      expect(result.email).toBeUndefined();
+    }
+  });
+
+  it("never proves preferred_username", async () => {
+    const result = await verifyEntraIdToken(
+      makeToken({
+        oid: validClaims.oid,
+        tid: TID,
+        aud: AUD,
+        iss: validClaims.iss,
+        preferred_username: "victim@contoso.com",
+        xms_edov: true,
+      }),
+      AUD,
+    );
+    expect(result.emailProven).toBe(false);
+    expect(result.email).toBeUndefined();
   });
 });
 
@@ -152,5 +217,49 @@ describe("verifyEntraIdToken: required claims", () => {
         AUD,
       ),
     ).rejects.toThrow(/missing oid\/tid/);
+  });
+});
+
+describe("sessionIdentityOf", () => {
+  const base = { oid: validClaims.oid, tid: TID };
+
+  it("never lets the email claim become the UPN", () => {
+    // Invites match the UPN from any tenant, so a token without
+    // preferred_username must not smuggle the free-text email in its place.
+    const identity = sessionIdentityOf({
+      ...base,
+      email: "victim@contoso.com",
+      emailProven: false,
+    });
+    expect(identity.upn).toBe("");
+    expect(identity.email).toBe("victim@contoso.com");
+    expect(identity.emailProven).toBe(false);
+  });
+
+  it("carries the proof and falls back to the UPN for the display email", () => {
+    expect(
+      sessionIdentityOf({
+        ...base,
+        name: "Ada",
+        email: "ada@contoso.com",
+        preferred_username: "ada@contoso.onmicrosoft.com",
+        emailProven: true,
+      }),
+    ).toEqual({
+      ...base,
+      upn: "ada@contoso.onmicrosoft.com",
+      name: "Ada",
+      email: "ada@contoso.com",
+      isDemo: false,
+      emailProven: true,
+    });
+    const noEmail = sessionIdentityOf({
+      ...base,
+      preferred_username: "ada@contoso.com",
+      emailProven: false,
+    });
+    expect(noEmail.email).toBe("ada@contoso.com");
+    expect(noEmail.name).toBe("ada@contoso.com");
+    expect(noEmail.emailProven).toBe(false);
   });
 });

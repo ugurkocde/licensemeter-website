@@ -10,12 +10,7 @@ import {
 } from "~/server/access";
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
-import {
-  consentStates,
-  memberships,
-  msConnections,
-  tenants,
-} from "~/server/db/schema";
+import { consentStates, msConnections, tenants } from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
 import { runSync } from "~/server/sync/runSync";
 
@@ -36,9 +31,9 @@ const fail = (code: string): never =>
   redirect(`/app/connectors/microsoft?error=${code}`);
 
 /**
- * Admin-consent return leg. Validates the state nonce, requires the granted
- * tenant to be the initiator's own sign-in tenant (one workspace per tenant),
- * binds the initiator as workspace owner, and starts the first sync.
+ * Admin-consent return leg. Validates the state nonce, requires the browser
+ * session of the user who started the flow, attaches the granted Microsoft
+ * tenant to the workspace the flow was started from, and starts the first sync.
  */
 export const GET = async (req: NextRequest) => {
   const params = req.nextUrl.searchParams;
@@ -78,14 +73,19 @@ export const GET = async (req: NextRequest) => {
   // authority URL; reject anything that is not a well-formed GUID before then.
   if (!GUID_PATTERN.test(grantedTid!)) fail("consent_incomplete");
 
-  // The browser finishing the flow must be the one that started it. Checked
-  // before the nonce is consumed so a mismatch does not burn a valid state.
-  // The workos branch below repeats the check against its access context.
-  if (!stateRow!.workosUserId) {
-    const session = await auth();
-    if (!session?.user?.oid || session.user.oid !== stateRow!.oid) {
-      fail("not_allowed");
-    }
+  // The browser finishing the flow must be the one that started it: the same
+  // Entra object id, for every flow. Checked before the nonce is consumed so a
+  // mismatch does not burn a valid state. A state without an object id (filed
+  // before sign-in moved to Entra) can no longer be finished; starting again
+  // takes one click.
+  const session = await auth();
+  if (
+    !stateRow!.oid ||
+    !stateRow!.tenantId ||
+    !session?.user?.oid ||
+    session.user.oid !== stateRow!.oid
+  ) {
+    fail("not_allowed");
   }
 
   // Atomically consume the single-use nonce: a concurrent duplicate callback
@@ -113,108 +113,44 @@ export const GET = async (req: NextRequest) => {
     lastVerifyError: null,
   };
 
-  const isWorkos = !!stateRow!.workosUserId;
-  let tenantId: string;
-
-  if (isWorkos) {
-    // Workspace-first model: the user already has a workspace (auto-provisioned
-    // on sign-in). Microsoft attaches to THAT workspace as a connector instead
-    // of spawning a duplicate. The initiator must be an admin/owner of it.
-    const ctx = await apiAccess("admin");
-    if (!ctx) return fail("not_allowed");
-    if (ctx.membership.workosUserId !== stateRow!.workosUserId) {
-      return fail("not_allowed");
-    }
-    // The consent must land on the workspace it was started from, not on
-    // whichever workspace is active in the browser at callback time.
-    if (stateRow!.tenantId && ctx.tenant.id !== stateRow!.tenantId) {
-      return fail("not_allowed");
-    }
-    const target = ctx.tenant;
-    // One workspace per Microsoft tenant: refuse to steal a tid bound elsewhere.
-    const owner = await db.query.tenants.findFirst({
-      where: eq(tenants.tid, grantedTid!),
-    });
-    if (owner && owner.id !== target.id) return fail("tenant_taken");
-    // Refuse to silently repoint a workspace already bound to another tenant.
-    if (target.tid && target.tid !== grantedTid)
-      return fail("already_connected");
-
-    await db.transaction(async (tx) => {
-      await tx
-        .update(tenants)
-        .set({
-          tid: grantedTid!,
-          consentedAt: new Date(),
-        })
-        .where(eq(tenants.id, target.id));
-      await tx
-        .insert(msConnections)
-        .values({ tenantId: target.id, ...managedConnection })
-        .onConflictDoUpdate({
-          target: msConnections.tenantId,
-          set: managedConnection,
-        });
-    });
-    tenantId = target.id;
-  } else {
-    // Entra mode: the login IS the Microsoft tenant, so the workspace is keyed
-    // by the granted tid (created on first consent) and the initiator is bound
-    // as its owner, all in one transaction so a partial write can't leave a
-    // consented tenant with no connection or owner.
-    tenantId = await db.transaction(async (tx) => {
-      const existing = await tx.query.tenants.findFirst({
-        where: eq(tenants.tid, grantedTid!),
-      });
-      let id: string;
-      let created = false;
-      if (existing) {
-        id = existing.id;
-        await tx
-          .update(tenants)
-          .set({
-            consentedAt: new Date(),
-          })
-          .where(eq(tenants.id, id));
-      } else {
-        const [inserted] = await tx
-          .insert(tenants)
-          .values({
-            tid: grantedTid!,
-            consentedAt: new Date(),
-          })
-          .returning({ id: tenants.id });
-        id = inserted!.id;
-        created = true;
-      }
-      await tx
-        .insert(msConnections)
-        .values({ tenantId: id, ...managedConnection })
-        .onConflictDoUpdate({
-          target: msConnections.tenantId,
-          set: managedConnection,
-        });
-      await tx
-        .insert(memberships)
-        .values({
-          tenantId: id,
-          oid: stateRow!.oid,
-          workosUserId: stateRow!.workosUserId,
-          email: stateRow!.email,
-          name: stateRow!.name,
-          role: "owner",
-        })
-        .onConflictDoUpdate({
-          target: [memberships.tenantId, memberships.email],
-          // Re-consenting on an existing workspace links the identity but must
-          // not promote an existing viewer/admin membership to owner.
-          set: created
-            ? { oid: stateRow!.oid, role: "owner" }
-            : { oid: stateRow!.oid },
-        });
-      return id;
-    });
+  // Workspace-first model: the user already has a workspace (provisioned on
+  // first sign-in). Microsoft attaches to THAT workspace as a connector instead
+  // of spawning a duplicate. The initiator must be an admin/owner of it, judged
+  // by the memberships of their object id right now, not by the state row.
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("not_allowed");
+  if (ctx.user.oid !== stateRow!.oid || ctx.membership.oid !== stateRow!.oid) {
+    return fail("not_allowed");
   }
+  // The consent must land on the workspace it was started from, not on
+  // whichever workspace is active in the browser at callback time.
+  if (ctx.tenant.id !== stateRow!.tenantId) return fail("not_allowed");
+  const target = ctx.tenant;
+  // One workspace per Microsoft tenant: refuse to steal a tid bound elsewhere.
+  const owner = await db.query.tenants.findFirst({
+    where: eq(tenants.tid, grantedTid!),
+  });
+  if (owner && owner.id !== target.id) return fail("tenant_taken");
+  // Refuse to silently repoint a workspace already bound to another tenant.
+  if (target.tid && target.tid !== grantedTid) return fail("already_connected");
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(tenants)
+      .set({
+        tid: grantedTid!,
+        consentedAt: new Date(),
+      })
+      .where(eq(tenants.id, target.id));
+    await tx
+      .insert(msConnections)
+      .values({ tenantId: target.id, ...managedConnection })
+      .onConflictDoUpdate({
+        target: msConnections.tenantId,
+        set: managedConnection,
+      });
+  });
+  const tenantId = target.id;
 
   // Make the connected workspace active so the user lands on it, not the empty
   // one they may have started from.

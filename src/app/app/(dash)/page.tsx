@@ -22,16 +22,17 @@ import {
 import { fmtAgo, fmtDate, fmtMoney, fmtNumber } from "~/lib/format";
 import { calculatePriceCoverage } from "~/lib/priceCoverage";
 import { ALL_RULES, RULE_META } from "~/lib/rules";
+import { upgradePath } from "~/lib/upgrade";
 import type { WasteRuleId } from "~/server/types";
 import { requireAccess, hasRole } from "~/server/access";
 import { db } from "~/server/db";
 import { workspaceHasConnectorOrData } from "~/server/workspaceState";
 import { daysUntilDate } from "~/server/digestDelta";
+import { loadWasteHistory } from "~/server/historyStore";
 import { isShelfwareExempt } from "~/server/waste/engine";
 import {
   findings,
   priceBook,
-  snapshots,
   syncRuns,
   tenantSkus,
   tenantUsers,
@@ -81,7 +82,7 @@ export default async function OverviewPage() {
     ruleAgg,
     lastRun,
     importedUser,
-    historyDesc,
+    wasteHistory,
     resolvedSavings,
     upcomingRenewals,
   ] = await Promise.all([
@@ -116,14 +117,9 @@ export default async function OverviewPage() {
           orderBy: desc(tenantUsers.syncedAt),
         })
       : Promise.resolve(undefined),
-    // Newest 90 days, reversed below into ascending order for the chart.
-    // Ascending with a limit would pin the window to the oldest days ever
-    // collected.
-    db.query.snapshots.findMany({
-      where: eq(snapshots.tenantId, tenantId),
-      orderBy: desc(snapshots.day),
-      limit: 90,
-    }),
+    // Every day inside the plan's history window, newest first, reversed
+    // below into ascending order for the chart.
+    loadWasteHistory(tenantId, ctx.entitlement),
     db
       .select({
         count: sql<number>`count(*)::int`,
@@ -148,7 +144,7 @@ export default async function OverviewPage() {
     }),
   ]);
 
-  const history = [...historyDesc].reverse();
+  const history = [...wasteHistory.rows].reverse();
 
   const priceBySku = new Map(prices.map((p) => [p.skuId, p.monthlyPriceCents]));
 
@@ -560,6 +556,9 @@ export default async function OverviewPage() {
 
       <TrendChart
         currency={currency}
+        windowUpgradeHref={
+          wasteHistory.cutOff ? upgradePath("history24") : undefined
+        }
         points={history.map((s) => ({
           day: s.day,
           spendCents: s.totalMonthlySpendCents,

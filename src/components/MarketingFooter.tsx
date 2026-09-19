@@ -30,6 +30,7 @@ const ENGLISH = {
       links: [
         ["/#get-started", "Start free"],
         ["/msp", "For MSPs"],
+        ["/pricing", "Pricing"],
         ["/connectors", "Connectors"],
         ["/security", "Security"],
         ["/faq", "FAQ"],
@@ -78,6 +79,7 @@ const GERMAN = {
       links: [
         ["/de/security", "Sicherheit"],
         ["/de/trust-center", "Trust Center"],
+        ["/de/pricing", "Preise"],
         ["/connectors", "Konnektoren (EN)"],
       ],
     },
