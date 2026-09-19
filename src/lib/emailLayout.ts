@@ -101,7 +101,7 @@ export const emailButton = (href: string, label: string): string => {
   const text = escapeHtml(label);
   return `<div style="margin:8px 0 24px 0">
 <!--[if mso]>
-<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${href}" style="height:46px;v-text-anchor:middle;width:${width}px" arcsize="18%" stroke="f" fillcolor="${C.brandText}">
+<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:46px;v-text-anchor:middle;width:${width}px" arcsize="18%" stroke="f" fillcolor="${C.brandText}">
 <w:anchorlock/>
 <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold">${text}</center>
 </v:roundrect>

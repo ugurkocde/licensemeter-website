@@ -90,7 +90,7 @@ without signing in.`,
 
 const noticeShell = (args: {
   appUrl: string;
-  /** Plain text, for the document title and the inbox preview. */
+  /** Plain text, for the document title. */
   title: string;
   heading: string;
   body: string;

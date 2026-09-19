@@ -50,6 +50,8 @@ describe("blocks", () => {
   it("give Outlook a button of its own", () => {
     const button = emailButton("https://x.test/a", "Open the findings");
     expect(button).toContain("v:roundrect");
+    // w:anchorlock only works with its namespace bound on the shape.
+    expect(button).toContain('xmlns:w="urn:schemas-microsoft-com:office:word"');
     expect(button.match(/href="https:\/\/x\.test\/a"/g)).toHaveLength(2);
   });
 });
