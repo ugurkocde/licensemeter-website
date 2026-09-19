@@ -235,7 +235,7 @@ describe("loadWasteHistory", () => {
     expect(history.cutOff).toBe(false);
   });
 
-  it("returns the newest rows under a limit and blames the limit, not the window", async () => {
+  it("returns the newest rows under a limit and still reports the cut-off window", async () => {
     const tenant = await seedTenant(1);
     await seedSnapshots(tenant.id);
     const entitlement = await loadEntitlement(tenant, NOW);
@@ -249,8 +249,8 @@ describe("loadWasteHistory", () => {
     expect(history.rows.map((r) => r.day)).toEqual(
       [0, 1, 2, 3, 4].map(monthlyDay),
     );
-    expect(history.cutOff).toBe(false);
-    expect(dbQueries).toBe(1);
+    expect(history.cutOff).toBe(true);
+    expect(dbQueries).toBe(2);
   });
 
   it("checks for older rows only when the hint could show", async () => {

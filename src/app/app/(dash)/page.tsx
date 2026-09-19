@@ -117,10 +117,9 @@ export default async function OverviewPage() {
           orderBy: desc(tenantUsers.syncedAt),
         })
       : Promise.resolve(undefined),
-    // Newest 90 days inside the plan's history window, reversed below into
-    // ascending order for the chart. Ascending with a limit would pin the
-    // window to the oldest days ever collected.
-    loadWasteHistory(tenantId, ctx.entitlement, { limit: 90 }),
+    // Every day inside the plan's history window, newest first, reversed
+    // below into ascending order for the chart.
+    loadWasteHistory(tenantId, ctx.entitlement),
     db
       .select({
         count: sql<number>`count(*)::int`,

@@ -9,8 +9,8 @@ export type WasteHistory = {
   /** Newest first, never older than the workspace's history window. */
   rows: (typeof snapshots.$inferSelect)[];
   /**
-   * True when the plan's window, not `limit`, is what hides older snapshots
-   * from this read: the cue for the "Showing the last 12 months" line.
+   * True when snapshots older than the plan's window exist: the cue for the
+   * "Showing the last 12 months" line. Independent of `limit`.
    */
   cutOff: boolean;
 };
@@ -35,12 +35,10 @@ export async function loadWasteHistory(
     limit,
   });
 
-  // Plans with the full window never see the hint, and a read that filled its
-  // limit was cut by the limit, so both skip the second query.
-  const windowBound = limit === undefined || rows.length < limit;
-  if (!windowBound || !showHistoryHint(entitlement, true)) {
-    return { rows, cutOff: false };
-  }
+  // Plans with the full window never see the hint, so they skip the second
+  // query. A short window always checks: a read that filled its limit says
+  // nothing about what lies beyond the window.
+  if (!showHistoryHint(entitlement, true)) return { rows, cutOff: false };
 
   const [older] = await db
     .select({ day: snapshots.day })
