@@ -203,9 +203,7 @@ describe("Polar webhook", () => {
     expect(await stale.json()).toMatchObject({ result: "stale" });
     expect(await rows()).toMatchObject([{ status: "active" }]);
 
-    await currentDb
-      .update(schema.entitlements)
-      .set({ source: "comped", plan: "msp" });
+    await currentDb.update(schema.entitlements).set({ source: "comped" });
     const comped = await POST(
       request(payload("subscription.revoked", { status: "canceled" }), {
         id: "msg_comped",
@@ -213,7 +211,9 @@ describe("Polar webhook", () => {
     );
     expect(comped.status).toBe(200);
     expect(await comped.json()).toMatchObject({ result: "comped" });
-    expect(await rows()).toMatchObject([{ source: "comped", plan: "msp" }]);
+    expect(await rows()).toMatchObject([
+      { source: "comped", status: "active" },
+    ]);
   });
 
   it("answers 2xx without writing for an event type it does not use", async () => {
