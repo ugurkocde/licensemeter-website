@@ -21,16 +21,17 @@ vi.mock("~/env", () => ({
   billingEnabled: () => true,
 }));
 
-vi.mock("~/server/db", () => ({
-  db: new Proxy(
+vi.mock("~/server/db", async () => {
+  const { createTenantDb } = await import("~/server/db/tenant");
+  const proxy = new Proxy(
     {},
     {
       get: (_t, prop) =>
         (currentDb as unknown as Record<string | symbol, unknown>)[prop],
     },
-  ),
-  schema,
-}));
+  );
+  return { db: createTenantDb(proxy), schema };
+});
 
 vi.mock("~/server/access", () => ({ apiAccess: vi.fn() }));
 
