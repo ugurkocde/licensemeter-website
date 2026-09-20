@@ -1,6 +1,6 @@
 {
-  "id": "4e8a147f-e789-4d4e-b30a-276a77c80622",
-  "prevId": "0b86b8e4-8872-4fbd-8d77-ab3334c41b1d",
+  "id": "8cc2f311-11f9-4022-9121-e623617850d0",
+  "prevId": "4e8a147f-e789-4d4e-b30a-276a77c80622",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -494,12 +494,6 @@
         },
         "tid": {
           "name": "tid",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "workos_user_id": {
-          "name": "workos_user_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -1639,12 +1633,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "workos_user_id": {
-          "name": "workos_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "name": {
           "name": "name",
           "type": "text",
@@ -1701,28 +1689,6 @@
           "method": "btree",
           "with": {}
         },
-        "join_requests_tenant_legacy_email_idx": {
-          "name": "join_requests_tenant_legacy_email_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "email",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"join_requests\".\"oid\" is null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "join_requests_tenant_status_idx": {
           "name": "join_requests_tenant_status_idx",
           "columns": [
@@ -1749,21 +1715,6 @@
           "columns": [
             {
               "expression": "oid",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "join_requests_workos_user_idx": {
-          "name": "join_requests_workos_user_idx",
-          "columns": [
-            {
-              "expression": "workos_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1814,100 +1765,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.membership_claims": {
-      "name": "membership_claims",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "token_hash": {
-          "name": "token_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "requested_by_oid": {
-          "name": "requested_by_oid",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "requested_by_tid": {
-          "name": "requested_by_tid",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "used_at": {
-          "name": "used_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "membership_claims_token_hash_idx": {
-          "name": "membership_claims_token_hash_idx",
-          "columns": [
-            {
-              "expression": "token_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "membership_claims_created_idx": {
-          "name": "membership_claims_created_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": true
-    },
     "public.memberships": {
       "name": "memberships",
       "schema": "",
@@ -1927,12 +1784,6 @@
         },
         "oid": {
           "name": "oid",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "workos_user_id": {
-          "name": "workos_user_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -2017,21 +1868,6 @@
           "columns": [
             {
               "expression": "oid",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "memberships_workos_user_idx": {
-          "name": "memberships_workos_user_idx",
-          "columns": [
-            {
-              "expression": "workos_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2205,12 +2041,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "owner_workos_user_id": {
-          "name": "owner_workos_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "owner_oid": {
           "name": "owner_oid",
           "type": "text",
@@ -2340,22 +2170,6 @@
           ],
           "isUnique": true,
           "where": "\"msp_accounts\".\"stripe_subscription_id\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "msp_accounts_owner_workos_user_idx": {
-          "name": "msp_accounts_owner_workos_user_idx",
-          "columns": [
-            {
-              "expression": "owner_workos_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"msp_accounts\".\"owner_workos_user_id\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -3544,12 +3358,6 @@
           "notNull": true,
           "default": 1000000
         },
-        "workos_org_id": {
-          "name": "workos_org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "domain": {
           "name": "domain",
           "type": "text",
@@ -3710,22 +3518,6 @@
           ],
           "isUnique": true,
           "where": "\"tenants\".\"tid\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "tenants_workos_org_idx": {
-          "name": "tenants_workos_org_idx",
-          "columns": [
-            {
-              "expression": "workos_org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"tenants\".\"workos_org_id\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}

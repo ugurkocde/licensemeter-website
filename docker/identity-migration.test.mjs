@@ -9,7 +9,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 
 const folder = "docker/migrations";
 const upgrade = await readFile(
-  `${folder}/0010_retire_legacy_identity.sql`,
+  `${folder}/0011_retire_legacy_identity.sql`,
   "utf8",
 );
 const journal = JSON.parse(
@@ -23,7 +23,7 @@ async function baseline(t) {
   t.after(() => rm(old, { recursive: true, force: true }));
   await mkdir(join(old, "meta"));
   const { writeFile } = await import("node:fs/promises");
-  const entries = journal.entries.filter((entry) => entry.idx < 10);
+  const entries = journal.entries.filter((entry) => entry.idx < 11);
   await writeFile(
     join(old, "meta/_journal.json"),
     JSON.stringify({ ...journal, entries }),
@@ -110,7 +110,7 @@ for (const [name, fixture, message] of [
           "SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations",
         )
       ).rows[0].n,
-      10,
+      11,
     );
   });
 }

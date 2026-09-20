@@ -1197,3 +1197,21 @@ export const notificationAddresses = pgTable("notification_addresses", {
 }).enableRLS();
 
 export type NotificationAddressRow = typeof notificationAddresses.$inferSelect;
+
+/**
+ * Server-side session revocation. Sessions are stateless signed cookies, so a
+ * stolen cookie would otherwise stay valid until it expires (or AUTH_SECRET is
+ * rotated). Signing out records the token's jti here, and auth() refuses a
+ * session whose jti is present. Rows carry the token expiry and are pruned
+ * lazily. Tokens minted before this table existed have no jti and are treated
+ * as not revocable, so deploying it does not sign anyone out.
+ */
+export const sessionRevocations = pgTable("session_revocations", {
+  jti: text("jti").primaryKey(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type SessionRevocationRow = typeof sessionRevocations.$inferSelect;

@@ -75,8 +75,15 @@
     {
       "idx": 10,
       "version": "7",
-      "when": 1789922426288,
-      "tag": "0010_retire_legacy_identity",
+      "when": 1789923817272,
+      "tag": "0010_session_revocations",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789925960616,
+      "tag": "0011_retire_legacy_identity",
       "breakpoints": true
     }
   ]

@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - name: Check committed migrations match the schema
         run: |
           npx drizzle-kit generate --config docker/drizzle.config.ts --name ci_drift_check
@@ -79,7 +79,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - name: Create isolated Docker configuration
         run: |
           node scripts/setup-docker.mjs

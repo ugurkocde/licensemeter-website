@@ -80,5 +80,29 @@ BEGIN
     RAISE EXCEPTION 'Supabase posture check failed: a foreign key lacks a covering index';
   END IF;
 
+  -- Row Level Security never applies to a table's owner or to a superuser or
+  -- BYPASSRLS role, so the app role must be a plain unprivileged login. If it
+  -- ever owns a public table or gains BYPASSRLS, the RLS posture above is
+  -- silently inert for the app connection.
+  IF EXISTS (
+    SELECT 1
+    FROM pg_roles
+    WHERE rolname = 'licensemeter_app'
+      AND (rolsuper OR rolbypassrls)
+  ) THEN
+    RAISE EXCEPTION 'Posture check failed: licensemeter_app is superuser or has BYPASSRLS';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind = 'r'
+      AND pg_get_userbyid(c.relowner) = 'licensemeter_app'
+  ) THEN
+    RAISE EXCEPTION 'Posture check failed: licensemeter_app owns a public table, so RLS does not apply to it';
+  END IF;
+
   RAISE NOTICE 'Supabase posture check passed';
 END $$;

@@ -1,4 +1,4 @@
--- Hosted upgrade from the schema through migration 0009. Do not use db:push for this upgrade.
+-- Hosted upgrade from the schema through migration 0010. Do not use db:push for this upgrade.
 BEGIN;
 -- Stop old application instances before applying this migration.
 -- Lock before checking so identities cannot change between the check and drop.
