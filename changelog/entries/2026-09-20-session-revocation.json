@@ -1,0 +1,7 @@
+{
+  "title": "Signing out ends the session immediately",
+  "summary": "Signing out now revokes the session on the server, not just in your browser. A copy of the session cookie can no longer be replayed after you sign out; it stops working right away instead of remaining valid until it expires.",
+  "type": "fixed",
+  "publishedOn": "2026-09-20",
+  "idempotencyKey": "licensemeter:2026-09-20-session-revocation"
+}

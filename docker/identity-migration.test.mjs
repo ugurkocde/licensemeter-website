@@ -9,7 +9,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 
 const folder = "docker/migrations";
 const upgrade = await readFile(
-  `${folder}/0010_retire_legacy_identity.sql`,
+  `${folder}/0011_retire_legacy_identity.sql`,
   "utf8",
 );
 const journal = JSON.parse(

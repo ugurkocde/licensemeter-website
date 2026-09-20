@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
@@ -43,7 +44,12 @@ export type SessionUser = {
   emailProven: boolean;
 };
 
-export type Session = { user: SessionUser };
+export type Session = {
+  user: SessionUser;
+  /** Token id and expiry, used by server-side revocation (auth/index.ts). */
+  jti?: string;
+  expiresAt?: number;
+};
 
 export const cookieOptions = (maxAge: number) => ({
   httpOnly: true,
@@ -99,6 +105,7 @@ export const createSessionToken = async (user: SessionUser): Promise<string> =>
   new SignJWT({ ...user })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
+    .setJti(randomUUID())
     .setExpirationTime(`${SESSION_MAX_AGE}s`)
     .sign(key);
 
@@ -141,7 +148,9 @@ const verifyToken = async <T>(token: string | undefined): Promise<T | null> => {
 /** Current session from the request cookies; null when absent or invalid. */
 export const auth = async (): Promise<Session | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  const payload = await verifyToken<Partial<SessionUser>>(token);
+  const payload = await verifyToken<
+    Partial<SessionUser> & { jti?: string; exp?: number }
+  >(token);
   if (!payload?.oid || !payload?.tid) return null;
   return {
     user: {
@@ -155,6 +164,8 @@ export const auth = async (): Promise<Session | null> => {
       // other shape, is not proven. Such sessions stay valid.
       emailProven: payload.emailProven === true,
     },
+    jti: payload.jti,
+    expiresAt: payload.exp,
   };
 };
 
