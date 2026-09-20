@@ -30,7 +30,7 @@ LicenseMeter reads provider data and never removes licenses or changes your tena
 
 ## Quick start
 
-**Self-host with Docker** (Docker Engine with Compose v2 or newer):
+**Self-host with Docker** (Docker Engine with Compose v2 or newer, plus Node.js 24 for the setup helper):
 
 ```bash
 git clone https://github.com/ugurkocde/licensemeter-website.git
