@@ -408,7 +408,9 @@ ${emailButton(emailAppLink(args.appUrl, "/app"), "Open LicenseMeter")}`,
  * that keep billing after the user was disabled or removed. The wording stays
  * careful on purpose. A first scan reports leaks that are months old, so the
  * figure is an estimate from the price book, not a measured bill increase,
- * and a finding is a license to review, not a distinct person.
+ * and a finding is a license to review, not a distinct person. With
+ * "requested" the same figures are framed as a summary an admin asked for,
+ * because no sync ran for it.
  */
 export const leakAlertHtml = (args: {
   tenantName: string;
@@ -422,19 +424,29 @@ export const leakAlertHtml = (args: {
   /** Findings that add nothing to the estimate. */
   zeroCount: number;
   appUrl: string;
+  /** Asked for in Settings instead of triggered by a sync. */
+  requested?: boolean;
 }): string =>
   emailShell({
     baseUrl: args.appUrl,
     title: `Potential license leaks: ${args.tenantName}`,
     body: `${emailHeading(`Potential license leaks: ${escapeHtml(args.tenantName)}`)}
-${emailText(`The latest sync detected ${args.leakCount} finding${args.leakCount === 1 ? "" : "s"} involving
+${emailText(`${
+  args.requested
+    ? `You asked for this summary of ${args.leakCount} open finding${args.leakCount === 1 ? "" : "s"} involving`
+    : `The latest sync detected ${args.leakCount} finding${args.leakCount === 1 ? "" : "s"} involving`
+}
 licenses associated with disabled accounts or application accounts without a
 matching directory user. Combined estimated monthly impact:
 ${emailWaste(`${args.totalImpact}/mo`)}. Review each finding before reclaiming
 licenses. Findings are not a count of distinct people.`)}
 ${emailText(
-  `Newly detected findings may reflect existing issues, especially on a first
-scan. This is not a measured increase in your bill. Estimates depend on your
+  `${
+    args.requested
+      ? `These findings are open right now and may have existed for months.`
+      : `Newly detected findings may reflect existing issues, especially on a first
+scan.`
+  } This is not a measured increase in your bill. Estimates depend on your
 price book and are not confirmed savings. Highest-cost findings appear first.`,
   { size: "small" },
 )}
@@ -460,7 +472,10 @@ ${
     : ""
 }
 ${emailButton(emailAppLink(args.appUrl, "/app/findings"), "Open the findings")}`,
-    footer: `Immediate alert for new offboarding leaks. Turn these off in
+    footer: args.requested
+      ? `An admin of this workspace asked for this email in
+${emailFooterLink(emailAppLink(args.appUrl, "/app/settings"), "Settings")}. No email setting was changed.`
+      : `Immediate alert for new offboarding leaks. Turn these off in
 ${emailFooterLink(emailAppLink(args.appUrl, "/app/settings"), "Settings")}.`,
   });
 

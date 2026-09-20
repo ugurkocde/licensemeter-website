@@ -33,6 +33,8 @@ Settings exposes leak alert emails and monthly PDF report preferences where supp
 
 **Shared notification address** lets Owners and Admins add one team mailbox that receives the workspace email in addition to the Owners and Admins, who all keep their own copy. The address is confirmed by email before anything is sent to it, and it has its own switches for the weekly digest, the monthly report and leak alerts. Everyone who can read that mailbox sees account names and license costs, so choose it deliberately. [Emails from LicenseMeter](emails.md) describes the confirmation and the switches in full.
 
+**Email delivery** shows Owners and Admins what the mail provider reported for recent emails, and holds the two recovery controls: **Send the current findings** emails the offboarding leaks that are open right now, and **Clear block** lets a blocked address receive mail again once its mailbox works. [Emails from LicenseMeter](emails.md) describes both, including their limits.
+
 The activity log records workspace actions. Its purpose is to explain changes inside LicenseMeter; it is not a replacement for a provider's own audit trail.
 
 See [Troubleshooting](../troubleshooting/README.md) for common symptoms.
