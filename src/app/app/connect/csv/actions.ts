@@ -84,6 +84,13 @@ export const submitCsvImport = async (
   if (!oid) {
     return fail("Please sign in again to start a CSV import.");
   }
+  // The demo principal is a fixed, shared workspace and must never create or
+  // claim a second one (the existing.isDemo guard below is not reachable for
+  // the demo tenant, which is seeded with consentedAt set). This mirrors the
+  // instant-scan path, which refuses demo identities outright.
+  if (session.user.isDemo) {
+    return fail("The CSV import is not available for the demo workspace.");
+  }
 
   // --- Input guards (order: session, sizes, rate limit, parse) ------------
   const directoryFile = formData.get("directory");
