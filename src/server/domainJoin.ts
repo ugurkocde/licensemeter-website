@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
 import {
   corporateDomainOf,
@@ -95,9 +95,7 @@ export const holdsJoinableDomain = async (
 /**
  * Gives the person a viewer membership keyed on their object id and reports
  * whether they now have one. A row they already hold keeps its role. A row
- * under their address that belongs to someone else (another object id, or a
- * legacy member who has not linked yet) is never touched: the address alone
- * proves nothing, and the legacy member gets in through the claim flow. An
+ * under their address that belongs to another object id is never touched. An
  * unclaimed row can only be an invite that expired (a live one would have
  * matched at sign-in), and a domain join must not inherit the role it carried.
  */
@@ -126,7 +124,7 @@ const linkViewerMembership = async (
     )
     .limit(1);
   if (existing) {
-    if (existing.oid ?? existing.workosUserId) return false;
+    if (existing.oid) return false;
     const claimed = await tx
       .update(memberships)
       .set({ oid: who.oid, role: "viewer", name: existing.name ?? who.name })
@@ -146,28 +144,6 @@ const linkViewerMembership = async (
     .onConflictDoNothing()
     .returning({ id: memberships.id });
   return inserted.length > 0;
-};
-
-/**
- * Approval of a request filed before sign-in moved to Entra: the row carries
- * no object id, so the membership is created as a legacy one. The person gets
- * in once it is linked, by proven email or by the claim mail.
- */
-const linkLegacyViewerMembership = async (
-  tx: Tx,
-  tenantId: string,
-  who: { email: string; workosUserId: string; name: string | null },
-): Promise<void> => {
-  await tx
-    .insert(memberships)
-    .values({
-      tenantId,
-      workosUserId: who.workosUserId,
-      email: who.email,
-      name: who.name,
-      role: "viewer",
-    })
-    .onConflictDoNothing();
 };
 
 export type DomainJoinOutcome =
@@ -210,24 +186,12 @@ export const applyDomainJoin = async (
     domainHeld: true,
   };
 
-  // The person's own row, or (only with a proven email) the row they filed
-  // under that address before sign-in moved to Entra: a decision made then
-  // still stands.
   const [request] = await db
     .select({ status: joinRequests.status })
     .from(joinRequests)
     .where(
-      and(
-        eq(joinRequests.tenantId, tenant.id),
-        who.emailVerified
-          ? or(
-              eq(joinRequests.oid, who.oid),
-              and(isNull(joinRequests.oid), eq(joinRequests.email, who.email)),
-            )
-          : eq(joinRequests.oid, who.oid),
-      ),
+      and(eq(joinRequests.tenantId, tenant.id), eq(joinRequests.oid, who.oid)),
     )
-    .orderBy(sql`${joinRequests.oid} is null`)
     .limit(1);
 
   const decision = decideDomainJoin({
@@ -399,10 +363,12 @@ export type ApprovalResult =
    * so no membership could be created. The request stays pending and nothing
    * was written.
    */
-  | { status: "address_taken" };
+  | { status: "address_taken" }
+  | { status: "identity_missing" };
 
 /** Rolls the approval back when the membership could not be created. */
 class AddressTakenError extends Error {}
+class IdentityMissingError extends Error {}
 
 const decide = async (
   tx: Tx,
@@ -461,25 +427,20 @@ export const approveJoinRequestRow = async (
     return await db.transaction(async (tx) => {
       const result = await decide(tx, args, "approved");
       if (result.status === "done" && result.changed) {
-        const { email, oid, workosUserId, name } = result.request;
-        if (oid) {
-          const linked = await linkViewerMembership(tx, args.tenantId, {
-            email,
-            oid,
-            name,
-          });
-          if (!linked) throw new AddressTakenError();
-        } else if (workosUserId) {
-          await linkLegacyViewerMembership(tx, args.tenantId, {
-            email,
-            workosUserId,
-            name,
-          });
-        }
+        const { email, oid, name } = result.request;
+        if (!oid) throw new IdentityMissingError();
+        const linked = await linkViewerMembership(tx, args.tenantId, {
+          email,
+          oid,
+          name,
+        });
+        if (!linked) throw new AddressTakenError();
       }
       return result;
     });
   } catch (err) {
+    if (err instanceof IdentityMissingError)
+      return { status: "identity_missing" };
     if (err instanceof AddressTakenError) return { status: "address_taken" };
     throw err;
   }

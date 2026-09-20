@@ -44,7 +44,7 @@ This step is optional. A membership that predates Microsoft sign-in, or an invit
 
 Both requests need `Application.ReadWrite.All` or ownership of the app, use the application's object ID (not the client ID), and return `204 No Content`. They change what the sign-in app's ID tokens contain for every person who signs in afterwards; they do not touch the connector app or any customer tenant. To undo them, remove the two optional claims and send `{ "removeUnverifiedEmailClaim": null }` to restore Microsoft's default.
 
-With the claims in place, an existing member or invited person whose verified email matches is linked automatically on their first Microsoft sign-in. Without them nobody is linked by email: the person uses the claim link that LicenseMeter emails to the address on the membership, which proves control of that mailbox instead.
+A fresh invitation can be accepted across Microsoft tenants only when the token proves the invited email address. Within the workspace's connected Microsoft tenant, the invited UPN or email can also match. Existing memberships are identified by Microsoft object ID. Email recovery for older identities is no longer available.
 
 ## Microsoft registrations
 
@@ -108,3 +108,7 @@ The first workspace created from a company email domain also answers for that do
 After upgrading a hosted database with `db:push`, run `scripts/db-backfill-domain-join-mode.sql` once: workspaces that used to admit colleagues silently move to approval, all others to invite only. Docker deployments get the same step from the bundled migration.
 
 Some activity signals require additional Microsoft licensing or identifiable reports. The application exposes missing signals and falls back where supported. It does not change report privacy settings on your behalf.
+
+## Removing previous identity compatibility
+
+Before deploying the Microsoft-only identity cleanup, follow [the identity upgrade procedure](docs/retire-legacy-identity.md). This upgrade requires the guarded migration, not `db:push`, and removes older email recovery links. Stop application traffic during the schema and application cutover.

@@ -25,7 +25,7 @@ Enter the address, choose **Viewer (finance)** for read-only reporting or **Admi
 
 ## Have the colleague sign in
 
-Where email delivery is configured, the colleague receives a sign-in link. Otherwise, direct them to the installation's sign-in page. They sign in with the Microsoft work or school account that belongs to the invited address. If Microsoft does not confirm that address at sign-in, LicenseMeter emails a claim link to it, and opening that link while signed in completes the match.
+Where email delivery is configured, the colleague receives a sign-in link. Otherwise, direct them to the installation's sign-in page. They sign in with the Microsoft work or school account that belongs to the invited address. For a colleague from another Microsoft tenant, Microsoft must confirm the invited email address in the sign-in token. Within the workspace's connected Microsoft tenant, the invited UPN or email can also match. If the invitation does not match, ask an Owner or Admin to check the invited address. Older account recovery links are no longer supported.
 
 The invite expires after **14 days** while unclaimed. **Resend** restarts that period. If the person already signed in, have them refresh and check the workspace switcher.
 {% endstep %}

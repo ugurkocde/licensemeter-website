@@ -60,7 +60,6 @@ type TestCtx = {
     id: string;
     tenantId: string;
     oid: string | null;
-    workosUserId: string | null;
     email: string;
     name: string | null;
     role: "viewer" | "admin" | "owner";
@@ -305,7 +304,6 @@ function makeCtx(
       id: "22222222-2222-2222-2222-222222222222",
       tenantId: tenant.id,
       oid: "oid-1",
-      workosUserId: null,
       email: "admin@contoso.test",
       name: "Admin",
       role,

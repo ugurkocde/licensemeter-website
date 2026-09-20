@@ -10,7 +10,6 @@ const {
   joinApprovedHtml,
   joinRequestHtml,
   leakAlertHtml,
-  membershipClaimHtml,
   reportHtml,
   workspaceDeletedHtml,
 } = await import("~/server/email");
@@ -46,11 +45,6 @@ const TEMPLATES: Record<string, string> = {
     appUrl,
   }),
   joinApproved: joinApprovedHtml({ tenantName: HOSTILE, appUrl }),
-  membershipClaim: membershipClaimHtml({
-    claimUrl: 'https://licensemeter.com/auth/claim?token=a"b&x=1',
-    appUrl,
-    minutes: 30,
-  }),
   digest: digestHtml({
     tenantName: HOSTILE,
     currency: "EUR",
@@ -166,12 +160,6 @@ describe("app links", () => {
     expect(TEMPLATES.report).toContain(to("/app"));
     expect(TEMPLATES.leakAlert).toContain(to("/app/findings"));
     expect(TEMPLATES.leakAlert).toContain(to("/app/settings"));
-  });
-
-  it("keep the one-time claim link intact and escaped", () => {
-    expect(TEMPLATES.membershipClaim).toContain(
-      'href="https://licensemeter.com/auth/claim?token=a&quot;b&amp;x=1"',
-    );
   });
 });
 

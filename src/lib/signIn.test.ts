@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { validateReturnTo } from "~/server/auth/session";
 
 import {
-  claimNoticeText,
   passThroughReturnTo,
   SIGN_IN_ERROR_TEXT,
   signInErrorText,
@@ -81,11 +80,5 @@ describe("notices", () => {
     const unknown = signInErrorText("<script>alert(1)</script>");
     expect(unknown).toBe(SIGN_IN_ERROR_TEXT.failed);
     expect(signInErrorText(["a", "b"])).toBeNull();
-  });
-
-  it("knows the expired claim link and nothing else", () => {
-    expect(claimNoticeText("expired")).toContain("expired");
-    expect(claimNoticeText("anything")).toBeNull();
-    expect(claimNoticeText(undefined)).toBeNull();
   });
 });

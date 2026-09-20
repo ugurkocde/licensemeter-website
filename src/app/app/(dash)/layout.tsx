@@ -3,7 +3,6 @@ import Link from "next/link";
 
 import { BrandMark } from "~/components/BrandMark";
 import { ChangelogBell } from "~/components/changelog/ChangelogBell";
-import { ClaimMembershipNotice } from "~/components/signin/ClaimMembershipNotice";
 import { JoinRequestNotice } from "~/components/workspace/JoinRequestNotice";
 import { MobileNav } from "~/components/workspace/MobileNav";
 import { NavLinks } from "~/components/workspace/NavLinks";
@@ -129,7 +128,6 @@ export default async function WorkspaceLayout({
             workspaceName={request.tenantName ?? "a workspace"}
           />
         ))}
-        <ClaimMembershipNotice />
         {children}
       </main>
     </div>

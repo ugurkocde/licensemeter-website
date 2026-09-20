@@ -5,9 +5,7 @@ import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AccessContext } from "~/server/access";
-import type { Db } from "~/server/db";
 import * as schema from "~/server/db/schema";
-import { linkLegacyMemberships } from "~/server/identityLink";
 import type { MembershipRole } from "~/server/types";
 
 /**
@@ -70,8 +68,8 @@ const FUTURE = new Date("2026-10-01T00:00:00Z");
 const tenantId = (n: number) =>
   `11111111-1111-1111-1111-${String(n).padStart(12, "0")}`;
 
-/** `id` is the Entra object id; `legacyId` marks a member from before the move. */
-type User = { id: string; email: string; legacyId?: string };
+/** `id` is the Entra object id. */
+type User = { id: string; email: string };
 
 const ALICE: User = {
   id: "00000000-aaaa-bbbb-cccc-00000000000a",
@@ -86,7 +84,6 @@ const ERIN: User = {
   email: "erin@entra.example",
 };
 /** Erin's identity from before sign-in moved to Entra. */
-const ERIN_LEGACY_ID = "user_erin";
 
 async function seedTenant(
   n: number,
@@ -111,7 +108,6 @@ async function seedMember(
       email: user.email,
       role,
       oid: user.id,
-      ...(user.legacyId ? { workosUserId: user.legacyId } : {}),
     })
     .returning();
   return row!;
@@ -201,98 +197,8 @@ describe("ensureMspAccount", () => {
     const accounts = await currentDb.select().from(schema.mspAccounts);
     expect(accounts).toHaveLength(1);
     expect(accounts[0]!.ownerOid).toBe(ALICE.id);
-    expect(accounts[0]!.ownerWorkosUserId).toBeNull();
     expect(await accountOf(tenant)).toBe(first.id);
     expect(await getMspAccount(ctx)).toEqual({ id: first.id, name: null });
-  });
-
-  it("adopts a legacy account when its owner's membership gets linked", async () => {
-    // Erin created her account before sign-in moved to Entra.
-    const tenant = await seedTenant(1);
-    await currentDb.insert(schema.memberships).values({
-      tenantId: tenant.id,
-      email: ERIN.email,
-      role: "owner",
-      workosUserId: ERIN_LEGACY_ID,
-    });
-    const [legacy] = await currentDb
-      .insert(schema.mspAccounts)
-      .values({ ownerWorkosUserId: ERIN_LEGACY_ID })
-      .returning();
-    await currentDb
-      .update(schema.tenants)
-      .set({ mspAccountId: legacy!.id })
-      .where(eq(schema.tenants.id, tenant.id));
-
-    // Her first Microsoft sign-in proves the email: the membership is linked
-    // and the account follows in the same transaction.
-    const linkedTenants = await linkLegacyMemberships(
-      currentDb as unknown as Db,
-      { oid: ERIN.id, email: ERIN.email, name: "Erin" },
-      "proven_email",
-    );
-    expect(linkedTenants).toEqual([tenant.id]);
-
-    const [account] = await currentDb.select().from(schema.mspAccounts);
-    expect(account!.ownerOid).toBe(ERIN.id);
-    expect(account!.ownerWorkosUserId).toBe(ERIN_LEGACY_ID);
-
-    const [membership] = await currentDb
-      .select()
-      .from(schema.memberships)
-      .where(eq(schema.memberships.tenantId, tenant.id));
-    const ctx = ctxFor(ERIN, tenant, membership!);
-    expect(await getMspAccount(ctx)).toEqual({ id: legacy!.id, name: null });
-    expect(await ensureMspAccount(ctx)).toEqual({ id: legacy!.id });
-    expect(await currentDb.select().from(schema.mspAccounts)).toHaveLength(1);
-    // Only the account owner detaches, and the adopted owner still can.
-    expect(await detachWorkspace(ctx, tenant.id)).toEqual({ ok: true });
-  });
-
-  it("finds and adopts a legacy account of an already linked membership", async () => {
-    // The membership carries both ids, the account only the legacy one.
-    const { tenant, ctx } = await seedOwned(1, {
-      ...ERIN,
-      legacyId: ERIN_LEGACY_ID,
-    });
-    const [legacy] = await currentDb
-      .insert(schema.mspAccounts)
-      .values({ ownerWorkosUserId: ERIN_LEGACY_ID })
-      .returning();
-
-    expect(await getMspAccount(ctx)).toEqual({ id: legacy!.id, name: null });
-    expect(await ensureMspAccount(ctx)).toEqual({ id: legacy!.id });
-
-    const accounts = await currentDb.select().from(schema.mspAccounts);
-    expect(accounts).toHaveLength(1);
-    expect(accounts[0]!.ownerOid).toBe(ERIN.id);
-    expect(await accountOf(tenant)).toBe(legacy!.id);
-  });
-
-  it("never hands a legacy account to someone whose membership is not linked to it", async () => {
-    await currentDb
-      .insert(schema.mspAccounts)
-      .values({ ownerWorkosUserId: ERIN_LEGACY_ID });
-    // Erin's own membership is still unlinked; Bob signs in with Microsoft.
-    const erinTenant = await seedTenant(1);
-    await currentDb.insert(schema.memberships).values({
-      tenantId: erinTenant.id,
-      email: ERIN.email,
-      role: "owner",
-      workosUserId: ERIN_LEGACY_ID,
-    });
-    const bob = await seedOwned(2, BOB);
-
-    expect(await getMspAccount(bob.ctx)).toBeNull();
-    expect(await attachWorkspace(bob.ctx, erinTenant.id)).toEqual({
-      ok: false,
-      reason: "noAccount",
-    });
-    const { id } = await ensureMspAccount(bob.ctx);
-    const accounts = await currentDb.select().from(schema.mspAccounts);
-    expect(accounts).toHaveLength(2);
-    expect(accounts.find((a) => a.id === id)!.ownerOid).toBe(BOB.id);
-    expect(accounts.find((a) => a.id !== id)!.ownerOid).toBeNull();
   });
 
   it("can create the account without attaching the active workspace", async () => {
@@ -434,17 +340,15 @@ describe("attachWorkspace", () => {
     expect(await accountOf(stranger.tenant)).toBeNull();
   });
 
-  it("does not match a legacy id that holds the same string as the object id", async () => {
+  it("does not grant ownership through an unclaimed invitation", async () => {
     const { ctx } = await seedOwned(1, ALICE);
     await ensureMspAccount(ctx);
     const target = await seedTenant(2);
-    // An unlinked legacy membership whose legacy id happens to equal Alice's
-    // object id: ownership is judged on the oid column only.
+    // An invitation is not proof of ownership until its Microsoft identity is bound.
     await currentDb.insert(schema.memberships).values({
       tenantId: target.id,
       email: "x@x.example",
       role: "owner",
-      workosUserId: ALICE.id,
     });
 
     expect(await attachWorkspace(ctx, target.id)).toEqual({

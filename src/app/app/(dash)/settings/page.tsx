@@ -467,14 +467,9 @@ export default async function SettingsPage() {
                     {m.email}
                     {/* No object id and no earlier sign-in: an open invite. */}
                     {!m.oid &&
-                      !m.workosUserId &&
                       (inviteExpiry(m.createdAt) < new Date()
                         ? " · invite expired"
                         : ` · invited, expires ${fmtDate(inviteExpiry(m.createdAt))}`)}
-                    {/* A member from before sign-in moved to Microsoft. */}
-                    {!m.oid &&
-                      m.workosUserId &&
-                      " · has not signed in with Microsoft yet"}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
@@ -495,7 +490,7 @@ export default async function SettingsPage() {
                   {isAdmin && !ctx.tenant.isDemo && (
                     <MemberActions
                       membershipId={m.id}
-                      canResend={!m.oid && !m.workosUserId}
+                      canResend={!m.oid}
                       canRemove={m.id !== ctx.membership.id}
                     />
                   )}

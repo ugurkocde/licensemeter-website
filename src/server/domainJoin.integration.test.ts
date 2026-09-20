@@ -143,7 +143,6 @@ describe("approval mode", () => {
       email: "casey@acme.com",
       oid: CASEY_OID,
       tid: ACME_TID,
-      workosUserId: null,
       status: "pending",
     });
     expect(await auditActions(tenantId)).toEqual(["member_join_requested"]);
@@ -483,44 +482,7 @@ describe("rows that belong to someone else", () => {
     expect(kept).toEqual({ tenantId, role: "admin" });
   });
 
-  it("leaves an unlinked legacy member's row alone", async () => {
-    const { tenantId } = await seedDomainWorkspace("auto");
-    await db.insert(schema.memberships).values({
-      tenantId,
-      workosUserId: "user_casey",
-      email: "casey@acme.com",
-      role: "admin",
-    });
-
-    const result = await provisionForSignIn(db, {
-      ...COLLEAGUE,
-      emailVerified: false,
-    });
-
-    expect(result.outcome.kind).toBe("none");
-    const [row] = await db
-      .select()
-      .from(schema.memberships)
-      .where(eq(schema.memberships.workosUserId, "user_casey"));
-    expect(row).toMatchObject({ oid: null, role: "admin" });
-  });
-
-  it("honours a decision recorded before sign-in moved to Entra, for a proven email only", async () => {
-    const { tenantId } = await seedDomainWorkspace("approval");
-    await db.insert(schema.joinRequests).values({
-      tenantId,
-      email: "casey@acme.com",
-      workosUserId: "user_casey",
-      status: "declined",
-      decidedAt: new Date(),
-    });
-
-    const proven = await provisionForSignIn(db, COLLEAGUE);
-    expect(proven.outcome.kind).toBe("none");
-    expect(await db.select().from(schema.joinRequests)).toHaveLength(1);
-  });
-
-  it("approves a request from before the move as a legacy membership", async () => {
+  it("refuses a request without a Microsoft identity and leaves it pending", async () => {
     const { tenantId, ownerMembershipId } =
       await seedDomainWorkspace("approval");
     const [legacy] = await db
@@ -528,7 +490,6 @@ describe("rows that belong to someone else", () => {
       .values({
         tenantId,
         email: "casey@acme.com",
-        workosUserId: "user_casey",
       })
       .returning();
 
@@ -538,12 +499,13 @@ describe("rows that belong to someone else", () => {
       decidedByMembershipId: ownerMembershipId,
     });
 
-    expect(result).toMatchObject({ status: "done", changed: true });
-    const [row] = await db
+    expect(result).toEqual({ status: "identity_missing" });
+    const [request] = await db
       .select()
-      .from(schema.memberships)
-      .where(eq(schema.memberships.workosUserId, "user_casey"));
-    expect(row).toMatchObject({ tenantId, oid: null, role: "viewer" });
+      .from(schema.joinRequests)
+      .where(eq(schema.joinRequests.id, legacy!.id));
+    expect(request!.status).toBe("pending");
+    expect(await db.select().from(schema.memberships)).toHaveLength(1);
   });
 });
 

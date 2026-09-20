@@ -194,32 +194,6 @@ export const joinApprovedHtml = (args: {
   });
 
 /**
- * To the address of a membership from before sign-in moved to Microsoft: the
- * link proves the person signing in can read this mailbox.
- */
-export const membershipClaimHtml = (args: {
-  claimUrl: string;
-  appUrl: string;
-  minutes: number;
-}): string =>
-  noticeShell({
-    appUrl: args.appUrl,
-    title: "Confirm this is your LicenseMeter account",
-    heading: "Confirm this is your LicenseMeter account",
-    body: `Someone signed in to LicenseMeter with a Microsoft account and asked
-    to open the workspaces that belong to this email address. If that was you,
-    confirm it in the same browser you signed in with. The link works once and
-    for ${args.minutes} minutes.`,
-    cta: {
-      href: escapeHtml(args.claimUrl),
-      label: "Confirm and open my workspaces",
-    },
-    footer: `If this was not you, do not open the link and nothing changes:
-    nobody gets access to your workspaces without it. Never forward this
-    email.`,
-  });
-
-/**
  * To a shared notification address an owner or admin added: the confirmation
  * proves that somebody reading that mailbox agreed to receive the workspace
  * email, which no membership vouches for here.

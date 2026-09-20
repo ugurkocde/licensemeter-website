@@ -1,14 +1,4 @@
-import {
-  and,
-  asc,
-  eq,
-  gt,
-  inArray,
-  isNotNull,
-  isNull,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -29,7 +19,6 @@ import {
   type Feature,
 } from "~/server/entitlement";
 import { loadEntitlement } from "~/server/entitlementStore";
-import { linkLegacyMemberships } from "~/server/identityLink";
 import { sendOnboardingEmail } from "~/server/onboarding";
 import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import type { MembershipRole } from "~/server/types";
@@ -188,12 +177,6 @@ const provisionWorkspace = async (session: Session): Promise<boolean> => {
   return provisioned;
 };
 
-type MembershipRow = typeof memberships.$inferSelect;
-
-/** A member from before sign-in moved to Entra who has not been linked yet. */
-const isUnlinkedLegacy = (m: MembershipRow) =>
-  m.oid === null && m.workosUserId !== null;
-
 /**
  * Resolves every workspace the signed-in user may open, then the active one.
  * The one identity is the Entra object id.
@@ -208,15 +191,9 @@ const isUnlinkedLegacy = (m: MembershipRow) =>
  * - unclaimed invites by UPN or unproven email claim: valid only when signing
  *   in FROM the workspace tenant itself, because both are admin/user-mutable
  *   and must not grant cross-tenant access;
- * - legacy memberships (no object id, from before sign-in moved to Entra) by
- *   email, ONLY when the id token proved that email (emailProven). They are
- *   linked on the spot, all of them, and keep role, plan and data. Without the
- *   proof nothing is linked and the person is offered the claim mail instead.
  *
- * An invite is a row nobody ever signed in to (no object id and no legacy id),
- * so the invite rules can never pick up a legacy member's row. Same-tenant
- * sign-in alone still opens nothing: it goes through the workspace's "who can
- * join" setting like a domain match. A person with no membership at all is
+ * An unclaimed invite has no object id. Same-tenant sign-in alone opens
+ * nothing: it goes through the workspace's "who can join" setting like a domain match. A person with no membership at all is
  * provisioned (domain join or a workspace of their own), so sign-in always
  * lands on a dashboard.
  */
@@ -239,7 +216,6 @@ const resolveAccess = async (
       : "";
   const unclaimedInvite = and(
     isNull(memberships.oid),
-    isNull(memberships.workosUserId),
     gt(memberships.createdAt, inviteCutoff),
   );
 
@@ -265,36 +241,17 @@ const resolveAccess = async (
                 eq(tenants.tid, tid),
               )
             : sql`false`,
-          provenEmail
-            ? and(
-                isNull(memberships.oid),
-                isNotNull(memberships.workosUserId),
-                eq(sql`lower(${memberships.email})`, provenEmail),
-              )
-            : sql`false`,
         ),
       )
       .orderBy(asc(tenants.createdAt), asc(tenants.id));
 
   let rows = await accessible();
-  if (provenEmail && rows.some((r) => isUnlinkedLegacy(r.membership))) {
-    await linkLegacyMemberships(
-      db,
-      { oid, email: provenEmail, name: session.user.name || null },
-      "proven_email",
-    );
-    rows = await accessible();
-  }
-  // A legacy row that is still unlinked was skipped on purpose (the person
-  // already has a membership in that workspace) and opens nothing.
-  rows = rows.filter((r) => !isUnlinkedLegacy(r.membership));
-
   if (rows.length === 0) {
     if (isDemo) return null;
     // First sign-in, no invite: provision a workspace (domain join or their
     // own) and re-read, so the user lands on a dashboard rather than a dead end.
     if (!(await provisionWorkspace(session))) return null;
-    rows = (await accessible()).filter((r) => !isUnlinkedLegacy(r.membership));
+    rows = await accessible();
     if (rows.length === 0) return null;
   }
 
@@ -313,11 +270,7 @@ const resolveAccess = async (
       .update(memberships)
       .set({ oid, name: session.user.name || active.membership.name })
       .where(
-        and(
-          eq(memberships.id, active.membership.id),
-          isNull(memberships.oid),
-          isNull(memberships.workosUserId),
-        ),
+        and(eq(memberships.id, active.membership.id), isNull(memberships.oid)),
       )
       .returning({ id: memberships.id });
     if (claimed.length === 0) return null;
@@ -412,12 +365,6 @@ export const apiFeatureAccess = async (
   }
   return { ctx, denied: null };
 };
-
-/**
- * Whether memberships exist that could be this person's but were not linked
- * for lack of proof, so the UI can offer the claim mail. Boolean only.
- */
-export { pendingClaimFor } from "~/server/membershipClaims";
 
 /** Workspace-switch cookie options (validated against memberships per request). */
 export const workspaceCookieOptions = () =>
