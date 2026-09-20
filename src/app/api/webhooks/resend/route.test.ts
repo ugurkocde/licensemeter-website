@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let secret: string | undefined = "whsec_test";
 const applyDeliveryEvent = vi.fn(() => Promise.resolve());
-const verify = vi.fn(() => ({}));
+const verify = vi.fn((...args: unknown[]) => ({ args }));
 
 vi.mock("~/env", () => ({
   env: {
