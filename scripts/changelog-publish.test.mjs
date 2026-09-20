@@ -227,3 +227,44 @@ test("publishAll surfaces API failures without leaking the token", async () => {
       !error.message.includes("secret-token"),
   );
 });
+
+test("validateEntry refuses an email address in the summary", () => {
+  assert.throws(
+    () =>
+      validateEntry(
+        entry({ summary: "Send mail to it-licenses@yourcompany.com now." }),
+        "licensemeter",
+      ),
+    /summary must not contain an email address/,
+  );
+});
+
+test("validateEntry refuses an email address in the title", () => {
+  assert.throws(
+    () =>
+      validateEntry(
+        entry({ title: "Mail to ops@example.org" }),
+        "licensemeter",
+      ),
+    /title must not contain an email address/,
+  );
+});
+
+test("validateEntry refuses a domain-literal address", () => {
+  assert.throws(
+    () =>
+      validateEntry(
+        entry({ summary: "Alerts now reach alerts@[127.0.0.1] directly." }),
+        "licensemeter",
+      ),
+    /summary must not contain an email address/,
+  );
+});
+
+test("validateEntry accepts prose that only describes a mailbox", () => {
+  const out = validateEntry(
+    entry({ summary: "Mail can reach the mailbox behind your ticket queue." }),
+    "licensemeter",
+  );
+  assert.match(out.summary, /ticket queue/);
+});
