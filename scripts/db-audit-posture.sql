@@ -55,11 +55,11 @@ BEGIN
         FROM pg_policy p
         JOIN pg_roles r ON r.oid = ANY (p.polroles)
         WHERE p.polrelid = c.oid
-          AND p.polname = 'app_all'
           AND r.rolname = 'licensemeter_app'
+          AND p.polname IN ('app_all', 'tenant_isolation')
       )
   ) THEN
-    RAISE EXCEPTION 'Supabase posture check failed: a public table lacks the app_all policy';
+    RAISE EXCEPTION 'Supabase posture check failed: a public table lacks an app policy';
   END IF;
 
   IF EXISTS (

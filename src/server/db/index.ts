@@ -6,6 +6,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 import { env } from "~/env";
 import * as schema from "./schema";
+import { createTenantDb } from "./tenant";
 
 export type Db = PostgresJsDatabase<typeof schema>;
 
@@ -50,8 +51,15 @@ const createDb = (): Db => {
  */
 const globalForDb = globalThis as unknown as { db?: Db };
 
-export const db: Db = globalForDb.db ?? createDb();
+const base: Db = globalForDb.db ?? createDb();
 
-if (env.NODE_ENV !== "production" || !env.DATABASE_URL) globalForDb.db = db;
+if (env.NODE_ENV !== "production" || !env.DATABASE_URL) globalForDb.db = base;
+
+/**
+ * The shared database handle. It routes to the active tenant session when one
+ * is set by withTenant(), and to the base connection otherwise, so wiring it
+ * in is behavior-preserving until a caller opts into a tenant context.
+ */
+export const db: Db = createTenantDb(base);
 
 export { schema };
