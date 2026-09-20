@@ -1,0 +1,7 @@
+{
+  "title": "Workspaces already covered by an MSP plan are no longer offered a second Pro plan",
+  "summary": "A workspace that receives a paid plan through a connected MSP account is now recognised as already covered when someone starts a checkout or links a Microsoft Marketplace subscription. Previously it could be offered a second, competing plan, which risked paying twice for the same workspace.",
+  "type": "fixed",
+  "publishedOn": "2026-09-20",
+  "idempotencyKey": "licensemeter:2026-09-20-msp-duplicate-plan-guard"
+}

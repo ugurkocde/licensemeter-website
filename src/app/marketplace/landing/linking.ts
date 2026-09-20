@@ -4,8 +4,9 @@ import type { AccessContext, WorkspaceSummary } from "~/server/access";
 import type { EntitlementOwner } from "~/server/billing/entitlementWrites";
 import { getMspAccount } from "~/server/billing/mspAccount";
 import { db } from "~/server/db";
-import { entitlements } from "~/server/db/schema";
+import { entitlements, tenants } from "~/server/db/schema";
 import { entitlementOf } from "~/server/entitlement";
+import { loadEntitlement } from "~/server/entitlementStore";
 
 export const LANDING_PATH = "/marketplace/landing";
 
@@ -122,6 +123,34 @@ export const ownerConflict = async (
   subscriptionId: string,
   now: Date = new Date(),
 ): Promise<LandingError | null> => {
+  // A workspace can be granted a plan through its attached MSP account without
+  // an entitlements row of its own. Resolve the full entitlement first so an
+  // inherited grant is not mistaken for no coverage (which would let a second
+  // plan be linked to an already-paid workspace).
+  if ("tenantId" in owner) {
+    const tenant = await db.query.tenants.findFirst({
+      where: eq(tenants.id, owner.tenantId),
+    });
+    if (tenant) {
+      const resolved = await loadEntitlement(tenant, now);
+      if (resolved.plan !== "free") {
+        const [own] = await db
+          .select()
+          .from(entitlements)
+          .where(eq(entitlements.tenantId, owner.tenantId))
+          .limit(1);
+        if (
+          own?.source === "marketplace" &&
+          own.providerSubscriptionId === subscriptionId
+        ) {
+          return null;
+        }
+        return own?.source === "marketplace"
+          ? "otherSubscription"
+          : "otherProvider";
+      }
+    }
+  }
   const [existing] = await db
     .select()
     .from(entitlements)
