@@ -1,6 +1,7 @@
 import { env } from "~/env";
 import {
   emailAddressText,
+  emailAmount,
   emailAppLink,
   emailButton,
   emailFooterLink,
@@ -264,11 +265,11 @@ const deltaBlock = (delta: {
 }): string => {
   const fresh =
     delta.newCount > 0
-      ? `<strong>${delta.newCount} new finding${delta.newCount === 1 ? "" : "s"} since last week (+${escapeHtml(delta.newImpact)}/mo).</strong>`
+      ? `<strong>${delta.newCount} new finding${delta.newCount === 1 ? "" : "s"} since last week (${emailAmount(`+${delta.newImpact}/mo`)}).</strong>`
       : "No new findings since last week.";
   const resolved =
     delta.resolvedCount > 0
-      ? ` ${delta.resolvedCount} resolved (${escapeHtml(delta.resolvedImpact)}/mo freed).`
+      ? ` ${delta.resolvedCount} resolved (${emailAmount(`${delta.resolvedImpact}/mo`)} freed).`
       : "";
   return emailText(`${fresh}${resolved}`, { tone: "ink", size: "lead" });
 };
