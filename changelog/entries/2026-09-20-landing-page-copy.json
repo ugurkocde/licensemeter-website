@@ -1,0 +1,7 @@
+{
+  "title": "Simpler landing page closing section",
+  "summary": "Removed the maintainer and operator paragraph beneath the landing page's final call to action.",
+  "type": "improved",
+  "publishedOn": "2026-09-20",
+  "idempotencyKey": "licensemeter:2026-09-20-landing-page-copy"
+}

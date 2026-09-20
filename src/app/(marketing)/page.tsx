@@ -251,19 +251,6 @@ export default function LandingPage() {
             Free to use. No credit card. Read-only access.
           </p>
         </div>
-        <p className="text-ink-faint mx-auto mt-10 max-w-xl text-center text-xs leading-6">
-          Built and maintained by{" "}
-          <a
-            href="https://ugurkoc.de"
-            target="_blank"
-            rel="noreferrer"
-            className="text-ink-soft underline underline-offset-4"
-          >
-            Ugur Koc
-          </a>
-          , Microsoft MVP for Intune and Security Copilot. Operated by Ugurlabs
-          in Düsseldorf, Germany.
-        </p>
       </section>
       <script
         type="application/ld+json"
