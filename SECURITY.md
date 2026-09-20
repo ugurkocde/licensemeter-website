@@ -9,6 +9,7 @@ Only the current main branch is maintained. Update dependencies and deployments 
 - Use HTTPS for real users and keep PostgreSQL off the public network.
 - Separate schema-migration and application credentials.
 - Tenant isolation is enforced in application code. Database access is privileged: the runtime role can access all workspace rows.
+- Row Level Security is enabled on every table, but it is a Data API (Supabase) deny-all control, not a tenant boundary: the runtime role holds a permissive policy. The runtime role must stay a plain login that owns no table and has no `BYPASSRLS`, or RLS is silently inert for it; `scripts/db-audit-posture.sql` fails on either drift. Per-tenant row policies keyed on a request-scoped tenant setting are a planned hardening (see the audit notes).
 - Keep `AUTH_SECRET`, `DATA_ENCRYPTION_KEY`, and backups confidential. Preserve the encryption key for restoration.
 - Review connector permissions and exported remediation scripts before using them.
 - Keep the optional demo limited to synthetic data.
