@@ -122,7 +122,12 @@ export const validateEntry = (entry, productId) => {
     ["title", out.title],
     ["summary", out.summary],
   ]) {
-    if (/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/.test(value)) {
+    // Covers a domain literal (name@[127.0.0.1]) as well as a domain name.
+    if (
+      /[A-Za-z0-9._%+-]+@(?:\[[^\]\s]+\]|[A-Za-z0-9-]+\.[A-Za-z]{2,})/.test(
+        value,
+      )
+    ) {
       throw new Error(
         `${field} must not contain an email address: describe the mailbox instead`,
       );
