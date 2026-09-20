@@ -1,5 +1,6 @@
 import {
   EMAIL_COLORS,
+  emailAddressText,
   EMAIL_MONO,
   EMAIL_SANS,
   emailAppLink,
@@ -195,7 +196,7 @@ ${emailRule()}
 ${emailText("Stuck or missing something? Reply to this email. I read every reply.", { tone: "ink" })}
 <p style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:${C.ink}">Ugur Koc</p>
 <p style="margin:0 0 16px 0;font-size:13px;line-height:20px;color:${C.faint}">Founder, LicenseMeter</p>`,
-    footer: `You receive this one-time email because ${escapeHtml(args.email)} signed in to LicenseMeter for the first time.<br>
+    footer: `You receive this one-time email because ${emailAddressText(args.email)} signed in to LicenseMeter for the first time.<br>
 ${emailFooterLink(DOCS, "Documentation")}
 &nbsp;&middot;&nbsp;
 ${emailFooterLink("https://changelog.ugurlabs.com/?product=licensemeter", "Product updates")}

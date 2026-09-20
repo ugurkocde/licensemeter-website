@@ -1,5 +1,6 @@
 import { env } from "~/env";
 import {
+  emailAddressText,
   emailAppLink,
   emailButton,
   emailFooterLink,
@@ -137,7 +138,7 @@ export const joinRequestHtml = (args: {
   noticeShell({
     appUrl: args.appUrl,
     title: "A colleague asked to join your workspace",
-    heading: `${escapeHtml(args.requesterEmail)} asked to join ${escapeHtml(args.tenantName)}`,
+    heading: `${emailAddressText(args.requesterEmail)} asked to join ${escapeHtml(args.tenantName)}`,
     body: `${emailStrong(args.requesterEmail)} signed in with a verified company
     email and asked for access to the workspace ${emailStrong(args.tenantName)}.
     Nothing is shared until an owner or admin approves the request. Approved
@@ -159,7 +160,7 @@ export const domainJoinedHtml = (args: {
   noticeShell({
     appUrl: args.appUrl,
     title: "A colleague joined your workspace",
-    heading: `${escapeHtml(args.memberEmail)} joined ${escapeHtml(args.tenantName)}`,
+    heading: `${emailAddressText(args.memberEmail)} joined ${escapeHtml(args.tenantName)}`,
     body: `${emailStrong(args.memberEmail)} signed in with a verified company email
     and joined the workspace ${emailStrong(args.tenantName)} as viewer: read-only
     dashboards, findings and exports. You can change the role or remove the
