@@ -35,9 +35,11 @@ import { UPGRADE_PATH } from "~/lib/upgrade";
 
 const SHOW_MONTHLY = "group-has-[#bill-y:checked]/pricing:hidden";
 const SHOW_YEARLY_FLEX = "hidden group-has-[#bill-y:checked]/pricing:flex";
+/* The display toggle for the purchase buttons has to sit on a wrapper: the
+ * button class itself sets `inline-flex`, and Tailwind emits `.inline-flex`
+ * after `.hidden`, so a `hidden` on the anchor would lose. A wrapper with no
+ * competing display class hides reliably and restores `block` on yearly. */
 const SHOW_YEARLY_BLOCK = "hidden group-has-[#bill-y:checked]/pricing:block";
-const SHOW_YEARLY_INLINE_FLEX =
-  "hidden group-has-[#bill-y:checked]/pricing:inline-flex";
 
 const EYEBROW =
   "text-brand-text text-xs font-medium tracking-[0.2em] uppercase";
@@ -364,18 +366,26 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
                     )}
                     {cardOk && (
                       <>
-                        <a
-                          href={cardHref("month")}
-                          className={`${marketplaceHref ? style.secondary : style.primary} ${SHOW_MONTHLY}`}
-                        >
-                          {c.cta.card}
-                        </a>
-                        <a
-                          href={cardHref("year")}
-                          className={`${marketplaceHref ? style.secondary : style.primary} ${SHOW_YEARLY_INLINE_FLEX}`}
-                        >
-                          {c.cta.card}
-                        </a>
+                        <span className={`block ${SHOW_MONTHLY}`}>
+                          <a
+                            href={cardHref("month")}
+                            className={
+                              marketplaceHref ? style.secondary : style.primary
+                            }
+                          >
+                            {c.cta.card}
+                          </a>
+                        </span>
+                        <span className={SHOW_YEARLY_BLOCK}>
+                          <a
+                            href={cardHref("year")}
+                            className={
+                              marketplaceHref ? style.secondary : style.primary
+                            }
+                          >
+                            {c.cta.card}
+                          </a>
+                        </span>
                       </>
                     )}
                     {!marketplaceHref && !cardOk && (

@@ -1,0 +1,7 @@
+{
+  "title": "One card button per billing period on the pricing page",
+  "summary": "On the pricing page, the Monthly and Yearly switch now shows a single card checkout button, linked to the period you picked. Previously the Monthly view showed two identical buttons, one for each period.",
+  "type": "fixed",
+  "publishedOn": "2026-09-19",
+  "idempotencyKey": "licensemeter:2026-09-19-pricing-billing-buttons"
+}
