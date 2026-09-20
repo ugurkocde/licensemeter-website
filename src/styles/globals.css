@@ -97,13 +97,62 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Highlight ring for the active tour anchor. Drawn as a fixed overlay element
- * (see Tour.tsx), not as a class on the anchor itself, so it always paints
- * above the tour backdrop regardless of the anchor's stacking context. */
+/* Spotlight for the active tour anchor. Drawn as a fixed overlay element (see
+ * Tour.tsx), not as a class on the anchor itself, so it always paints above
+ * page stacking contexts. The transparent interior keeps the anchor fully lit
+ * while the huge spread shadow dims everything around it; the first two rings
+ * sit on top of that dim to frame the cut-out. */
 .tour-highlight {
-  outline: 2px solid var(--color-brand);
-  outline-offset: 4px;
-  box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-brand) 18%, transparent);
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 2px var(--color-brand),
+    0 0 0 7px color-mix(in srgb, var(--color-brand) 22%, transparent),
+    0 0 0 9999px rgba(10, 16, 20, 0.55);
+  animation: tour-spotlight-in 0.3s ease both;
+  transition:
+    top 0.28s cubic-bezier(0.2, 0.7, 0.2, 1),
+    left 0.28s cubic-bezier(0.2, 0.7, 0.2, 1),
+    width 0.28s cubic-bezier(0.2, 0.7, 0.2, 1),
+    height 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes tour-spotlight-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tour-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tour-card {
+  animation: tour-card-in 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes tour-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tour-step {
+  animation: tour-step-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
 .meter-bar {
@@ -200,8 +249,14 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .rise,
-  .meter-bar {
+  .meter-bar,
+  .tour-highlight,
+  .tour-card,
+  .tour-step {
     animation: none;
+  }
+  .tour-highlight {
+    transition: none;
   }
   .reveal {
     opacity: 1;
