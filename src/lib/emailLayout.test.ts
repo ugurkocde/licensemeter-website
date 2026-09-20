@@ -111,6 +111,14 @@ describe("emailAddressText", () => {
     expect(html).toContain('href="mailto:b@y.co.uk"');
   });
 
+  it("keeps an apostrophe in the local part inside the link", () => {
+    const html = emailAddressText("Disabled: o'connor@contoso.com");
+    expect(html).toContain("mailto:o&#39;connor@contoso.com");
+    expect(html).toContain(">o&#39;connor@contoso.com</a>");
+    // Escaping first would have linked only what follows the entity.
+    expect(html).not.toContain("mailto:connor@contoso.com");
+  });
+
   it("escapes the text before linking, so markup cannot get in", () => {
     const html = emailAddressText('<img src=x> evil"@contoso.com');
     expect(html).not.toContain("<img");

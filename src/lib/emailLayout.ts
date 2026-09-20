@@ -62,15 +62,23 @@ export const emailAppLink = (
  * of our own keeps the client's linkifier out and the row in one type. Takes
  * plain text, returns HTML.
  */
+// Apostrophes are legal in a local part and common in a UPN (o'connor@).
 const ADDRESS =
-  /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+  /[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 
-export const emailAddressText = (text: string): string =>
-  escapeHtml(text).replace(
-    ADDRESS,
-    (address) =>
-      `<a href="mailto:${address}" style="color:inherit;text-decoration:none">${address}</a>`,
-  );
+export const emailAddressText = (text: string): string => {
+  // Matched on the raw text, because escaping first would hide an apostrophe
+  // inside an entity and cut the address short there.
+  let html = "";
+  let end = 0;
+  for (const match of text.matchAll(ADDRESS)) {
+    const address = escapeHtml(match[0]);
+    html += escapeHtml(text.slice(end, match.index));
+    html += `<a href="mailto:${address}" style="color:inherit;text-decoration:none">${address}</a>`;
+    end = match.index + match[0].length;
+  }
+  return html + escapeHtml(text.slice(end));
+};
 
 /** Small uppercase label above a heading. Plain text. */
 export const emailEyebrow = (text: string, color: string = C.brandText) =>
