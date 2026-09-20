@@ -31,6 +31,8 @@ Use **Members** to invite colleagues, resend expired invitations and manage thei
 
 Settings exposes leak alert emails and monthly PDF report preferences where supported. [Emails from LicenseMeter](emails.md) shows each email, who receives it and how to turn it off. Self-hosted email delivery also depends on the operator's configured email service and scheduler. Use **Product tour** to replay the walkthrough.
 
+**Shared notification address** lets Owners and Admins add one team mailbox that receives the workspace email in addition to the Owners and Admins, who all keep their own copy. The address is confirmed by email before anything is sent to it, and it has its own switches for the weekly digest, the monthly report and leak alerts. Everyone who can read that mailbox sees account names and license costs, so choose it deliberately. [Emails from LicenseMeter](emails.md) describes the confirmation and the switches in full.
+
 The activity log records workspace actions. Its purpose is to explain changes inside LicenseMeter; it is not a replacement for a provider's own audit trail.
 
 See [Troubleshooting](../troubleshooting/README.md) for common symptoms.

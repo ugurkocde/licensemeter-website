@@ -1228,3 +1228,36 @@ export const emailBlocks = pgTable(
     ),
   ],
 ).enableRLS();
+
+/**
+ * The one shared address a workspace can add on top of its owners and admins,
+ * for a team mailbox like it-licenses@example.com. Additive: the people who
+ * already get the mail keep getting it. The address has no membership to hang
+ * a personal opt-out on, so the three switches below are its own opt-out. The
+ * pending columns hold one verification request at a time: only the sha256 of
+ * the token is stored, and a pending change never interrupts the address that
+ * is already verified.
+ */
+export const notificationAddresses = pgTable("notification_addresses", {
+  tenantId: uuid("tenant_id")
+    .primaryKey()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  /** The verified address. Null until the first confirmation. */
+  email: text("email"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  /** Address waiting for its confirmation; replacing it voids the older link. */
+  pendingEmail: text("pending_email"),
+  tokenHash: text("token_hash"),
+  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+  digest: boolean("digest").notNull().default(true),
+  report: boolean("report").notNull().default(true),
+  leakAlerts: boolean("leak_alerts").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+}).enableRLS();
+
+export type NotificationAddressRow = typeof notificationAddresses.$inferSelect;

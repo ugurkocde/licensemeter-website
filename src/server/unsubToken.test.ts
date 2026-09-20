@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   isUnsubJob,
   makeMembershipUnsubToken,
+  makeSharedUnsubToken,
   makeUnsubToken,
   verifyMembershipUnsubToken,
+  verifySharedUnsubToken,
   verifyUnsubToken,
 } from "~/server/unsubToken";
 
@@ -106,5 +108,42 @@ describe("membership unsubscribe tokens", () => {
     expect(isUnsubJob("report")).toBe(true);
     expect(isUnsubJob("welcome")).toBe(false);
     expect(isUnsubJob(null)).toBe(false);
+  });
+});
+
+describe("shared address unsubscribe tokens", () => {
+  const TENANT = "3f0c1a52-6f0e-4a57-9d46-0e1f2a3b4c5d";
+  const OTHER = "7a1b2c3d-0000-4000-8000-000000000001";
+
+  it("round-trips for the same workspace, job and secret", () => {
+    const token = makeSharedUnsubToken(TENANT, "digest", SECRET);
+    expect(verifySharedUnsubToken(TENANT, "digest", token, SECRET)).toBe(true);
+  });
+
+  it("does not transfer to the other job, workspace or secret", () => {
+    const token = makeSharedUnsubToken(TENANT, "digest", SECRET);
+    expect(verifySharedUnsubToken(TENANT, "report", token, SECRET)).toBe(false);
+    expect(verifySharedUnsubToken(OTHER, "digest", token, SECRET)).toBe(false);
+    expect(
+      verifySharedUnsubToken(
+        TENANT,
+        "digest",
+        token,
+        "another-secret-32-characters-long!",
+      ),
+    ).toBe(false);
+    expect(verifySharedUnsubToken(TENANT, "digest", "", SECRET)).toBe(false);
+  });
+
+  it("is a different token kind than the membership and email tokens", () => {
+    const shared = makeSharedUnsubToken(TENANT, "digest", SECRET);
+    expect(verifyMembershipUnsubToken(TENANT, "digest", shared, SECRET)).toBe(
+      false,
+    );
+    expect(verifyUnsubToken(TENANT, shared, SECRET)).toBe(false);
+    const membership = makeMembershipUnsubToken(TENANT, "digest", SECRET);
+    expect(verifySharedUnsubToken(TENANT, "digest", membership, SECRET)).toBe(
+      false,
+    );
   });
 });

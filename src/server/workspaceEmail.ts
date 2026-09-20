@@ -12,19 +12,34 @@ import {
   sendEmail,
   workspaceDeletedHtml,
 } from "~/server/email";
-import type { EmailJob } from "~/server/emailPeriods";
+import {
+  sharedRecipient,
+  type SharedEmailJob,
+} from "~/server/notificationAddress";
 type Tenant = TenantRow;
-export type EmailRecipient = { membershipId: string; email: string };
+
+/**
+ * Who one copy of a workspace email goes to. A membership carries its own
+ * unsubscribe link; the workspace's shared notification address has no
+ * membership and unsubscribes per workspace instead.
+ */
+export type EmailRecipient =
+  | { kind: "membership"; membershipId: string; email: string }
+  | { kind: "shared"; email: string };
 
 /**
  * The one recipient rule for workspace email: owners and admins whose
  * membership is claimed. With a job, people who personally opted out of that
- * email are left out and counted instead. Addresses are deduplicated
- * case-insensitively so nobody gets the same email twice.
+ * email are left out and counted instead, and the workspace's verified shared
+ * address is added when its switch for that job is on. Without a job there is
+ * no switch to honour, so only the memberships are returned. Addresses are
+ * deduplicated case-insensitively so nobody gets the same email twice, and a
+ * membership always wins the duplicate: it keeps the personal unsubscribe link
+ * and the personal opt-out.
  */
 export const workspaceEmailRecipients = async (
   tenantId: string,
-  job?: EmailJob,
+  job?: SharedEmailJob,
 ): Promise<{ recipients: EmailRecipient[]; optedOut: number }> => {
   const rows = await db.query.memberships.findMany({
     where: and(
@@ -51,16 +66,26 @@ export const workspaceEmailRecipients = async (
           ? row.reportOptOut
           : false;
     if (out) optedOut++;
-    else recipients.push({ membershipId: row.id, email });
+    else recipients.push({ kind: "membership", membershipId: row.id, email });
+  }
+  const shared = job ? await sharedRecipient(tenantId, job) : null;
+  if (shared && !seen.has(shared.toLowerCase())) {
+    recipients.push({ kind: "shared", email: shared });
   }
   return { recipients, optedOut };
 };
 
-/** Addresses of every claimed owner/admin, for mail without a personal opt-out. */
+/**
+ * Plain addresses for mail without a personal opt-out. With a job the shared
+ * notification address is included the same way as above.
+ */
 export const workspaceAdminEmails = async (
   tenantId: string,
+  job?: SharedEmailJob,
 ): Promise<string[]> =>
-  (await workspaceEmailRecipients(tenantId)).recipients.map((r) => r.email);
+  (await workspaceEmailRecipients(tenantId, job)).recipients.map(
+    (r) => r.email,
+  );
 
 export const sendWorkspaceDeleted = async (
   tenant: Tenant,

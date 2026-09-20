@@ -64,6 +64,13 @@
       "when": 1789850318461,
       "tag": "0008_email_delivery_tracking",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789916574487,
+      "tag": "0009_notification_addresses",
+      "breakpoints": true
     }
   ]
 }

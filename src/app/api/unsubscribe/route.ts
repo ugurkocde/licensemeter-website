@@ -5,19 +5,27 @@ import { env } from "~/env";
 import { escapeHtml } from "~/lib/html";
 import { db } from "~/server/db";
 import { workspaceLabel } from "~/lib/format";
-import { emailSignups, memberships, tenants } from "~/server/db/schema";
+import {
+  emailSignups,
+  memberships,
+  notificationAddresses,
+  tenants,
+} from "~/server/db/schema";
 import {
   isUnsubJob,
   verifyMembershipUnsubToken,
+  verifySharedUnsubToken,
   verifyUnsubToken,
   type UnsubJob,
 } from "~/server/unsubToken";
 
 /**
- * Unsubscribe endpoint. Two link kinds share it:
+ * Unsubscribe endpoint. Three link kinds share it:
  *  - ?e=&t=  the welcome email, keyed by address;
  *  - ?m=&j=&t=  the weekly digest and monthly report, keyed by membership and
- *    email type, which sets that person's opt-out for that one workspace.
+ *    email type, which sets that person's opt-out for that one workspace;
+ *  - ?w=&j=&t=  the same two emails to a workspace's shared notification
+ *    address, which has no membership, so the switch sits on the workspace.
  * GET only renders a confirm page: mail scanners and link prefetchers
  * (Outlook SafeLinks, Gmail) follow GETs, so the state change happens
  * exclusively on POST. The same POST URL serves RFC 8058 one-click
@@ -62,7 +70,8 @@ const page = (title: string, body: string): Response =>
 
 type Parsed =
   | { kind: "email"; email: string }
-  | { kind: "membership"; membershipId: string; job: UnsubJob };
+  | { kind: "membership"; membershipId: string; job: UnsubJob }
+  | { kind: "shared"; tenantId: string; job: UnsubJob };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -82,6 +91,14 @@ const parse = (req: NextRequest): Parsed | null => {
     if (!verifyMembershipUnsubToken(m, j, sp.get("t") ?? "", env.AUTH_SECRET))
       return null;
     return { kind: "membership", membershipId: m.toLowerCase(), job: j };
+  }
+  const w = sp.get("w");
+  if (w !== null) {
+    const j = sp.get("j");
+    if (!UUID.test(w) || !isUnsubJob(j)) return null;
+    if (!verifySharedUnsubToken(w, j, sp.get("t") ?? "", env.AUTH_SECRET))
+      return null;
+    return { kind: "shared", tenantId: w.toLowerCase(), job: j };
   }
   const e = sp.get("e") ?? "";
   const t = sp.get("t") ?? "";
@@ -104,6 +121,16 @@ const workspaceNameFor = async (membershipId: string): Promise<string> => {
     .from(memberships)
     .innerJoin(tenants, eq(tenants.id, memberships.tenantId))
     .where(eq(memberships.id, membershipId))
+    .limit(1);
+  return tenant ? workspaceLabel(tenant) : "this workspace";
+};
+
+/** Same for a shared-address link, where the token names the workspace itself. */
+const tenantNameFor = async (tenantId: string): Promise<string> => {
+  const [tenant] = await db
+    .select({ name: tenants.name, tid: tenants.tid })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
     .limit(1);
   return tenant ? workspaceLabel(tenant) : "this workspace";
 };
@@ -139,6 +166,18 @@ export const GET = async (req: NextRequest): Promise<Response> => {
     ${unsubscribeForm}`,
     );
   }
+  if (parsed.kind === "shared") {
+    const workspace = await tenantNameFor(parsed.tenantId);
+    return page(
+      `Unsubscribe from the ${JOB_LABEL[parsed.job]}`,
+      `<p style="${TEXT}">
+      No more ${JOB_LABEL[parsed.job]} emails to this shared address for
+      <strong style="color:#171b23;font-weight:600">${escapeHtml(workspace)}</strong>.
+      The owners and admins of the workspace keep getting theirs. Confirm below.
+    </p>
+    ${unsubscribeForm}`,
+    );
+  }
   return page(
     "Unsubscribe",
     `<p style="${TEXT}">
@@ -169,6 +208,23 @@ export const POST = async (req: NextRequest): Promise<Response> => {
       You get no further ${JOB_LABEL[parsed.job]} emails for
       ${escapeHtml(workspace)}. You can turn them back on any time under
       Settings in LicenseMeter.
+    </p>`,
+    );
+  }
+  if (parsed.kind === "shared") {
+    const workspace = await tenantNameFor(parsed.tenantId);
+    // Zero rows for a workspace that removed the address meanwhile: same
+    // response, and the other two switches stay as they are.
+    await db
+      .update(notificationAddresses)
+      .set(parsed.job === "digest" ? { digest: false } : { report: false })
+      .where(eq(notificationAddresses.tenantId, parsed.tenantId));
+    return page(
+      "You are unsubscribed",
+      `<p style="${TEXT}">
+      This address gets no further ${JOB_LABEL[parsed.job]} emails for
+      ${escapeHtml(workspace)}. An owner or admin can turn them back on any
+      time under Settings in LicenseMeter.
     </p>`,
     );
   }
