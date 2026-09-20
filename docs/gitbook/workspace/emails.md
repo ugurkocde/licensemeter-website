@@ -37,7 +37,7 @@ A Monday summary of what changed. It leads with the findings that are new since 
 | Detail | Description |
 | --- | --- |
 | Subject | Starts with "LicenseMeter:" and names your workspace |
-| Sent to | Every Owner and Admin of the workspace, each with their own copy |
+| Sent to | Every Owner and Admin of the workspace, each with their own copy, and the shared notification address if the workspace has one |
 | When | Mondays at 06:00 UTC |
 | Turn it off | **Settings**, under **Email me**, or the unsubscribe link at the bottom of the email |
 
@@ -56,7 +56,7 @@ The email lists the ten most expensive findings first. It then states the subtot
 | Detail | Description |
 | --- | --- |
 | Subject | Names the number of potential license leaks, your workspace and the estimated monthly impact |
-| Sent to | Every Owner and Admin of the workspace |
+| Sent to | Every Owner and Admin of the workspace, and the shared notification address if the workspace has one |
 | When | After a sync that finds new leaks. The scheduled sync runs daily at 03:00 UTC |
 | Turn it off | **Settings**, **Leak alert emails**. This switch applies to the whole workspace |
 
@@ -85,13 +85,56 @@ Nothing is shared until you sign in. If you did not expect the invitation, ignor
 
 | Email | Sent to | When |
 | --- | --- | --- |
-| Monthly report | Owners and Admins who have not turned it off | On the 1st of the month at 07:00 UTC, with the PDF report attached, when the workspace has the monthly report enabled in **Settings** |
+| Monthly report | Owners and Admins who have not turned it off, and the shared notification address | On the 1st of the month at 07:00 UTC, with the PDF report attached, when the workspace has the monthly report enabled in **Settings** |
 | All clear | Owners and Admins who receive the digest | In place of the weekly digest when no findings are open |
 | Access request | Owners and Admins | A colleague with a verified company address asked to join the workspace |
 | Colleague joined | Owners and Admins | A colleague joined automatically because the workspace allows it |
 | Access approved | The person who asked | An Owner or Admin approved their request |
 | Confirm your account | The address of an existing membership | Someone signed in and asked to open the workspaces that belong to this address. The link works once and for a limited time |
 | Workspace deleted | The remaining Owners and Admins | A workspace was deleted. This notice cannot be turned off |
+| Confirm a shared address | The address an Owner or Admin entered | Somebody added a shared notification address. The link works once and for 24 hours |
+
+## Shared notification address
+
+A workspace can add one shared mailbox, for example it-licenses@yourcompany.com, that receives the workspace email as well. It is meant for a team address that nobody signs in with: a ticket queue, a licensing inbox, a distribution list.
+
+The address is added on top of the people who already get the mail. Nobody loses their copy when one is added, and the personal switches under **Email me** keep working exactly as before.
+
+{% hint style="warning" %}
+The emails contain account names and license costs. Everyone who can read that mailbox can read those figures, and the mailbox has no LicenseMeter sign-in and no role. Add an address only if that is what you want.
+{% endhint %}
+
+### How it is confirmed
+
+{% stepper %}
+{% step %}
+#### Enter the address
+
+Under **Settings**, **Shared notification address**, an Owner or Admin enters the address and sends the confirmation email.
+{% endstep %}
+
+{% step %}
+#### Somebody confirms it
+
+LicenseMeter sends one email to that address with a link. Opening the link changes nothing: it shows what the address will receive and asks for a confirmation. The link works once and expires 24 hours after it was sent.
+{% endstep %}
+
+{% step %}
+#### It starts receiving mail
+
+From the confirmation on, the address receives the emails its switches are set to. Until then it receives nothing.
+{% endstep %}
+{% endstepper %}
+
+Entering another address replaces the request and kills the older link. An address that is already confirmed keeps receiving mail while a replacement waits for its confirmation, so a typo never interrupts anything. **Send the link again** mails a fresh link, which also voids the previous one.
+
+### What it receives
+
+Three switches under the address decide whether it gets the weekly digest, the monthly report and leak alerts. They are independent of the workspace switches and of anyone's personal preferences: a workspace that has the monthly report turned off sends none, no matter what the shared address asks for.
+
+Every digest and report to the shared address carries its own unsubscribe link. Using it turns off that one email for that one workspace and touches nobody's membership. **Remove address** under **Settings** deletes the address, any pending confirmation and the switches in one step.
+
+Only Owners and Admins see and change any of this. The sample workspace never sends email and has no shared address.
 
 ## Delivery status
 
@@ -112,6 +155,7 @@ On a self-hosted installation the section is only filled in when the operator co
 - Only Owners and Admins receive the digest, the report and leak alerts. Viewers do not.
 - The digest and the report respect your personal switch, and leak alerts respect the workspace switch.
 - Check **Settings**, **Email delivery** for what the mail provider reported, and whether the address is listed under **Blocked addresses**.
+- A shared notification address only receives mail after somebody confirmed the emailed link, and only for the switches that are on.
 - The sample workspace never sends email.
 
 On a self-hosted installation, email works only when the operator has configured a mail service and the scheduler is running. See [Self-hosting with Docker](../self-hosting/README.md).

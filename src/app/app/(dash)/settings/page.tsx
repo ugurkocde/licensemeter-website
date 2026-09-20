@@ -13,6 +13,7 @@ import { MemberActions } from "~/components/workspace/MemberActions";
 import { MonthlyReportToggle } from "~/components/workspace/MonthlyReportToggle";
 import { ReplayTourButton } from "~/components/workspace/ReplayTourButton";
 import { RoleSelect } from "~/components/workspace/RoleSelect";
+import { SharedNotificationAddress } from "~/components/workspace/SharedNotificationAddress";
 import { Card, Pill } from "~/components/ui";
 import { env } from "~/env";
 import {
@@ -33,6 +34,7 @@ import {
 } from "~/server/db/schema";
 import { holdsJoinableDomain, pendingJoinRequests } from "~/server/domainJoin";
 import { emailEnabled } from "~/server/email";
+import { loadSharedAddress } from "~/server/notificationAddress";
 import { syncStepLabel } from "~/lib/activityLabels";
 
 const Capability = ({
@@ -86,6 +88,7 @@ export default async function SettingsPage() {
     joinByDomain,
     deliveries,
     blocks,
+    sharedAddress,
   ] = await Promise.all([
     db.query.memberships.findMany({
       where: eq(memberships.tenantId, ctx.tenant.id),
@@ -125,6 +128,9 @@ export default async function SettingsPage() {
           orderBy: asc(emailBlocks.email),
         })
       : Promise.resolve([]),
+    // The shared notification address names a mailbox, so it stays with the
+    // owners and admins of a real workspace.
+    canEdit ? loadSharedAddress(ctx.tenant.id) : Promise.resolve(null),
   ]);
 
   return (
@@ -268,6 +274,25 @@ export default async function SettingsPage() {
             )}
           </dl>
         </Card>
+
+        {canEdit && (
+          <Card title="Shared notification address">
+            <SharedNotificationAddress
+              verifiedEmail={
+                sharedAddress?.verifiedAt ? sharedAddress.email : null
+              }
+              pendingEmail={sharedAddress?.pendingEmail ?? null}
+              pendingExpires={
+                sharedAddress?.tokenExpiresAt
+                  ? fmtDateTime(sharedAddress.tokenExpiresAt)
+                  : null
+              }
+              digest={sharedAddress?.digest ?? true}
+              report={sharedAddress?.report ?? true}
+              leakAlerts={sharedAddress?.leakAlerts ?? true}
+            />
+          </Card>
+        )}
 
         {canEdit && (
           <Card title="Email delivery">

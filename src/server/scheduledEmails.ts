@@ -33,7 +33,10 @@ import { notifyOps } from "~/server/ops";
 import { getBranding } from "~/server/billing/branding";
 import { loadEntitlement } from "~/server/entitlementStore";
 import { renderWasteReportPdf } from "~/server/report/renderReport";
-import { makeMembershipUnsubToken } from "~/server/unsubToken";
+import {
+  makeMembershipUnsubToken,
+  makeSharedUnsubToken,
+} from "~/server/unsubToken";
 import {
   workspaceEmailRecipients,
   type EmailRecipient,
@@ -41,9 +44,10 @@ import {
 
 /**
  * Weekly digest and monthly report, shared delivery rules:
- *  - content is built once per tenant, then every owner/admin gets their own
- *    message (nobody sees another recipient, one bad address affects nobody
- *    else) with a personal unsubscribe link and List-Unsubscribe headers;
+ *  - content is built once per tenant, then every owner/admin and the
+ *    workspace's shared notification address get their own message (nobody
+ *    sees another recipient, one bad address affects nobody else) with an
+ *    unsubscribe link of their own and List-Unsubscribe headers;
  *  - every send is claimed in the delivery ledger first (~/server/emailLedger),
  *    so running a job again only reaches people who did not get this period's
  *    email yet;
@@ -94,6 +98,24 @@ export const membershipUnsubscribeUrl = (
   return `${siteUrl()}/api/unsubscribe?m=${membershipId}&j=${job}&t=${t}`;
 };
 
+/** The shared notification address unsubscribes per workspace, not per member. */
+export const sharedUnsubscribeUrl = (
+  tenantId: string,
+  job: EmailJob,
+): string => {
+  const t = makeSharedUnsubToken(tenantId, job, env.AUTH_SECRET);
+  return `${siteUrl()}/api/unsubscribe?w=${tenantId}&j=${job}&t=${t}`;
+};
+
+const unsubscribeUrlFor = (
+  tenantId: string,
+  recipient: EmailRecipient,
+  job: EmailJob,
+): string =>
+  recipient.kind === "membership"
+    ? membershipUnsubscribeUrl(recipient.membershipId, job)
+    : sharedUnsubscribeUrl(tenantId, job);
+
 type Message = {
   subject: string;
   html: (footer: EmailFooter) => string;
@@ -123,10 +145,7 @@ const deliver = async (
     };
     const outcome = await deliverOnce(key, async () => {
       const message = await (built ??= build());
-      const unsubscribeUrl = membershipUnsubscribeUrl(
-        recipient.membershipId,
-        job,
-      );
+      const unsubscribeUrl = unsubscribeUrlFor(tenant.id, recipient, job);
       return {
         subject: message.subject,
         html: message.html({
@@ -134,6 +153,7 @@ const deliver = async (
           emailLabel: EMAIL_LABEL[job],
           unsubscribeUrl,
           settingsUrl: emailAppUrl(siteUrl(), "/app/settings"),
+          shared: recipient.kind === "shared",
         }),
         headers: {
           "List-Unsubscribe": `<${unsubscribeUrl}>`,

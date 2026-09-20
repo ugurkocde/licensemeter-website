@@ -42,6 +42,11 @@ const ACTION_LABELS: Record<string, string> = {
   leak_alerts_changed: "Leak alerts changed",
   monthly_report_changed: "Monthly report changed",
   email_preference_changed: "Personal email preference changed",
+  notification_address_requested: "Shared notification address requested",
+  notification_address_verified: "Shared notification address confirmed",
+  notification_address_removed: "Shared notification address removed",
+  notification_address_preference_changed:
+    "Shared notification address email changed",
   mcp_token_created: "MCP token created",
   mcp_token_revoked: "MCP token revoked",
   dpa_accepted: "Data processing agreement accepted",

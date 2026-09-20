@@ -59,3 +59,31 @@ export const verifyMembershipUnsubToken = (
   const given = Buffer.from(token);
   return expected.length === given.length && timingSafeEqual(expected, given);
 };
+
+/**
+ * Tenant-scoped token for the workspace's shared notification address, which
+ * has no membership to key a token on. Same derived key and same shape as the
+ * membership token above, with a prefix of its own: "shared:" can be neither a
+ * membership id (a uuid never contains a colon) nor an email (no "@"), so the
+ * three message spaces stay disjoint and a shared link can only ever switch
+ * off the shared address.
+ */
+export const makeSharedUnsubToken = (
+  tenantId: string,
+  job: UnsubJob,
+  secret: string,
+): string =>
+  createHmac("sha256", key(secret))
+    .update(`shared:${tenantId.trim().toLowerCase()}:${job}`)
+    .digest("base64url");
+
+export const verifySharedUnsubToken = (
+  tenantId: string,
+  job: UnsubJob,
+  token: string,
+  secret: string,
+): boolean => {
+  const expected = Buffer.from(makeSharedUnsubToken(tenantId, job, secret));
+  const given = Buffer.from(token);
+  return expected.length === given.length && timingSafeEqual(expected, given);
+};

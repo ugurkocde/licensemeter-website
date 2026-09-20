@@ -1,0 +1,7 @@
+{
+  "title": "Send workspace emails to a shared mailbox too",
+  "summary": "A workspace can now add one shared address, for example it-licenses@yourcompany.com, that receives the weekly digest, the monthly report and leak alerts in addition to the owners and admins. Nobody loses their own copy. The address is confirmed by email first: the link works once, expires after 24 hours, and opening it changes nothing until somebody confirms. Three switches decide which of the three emails it gets, every digest and report carries its own unsubscribe link, and owners and admins can replace or remove the address at any time under Settings. These emails contain account names and license costs, so pick a mailbox whose readers should see them.",
+  "type": "new",
+  "publishedOn": "2026-09-20",
+  "idempotencyKey": "licensemeter:2026-09-20-shared-notification-address"
+}

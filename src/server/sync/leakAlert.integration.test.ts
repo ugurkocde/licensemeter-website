@@ -83,6 +83,8 @@ const LEAKS = [
   },
 ];
 
+const SHARED = "it-licenses@contoso.test";
+
 const seedAdmin = (email: string) =>
   currentDb.insert(schema.memberships).values({
     tenantId: TENANT_ID,
@@ -207,5 +209,33 @@ describe("sendLeakAlert", () => {
     );
     expect(sendEmailMock).not.toHaveBeenCalled();
     expect(await currentDb.query.emailDeliveries.findMany()).toHaveLength(0);
+  });
+
+  it("includes the shared notification address while its switch is on", async () => {
+    await seedAdmin("anna@contoso.test");
+    await currentDb.insert(schema.notificationAddresses).values({
+      tenantId: TENANT_ID,
+      email: SHARED,
+      verifiedAt: NOW,
+    });
+
+    await sendLeakAlert(await tenant(), LEAKS, NOW);
+
+    expect(recipientsOf()).toEqual(["anna@contoso.test", SHARED]);
+    expect(await currentDb.query.emailDeliveries.findMany()).toHaveLength(2);
+  });
+
+  it("leaves the shared address out when only its leak switch is off", async () => {
+    await seedAdmin("anna@contoso.test");
+    await currentDb.insert(schema.notificationAddresses).values({
+      tenantId: TENANT_ID,
+      email: SHARED,
+      verifiedAt: NOW,
+      leakAlerts: false,
+    });
+
+    await sendLeakAlert(await tenant(), LEAKS, NOW);
+
+    expect(recipientsOf()).toEqual(["anna@contoso.test"]);
   });
 });

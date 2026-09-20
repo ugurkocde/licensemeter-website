@@ -73,7 +73,8 @@ vi.mock("~/server/report/renderReport", () => ({
 }));
 
 const { runDigestJob, runReportJob } = await import("~/server/scheduledEmails");
-const { verifyMembershipUnsubToken } = await import("~/server/unsubToken");
+const { verifyMembershipUnsubToken, verifySharedUnsubToken } =
+  await import("~/server/unsubToken");
 
 let cachedDdl: string[] | null = null;
 async function schemaDdl(): Promise<string[]> {
@@ -107,6 +108,19 @@ const seedMember = async (
     .returning();
   return row!;
 };
+
+const SHARED = "it-licenses@contoso.test";
+
+/** A confirmed shared notification address for the workspace. */
+const seedSharedAddress = async (
+  overrides: Partial<typeof schema.notificationAddresses.$inferInsert> = {},
+) =>
+  currentDb.insert(schema.notificationAddresses).values({
+    tenantId: TENANT_ID,
+    email: SHARED,
+    verifiedAt: NOW,
+    ...overrides,
+  });
 
 const seedFinding = async (tenantId = TENANT_ID) =>
   currentDb.insert(schema.findings).values({
@@ -415,5 +429,108 @@ describe("runReportJob", () => {
     });
     await runReportJob({ now: NOW });
     expect(await currentDb.query.emailDeliveries.findMany()).toHaveLength(0);
+  });
+});
+
+describe("the shared notification address", () => {
+  it("gets the digest next to the admins, with its own unsubscribe link", async () => {
+    await seedMember("anna@contoso.test");
+    await seedSharedAddress();
+    await seedFinding();
+
+    expect(await runDigestJob({ now: NOW })).toMatchObject({
+      sent: 2,
+      skippedOptedOut: 0,
+      failed: 0,
+    });
+    expect(recipientsOf()).toEqual(["anna@contoso.test", SHARED]);
+
+    const shared = sendEmailMock.mock.calls
+      .map(([args]) => args)
+      .find((args) => args.to[0] === SHARED)!;
+    const url = new URL(
+      (shared.headers?.["List-Unsubscribe"] ?? "").slice(1, -1),
+    );
+    expect(url.pathname).toBe("/api/unsubscribe");
+    expect(url.searchParams.get("w")).toBe(TENANT_ID);
+    expect(url.searchParams.get("j")).toBe("digest");
+    expect(
+      verifySharedUnsubToken(
+        TENANT_ID,
+        "digest",
+        url.searchParams.get("t") ?? "",
+        "test-secret-test-secret-test-secret",
+      ),
+    ).toBe(true);
+    expect(shared.html).toContain(
+      "You get this because this address was added to Acme as a shared notification address.",
+    );
+    expect(shared.html).not.toContain("anna@contoso.test");
+  });
+
+  it("is left out of a job whose switch is off", async () => {
+    await seedMember("anna@contoso.test");
+    await seedSharedAddress({ digest: false });
+    await seedFinding();
+
+    expect(await runDigestJob({ now: NOW })).toMatchObject({ sent: 1 });
+    expect(recipientsOf()).toEqual(["anna@contoso.test"]);
+  });
+
+  it("waits for its confirmation before it gets anything", async () => {
+    await seedMember("anna@contoso.test");
+    await seedSharedAddress({
+      email: null,
+      verifiedAt: null,
+      pendingEmail: SHARED,
+    });
+    await seedFinding();
+
+    expect(await runDigestJob({ now: NOW })).toMatchObject({ sent: 1 });
+    expect(recipientsOf()).toEqual(["anna@contoso.test"]);
+  });
+
+  it("is skipped and counted when the provider blocked it", async () => {
+    await seedMember("anna@contoso.test");
+    await seedSharedAddress();
+    await seedFinding();
+    await currentDb
+      .insert(schema.emailBlocks)
+      .values({ tenantId: TENANT_ID, email: SHARED, reason: "bounced" });
+
+    expect(await runDigestJob({ now: NOW })).toMatchObject({
+      sent: 1,
+      skippedBlocked: 1,
+      failed: 0,
+    });
+    expect(recipientsOf()).toEqual(["anna@contoso.test"]);
+    // Skipped before the claim, like any other blocked recipient.
+    expect(await currentDb.query.emailDeliveries.findMany()).toHaveLength(1);
+  });
+
+  it("gets the monthly report with the same PDF and one ledger row", async () => {
+    await seedMember("anna@contoso.test");
+    await seedSharedAddress();
+    await seedFinding();
+
+    const runAt = new Date("2026-10-01T07:00:00Z");
+    expect(await runReportJob({ now: runAt })).toMatchObject({ sent: 2 });
+    expect(renderPdfMock).toHaveBeenCalledTimes(1);
+    expect(recipientsOf()).toEqual(["anna@contoso.test", SHARED]);
+    expect(await runReportJob({ now: runAt })).toMatchObject({
+      sent: 0,
+      skippedAlreadySent: 2,
+    });
+  });
+
+  it("is left out of the report when only that switch is off", async () => {
+    await seedMember("anna@contoso.test");
+    await seedSharedAddress({ report: false });
+    await seedFinding();
+
+    expect(
+      await runReportJob({ now: new Date("2026-10-01T07:00:00Z") }),
+    ).toMatchObject({ sent: 1 });
+    expect(recipientsOf()).toEqual(["anna@contoso.test"]);
   });
 });

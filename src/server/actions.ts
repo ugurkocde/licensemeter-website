@@ -13,6 +13,7 @@ import {
   apiAccess,
   WORKSPACE_COOKIE,
   workspaceCookieOptions,
+  type AccessContext,
 } from "~/server/access";
 import { audit } from "~/server/audit";
 import {
@@ -60,6 +61,14 @@ import { workspaceLabel } from "~/lib/format";
 import { isValidIsoDate } from "~/lib/isoDate";
 import { encryptSecret, secretAad } from "~/server/crypto";
 import { emailEnabled, inviteHtml, sendEmail } from "~/server/email";
+import {
+  loadSharedAddress,
+  removeSharedAddress,
+  requestVerification,
+  setSharedJob,
+  sharedAddressSchema,
+  type SharedEmailJob,
+} from "~/server/notificationAddress";
 import { notifyOps } from "~/server/ops";
 import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import { maybeSendWelcome } from "~/server/welcome";
@@ -894,6 +903,93 @@ export const setMyEmailPreference = async (
     )
     .where(eq(memberships.id, ctx.membership.id));
   await audit(ctx, "email_preference_changed", { email: job, enabled });
+  revalidateApp();
+  return ok();
+};
+
+/**
+ * The workspace's one shared notification address, a team mailbox that gets
+ * the workspace email in addition to the owners and admins. Adding one only
+ * files a request: the address receives nothing until somebody reading that
+ * mailbox confirms the emailed link.
+ */
+
+/** Verification sends per workspace and day; every one mails a stranger. */
+const VERIFICATION_SENDS_PER_DAY = 5;
+
+const sendVerification = async (
+  ctx: AccessContext,
+  email: string,
+): Promise<ActionResult> => {
+  const allowed = await rateLimitDurable(
+    `notification-address:${ctx.tenant.id}`,
+    VERIFICATION_SENDS_PER_DAY,
+    24 * 60 * 60 * 1000,
+    "deny",
+  );
+  if (!allowed) {
+    return fail("Too many confirmation emails today. Try again tomorrow.");
+  }
+  if (!(await requestVerification(ctx.tenant.id, email))) {
+    return fail("The confirmation email could not be sent to that address.");
+  }
+  await audit(ctx, "notification_address_requested", { email });
+  revalidateApp();
+  return ok();
+};
+
+export const requestNotificationAddress = async (
+  formData: FormData,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
+  const parsed = sharedAddressSchema.safeParse(formData.get("email"));
+  if (!parsed.success) return fail("Enter a valid email address");
+  return sendVerification(ctx, parsed.data);
+};
+
+/** Send the pending request's link again; the older link stops working. */
+export const resendNotificationAddress = async (): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
+  const row = await loadSharedAddress(ctx.tenant.id);
+  if (!row?.pendingEmail) return fail("No address is waiting for confirmation");
+  return sendVerification(ctx, row.pendingEmail);
+};
+
+export const removeNotificationAddress = async (): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
+  const row = await loadSharedAddress(ctx.tenant.id);
+  if (!row) return ok();
+  await removeSharedAddress(ctx.tenant.id);
+  await audit(ctx, "notification_address_removed", {
+    email: row.email ?? row.pendingEmail,
+  });
+  revalidateApp();
+  return ok();
+};
+
+/** One of the three emails the shared address receives. */
+export const setNotificationAddressPreference = async (
+  job: SharedEmailJob,
+  enabled: boolean,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
+  if (job !== "digest" && job !== "report" && job !== "leak") {
+    return fail("Unknown email");
+  }
+  if (typeof enabled !== "boolean") return fail("Invalid value");
+  await setSharedJob(ctx.tenant.id, job, enabled);
+  await audit(ctx, "notification_address_preference_changed", {
+    email: job,
+    enabled,
+  });
   revalidateApp();
   return ok();
 };

@@ -6,7 +6,11 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "~/server/db/schema";
-import { makeMembershipUnsubToken, makeUnsubToken } from "~/server/unsubToken";
+import {
+  makeMembershipUnsubToken,
+  makeSharedUnsubToken,
+  makeUnsubToken,
+} from "~/server/unsubToken";
 
 const SECRET = "test-secret-test-secret-test-secret";
 
@@ -43,7 +47,9 @@ function makeDb(client: PGlite) {
 }
 
 const TENANT_ID = "11111111-1111-1111-1111-111111111111";
+const OTHER_ID = "22222222-2222-2222-2222-222222222222";
 const MEMBERSHIP_ID = "33333333-3333-4333-8333-333333333333";
+const SHARED = "it-licenses@contoso.test";
 
 const request = (query: string, method: "GET" | "POST" = "GET") =>
   new NextRequest(`https://licensemeter.test/api/unsubscribe?${query}`, {
@@ -55,6 +61,17 @@ const memberQuery = (
   token = makeMembershipUnsubToken(MEMBERSHIP_ID, job, SECRET),
   membershipId = MEMBERSHIP_ID,
 ) => `m=${membershipId}&j=${job}&t=${token}`;
+
+const sharedQuery = (
+  job: "digest" | "report",
+  tenantId = TENANT_ID,
+  token = makeSharedUnsubToken(tenantId, job, SECRET),
+) => `w=${tenantId}&j=${job}&t=${token}`;
+
+const sharedAddress = async (tenantId = TENANT_ID) =>
+  currentDb.query.notificationAddresses.findFirst({
+    where: eq(schema.notificationAddresses.tenantId, tenantId),
+  });
 
 const membership = async () =>
   currentDb.query.memberships.findFirst({
@@ -75,6 +92,11 @@ beforeEach(async () => {
     oid: "oid-anna",
     role: "admin",
   });
+  await currentDb.insert(schema.tenants).values({ id: OTHER_ID, name: "Beta" });
+  await currentDb.insert(schema.notificationAddresses).values([
+    { tenantId: TENANT_ID, email: SHARED, verifiedAt: new Date() },
+    { tenantId: OTHER_ID, email: SHARED, verifiedAt: new Date() },
+  ]);
 });
 
 describe("membership unsubscribe links", () => {
@@ -151,5 +173,54 @@ describe("legacy email unsubscribe links", () => {
     expect(await res.text()).toContain("You are unsubscribed");
     const row = await currentDb.query.emailSignups.findFirst();
     expect(row?.unsubscribedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("shared address unsubscribe links", () => {
+  it("GET names the workspace and the email type without changing anything", async () => {
+    const res = await GET(request(sharedQuery("digest")));
+    const html = await res.text();
+    expect(html).toContain("Unsubscribe from the weekly digest");
+    expect(html).toContain("Acme");
+    expect(html).toContain('<form method="post"');
+    expect(await sharedAddress()).toMatchObject({ digest: true });
+  });
+
+  it("POST turns off exactly one job, for one workspace", async () => {
+    const res = await POST(request(sharedQuery("report"), "POST"));
+    expect(await res.text()).toContain("You are unsubscribed");
+    expect(await sharedAddress()).toMatchObject({
+      report: false,
+      digest: true,
+      leakAlerts: true,
+    });
+    // The same address in another workspace keeps its mail.
+    expect(await sharedAddress(OTHER_ID)).toMatchObject({ report: true });
+    // Nobody's membership is touched by a shared link.
+    expect(await membership()).toMatchObject({
+      digestOptOut: false,
+      reportOptOut: false,
+    });
+  });
+
+  it("rejects a membership token used as a shared token", async () => {
+    const memberToken = makeMembershipUnsubToken(
+      MEMBERSHIP_ID,
+      "digest",
+      SECRET,
+    );
+    const res = await POST(
+      request(sharedQuery("digest", TENANT_ID, memberToken), "POST"),
+    );
+    expect(await res.text()).toContain("This link is not valid");
+    expect(await sharedAddress()).toMatchObject({ digest: true });
+  });
+
+  it("does not reveal that the address is gone behind a valid token", async () => {
+    await currentDb
+      .delete(schema.notificationAddresses)
+      .where(eq(schema.notificationAddresses.tenantId, TENANT_ID));
+    const res = await POST(request(sharedQuery("digest"), "POST"));
+    expect(await res.text()).toContain("You are unsubscribed");
   });
 });

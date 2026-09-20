@@ -1243,8 +1243,9 @@ const diffFindings = async (
 /**
  * Immediate email when a sync inserts new offboarding-leak findings, the
  * finding class that recurs forever, so it should not wait for the digest.
- * One ledger-tracked message per owner/admin, keyed by the alert's timestamp;
- * addresses the provider reported as permanently failing are skipped.
+ * One ledger-tracked message per owner/admin and to the workspace's shared
+ * notification address, keyed by the alert's timestamp; addresses the
+ * provider reported as permanently failing are skipped.
  * Fully isolated: any failure goes to ops and never affects the sync result.
  */
 export const sendLeakAlert = async (
@@ -1257,7 +1258,7 @@ export const sendLeakAlert = async (
     const leaks = pickLeakFindings(inserted);
     if (leaks.length === 0) return;
 
-    const to = await workspaceAdminEmails(tenant.id);
+    const to = await workspaceAdminEmails(tenant.id, "leak");
     if (to.length === 0) return;
 
     const message = leakAlertMessage(tenant, leaks);

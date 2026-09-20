@@ -220,6 +220,39 @@ export const membershipClaimHtml = (args: {
   });
 
 /**
+ * To a shared notification address an owner or admin added: the confirmation
+ * proves that somebody reading that mailbox agreed to receive the workspace
+ * email, which no membership vouches for here.
+ */
+export const notificationAddressHtml = (args: {
+  tenantName: string;
+  /** Public confirm page; carries the one-use token, so never a link into /app. */
+  confirmUrl: string;
+  appUrl: string;
+  hours: number;
+}): string =>
+  emailShell({
+    baseUrl: args.appUrl,
+    title: "Confirm this address for LicenseMeter",
+    preheader: `Confirm that ${args.tenantName} may send its LicenseMeter email here.`,
+    body: `${emailHeading("Confirm this address for LicenseMeter")}
+${emailText(`An administrator of the workspace ${emailStrong(args.tenantName)} asked
+LicenseMeter to send that workspace's email to this address, on top of the
+owners and admins who already receive it.`)}
+${emailText(`Those emails can contain account names and license costs, so everyone
+who reads this mailbox will see them.`)}
+${emailText(
+  `Opening the link changes nothing: you confirm on the page it opens. The link
+expires in ${args.hours} hours and works once.`,
+  { size: "small" },
+)}
+${emailButton(escapeHtml(args.confirmUrl), "Confirm this address")}`,
+    footer: `If you did not expect this, ignore this email and nothing is sent
+here. Ask whoever runs ${escapeHtml(args.tenantName)} in your organization if
+you are unsure. Never forward this email.`,
+  });
+
+/**
  * "N new findings since last week (+X/mo). M resolved (Y/mo freed)." The
  * money figures arrive pre-formatted. Zero-count parts degrade gracefully.
  */
@@ -266,10 +299,16 @@ export type EmailFooter = {
   unsubscribeUrl: string;
   /** Page with the personal email toggles. */
   settingsUrl: string;
+  /** The workspace's shared address: no membership, so the reason differs. */
+  shared?: boolean;
 };
 
 const footerBlock = (footer: EmailFooter): string =>
-  `You get this because you are an admin of ${escapeHtml(footer.workspaceName)}.<br>
+  `${
+    footer.shared
+      ? `You get this because this address was added to ${escapeHtml(footer.workspaceName)} as a shared notification address.`
+      : `You get this because you are an admin of ${escapeHtml(footer.workspaceName)}.`
+  }<br>
 ${emailFooterLink(escapeHtml(footer.unsubscribeUrl), `Unsubscribe from the ${footer.emailLabel}`)}
 &nbsp;&middot;&nbsp;
 ${emailFooterLink(escapeHtml(footer.settingsUrl), "Manage email settings")}`;
