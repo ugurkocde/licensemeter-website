@@ -59,14 +59,3 @@ export const signInErrorText = (
   if (typeof code !== "string" || !code) return null;
   return SIGN_IN_ERROR_TEXT[code] ?? SIGN_IN_ERROR_TEXT.failed!;
 };
-
-/** Messages for the ?claim= states of the one-time account confirmation link. */
-export const CLAIM_NOTICE_TEXT: Record<string, string> = {
-  expired:
-    "That confirmation link has expired or was already used. Sign in again and we send you a new one.",
-};
-
-export const claimNoticeText = (
-  state: string | string[] | null | undefined,
-): string | null =>
-  typeof state === "string" ? (CLAIM_NOTICE_TEXT[state] ?? null) : null;

@@ -466,13 +466,12 @@ describe("saveBranding", () => {
     expect((await storedBrand()).brandName).toBeNull();
   });
 
-  it("does not match the object id against the legacy owner column", async () => {
-    // An account from before the move whose legacy owner id happens to hold
-    // the same string as Alice's object id, and that nobody adopted yet.
+  it("requires a Microsoft identity on the account owner", async () => {
+    // An account with no Microsoft owner cannot be managed by this caller.
     await currentDb.insert(schema.mspAccounts).values({
       id: MSP_ID,
       name: "Partner",
-      ownerWorkosUserId: ALICE.id,
+      ownerOid: null,
     });
     const tenant = await seedTenant(1, { mspAccountId: MSP_ID });
     await seedEntitlement({ mspAccountId: MSP_ID, plan: "msp", quantity: 10 });

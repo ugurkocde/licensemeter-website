@@ -8,14 +8,14 @@ import type { Session } from "~/server/auth";
 import * as schema from "~/server/db/schema";
 
 /**
- * Sign-in resolution and the claim-by-email flow against a real Drizzle/PGlite
+ * Sign-in resolution against a real Drizzle/PGlite
  * database (fresh per test, schema generated from the Drizzle definitions).
  * Only the request surface is stubbed: the session, cookies, after() and the
  * mail transport. The rate limiter, the entitlement lookup and every query run
  * for real.
  *
  * The cases are written from the attacker's side first: what a token from
- * another tenant, a forwarded mail or a stale cookie can NOT do.
+ * another tenant or a stale cookie can NOT do.
  */
 
 let currentDb: ReturnType<typeof makeDb>;
@@ -79,11 +79,9 @@ vi.mock("~/server/email", () => ({
     sent.push(mail);
     return Promise.resolve(true);
   },
-  membershipClaimHtml: (args: { claimUrl: string }) => args.claimUrl,
 }));
 
-const { apiAccess, pendingClaimFor } = await import("./access");
-const { requestClaim, redeemClaim } = await import("./membershipClaims");
+const { apiAccess } = await import("./access");
 
 // --- DB harness --------------------------------------------------------------
 
@@ -116,7 +114,6 @@ beforeEach(async () => {
 // --- fixtures ----------------------------------------------------------------
 
 const VICTIM_EMAIL = "vera@victim.example";
-const VICTIM_LEGACY_ID = "user_vera";
 const VICTIM_OID = "00000000-0000-4000-8000-00000000000a";
 const VICTIM_TID = "aaaaaaaa-0000-4000-8000-000000000001";
 const ATTACKER_OID = "00000000-0000-4000-8000-00000000000e";
@@ -164,8 +161,8 @@ const attackerSession = (extra: Partial<Session["user"]> = {}): Session =>
     ...extra,
   });
 
-/** Two workspaces Vera got before sign-in moved to Entra, one of them paid. */
-async function seedLegacyVictim(
+/** Two workspaces Vera can access with her Microsoft identity, one of them paid. */
+async function seedMicrosoftMember(
   overrides: Partial<typeof schema.memberships.$inferInsert> = {},
 ) {
   const created = [
@@ -184,7 +181,7 @@ async function seedLegacyVictim(
       tenantId: tenantId(1),
       email: "Vera@Victim.example",
       role: "owner",
-      workosUserId: VICTIM_LEGACY_ID,
+      oid: VICTIM_OID,
       createdAt: created[0],
       ...overrides,
     },
@@ -192,7 +189,7 @@ async function seedLegacyVictim(
       tenantId: tenantId(2),
       email: VICTIM_EMAIL,
       role: "admin",
-      workosUserId: VICTIM_LEGACY_ID,
+      oid: VICTIM_OID,
       createdAt: created[1],
       ...overrides,
     },
@@ -208,7 +205,7 @@ async function seedLegacyVictim(
     tenantId: tenantId(1),
     version: "1.2",
     language: "en",
-    acceptedByKey: VICTIM_LEGACY_ID,
+    acceptedByKey: VICTIM_OID,
     acceptedByEmail: VICTIM_EMAIL,
   });
   await currentDb.insert(schema.apiTokens).values({
@@ -216,7 +213,7 @@ async function seedLegacyVictim(
     name: "MCP",
     tokenHash: "hash-1",
     tokenPrefix: "lm_abc",
-    createdByKey: VICTIM_LEGACY_ID,
+    createdByKey: VICTIM_OID,
   });
 }
 
@@ -224,23 +221,14 @@ const victimRows = () =>
   currentDb
     .select()
     .from(schema.memberships)
-    .where(eq(schema.memberships.workosUserId, VICTIM_LEGACY_ID));
+    .where(eq(schema.memberships.oid, VICTIM_OID));
 
-const tokenFromMail = (mail: SentMail): string =>
-  new URL(mail.html).searchParams.get("token")!;
-
-// --- linking by proven email ---------------------------------------------------
-
-describe("a legacy member whose email is proven", () => {
-  it("is linked on sign-in and keeps workspaces, roles, plan, DPA record and API tokens", async () => {
-    await seedLegacyVictim();
-    session = victimSession(true);
-
+describe("Microsoft memberships", () => {
+  it("keeps roles, paid access and records without requiring an email match", async () => {
+    await seedMicrosoftMember();
+    session = victimSession(false);
+    session.user.email = "renamed@victim.example";
     const ctx = await apiAccess();
-
-    expect(ctx).not.toBeNull();
-    expect(ctx!.user.oid).toBe(VICTIM_OID);
-    // Oldest workspace is active; both are listed with their roles.
     expect(ctx!.tenant.id).toBe(tenantId(1));
     expect(ctx!.membership.role).toBe("owner");
     expect(ctx!.workspaces.map((w) => [w.id, w.role])).toEqual([
@@ -248,323 +236,27 @@ describe("a legacy member whose email is proven", () => {
       [tenantId(2), "admin"],
     ]);
     expect(ctx!.entitlement.plan).toBe("pro");
-
-    const rows = await victimRows();
-    expect(rows.map((r) => r.oid)).toEqual([VICTIM_OID, VICTIM_OID]);
-    // Nothing was provisioned and nothing tenant-scoped moved.
     expect(await currentDb.select().from(schema.tenants)).toHaveLength(2);
     expect(await currentDb.select().from(schema.dpaAcceptances)).toHaveLength(
       1,
     );
     expect(await currentDb.select().from(schema.apiTokens)).toHaveLength(1);
-    const audit = await currentDb.select().from(schema.auditLog);
-    expect(audit.map((a) => a.action)).toEqual([
-      "member_identity_linked",
-      "member_identity_linked",
-    ]);
-    expect(audit[0]!.detail).toEqual({ via: "proven_email" });
-    expect(await pendingClaimFor(session)).toBe(false);
-
-    // The second request is a plain object id match.
-    const again = await apiAccess();
-    expect(again!.workspaces).toHaveLength(2);
-    expect(await currentDb.select().from(schema.auditLog)).toHaveLength(2);
+    expect(await currentDb.select().from(schema.auditLog)).toHaveLength(0);
   });
-
-  it("links nothing when the membership already belongs to a different object id", async () => {
-    await seedLegacyVictim({ oid: "00000000-0000-4000-8000-0000000000ff" });
-    session = victimSession(true);
-
-    const ctx = await apiAccess();
-
-    const rows = await victimRows();
-    expect(rows.map((r) => r.oid)).toEqual([
-      "00000000-0000-4000-8000-0000000000ff",
-      "00000000-0000-4000-8000-0000000000ff",
-    ]);
-    expect(ctx!.workspaces.map((w) => w.id)).not.toContain(tenantId(1));
-    expect(ctx!.workspaces.map((w) => w.id)).not.toContain(tenantId(2));
-    expect(await pendingClaimFor(session)).toBe(false);
-  });
-});
-
-// --- THE ATTACK ----------------------------------------------------------------
-
-describe("a token from another tenant carrying the victim's email", () => {
-  for (const [label, user] of [
-    ["xms_edov absent", {}],
-    ["xms_edov false", { emailProven: false }],
-    ["a cookie from before emailProven existed", { emailProven: undefined }],
-    ["a non-boolean emailProven", { emailProven: "true" }],
-  ] as const) {
-    it(`links nothing: ${label}`, async () => {
-      await seedLegacyVictim();
-      session = attackerSession(user as Partial<Session["user"]>);
-
+  it.each([false, true])(
+    "never takes over an existing identity through matching email (proven=%s)",
+    async (emailProven) => {
+      await seedMicrosoftMember();
+      session = attackerSession({ emailProven });
       const ctx = await apiAccess();
-
-      // The attacker lands in a workspace of their own and sees nothing else.
-      expect(ctx).not.toBeNull();
-      expect(ctx!.workspaces).toHaveLength(1);
-      expect([tenantId(1), tenantId(2)]).not.toContain(ctx!.tenant.id);
-      expect(ctx!.membership.email).toBe("mallory@attacker.example");
-      expect((await victimRows()).map((r) => r.oid)).toEqual([null, null]);
-      const audit = await currentDb.select().from(schema.auditLog);
-      expect(audit.map((a) => a.action)).not.toContain(
-        "member_identity_linked",
-      );
-      // The UI may offer the claim mail; it answers with a boolean only.
-      expect(await pendingClaimFor(session)).toBe(true);
-    });
-  }
-
-  it("cannot use the invite rules on a fresh legacy row, not even with a matching UPN", async () => {
-    // Created today, so an invite by UPN would still be inside its TTL.
-    await seedLegacyVictim({ createdAt: new Date() });
-    session = attackerSession({ upn: VICTIM_EMAIL });
-
-    const ctx = await apiAccess();
-
-    expect(ctx!.workspaces).toHaveLength(1);
-    expect((await victimRows()).map((r) => r.oid)).toEqual([null, null]);
-  });
-
-  it("cannot pick up the victim's workspace cookie", async () => {
-    await seedLegacyVictim();
-    session = attackerSession();
-    workspaceCookie = tenantId(1);
-
-    const ctx = await apiAccess();
-    expect(ctx!.tenant.id).not.toBe(tenantId(1));
-  });
-
-  it("gets the claim mail delivered to the victim's mailbox, and the victim's click does nothing", async () => {
-    await seedLegacyVictim();
-    session = attackerSession();
-    await requestClaim(session);
-
-    expect(sent).toHaveLength(1);
-    expect(sent[0]!.to).toEqual([VICTIM_EMAIL]);
-
-    // Vera opens the link in her own session: different object id and tenant.
-    const token = tokenFromMail(sent[0]!);
-    expect(await redeemClaim(victimSession(false), token)).toBe(false);
-    expect((await victimRows()).map((r) => r.oid)).toEqual([null, null]);
-  });
-});
-
-// --- claim by email ------------------------------------------------------------
-
-describe("claim by email", () => {
-  it("links every legacy membership of the address for the session that asked", async () => {
-    await seedLegacyVictim();
-    session = victimSession(false);
-    expect(await pendingClaimFor(session)).toBe(true);
-
-    await requestClaim(session);
-    expect(sent).toHaveLength(1);
-    expect(sent[0]!.to).toEqual([VICTIM_EMAIL]);
-    const token = tokenFromMail(sent[0]!);
-
-    // Only the SHA-256 is stored.
-    const [stored] = await currentDb.select().from(schema.membershipClaims);
-    expect(stored!.tokenHash).not.toBe(token);
-    expect(stored!.tokenHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(stored!.email).toBe(VICTIM_EMAIL);
-    expect(stored!.expiresAt.getTime() - stored!.createdAt.getTime()).toBe(
-      30 * 60 * 1000,
-    );
-
-    expect(await redeemClaim(session, token)).toBe(true);
-    expect((await victimRows()).map((r) => r.oid)).toEqual([
-      VICTIM_OID,
-      VICTIM_OID,
-    ]);
-    const audit = await currentDb.select().from(schema.auditLog);
-    expect(audit.map((a) => a.detail)).toEqual([
-      { via: "email_claim" },
-      { via: "email_claim" },
-    ]);
-    expect(await pendingClaimFor(session)).toBe(false);
-
-    const ctx = await apiAccess();
-    expect(ctx!.workspaces.map((w) => w.id)).toContain(tenantId(1));
-    expect(ctx!.workspaces.map((w) => w.id)).toContain(tenantId(2));
-  });
-
-  it("is single use", async () => {
-    await seedLegacyVictim();
-    session = victimSession(false);
-    await requestClaim(session);
-    const token = tokenFromMail(sent[0]!);
-
-    expect(await redeemClaim(session, token)).toBe(true);
-    expect(await redeemClaim(session, token)).toBe(false);
-  });
-
-  it("lets only one of two concurrent clicks win", async () => {
-    await seedLegacyVictim();
-    session = victimSession(false);
-    await requestClaim(session);
-    const token = tokenFromMail(sent[0]!);
-
-    const results = await Promise.all([
-      redeemClaim(session, token),
-      redeemClaim(session, token),
-    ]);
-    expect(results.filter(Boolean)).toHaveLength(1);
-  });
-
-  it("expires after 30 minutes", async () => {
-    await seedLegacyVictim();
-    session = victimSession(false);
-    await requestClaim(session);
-    const token = tokenFromMail(sent[0]!);
-    await currentDb
-      .update(schema.membershipClaims)
-      .set({ expiresAt: new Date(Date.now() - 1000) });
-
-    expect(await redeemClaim(session, token)).toBe(false);
-    expect((await victimRows()).map((r) => r.oid)).toEqual([null, null]);
-  });
-
-  it("cannot be redeemed by a different object id or a different tenant", async () => {
-    await seedLegacyVictim();
-    session = victimSession(false);
-    await requestClaim(session);
-    const token = tokenFromMail(sent[0]!);
-
-    expect(await redeemClaim(attackerSession(), token)).toBe(false);
-    expect(
-      await redeemClaim(
-        sessionOf({ oid: VICTIM_OID, tid: ATTACKER_TID, email: VICTIM_EMAIL }),
-        token,
-      ),
-    ).toBe(false);
-    expect(
-      await redeemClaim(
-        sessionOf({ oid: ATTACKER_OID, tid: VICTIM_TID, email: VICTIM_EMAIL }),
-        token,
-      ),
-    ).toBe(false);
-    expect(await redeemClaim(null, token)).toBe(false);
-    expect((await victimRows()).map((r) => r.oid)).toEqual([null, null]);
-    // A refused attempt does not burn the token for its owner.
-    expect(await redeemClaim(session, token)).toBe(true);
-  });
-
-  it("refuses guessed and malformed tokens", async () => {
-    await seedLegacyVictim();
-    session = victimSession(false);
-    await requestClaim(session);
-    const [stored] = await currentDb.select().from(schema.membershipClaims);
-
-    for (const guess of [
-      "",
-      "x",
-      stored!.tokenHash,
-      "A".repeat(43),
-      `${tokenFromMail(sent[0]!)}x`,
-      "' or 1=1 --",
-    ]) {
-      expect(await redeemClaim(session, guess)).toBe(false);
-    }
-  });
-
-  it("answers the same way and sends nothing when there is nothing to claim", async () => {
-    session = victimSession(false);
-    expect(await pendingClaimFor(session)).toBe(false);
-    expect(await requestClaim(session)).toBeUndefined();
-    expect(sent).toHaveLength(0);
-    expect(await currentDb.select().from(schema.membershipClaims)).toHaveLength(
-      0,
-    );
-
-    await seedLegacyVictim();
-    expect(await requestClaim(session)).toBeUndefined();
-    expect(sent).toHaveLength(1);
-  });
-
-  it("never mails an unclaimed invite or a membership that is already linked", async () => {
-    await currentDb.insert(schema.tenants).values({ id: tenantId(1) });
-    await currentDb.insert(schema.memberships).values({
-      tenantId: tenantId(1),
-      email: VICTIM_EMAIL,
-      role: "admin",
-    });
-    await currentDb.insert(schema.tenants).values({ id: tenantId(2) });
-    await currentDb.insert(schema.memberships).values({
-      tenantId: tenantId(2),
-      email: VICTIM_EMAIL,
-      role: "admin",
-      oid: VICTIM_OID,
-      workosUserId: VICTIM_LEGACY_ID,
-    });
-    session = attackerSession();
-
-    expect(await pendingClaimFor(session)).toBe(false);
-    await requestClaim(session);
-    expect(sent).toHaveLength(0);
-  });
-
-  it("is rate limited per person, per address and tenant, and per address overall", async () => {
-    await seedLegacyVictim();
-    session = victimSession(false);
-    for (let i = 0; i < 6; i++) await requestClaim(session);
-    expect(sent).toHaveLength(3);
-  });
-
-  it("does not let the identities of one foreign tenant use up the owner's budget", async () => {
-    await seedLegacyVictim();
-    // Mallory's tenant mints identity after identity with Vera's address.
-    for (let i = 0; i < 8; i++) {
-      await requestClaim(
-        attackerSession({ oid: `00000000-0000-4000-8000-0000000000${10 + i}` }),
-      );
-    }
-    expect(sent).toHaveLength(3);
-
-    // Vera, from her own tenant, still gets her mail.
-    await requestClaim(victimSession(false));
-    expect(sent).toHaveLength(4);
-    expect(sent[3]!.to).toEqual([VICTIM_EMAIL]);
-  });
-
-  it("caps the mail one address can be sent, whoever asks", async () => {
-    await seedLegacyVictim();
-    for (let t = 0; t < 6; t++) {
-      for (let i = 0; i < 3; i++) {
-        await requestClaim(
-          attackerSession({
-            oid: `00000000-0000-4000-8000-00000000${t}${i}00`,
-            tid: `eeeeeeee-0000-4000-8000-00000000000${t}`,
-          }),
-        );
-      }
-    }
-    expect(sent).toHaveLength(12);
-  });
-
-  it("does nothing for the demo session, a signed-out caller or without mail configured", async () => {
-    await seedLegacyVictim();
-    await requestClaim(null);
-    await requestClaim({
-      user: { ...victimSession(false).user, isDemo: true },
-    });
-    mailEnabled = false;
-    await requestClaim(victimSession(false));
-
-    expect(sent).toHaveLength(0);
-    expect(await currentDb.select().from(schema.membershipClaims)).toHaveLength(
-      0,
-    );
-    expect(
-      await pendingClaimFor({
-        user: { ...victimSession(false).user, isDemo: true },
-      }),
-    ).toBe(false);
-    expect(await pendingClaimFor(null)).toBe(false);
-  });
+      expect(ctx!.workspaces.map((w) => w.id)).not.toContain(tenantId(1));
+      expect(ctx!.workspaces.map((w) => w.id)).not.toContain(tenantId(2));
+      expect((await victimRows()).map((r) => r.oid)).toEqual([
+        VICTIM_OID,
+        VICTIM_OID,
+      ]);
+    },
+  );
 });
 
 // --- invites keep their rules ----------------------------------------------------

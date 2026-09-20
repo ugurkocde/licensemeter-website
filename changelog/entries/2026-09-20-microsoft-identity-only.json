@@ -1,0 +1,7 @@
+{
+  "title": "Microsoft identities now govern all workspace access",
+  "summary": "Workspace membership and MSP billing ownership now use Microsoft identities exclusively. Older email recovery links no longer work, and accounts that were never linked require an administrator to restore access. Existing Microsoft-linked memberships retain their roles and subscriptions. Self-hosted upgrades stop if unresolved memberships or MSP owners need attention before the retired identity fields can be removed.",
+  "type": "maintenance",
+  "publishedOn": "2026-09-20",
+  "idempotencyKey": "licensemeter:microsoft-identity-only-2026-09-20"
+}

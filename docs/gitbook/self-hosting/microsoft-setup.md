@@ -51,7 +51,7 @@ This step is optional. A membership that predates Microsoft sign-in, or an invit
 
 Both requests need `Application.ReadWrite.All` or ownership of the app, use the application's object ID (not the client ID), and return `204 No Content`. They change what the sign-in app's ID tokens contain for every person who signs in afterwards; they do not touch the connector app or any customer tenant. To undo them, remove the two optional claims and send `{ "removeUnverifiedEmailClaim": null }` to restore Microsoft's default.
 
-With the claims in place, an existing member or invited person whose verified email matches is linked automatically on their first Microsoft sign-in. Without them nobody is linked by email: the person uses the claim link that LicenseMeter emails to the address on the membership, which proves control of that mailbox instead.
+A fresh invitation can be accepted across Microsoft tenants only when the token proves the invited email address. Within the workspace's connected Microsoft tenant, the invited UPN or email can also match. Existing memberships are identified by Microsoft object ID. Email recovery for older identities is no longer available.
 
 ## Microsoft registrations
 
@@ -106,3 +106,7 @@ For Vercel, configure the database, authentication, encryption, `APP_BASE_URL`, 
 Sign in, open Connectors, and select Microsoft 365. Review the read-only permissions and complete consent with an account permitted to grant it. After syncing, review findings and set the license price book to your agreements. Invite colleagues through workspace membership controls.
 
 Some activity signals require additional Microsoft licensing or identifiable reports. The application exposes missing signals and falls back where supported. It does not change report privacy settings on your behalf.
+
+## Upgrading older account identities
+
+The previous identity fields and email recovery links have been retired. Before upgrading an existing installation, back up the database and stop application traffic. Follow the [identity upgrade procedure in the repository](https://github.com/ugurkocde/licensemeter-website/blob/main/docs/retire-legacy-identity.md). It covers unresolved memberships, MSP billing owners, guarded migrations and rollback. Do not use `db:push` for this upgrade.

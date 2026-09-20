@@ -45,14 +45,7 @@ export const mspAccounts = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name"),
-    /**
-     * The creator who manages this MSP account (v1 has no membership table, so
-     * the account is owned outright by whoever created it). ownerOid is the
-     * Entra object id and the only key new accounts get. ownerWorkosUserId is
-     * the legacy key of accounts created before sign-in moved to Entra; such an
-     * account is adopted (ownerOid set) when its owner's membership is linked.
-     */
-    ownerWorkosUserId: text("owner_workos_user_id"),
+    /** Entra object id of the creator who owns and manages this MSP account. */
     ownerOid: text("owner_oid"),
     /** Stripe customer id (cus_…) for the MSP quantity subscription. */
     stripeCustomerId: text("stripe_customer_id"),
@@ -111,11 +104,7 @@ export const mspAccounts = pgTable(
     // One MSP account per owner (by either identity): the application enforces
     // "one account per owner" via onConflictDoNothing + re-read, but a unique
     // index is the DB backstop so a concurrent double-create can't slip two
-    // accounts past the read-then-insert race. Partial since each column is null
-    // for the other identity kind.
-    uniqueIndex("msp_accounts_owner_workos_user_idx")
-      .on(t.ownerWorkosUserId)
-      .where(sql`${t.ownerWorkosUserId} is not null`),
+    // accounts past the read-then-insert race. Unassigned owners cannot authenticate.
     uniqueIndex("msp_accounts_owner_oid_idx")
       .on(t.ownerOid)
       .where(sql`${t.ownerOid} is not null`),
@@ -132,9 +121,8 @@ export const tenants = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     /**
-     * Entra tenant id (tid claim). Nullable since Phase C: a WorkOS-auth
-     * workspace exists (bills, adds non-Microsoft connectors) before any
-     * Microsoft tenant is connected. Set when an msConnections row is added
+     * Entra tenant id (tid claim). A workspace can exist before a Microsoft
+     * tenant is connected. Set when an msConnections row is added
      * (managed callback or BYO save); the Graph auth key, not the workspace key.
      */
     tid: text("tid"),
@@ -142,8 +130,6 @@ export const tenants = pgTable(
     currency: text("currency").notNull().default("EUR"),
     /** EUR catalog-price multiplier for this reporting currency, in parts per million. */
     currencyRatePpm: integer("currency_rate_ppm").notNull().default(1_000_000),
-    /** Legacy column, never read or written anymore. Kept for one release. */
-    workosOrgId: text("workos_org_id"),
     /**
      * Verified corporate email domain that may auto-join this workspace
      * (app-level domain JIT). Null for consumer/personal workspaces, so no one
@@ -227,10 +213,6 @@ export const tenants = pgTable(
     uniqueIndex("tenants_tid_idx")
       .on(t.tid)
       .where(sql`${t.tid} is not null`),
-    // Legacy, see workosOrgId.
-    uniqueIndex("tenants_workos_org_idx")
-      .on(t.workosOrgId)
-      .where(sql`${t.workosOrgId} is not null`),
     // Domain-JIT lookup: find the joinable workspace for a verified email domain.
     index("tenants_domain_idx")
       .on(t.domain)
@@ -327,13 +309,6 @@ export const memberships = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     /** Entra object id; null until an invited email signs in for the first time. */
     oid: text("oid"),
-    /**
-     * Legacy identity from before sign-in moved to Entra, never written
-     * anymore. A row with this set and oid null belongs to a member who has not
-     * signed in with Microsoft yet; it is linked (oid set) on a sign-in whose
-     * email is proven, or through the claim-by-email flow. Kept for one release.
-     */
-    workosUserId: text("workos_user_id"),
     email: text("email").notNull(),
     name: text("name"),
     role: text("role").$type<MembershipRole>().notNull().default("viewer"),
@@ -353,7 +328,6 @@ export const memberships = pgTable(
   (t) => [
     uniqueIndex("memberships_tenant_email_idx").on(t.tenantId, t.email),
     index("memberships_oid_idx").on(t.oid),
-    index("memberships_workos_user_idx").on(t.workosUserId),
     check(
       "memberships_role_check",
       sql`${t.role} in ('viewer', 'admin', 'owner')`,
@@ -367,8 +341,7 @@ export const memberships = pgTable(
  * automatically (auto mode, stored as approved). One row per workspace and
  * person (Entra object id), so a repeated sign-in never files a second request
  * or notifies admins again, and a declined or removed person does not come
- * back without an invite. Rows from before sign-in moved to Entra carry only
- * workosUserId and stay unique per workspace and email.
+ * back without an invite.
  */
 export const joinRequests = pgTable(
   "join_requests",
@@ -379,11 +352,9 @@ export const joinRequests = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     /** Sign-in email, lowercased. Proven, or the UPN of a same-tenant signer. */
     email: text("email").notNull(),
-    /** Entra object id and home tenant of the requester; null on legacy rows. */
+    /** Entra object id and home tenant of the requester; null on historical requests. */
     oid: text("oid"),
     tid: text("tid"),
-    /** Legacy identity of rows filed before sign-in moved to Entra. */
-    workosUserId: text("workos_user_id"),
     name: text("name"),
     status: text("status")
       .$type<JoinRequestStatus>()
@@ -403,13 +374,8 @@ export const joinRequests = pgTable(
     uniqueIndex("join_requests_tenant_oid_idx")
       .on(t.tenantId, t.oid)
       .where(sql`${t.oid} is not null`),
-    // Legacy rows only: new rows are unique per person, not per address.
-    uniqueIndex("join_requests_tenant_legacy_email_idx")
-      .on(t.tenantId, t.email)
-      .where(sql`${t.oid} is null`),
     index("join_requests_tenant_status_idx").on(t.tenantId, t.status),
     index("join_requests_oid_idx").on(t.oid),
-    index("join_requests_workos_user_idx").on(t.workosUserId),
     check(
       "join_requests_status_check",
       sql`${t.status} in ('pending', 'approved', 'declined')`,
@@ -428,8 +394,6 @@ export const consentStates = pgTable("consent_states", {
   oid: text("oid"),
   /** Initiator's Entra home tenant; not read on callback. */
   tid: text("tid"),
-  /** Legacy column, never written anymore. Kept for one release. */
-  workosUserId: text("workos_user_id"),
   /** Workspace the consent was started from; checked on callback. */
   tenantId: uuid("tenant_id").references(() => tenants.id, {
     onDelete: "cascade",
@@ -1011,7 +975,7 @@ export const dpaAcceptances = pgTable(
     /** Document version from src/lib/dpa.ts at the time of acceptance. */
     version: text("version").notNull(),
     language: text("language").$type<"en" | "de">().notNull(),
-    /** WorkOS user id or Entra object id of the accepting owner or admin. */
+    /** Identity recorded for the accepting owner or admin. */
     acceptedByKey: text("accepted_by_key").notNull(),
     acceptedByEmail: text("accepted_by_email").notNull(),
     acceptedAt: timestamp("accepted_at", { withTimezone: true })
@@ -1044,7 +1008,7 @@ export const dpaAgreements = pgTable(
     signerName: text("signer_name").notNull(),
     signerTitle: text("signer_title").notNull(),
     signerEmail: text("signer_email").notNull(),
-    /** WorkOS user id or Entra object id of the owner who signed in the portal. */
+    /** Identity recorded for the owner who signed in the portal. */
     signedByKey: text("signed_by_key").notNull(),
     signedAt: timestamp("signed_at", { withTimezone: true })
       .notNull()
@@ -1089,34 +1053,6 @@ export const apiTokens = pgTable(
   (t) => [
     uniqueIndex("api_tokens_hash_idx").on(t.tokenHash),
     index("api_tokens_tenant_idx").on(t.tenantId),
-  ],
-).enableRLS();
-
-/**
- * Claim-by-email tokens: how a member from before sign-in moved to Entra proves
- * a membership is theirs when the id token carries no proven email. Only the
- * SHA-256 of the token is stored; the token itself travels in the mail sent to
- * the membership's address. Single use, short-lived, and bound to the Entra
- * identity that asked for it.
- */
-export const membershipClaims = pgTable(
-  "membership_claims",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    /** Address of the memberships to link, lowercased. The mail goes here. */
-    email: text("email").notNull(),
-    tokenHash: text("token_hash").notNull(),
-    requestedByOid: text("requested_by_oid").notNull(),
-    requestedByTid: text("requested_by_tid").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    usedAt: timestamp("used_at", { withTimezone: true }),
-  },
-  (t) => [
-    uniqueIndex("membership_claims_token_hash_idx").on(t.tokenHash),
-    index("membership_claims_created_idx").on(t.createdAt),
   ],
 ).enableRLS();
 

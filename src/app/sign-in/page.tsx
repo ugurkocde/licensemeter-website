@@ -7,7 +7,6 @@ import { MicrosoftSignInButton } from "~/components/signin/MicrosoftSignInButton
 import { Pill } from "~/components/ui";
 import { isDemoMode, marketplaceEnabled, signInEnabled } from "~/env";
 import {
-  claimNoticeText,
   DOCS_URL,
   passThroughReturnTo,
   signInErrorText,
@@ -169,7 +168,6 @@ export default async function SignInPage({
 
   const href = signInStartHref(passThroughReturnTo(sp.returnTo));
   const errorText = signInErrorText(sp.error);
-  const claimText = claimNoticeText(sp.claim);
   const canSignIn = signInEnabled();
   const demo = isDemoMode();
 
@@ -221,7 +219,6 @@ export default async function SignInPage({
                   form and no new password.
                 </p>
 
-                {claimText && <Notice tone="info">{claimText}</Notice>}
                 {errorText && <Notice tone="error">{errorText}</Notice>}
 
                 {canSignIn ? (

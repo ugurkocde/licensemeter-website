@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { siteUrl } from "~/env";
 import { workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
@@ -45,10 +45,8 @@ export const workspaceEmailRecipients = async (
     where: and(
       eq(memberships.tenantId, tenantId),
       inArray(memberships.role, ["owner", "admin"]),
-      // Claimed means an object id. A member from before sign-in moved to
-      // Microsoft (legacy id only) keeps getting mail until they link; pending
-      // invites have neither and are excluded.
-      or(isNotNull(memberships.oid), isNotNull(memberships.workosUserId)),
+      // Only signed-in members receive workspace notices; exclude pending invites.
+      isNotNull(memberships.oid),
     ),
     columns: { id: true, email: true, digestOptOut: true, reportOptOut: true },
   });

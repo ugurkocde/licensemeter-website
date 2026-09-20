@@ -70,18 +70,18 @@ describe("session user", () => {
   it("drops fields of the removed sign-in provider", async () => {
     cookieValue = await sign({
       ...BASE,
-      workosUserId: "user_x",
-      workosOrgId: "org_x",
+      providerUserId: "user_x",
+      providerOrgId: "org_x",
     });
     const user = (await auth())?.user as Record<string, unknown>;
-    expect(user.workosUserId).toBeUndefined();
-    expect(user.workosOrgId).toBeUndefined();
+    expect(user.providerUserId).toBeUndefined();
+    expect(user.providerOrgId).toBeUndefined();
   });
 
   it("rejects a cookie without an Entra identity", async () => {
     cookieValue = await sign({ ...BASE, oid: "", tid: "" });
     expect(await auth()).toBeNull();
-    cookieValue = await sign({ upn: "x@y.z", workosUserId: "user_x" });
+    cookieValue = await sign({ upn: "x@y.z", providerUserId: "user_x" });
     expect(await auth()).toBeNull();
   });
 

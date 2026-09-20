@@ -1,14 +1,4 @@
-import {
-  and,
-  asc,
-  eq,
-  exists,
-  inArray,
-  isNotNull,
-  isNull,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, eq, exists, isNull, or, sql } from "drizzle-orm";
 
 import { billingEnabled } from "~/env";
 import { workspaceLabel } from "~/lib/format";
@@ -78,35 +68,11 @@ export class MspAccountError extends Error {
   }
 }
 
-/**
- * The caller is their Entra object id and nothing else. An account from before
- * sign-in moved to Entra carries only a legacy owner id; it still belongs to
- * the caller when one of THEIR linked memberships carries that same legacy id.
- * A membership only ever gets an object id through proof (proven email or the
- * claim mail), so this never reaches an account of someone else. Such an
- * account is adopted at link time (identityLink.ts) and, as a fallback, the
- * next time ensureMspAccount runs.
- */
 type Identity = { oid: string };
 
 const identityOf = (ctx: AccessContext): Identity => ({ oid: ctx.user.oid });
 
-const linkedLegacyIds = (who: Identity) =>
-  db
-    .select({ id: memberships.workosUserId })
-    .from(memberships)
-    .where(
-      and(eq(memberships.oid, who.oid), isNotNull(memberships.workosUserId)),
-    );
-
-const accountOwnedBy = (who: Identity) =>
-  or(
-    eq(mspAccounts.ownerOid, who.oid),
-    and(
-      isNull(mspAccounts.ownerOid),
-      inArray(mspAccounts.ownerWorkosUserId, linkedLegacyIds(who)),
-    ),
-  );
+const accountOwnedBy = (who: Identity) => eq(mspAccounts.ownerOid, who.oid);
 
 const membershipOf = (who: Identity) => eq(memberships.oid, who.oid);
 
@@ -135,16 +101,11 @@ export const coveredIds = (
 const findAccount = async (
   who: Identity,
 ): Promise<MspAccountSummary | null> => {
-  // An account already keyed on the object id wins over a legacy one.
   const [row] = await db
     .select({ id: mspAccounts.id, name: mspAccounts.name })
     .from(mspAccounts)
     .where(accountOwnedBy(who))
-    .orderBy(
-      sql`${mspAccounts.ownerOid} is null`,
-      asc(mspAccounts.createdAt),
-      asc(mspAccounts.id),
-    )
+    .orderBy(asc(mspAccounts.createdAt), asc(mspAccounts.id))
     .limit(1);
   return row ?? null;
 };
@@ -188,9 +149,7 @@ export async function getMspAccount(
  * workspace when the caller owns it and no other account holds it, unless
  * `attachActive` is false (the Marketplace landing page attaches the workspace
  * the buyer picked instead). The unique owner indexes make a concurrent
- * double-create collapse into one row. An account from before sign-in moved to
- * Entra that is still keyed on the caller's legacy id only is adopted: it gets
- * their object id, so from then on it resolves without the membership detour.
+ * double-create collapse into one row.
  */
 export async function ensureMspAccount(
   ctx: AccessContext,
@@ -209,11 +168,6 @@ export async function ensureMspAccount(
     account = await findAccount(who);
   }
   if (!account) throw new Error("MSP account missing after create");
-
-  await db
-    .update(mspAccounts)
-    .set({ ownerOid: who.oid })
-    .where(and(eq(mspAccounts.id, account.id), isNull(mspAccounts.ownerOid)));
 
   if (options.attachActive !== false) {
     await attachIfAllowed(who, account.id, ctx.tenant.id);

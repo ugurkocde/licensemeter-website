@@ -525,10 +525,8 @@ export const addMember = async (formData: FormData): Promise<ActionResult> => {
       eq(sql`lower(${memberships.email})`, email),
     ),
   });
-  // An object id means the person has signed in; a legacy id means they did
-  // before sign-in moved to Microsoft and have not linked yet. Either way they
-  // are a member, and an invite must not re-role a member.
-  if (existing?.oid || existing?.workosUserId) {
+  // An object id means the person has signed in. An invite must not re-role a member.
+  if (existing?.oid) {
     return fail("That address is already a member of this workspace");
   }
   if (existing?.role === "owner" && ctx.membership.role !== "owner") {
@@ -590,8 +588,7 @@ export const resendInvite = async (
     ),
   });
   if (!target) return fail("Invite not found");
-  if (target.oid || target.workosUserId)
-    return fail("This member has already signed in");
+  if (target.oid) return fail("This member has already signed in");
   if (
     !(await rateLimitDurable(
       `resend:${ctx.tenant.id}`,
@@ -786,6 +783,11 @@ export const approveJoinRequest = async (
   if (result.status === "conflict") {
     return fail(
       "This request was already declined. Invite the person instead.",
+    );
+  }
+  if (result.status === "identity_missing") {
+    return fail(
+      "This request has no Microsoft identity. Decline it and invite the person again.",
     );
   }
   if (result.status === "address_taken") {

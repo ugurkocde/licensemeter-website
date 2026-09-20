@@ -169,12 +169,7 @@ export type BrandingRefusal =
 export type BrandingResult =
   { ok: true } | { ok: false; reason: BrandingRefusal; message?: string };
 
-/**
- * The account is the caller's when its owner is their Entra object id. An
- * account from before sign-in moved to Entra gets that id when its owner's
- * membership is linked (identityLink.ts), so the legacy owner column is never
- * consulted here.
- */
+/** The account belongs to the caller only when its owner is their Entra object id. */
 const ownedByCaller = (ctx: AccessContext) =>
   eq(mspAccounts.ownerOid, ctx.user.oid);
 
