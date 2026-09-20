@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  emailAddressText,
   emailAppLink,
   emailAppUrl,
   emailButton,
@@ -86,5 +87,59 @@ describe("emailShell", () => {
       footer: "",
     });
     expect(bare).not.toContain("mso-hide:all");
+  });
+});
+
+describe("emailAddressText", () => {
+  it("gives an address an anchor of our own, in the surrounding type", () => {
+    const html = emailAddressText("Disabled account: jan.meier@contoso.com");
+    expect(html).toContain('href="mailto:jan.meier@contoso.com"');
+    expect(html).toContain("color:inherit");
+    expect(html).toContain("text-decoration:none");
+    expect(html).toContain("Disabled account: ");
+  });
+
+  it("leaves text without an address alone", () => {
+    expect(emailAddressText("Copilot seat unused: Anna Schmidt")).toBe(
+      "Copilot seat unused: Anna Schmidt",
+    );
+  });
+
+  it("wraps every address in the text", () => {
+    const html = emailAddressText("a@x.com and b@y.co.uk");
+    expect(html.match(/href="mailto:/g)).toHaveLength(2);
+    expect(html).toContain('href="mailto:b@y.co.uk"');
+  });
+
+  it("escapes the text before linking, so markup cannot get in", () => {
+    const html = emailAddressText('<img src=x> evil"@contoso.com');
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+  });
+});
+
+describe("emailRows", () => {
+  it("leaves the last row without a rule, so a following rule is not doubled", () => {
+    const rows = emailRows([
+      { label: "First", value: "1" },
+      { label: "Last", value: "2" },
+    ]);
+    expect(rows.match(/border-bottom/g)).toHaveLength(2);
+    expect(rows.slice(rows.indexOf("Last"))).not.toContain("border-bottom");
+  });
+
+  it("links an address in a row label", () => {
+    expect(emailRows([{ label: "Seat: a@b.com", value: "1" }])).toContain(
+      'href="mailto:a@b.com"',
+    );
+  });
+});
+
+describe("client hints", () => {
+  const html = emailShell({ baseUrl: BASE, title: "t", body: "", footer: "" });
+
+  it("asks clients not to detect addresses, and neutralises Apple's", () => {
+    expect(html).toContain('name="format-detection"');
+    expect(html).toContain("a[x-apple-data-detectors]");
   });
 });

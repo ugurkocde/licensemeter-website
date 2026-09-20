@@ -55,6 +55,23 @@ export const emailAppLink = (
   query = "",
 ): string => escapeHtml(emailAppUrl(baseUrl, path, query));
 
+/**
+ * A bare email address in body text gets linkified by the mail client itself,
+ * which paints it blue and underlined while the display name beside it stays
+ * plain, so a findings table ends up half blue. Giving the address an anchor
+ * of our own keeps the client's linkifier out and the row in one type. Takes
+ * plain text, returns HTML.
+ */
+const ADDRESS =
+  /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+
+export const emailAddressText = (text: string): string =>
+  escapeHtml(text).replace(
+    ADDRESS,
+    (address) =>
+      `<a href="mailto:${address}" style="color:inherit;text-decoration:none">${address}</a>`,
+  );
+
 /** Small uppercase label above a heading. Plain text. */
 export const emailEyebrow = (text: string, color: string = C.brandText) =>
   `<p style="margin:0 0 14px 0;${EMAIL_MONO};font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:${color}">${escapeHtml(text)}</p>`;
@@ -83,9 +100,9 @@ export const emailText = (
   return `<p style="margin:0 0 16px 0;${type};color:${color}">${html}</p>`;
 };
 
-/** Emphasis inside running text. Plain text. */
+/** Emphasis inside running text. Plain text; addresses keep this type. */
 export const emailStrong = (text: string): string =>
-  `<strong style="color:${C.ink};font-weight:600">${escapeHtml(text)}</strong>`;
+  `<strong style="color:${C.ink};font-weight:600">${emailAddressText(text)}</strong>`;
 
 /** A money figure that is being wasted. Plain text. */
 export const emailWaste = (text: string): string =>
@@ -130,12 +147,16 @@ export const emailRows = (rows: { label: string; value: string }[]): string =>
     ? ""
     : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px 0">
 ${rows
-  .map(
-    (r) => `<tr>
-<td style="${EMAIL_SANS};padding:10px 12px 10px 0;border-bottom:1px solid ${C.line};font-size:14px;line-height:21px;color:${C.ink}">${escapeHtml(r.label)}</td>
-<td style="${EMAIL_SANS};padding:10px 0;border-bottom:1px solid ${C.line};font-size:14px;line-height:21px;text-align:right;white-space:nowrap;font-weight:600;color:${C.wasteText}">${escapeHtml(r.value)}</td>
-</tr>`,
-  )
+  .map((r, i) => {
+    // The last row carries no rule: whatever follows brings its own, and two
+    // of them with the row gap between read as an empty row.
+    const edge =
+      i === rows.length - 1 ? "" : `border-bottom:1px solid ${C.line};`;
+    return `<tr>
+<td style="${EMAIL_SANS};padding:10px 12px 10px 0;${edge}font-size:14px;line-height:21px;color:${C.ink}">${emailAddressText(r.label)}</td>
+<td style="${EMAIL_SANS};padding:10px 0;${edge}font-size:14px;line-height:21px;text-align:right;white-space:nowrap;font-weight:600;color:${C.wasteText}">${escapeHtml(r.value)}</td>
+</tr>`;
+  })
   .join("\n")}
 </table>`;
 
@@ -171,6 +192,7 @@ export const emailShell = (args: {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="x-apple-disable-message-reformatting">
+<meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
 <title>${escapeHtml(args.title)}</title>
@@ -181,6 +203,8 @@ export const emailShell = (args: {
 body { margin: 0; padding: 0; width: 100%; background: ${C.canvas}; -webkit-text-size-adjust: 100%; }
 table { border-collapse: collapse; }
 img { border: 0; display: block; }
+/* Apple Mail linkifies addresses and dates and restyles them; keep our type. */
+a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font-size: inherit !important; font-family: inherit !important; font-weight: inherit !important; line-height: inherit !important; }
 @media only screen and (max-width: 620px) {
   .shell { width: 100% !important; }
   .pad { padding-left: 24px !important; padding-right: 24px !important; }

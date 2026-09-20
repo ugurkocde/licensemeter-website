@@ -1,6 +1,7 @@
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
 import {
   EMAIL_COLORS,
+  emailAddressText,
   EMAIL_MONO,
   EMAIL_SANS,
   emailAppLink,
@@ -169,7 +170,7 @@ ${inlineLink(dpaUrl, "licensemeter.com/dpa")}.
 ${emailText("I read every reply. Questions about scopes, features or your setup land directly with me.", { tone: "ink" })}
 <p style="margin:0;font-size:15px;line-height:22px;font-weight:600;color:${C.ink}">Ugur Koc</p>
 <p style="margin:0 0 16px 0;font-size:13px;line-height:20px;color:${C.faint}">Microsoft MVP for Intune and Security Copilot</p>`,
-    footer: `You get this one email because ${escapeHtml(args.email)} was entered on
+    footer: `You get this one email because ${emailAddressText(args.email)} was entered on
 licensemeter.com. Scans, findings, reports and exports are free, with no time
 limit. You can ${emailFooterLink(escapeHtml(args.unsubscribeUrl), "unsubscribe")}
 any time.<br>LicenseMeter, EU-hosted in Frankfurt.`,
