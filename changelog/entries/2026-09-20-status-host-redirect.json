@@ -1,0 +1,7 @@
+{
+  "title": "The status subdomain keeps unusual paths on the licensemeter.com site",
+  "summary": "The redirect that sends non-status paths from status.licensemeter.com to the main site now builds its destination from the configured site origin, so a crafted path can no longer send a visitor to another host.",
+  "type": "fixed",
+  "publishedOn": "2026-09-20",
+  "idempotencyKey": "licensemeter:2026-09-20-status-host-redirect"
+}
