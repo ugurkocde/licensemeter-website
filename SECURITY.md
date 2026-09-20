@@ -9,7 +9,8 @@ Only the current main branch is maintained. Update dependencies and deployments 
 - Use HTTPS for real users and keep PostgreSQL off the public network.
 - Separate schema-migration and application credentials.
 - Tenant isolation is enforced in application code. Database access is privileged: the runtime role can access all workspace rows.
-- Row Level Security is enabled on every table, but it is a Data API (Supabase) deny-all control, not a tenant boundary: the runtime role holds a permissive policy. The runtime role must stay a plain login that owns no table and has no `BYPASSRLS`, or RLS is silently inert for it; `scripts/db-audit-posture.sql` fails on either drift. Per-tenant row policies keyed on a request-scoped tenant setting are a planned hardening (see the audit notes).
+- Row Level Security is enabled on every table, but it is a Data API (Supabase) deny-all control, not a tenant boundary by default: the runtime role holds a permissive policy. The runtime role must stay a plain login that owns no table and has no `BYPASSRLS`, or RLS is silently inert for it; `scripts/db-audit-posture.sql` fails on either drift.
+- Database-level tenant isolation is available through `withTenant()` (`src/server/db/tenant.ts`), which pins a request to a tenant via the `app.tenant_id` setting that a query routed through the shared `db` handle follows. `scripts/db-tenant-rls.sql` turns that setting into row policies; apply it only after every tenant-table access is wrapped, because an unset setting fails closed (denies tenant rows). Until then, isolation remains application-level.
 - Keep `AUTH_SECRET`, `DATA_ENCRYPTION_KEY`, and backups confidential. Preserve the encryption key for restoration.
 - Review connector permissions and exported remediation scripts before using them.
 - Keep the optional demo limited to synthetic data.
