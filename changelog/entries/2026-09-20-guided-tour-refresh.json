@@ -1,0 +1,7 @@
+{
+  "title": "A clearer guided tour of your dashboard",
+  "summary": "The first-run walkthrough now spotlights the exact card or menu item it is explaining, so the rest of the page fades back and the relevant part stays in focus. Each step points at its target with an arrow, shows which step you are on with a progress bar, and you can move back as well as forward. Replay it any time from Settings.",
+  "type": "improved",
+  "publishedOn": "2026-09-20",
+  "idempotencyKey": "licensemeter:2026-09-20-guided-tour-refresh"
+}
