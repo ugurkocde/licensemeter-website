@@ -114,7 +114,16 @@ export const emailStrong = (text: string): string =>
 
 /** A money figure that is being wasted. Plain text. */
 export const emailWaste = (text: string): string =>
-  `<strong style="color:${C.wasteText};font-weight:600">${escapeHtml(text)}</strong>`;
+  `<strong style="color:${C.wasteText};font-weight:600;white-space:nowrap">${escapeHtml(text)}</strong>`;
+
+/**
+ * A money figure and the unit after it on one line. fmtMoney already joins the
+ * number and the symbol with a non-breaking space, but a client will happily
+ * break the "/mo" a template appends, which reads as two separate numbers.
+ * Plain text.
+ */
+export const emailAmount = (text: string): string =>
+  `<span style="white-space:nowrap">${escapeHtml(text)}</span>`;
 
 /**
  * The primary action. `href` must already be escaped (emailAppLink is);

@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   emailAddressText,
+  emailAmount,
   emailAppLink,
   emailAppUrl,
   emailButton,
   emailRows,
   emailShell,
   emailStrong,
+  emailWaste,
 } from "~/lib/emailLayout";
 import { validateReturnTo } from "~/server/auth/session";
 
@@ -149,5 +151,23 @@ describe("client hints", () => {
   it("asks clients not to detect addresses, and neutralises Apple's", () => {
     expect(html).toContain('name="format-detection"');
     expect(html).toContain("a[x-apple-data-detectors]");
+  });
+});
+
+describe("emailAmount", () => {
+  it("keeps a figure and the unit after it on one line", () => {
+    // fmtMoney already binds the number to the symbol; the "/mo" a template
+    // appends is the part a client would otherwise break.
+    expect(emailAmount("97,80 €/mo")).toContain("white-space:nowrap");
+  });
+
+  it("escapes the text it is given", () => {
+    expect(emailAmount("<b>1</b>/mo")).not.toContain("<b>");
+  });
+});
+
+describe("emailWaste", () => {
+  it("does not let a money figure break across lines", () => {
+    expect(emailWaste("97,80 €/mo")).toContain("white-space:nowrap");
   });
 });
