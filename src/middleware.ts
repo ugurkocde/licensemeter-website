@@ -19,7 +19,15 @@ export default function middleware(request: NextRequest) {
     !pathname.startsWith("/_vercel")
   ) {
     const apex = process.env.APP_BASE_URL ?? "https://licensemeter.com";
-    return NextResponse.redirect(new URL(pathname + search, apex), 308);
+    // Build the target from the configured origin and set the path/search on it
+    // rather than resolving the raw path against the base. `new URL("//evil.com",
+    // apex)` would treat a protocol-relative path (or a backslash, which the URL
+    // parser normalizes to a slash) as an authority and redirect off-host; the
+    // pathname setter always keeps the configured host.
+    const target = new URL(apex);
+    target.pathname = pathname;
+    target.search = search;
+    return NextResponse.redirect(target, 308);
   }
 
   return NextResponse.next();

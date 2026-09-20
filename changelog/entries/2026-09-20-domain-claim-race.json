@@ -1,0 +1,7 @@
+{
+  "title": "Simultaneous first sign-ins from one company no longer create duplicate workspaces",
+  "summary": "When two colleagues from the same verified email domain signed in for the first time at the same moment, both could claim the domain and a duplicate workspace could be created. The first sign-in for a domain is now serialised, so exactly one workspace owns the domain.",
+  "type": "fixed",
+  "publishedOn": "2026-09-20",
+  "idempotencyKey": "licensemeter:2026-09-20-domain-claim-race"
+}

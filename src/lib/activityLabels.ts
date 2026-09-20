@@ -47,6 +47,8 @@ const ACTION_LABELS: Record<string, string> = {
   notification_address_removed: "Shared notification address removed",
   notification_address_preference_changed:
     "Shared notification address email changed",
+  current_findings_sent: "Current findings emailed on request",
+  email_block_removed: "Blocked address cleared",
   mcp_token_created: "MCP token created",
   mcp_token_revoked: "MCP token revoked",
   dpa_accepted: "Data processing agreement accepted",

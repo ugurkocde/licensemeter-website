@@ -17,6 +17,7 @@ import {
   PolarApiError,
   polarProductId,
 } from "~/server/billing/polar";
+import { loadEntitlement } from "~/server/entitlementStore";
 import { rateLimitDurable } from "~/server/rateLimit";
 
 const bodySchema = z.object({
@@ -78,6 +79,17 @@ export const POST = async (req: Request) => {
     }
   } else {
     owner = { tenantId: ctx.tenant.id };
+    // The workspace's own row is not the whole story: a plan inherited from an
+    // attached MSP account also grants it, and loadEntitlement is the only
+    // place that resolves it. Without this check a covered workspace is
+    // offered a second, competing Pro plan.
+    const resolved = await loadEntitlement(ctx.tenant);
+    if (resolved.plan !== "free") {
+      return NextResponse.json(
+        { error: "alreadyEntitled", source: "msp" },
+        { status: 409 },
+      );
+    }
   }
 
   // A plan that is running already, whoever bills it, must not be billed a

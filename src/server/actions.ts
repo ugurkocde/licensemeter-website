@@ -26,6 +26,7 @@ import {
   adobeConnections,
   adobeUsers,
   aiSpendDaily,
+  emailBlocks,
   emailSignups,
   findings,
   memberships,
@@ -56,10 +57,15 @@ import { normalizeSalesforceOrgRef } from "~/server/saas/salesforce";
 import { connectorSpec } from "~/lib/connectors";
 import { MICROSOFT_RULES } from "~/lib/rules";
 import { isSupportedCurrency } from "~/lib/currency";
+import { isValidEmailAddress } from "~/lib/emailAddress";
 import { rateBetween } from "~/lib/exchangeRates";
 import { workspaceLabel } from "~/lib/format";
 import { isValidIsoDate } from "~/lib/isoDate";
 import { encryptSecret, secretAad } from "~/server/crypto";
+import {
+  sendCurrentFindings,
+  type CurrentFindingsResult,
+} from "~/server/currentFindings";
 import { emailEnabled, inviteHtml, sendEmail } from "~/server/email";
 import {
   loadSharedAddress,
@@ -996,6 +1002,78 @@ export const setNotificationAddressPreference = async (
   return ok();
 };
 
+/**
+ * Recovery for workspace email that went wrong: mail the leak findings that
+ * are open right now, and clear an address the mail provider blocked.
+ */
+
+/** Requested sends per workspace and day; every one mails real people. */
+const CURRENT_FINDINGS_SENDS_PER_DAY = 3;
+
+export type CurrentFindingsActionResult = ActionResult & {
+  /** What the send did, so Settings can report it back. */
+  summary?: CurrentFindingsResult;
+};
+
+/**
+ * Mail the current offboarding leaks to the owners, the admins and the
+ * confirmed shared address. Explicitly requested mail: it turns no scheduled
+ * email on and changes nobody's preferences.
+ */
+export const sendCurrentFindingsEmail =
+  async (): Promise<CurrentFindingsActionResult> => {
+    const ctx = await apiAccess("admin");
+    if (!ctx) return fail("Not allowed");
+    if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
+    const allowed = await rateLimitDurable(
+      `current-findings:${ctx.tenant.id}`,
+      CURRENT_FINDINGS_SENDS_PER_DAY,
+      24 * 60 * 60 * 1000,
+      "deny",
+    );
+    if (!allowed) {
+      return fail("Too many requested emails today. Try again tomorrow.");
+    }
+
+    const summary = await sendCurrentFindings(ctx.tenant);
+    await audit(ctx, "current_findings_sent", {
+      findings: summary.findings,
+      sent: summary.sent,
+      skippedBlocked: summary.skippedBlocked,
+      failed: summary.failed,
+    });
+    revalidateApp();
+    return { ok: true, summary };
+  };
+
+/**
+ * Clear one blocked address for this workspace, so the next send reaches it
+ * again. Tenant-scoped: the same address stays blocked elsewhere.
+ */
+export const removeEmailBlock = async (
+  email: string,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
+  const address = typeof email === "string" ? email.trim().toLowerCase() : "";
+  if (!address) return fail("Unknown address");
+
+  const [removed] = await db
+    .delete(emailBlocks)
+    .where(
+      and(
+        eq(emailBlocks.tenantId, ctx.tenant.id),
+        eq(emailBlocks.email, address),
+      ),
+    )
+    .returning({ email: emailBlocks.email });
+  if (!removed) return fail("That address is not blocked");
+  await audit(ctx, "email_block_removed", { email: address });
+  revalidateApp();
+  return ok();
+};
+
 /** Mark one phase of the per-user dashboard tour complete. */
 export const markTourDone = async (
   phase: "welcome" | "data",
@@ -1776,7 +1854,7 @@ export const captureEmail = async (
   }
   const raw = formData.get("email");
   const email = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+  if (!isValidEmailAddress(email)) {
     return fail("Please enter a valid email address");
   }
   // On a repeat signup, clear any prior unsubscribe so a fresh sign-up actually

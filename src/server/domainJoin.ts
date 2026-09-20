@@ -287,6 +287,17 @@ export const createOwnedWorkspace = async (
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${"workspace-provision:" + who.oid}, 0))`,
     );
+    // The per-oid lock only serialises this person's own duplicate requests.
+    // Two different colleagues of the same domain take different keys, so
+    // without a domain-scoped lock both would read no holder under READ
+    // COMMITTED and both commit a domain-carrying workspace. Take the domain
+    // lock second (after the oid lock, always the same order) so the loser
+    // waits, then sees the committed holder in the re-check below.
+    if (domain) {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${"workspace-domain:" + domain}, 0))`,
+      );
+    }
     const [mine] = await tx
       .select({ id: memberships.id })
       .from(memberships)

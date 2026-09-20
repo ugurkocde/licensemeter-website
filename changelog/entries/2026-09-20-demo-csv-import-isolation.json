@@ -1,0 +1,7 @@
+{
+  "title": "The demo workspace can no longer be used to create or share a second workspace",
+  "summary": "The credentials-free demo now refuses CSV imports the same way it already refuses other workspace-creating actions. Previously the demo could create an extra workspace that later demo visitors could see, so the demo is now strictly read-only and isolated to its own sample data.",
+  "type": "fixed",
+  "publishedOn": "2026-09-20",
+  "idempotencyKey": "licensemeter:2026-09-20-demo-csv-import-isolation"
+}

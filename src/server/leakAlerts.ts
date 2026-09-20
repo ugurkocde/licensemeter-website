@@ -61,5 +61,7 @@ export const leakAlertSubject = (
   cents: number,
   currency: string,
   tenantName: string,
+  /** A summary an admin asked for lists what is open, it detects nothing. */
+  requested = false,
 ): string =>
-  `LicenseMeter: ${count} potential license leak${count === 1 ? "" : "s"} detected in ${tenantName} (${fmtMoney(cents, currency)}/mo estimated)`;
+  `LicenseMeter: ${count} potential license leak${count === 1 ? "" : "s"} ${requested ? "open" : "detected"} in ${tenantName} (${fmtMoney(cents, currency)}/mo estimated)`;

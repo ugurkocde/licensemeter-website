@@ -28,11 +28,13 @@ vi.mock("~/server/billing/polar", () => ({
   grantsNow: vi.fn(),
   polarProductId: vi.fn(),
 }));
+vi.mock("~/server/entitlementStore", () => ({ loadEntitlement: vi.fn() }));
 
 const { POST } = await import("./route");
 const { apiAccess } = await import("~/server/access");
 const { rateLimitDurable } = await import("~/server/rateLimit");
 const { ensureMspAccount } = await import("~/server/billing/mspAccount");
+const { loadEntitlement } = await import("~/server/entitlementStore");
 const polar = await import("~/server/billing/polar");
 
 const ctx = {
@@ -60,6 +62,9 @@ beforeEach(() => {
   vi.mocked(ensureMspAccount).mockResolvedValue({ id: MSP_ID });
   vi.mocked(polar.polarProductId).mockReturnValue("prod-1");
   vi.mocked(polar.entitlementRowOf).mockResolvedValue(null);
+  vi.mocked(loadEntitlement).mockResolvedValue({
+    plan: "free",
+  } as Awaited<ReturnType<typeof loadEntitlement>>);
   vi.mocked(polar.createPolarCheckout).mockResolvedValue({
     id: "co_1",
     url: "https://sandbox.polar.sh/checkout/co_1",
@@ -208,6 +213,23 @@ describe("billing checkout", () => {
     expect(polar.createPolarCheckout).toHaveBeenCalledWith(
       expect.objectContaining({ allowTrial: false }),
     );
+  });
+
+  it("refuses a Pro checkout for a workspace covered by its MSP account", async () => {
+    // No own entitlements row (entitlementRowOf is null), but the resolved
+    // entitlement is a paid MSP plan inherited from the attached account.
+    vi.mocked(loadEntitlement).mockResolvedValue({
+      plan: "msp",
+    } as Awaited<ReturnType<typeof loadEntitlement>>);
+
+    const res = await POST(request({ plan: "pro", interval: "month" }));
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "alreadyEntitled",
+      source: "msp",
+    });
+    expect(polar.createPolarCheckout).not.toHaveBeenCalled();
   });
 
   it("answers 502 when Polar refuses the checkout", async () => {
