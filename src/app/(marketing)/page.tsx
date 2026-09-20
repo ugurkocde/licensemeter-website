@@ -13,25 +13,27 @@ import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
 import { SignInButtons } from "~/components/SignInButtons";
 import { FeatureShowcase } from "~/components/landing/FeatureShowcase";
 import { OrbitHero } from "~/components/landing/OrbitHero";
+import { PricingTeaser } from "~/components/landing/PricingTeaser";
 import { Reveal } from "~/components/landing/Reveal";
 import { buttonClass } from "~/components/ui";
+import { PLAN_PRICES } from "~/lib/pricing";
 import { SITE_DEFINITION, SITE_DESCRIPTION, SITE_TITLE } from "~/lib/site";
 
 const STEPS = [
   {
     Icon: Cable,
-    title: "Connect your tools",
-    body: "Link Microsoft 365 and your SaaS apps with read-only access. See every permission before you connect.",
+    title: "Connect read-only",
+    body: "Link Microsoft 365 and your SaaS apps with admin consent. Read-only scopes, no write access, and you can revoke it at any time.",
   },
   {
     Icon: ScanLine,
     title: "Find the quiet waste",
-    body: "Spot inactive accounts, forgotten licenses and paid seats with nobody assigned. Every finding comes with evidence.",
+    body: "Spot inactive accounts, forgotten licenses and paid seats nobody was assigned. Each finding names the account, the rule and the monthly cost.",
   },
   {
     Icon: TrendingDown,
-    title: "Make room for savings",
-    body: "See the monthly cost of each unused seat. Export the findings and reclaim the licenses you choose.",
+    title: "Reclaim the spend",
+    body: "Export the findings for finance, hand IT the generated PowerShell script, and watch the number fall on the next sync.",
   },
 ];
 
@@ -56,7 +58,8 @@ export const metadata: Metadata = {
   },
 };
 
-/* Page-level JSON-LD describes the free application. */
+/* Page-level JSON-LD describes the application and the plans it is sold
+ * under. The prices come from ~/lib/pricing, the same source as /pricing. */
 const HOME_LD = {
   "@context": "https://schema.org",
   "@graph": [
@@ -70,6 +73,29 @@ const HOME_LD = {
       description: SITE_DEFINITION,
       publisher: { "@id": `${BASE}/#organization` },
       isAccessibleForFree: true,
+      offers: [
+        {
+          "@type": "Offer",
+          name: "Free",
+          price: "0",
+          priceCurrency: "EUR",
+          url: `${BASE}/pricing`,
+        },
+        {
+          "@type": "Offer",
+          name: "Pro",
+          price: String(PLAN_PRICES.pro.month),
+          priceCurrency: "EUR",
+          url: `${BASE}/pricing`,
+        },
+        {
+          "@type": "Offer",
+          name: "MSP",
+          price: String(PLAN_PRICES.msp.month),
+          priceCurrency: "EUR",
+          url: `${BASE}/pricing`,
+        },
+      ],
     },
   ],
 };
@@ -226,15 +252,17 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-      <section className="mx-auto max-w-6xl px-6 pb-20">
+      <PricingTeaser signInEnabled={signInOk} signInHref={signInHref} />
+      <section className="mx-auto max-w-6xl px-6 py-20 lg:py-24">
         <div className="border-line bg-canvas rounded-3xl border px-5 py-14 text-center sm:px-10 sm:py-16">
           <h2 className="font-display mx-auto max-w-2xl text-3xl font-semibold tracking-[-0.04em] text-balance sm:text-4xl">
             Your next renewal deserves
             <br className="hidden sm:block" /> a smaller number.
           </h2>
           <p className="text-ink-soft mx-auto mt-5 max-w-lg text-base leading-7">
-            Find your unused licenses today. Keep monitoring for free, for as
-            long as you need.
+            Find your unused licenses today. Scans and continuous monitoring are
+            free for as long as you need, and you only pay when you want
+            support, a signed DPA or multi-tenant reporting.
           </p>
           <div className="mt-8">
             <SignInButtons
@@ -249,6 +277,14 @@ export default function LandingPage() {
           </div>
           <p className="text-ink-faint mt-5 text-xs">
             Free to use. No credit card. Read-only access.
+          </p>
+          <p className="mt-2 text-xs">
+            <Link
+              href="/pricing"
+              className="text-ink-soft hover:text-ink underline underline-offset-4"
+            >
+              See what Pro and MSP add
+            </Link>
           </p>
         </div>
       </section>
