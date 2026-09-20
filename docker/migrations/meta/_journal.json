@@ -71,6 +71,13 @@
       "when": 1789916574487,
       "tag": "0009_notification_addresses",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789923817272,
+      "tag": "0010_session_revocations",
+      "breakpoints": true
     }
   ]
 }
