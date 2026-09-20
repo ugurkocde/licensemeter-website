@@ -57,6 +57,7 @@ import { normalizeSalesforceOrgRef } from "~/server/saas/salesforce";
 import { connectorSpec } from "~/lib/connectors";
 import { MICROSOFT_RULES } from "~/lib/rules";
 import { isSupportedCurrency } from "~/lib/currency";
+import { isValidEmailAddress } from "~/lib/emailAddress";
 import { rateBetween } from "~/lib/exchangeRates";
 import { workspaceLabel } from "~/lib/format";
 import { isValidIsoDate } from "~/lib/isoDate";
@@ -1851,7 +1852,7 @@ export const captureEmail = async (
   }
   const raw = formData.get("email");
   const email = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+  if (!isValidEmailAddress(email)) {
     return fail("Please enter a valid email address");
   }
   // On a repeat signup, clear any prior unsubscribe so a fresh sign-up actually
