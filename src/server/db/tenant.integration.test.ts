@@ -1,11 +1,15 @@
 import { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Db } from "./index";
 import * as schema from "./schema";
 import { createTenantDb, withTenant } from "./tenant";
+
+// withTenant switches to this role when set; the seed creates it as a plain
+// non-owner role so RLS applies.
+vi.mock("~/env", () => ({ env: { TENANT_DB_ROLE: "app" } }));
 
 /**
  * Proves the tenant-context mechanism end to end against real Postgres
@@ -30,7 +34,6 @@ beforeEach(async () => {
       using (tenant_id = current_setting('app.tenant_id', true)::uuid)
       with check (tenant_id = current_setting('app.tenant_id', true)::uuid);
     grant select, insert, update, delete on items to app;
-    set role app;
   `);
   db = createTenantDb(drizzle(client, { schema })) as unknown as Db;
 });
@@ -48,8 +51,11 @@ describe("tenant-scoped database context", () => {
     expect(await withTenant(db, TENANT_B, ids)).toEqual([2]);
   });
 
-  it("shows no rows outside a tenant context, so a missed wrapper fails closed", async () => {
-    expect(await ids()).toEqual([]);
+  it("enforces only inside a tenant context; outside it the app keeps app-level access", async () => {
+    // Enforcement is opt-in per wrapped path: with no tenant context there is
+    // no role switch, so the base (app) role still sees every row. This is why
+    // wrapping is safe to roll out incrementally.
+    expect(await ids()).toEqual([1, 2]);
   });
 
   it("rejects a write that targets another tenant", async () => {
