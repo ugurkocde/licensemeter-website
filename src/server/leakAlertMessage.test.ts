@@ -38,6 +38,42 @@ describe("leakAlertMessage", () => {
     expect(html).toContain("Check the price book");
   });
 
+  it("frames a requested summary without claiming a sync ran", () => {
+    const asked = leakAlertMessage(tenant, rows, { requested: true });
+
+    expect(asked.subject).toContain("12 potential license leaks open in");
+    expect(asked.html).toContain("You asked for this summary of 12 open");
+    expect(asked.html).not.toContain("The latest sync detected");
+    expect(asked.html).not.toContain("Newly detected findings");
+    expect(asked.html).toContain("These findings are open right now");
+    expect(asked.html).toContain("No email setting was changed.");
+    expect(asked.html).not.toContain("Turn these off in");
+  });
+
+  it("changes the framing and nothing else", () => {
+    // Without the flag the message is the alert, byte for byte.
+    expect(leakAlertMessage(tenant, rows, {})).toEqual({ subject, html });
+
+    const asked = leakAlertMessage(tenant, rows, { requested: true });
+    expect({
+      subject: asked.subject.replace(" open in ", " detected in "),
+      html: asked.html
+        .replace(
+          "You asked for this summary of 12 open findings involving",
+          "The latest sync detected 12 findings involving",
+        )
+        .replace(
+          "These findings are open right now and may have existed for months.",
+          "Newly detected findings may reflect existing issues, especially on a first\nscan.",
+        )
+        .replace(
+          "An admin of this workspace asked for this email in",
+          "Immediate alert for new offboarding leaks. Turn these off in",
+        )
+        .replace(". No email setting was changed.", "."),
+    }).toEqual({ subject, html });
+  });
+
   it("leaves the optional lines out when they do not apply", () => {
     const small = leakAlertMessage(tenant, [
       { title: "Only seat", monthlyImpactCents: 900 },

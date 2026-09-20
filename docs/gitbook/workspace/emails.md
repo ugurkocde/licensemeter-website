@@ -64,7 +64,7 @@ The email lists the ten most expensive findings first. It then states the subtot
 The figure is an estimate from your price book, not a measured increase in your bill. A first sync often reports leaks that have existed for months. A finding is a license to review, not a count of people. Check each one before you reclaim a license, and enter your contract prices under [Licenses and prices](../licenses-and-prices.md) so the estimate reflects what you pay.
 {% endhint %}
 
-See [Detection rules](../findings/rules.md) for what counts as a leak and [Remediation workflow](../findings/workflow.md) for what to do next.
+See [Detection rules](../findings/rules.md) for what counts as a leak and [Remediation workflow](../findings/workflow.md) for what to do next. If an alert never arrived, an Owner or Admin can ask for the leaks that are open right now, described under [Recover missed email](#recover-missed-email).
 
 ## Invitation
 
@@ -142,11 +142,34 @@ Owners and Admins find **Email delivery** under **Settings**. It lists the lates
 
 When an address bounces permanently, is held back by the mail provider, or a recipient marks an email as spam, LicenseMeter stops sending email to it and shows it under **Blocked addresses** with the reason. One dead mailbox then no longer affects delivery for everyone else in the workspace. Blocks are per workspace: the same address can still receive mail in another workspace.
 
-{% hint style="info" %}
-There is no unblock button yet. If a blocked address works again, ask your operator, or write to support for the hosted service.
+On a self-hosted installation the section is only filled in when the operator configured the mail provider webhook. Without it, **sent** means the mail provider accepted the message, not that it arrived, and the section says so.
+
+## Recover missed email
+
+When email went wrong, an Owner or Admin has two controls under **Settings**, **Email delivery**. Both are recovery actions: neither turns a scheduled email on, and neither changes anyone's preferences.
+
+### Send the current findings
+
+**Send the current findings** emails the offboarding leaks that are open at that moment to every Owner and Admin and to a confirmed shared notification address. Use it when a leak alert never arrived, for example because the mailbox bounced, because the leak alert switch was off at the time, or because the findings were already known to LicenseMeter before anybody was watching.
+
+| Detail | Description |
+| --- | --- |
+| Subject | Names the number of potential license leaks that are open, your workspace and the estimated monthly impact |
+| Sent to | Every Owner and Admin, and the shared notification address once it is confirmed. The leak alert switches do not apply, because the email was asked for |
+| Contains | The same figures as the leak alert, from the findings that are open right now. It is not a copy of an earlier email |
+| Limit | Three requested sends per workspace per day |
+
+The button asks for a confirmation and names how many people it reaches before anything is sent. Afterwards it reports what happened, for example how many people received it and how many addresses were blocked. Findings that are already resolved are left out, and a workspace with no open leaks is told that there is nothing to send. Each request is recorded in the activity log.
+
+### Clear a block
+
+Every address under **Blocked addresses** has a **Clear block** control. Clearing removes the block for this workspace, so the address is mailed again on the next send.
+
+{% hint style="warning" %}
+Clearing a block does not repair a mailbox. The mail provider keeps a suppression list of its own, so an address that is still undeliverable can stay undeliverable and be blocked again on the next permanent failure. Clear the block after the mailbox itself was fixed.
 {% endhint %}
 
-On a self-hosted installation the section is only filled in when the operator configured the mail provider webhook. Without it, **sent** means the mail provider accepted the message, not that it arrived, and the section says so.
+The block is cleared for one workspace only. The same address stays blocked in any other workspace that blocked it, and the change is recorded in the activity log.
 
 ## If an email does not arrive
 
@@ -154,7 +177,8 @@ On a self-hosted installation the section is only filled in when the operator co
 - Confirm the address. LicenseMeter writes to the address of your membership, shown under **Settings**, **Email me**.
 - Only Owners and Admins receive the digest, the report and leak alerts. Viewers do not.
 - The digest and the report respect your personal switch, and leak alerts respect the workspace switch.
-- Check **Settings**, **Email delivery** for what the mail provider reported, and whether the address is listed under **Blocked addresses**.
+- Check **Settings**, **Email delivery** for what the mail provider reported, and whether the address is listed under **Blocked addresses**. A blocked address can be cleared there once the mailbox works again.
+- To catch up on leaks you may have missed, use **Send the current findings** under **Email delivery**.
 - A shared notification address only receives mail after somebody confirmed the emailed link, and only for the switches that are on.
 - The sample workspace never sends email.
 

@@ -222,7 +222,9 @@ export type AuditAction =
   | "notification_address_requested"
   | "notification_address_verified"
   | "notification_address_removed"
-  | "notification_address_preference_changed";
+  | "notification_address_preference_changed"
+  | "current_findings_sent"
+  | "email_block_removed";
 
 /** Aggregate counts captured when user identities are concealed in usage reports. */
 export type AggregateUsage = {

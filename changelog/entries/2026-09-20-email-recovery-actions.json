@@ -1,0 +1,7 @@
+{
+  "title": "Catch up on missed email and clear a blocked address",
+  "summary": "Settings, Email delivery now has two recovery controls for Owners and Admins. Send the current findings emails the offboarding leaks that are open right now to the owners, the admins and a confirmed shared notification address, so a workspace can catch up after a leak alert never arrived. It sends no old email, turns no scheduled email on and changes nobody's preferences, it asks for a confirmation and names how many people it reaches, and it is limited to three sends per workspace per day. Blocked addresses can now be cleared in place, which lets the next send reach that mailbox again. Clearing a block does not repair a mailbox, and the mail provider keeps a suppression list of its own, so fix the mailbox first.",
+  "type": "new",
+  "publishedOn": "2026-09-20",
+  "idempotencyKey": "licensemeter:2026-09-20-email-recovery-actions"
+}

@@ -11,8 +11,10 @@ import { JoinRequestActions } from "~/components/workspace/JoinRequestActions";
 import { LeakAlertsToggle } from "~/components/workspace/LeakAlertsToggle";
 import { MemberActions } from "~/components/workspace/MemberActions";
 import { MonthlyReportToggle } from "~/components/workspace/MonthlyReportToggle";
+import { RemoveEmailBlock } from "~/components/workspace/RemoveEmailBlock";
 import { ReplayTourButton } from "~/components/workspace/ReplayTourButton";
 import { RoleSelect } from "~/components/workspace/RoleSelect";
+import { SendCurrentFindings } from "~/components/workspace/SendCurrentFindings";
 import { SharedNotificationAddress } from "~/components/workspace/SharedNotificationAddress";
 import { Card, Pill } from "~/components/ui";
 import { env } from "~/env";
@@ -32,6 +34,7 @@ import {
   memberships,
   syncRuns,
 } from "~/server/db/schema";
+import { currentFindingsRecipients } from "~/server/currentFindings";
 import { holdsJoinableDomain, pendingJoinRequests } from "~/server/domainJoin";
 import { emailEnabled } from "~/server/email";
 import { loadSharedAddress } from "~/server/notificationAddress";
@@ -89,6 +92,7 @@ export default async function SettingsPage() {
     deliveries,
     blocks,
     sharedAddress,
+    findingsRecipients,
   ] = await Promise.all([
     db.query.memberships.findMany({
       where: eq(memberships.tenantId, ctx.tenant.id),
@@ -131,6 +135,11 @@ export default async function SettingsPage() {
     // The shared notification address names a mailbox, so it stays with the
     // owners and admins of a real workspace.
     canEdit ? loadSharedAddress(ctx.tenant.id) : Promise.resolve(null),
+    // Who a requested send of the current findings would reach, named before
+    // the admin sets one off.
+    canEdit
+      ? currentFindingsRecipients(ctx.tenant.id)
+      : Promise.resolve([] as string[]),
   ]);
 
   return (
@@ -342,22 +351,53 @@ export default async function SettingsPage() {
                   {blocks.map((b) => (
                     <li
                       key={b.email}
-                      className="border-line flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 border-b py-2 text-sm last:border-b-0"
+                      className="border-line flex flex-wrap items-center justify-between gap-x-4 gap-y-0.5 border-b py-2 text-sm last:border-b-0"
                     >
                       <span className="min-w-0 font-medium break-all">
                         {b.email}
                       </span>
-                      <span className="text-ink-soft text-xs">
-                        {BLOCK_REASON_LABELS[b.reason]}
-                        <span className="text-ink-faint ml-2 font-mono text-[11px] whitespace-nowrap">
-                          {fmtDate(b.createdAt)}
+                      <span className="flex items-center gap-3">
+                        <span className="text-ink-soft text-xs">
+                          {BLOCK_REASON_LABELS[b.reason]}
+                          <span className="text-ink-faint ml-2 font-mono text-[11px] whitespace-nowrap">
+                            {fmtDate(b.createdAt)}
+                          </span>
                         </span>
+                        <RemoveEmailBlock email={b.email} />
                       </span>
                     </li>
                   ))}
                 </ul>
+                <p className="text-ink-faint mt-2 max-w-xl text-xs">
+                  Clearing a block means the address is mailed again on the next
+                  send. It does not repair the mailbox, and the mail provider
+                  keeps a suppression list of its own, so a mailbox that is
+                  still broken can stay undeliverable and be blocked again.
+                </p>
               </div>
             )}
+            <div className="border-line mt-4 border-t pt-4">
+              <h3 className="text-sm font-medium">Send the current findings</h3>
+              <div className="mt-1">
+                <SendCurrentFindings
+                  recipientCount={
+                    findingsRecipients.filter(
+                      (email) =>
+                        !blocks.some(
+                          (b) => b.email === email.trim().toLowerCase(),
+                        ),
+                    ).length
+                  }
+                  blockedCount={
+                    findingsRecipients.filter((email) =>
+                      blocks.some(
+                        (b) => b.email === email.trim().toLowerCase(),
+                      ),
+                    ).length
+                  }
+                />
+              </div>
+            </div>
           </Card>
         )}
 
