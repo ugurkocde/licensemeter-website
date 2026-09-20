@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { siteUrl } from "~/env";
 import { db } from "~/server/db";
 import { tenants } from "~/server/db/schema";
+import { withTenant } from "~/server/db/tenant";
 import { hasFeature, planFor } from "~/server/entitlement";
 import { loadEntitlement } from "~/server/entitlementStore";
 import {
@@ -204,7 +205,9 @@ export const POST = async (request: Request) => {
     return json(400, rpcError(null, RPC_ERROR.parse, "Parse error"));
   }
 
-  const reply = await handleMessage(message, { tenant, entitlement, now });
+  const reply = await withTenant(db, tenant.id, () =>
+    handleMessage(message, { tenant, entitlement, now }),
+  );
   if (reply.body === null) {
     return new NextResponse(null, {
       status: reply.status,
