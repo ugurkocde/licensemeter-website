@@ -17,17 +17,19 @@ vi.mock("~/env", () => ({
   siteUrl: () => "https://licensemeter.example",
 }));
 
-// Stable proxy so every module's `import { db }` binding hits currentDb.
-vi.mock("~/server/db", () => ({
-  db: new Proxy(
+// Stable proxy so every module's `import { db }` binding hits currentDb, wrapped
+// like production so withTenant() routes queries to the tenant session.
+vi.mock("~/server/db", async () => {
+  const { createTenantDb } = await import("~/server/db/tenant");
+  const proxy = new Proxy(
     {},
     {
       get: (_t, prop) =>
         (currentDb as unknown as Record<string | symbol, unknown>)[prop],
     },
-  ),
-  schema,
-}));
+  );
+  return { db: createTenantDb(proxy), schema };
+});
 
 const { POST, GET, DELETE } = await import("./route");
 const { createToken, revokeToken } = await import("~/server/mcp/tokens");
