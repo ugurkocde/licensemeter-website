@@ -106,6 +106,17 @@ export const env = createEnv({
     DEMO_MODE: z.enum(["true", "false"]).optional(),
 
     /**
+     * Database role the app switches to inside withTenant() so tenant RLS
+     * policies are enforced for wrapped queries. Set it (and run
+     * scripts/db-tenant-rls.sql) after wiring the tenant scopes. Unset keeps
+     * isolation application-level. Must be a plain identifier.
+     */
+    TENANT_DB_ROLE: z
+      .string()
+      .regex(/^[a-z_][a-z0-9_]*$/, "Must be a bare SQL identifier")
+      .optional(),
+
+    /**
      * Incoming-webhook URL (Teams/Slack compatible) for operational alerts:
      * failed syncs, cron errors. Optional; alerts log to console without it.
      */
@@ -165,6 +176,7 @@ export const env = createEnv({
     MARKETPLACE_PLAN_MSP: process.env.MARKETPLACE_PLAN_MSP,
     CRON_SECRET: process.env.CRON_SECRET,
     DEMO_MODE: process.env.DEMO_MODE,
+    TENANT_DB_ROLE: process.env.TENANT_DB_ROLE,
     APP_BASE_URL: process.env.APP_BASE_URL,
     ALERT_WEBHOOK_URL: process.env.ALERT_WEBHOOK_URL,
     ALERT_EMAIL: process.env.ALERT_EMAIL,

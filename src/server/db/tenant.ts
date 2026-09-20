@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { sql } from "drizzle-orm";
 
+import { env } from "~/env";
 import type { Db } from "./index";
 
 /**
@@ -39,6 +40,13 @@ export const withTenant = async <T>(
     await tx.execute(
       sql`select set_config('app.tenant_id', ${tenantId}, true)`,
     );
+    // Enforcement is opt-in: the app keeps its own role until TENANT_DB_ROLE
+    // is configured (and scripts/db-tenant-rls.sql applied). The role name is
+    // schema-validated as a bare identifier.
+    const role = env.TENANT_DB_ROLE;
+    if (role) {
+      await tx.execute(sql.raw(`set local role "${role}"`));
+    }
     return storage.run(tx, fn);
   });
 };

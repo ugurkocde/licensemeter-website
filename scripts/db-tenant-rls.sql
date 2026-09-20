@@ -1,27 +1,39 @@
--- Enable database-level tenant isolation by making Row Level Security enforce
--- the app's tenant context.
+-- Tenant isolation via a dedicated database role.
 --
--- IMPORTANT: apply this only AFTER every access to a tenant table runs inside
--- withTenant(tenantId, ...) (src/server/db/tenant.ts). These policies read the
--- `app.tenant_id` session setting, which withTenant sets. For the app role the
--- setting is unset outside a wrapped call, and an unset setting matches no row,
--- so applying this before the wiring is complete denies access to tenant data
--- (fail-closed, not a leak). The global tables (no tenant_id column) keep the
--- permissive app_all policy created by db-app-role-grants-and-policies.sql.
+-- The app connects as `licensemeter_app`, which holds a permissive `app_all`
+-- policy (application-level isolation). This script adds a second, NOLOGIN role
+-- `licensemeter_tenant` that is subject to tenant Row Level Security, and makes
+-- the app role a member so `withTenant()` can `set local role` for a wrapped
+-- request. Wrapped queries are then enforced by the database; paths not yet
+-- wrapped keep working at application-level isolation, so the rollout is
+-- incremental and cannot fail closed.
 --
--- This replaces the permissive app_all policy on each tenant table with:
---   USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
---   WITH CHECK (the same)
--- and is idempotent. Run as the privileged/admin role after schema changes,
--- in addition to the other db-* scripts.
---
--- How to run: as a privileged role (postgres), via the Supabase SQL editor or
--- an admin connection.
+-- After running this, set TENANT_DB_ROLE=licensemeter_tenant so withTenant()
+-- switches role. Requires RLS to be enabled on the tables (db-enable-rls-deny-all.sql).
+-- Idempotent. Run as a privileged role (postgres).
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'licensemeter_tenant') THEN
+    CREATE ROLE licensemeter_tenant NOLOGIN;
+  END IF;
+END $$;
+
+GRANT USAGE ON SCHEMA public TO licensemeter_tenant;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO licensemeter_tenant;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO licensemeter_tenant;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO licensemeter_tenant;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT USAGE ON SEQUENCES TO licensemeter_tenant;
+-- The app role sets this role for the duration of a withTenant() transaction.
+GRANT licensemeter_tenant TO licensemeter_app;
 
 DO $$
 DECLARE
   t text;
 BEGIN
+  -- Tenant-data tables: enforce the app.tenant_id session setting.
   FOR t IN
     SELECT c.table_name
     FROM information_schema.columns c
@@ -30,12 +42,33 @@ BEGIN
     WHERE c.table_schema = 'public'
       AND c.column_name = 'tenant_id'
   LOOP
-    EXECUTE format('DROP POLICY IF EXISTS app_all ON public.%I', t);
     EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON public.%I', t);
     EXECUTE format(
-      'CREATE POLICY tenant_isolation ON public.%I FOR ALL TO licensemeter_app '
+      'CREATE POLICY tenant_isolation ON public.%I FOR ALL TO licensemeter_tenant '
       'USING (tenant_id = current_setting(''app.tenant_id'', true)::uuid) '
       'WITH CHECK (tenant_id = current_setting(''app.tenant_id'', true)::uuid)',
+      t
+    );
+  END LOOP;
+
+  -- Identity and global tables (no tenant_id): readable inside a tenant
+  -- transaction so wrapped code can still resolve workspace metadata.
+  FOR t IN
+    SELECT p.tablename
+    FROM pg_tables p
+    WHERE p.schemaname = 'public'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns c
+        WHERE c.table_schema = 'public'
+          AND c.table_name = p.tablename
+          AND c.column_name = 'tenant_id'
+      )
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS tenant_app_all ON public.%I', t);
+    EXECUTE format(
+      'CREATE POLICY tenant_app_all ON public.%I FOR ALL TO licensemeter_tenant '
+      'USING (true) WITH CHECK (true)',
       t
     );
   END LOOP;
