@@ -386,7 +386,7 @@ export const Tour = ({
             <div className="mt-5 flex items-center gap-3">
               <div className="bg-line h-1 flex-1 overflow-hidden rounded-full">
                 <div
-                  className="bg-brand h-full rounded-full transition-[width] duration-300 ease-out"
+                  className="bg-brand h-full rounded-full transition-[width] duration-300 ease-out motion-reduce:transition-none"
                   style={{
                     width: `${((activeIndex + 1) / availableSteps.length) * 100}%`,
                   }}
