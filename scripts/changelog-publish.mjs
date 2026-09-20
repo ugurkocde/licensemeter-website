@@ -115,6 +115,19 @@ export const validateEntry = (entry, productId) => {
   ) {
     throw new Error("publishedOn must be a real YYYY-MM-DD date");
   }
+  // The changelog API refuses an entry that looks like it carries personal
+  // data, and an address in an example is the easy way to trip it. Catching it
+  // here keeps the failure in the pull request instead of after the merge.
+  for (const [field, value] of [
+    ["title", out.title],
+    ["summary", out.summary],
+  ]) {
+    if (/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/.test(value)) {
+      throw new Error(
+        `${field} must not contain an email address: describe the mailbox instead`,
+      );
+    }
+  }
   if (!out.idempotencyKey.startsWith(`${productId}:`)) {
     throw new Error(`idempotencyKey must start with "${productId}:"`);
   }
