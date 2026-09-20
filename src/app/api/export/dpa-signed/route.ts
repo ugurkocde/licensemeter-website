@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { isDpaLang, type DpaAgreementKind, type DpaLang } from "~/lib/dpa";
 import { apiAccess } from "~/server/access";
+import { db } from "~/server/db";
+import { withTenant } from "~/server/db/tenant";
 import { counterpartyOf, DPA_KINDS, getAgreement } from "~/server/dpa/records";
 import { renderDpaPdf } from "~/server/dpa/renderDpa";
 
@@ -30,20 +32,22 @@ export const GET = async (req: Request) => {
   const langParam = params.get("lang");
   const lang: DpaLang = isDpaLang(langParam) ? langParam : "en";
 
-  const agreement = await getAgreement(ctx.tenant.id, kind);
-  if (!agreement)
-    return NextResponse.json({ error: "not found" }, { status: 404 });
+  return withTenant(db, ctx.tenant.id, async () => {
+    const agreement = await getAgreement(ctx.tenant.id, kind);
+    if (!agreement)
+      return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const { buffer, filename } = await renderDpaPdf(
-    lang,
-    counterpartyOf(agreement),
-  );
+    const { buffer, filename } = await renderDpaPdf(
+      lang,
+      counterpartyOf(agreement),
+    );
 
-  return new Response(new Uint8Array(buffer), {
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Cache-Control": "private, no-store",
-    },
+    return new Response(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "private, no-store",
+      },
+    });
   });
 };

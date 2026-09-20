@@ -5,6 +5,7 @@ import { apiAccess } from "~/server/access";
 import { audit } from "~/server/audit";
 import { db } from "~/server/db";
 import { findings } from "~/server/db/schema";
+import { withTenant } from "~/server/db/tenant";
 import { isWasteRule } from "~/lib/rules";
 import { generateRemediationScript } from "~/server/waste/remediation";
 
@@ -19,25 +20,27 @@ export const GET = async (req: NextRequest) => {
   const ruleParam = req.nextUrl.searchParams.get("rule");
   const rule = ruleParam && isWasteRule(ruleParam) ? ruleParam : undefined;
 
-  const rows = await db.query.findings.findMany({
-    where: and(
-      eq(findings.tenantId, ctx.tenant.id),
-      inArray(findings.status, ["open", "acknowledged"]),
-      ...(rule ? [eq(findings.rule, rule)] : []),
-    ),
-    orderBy: desc(findings.monthlyImpactCents),
-  });
+  return withTenant(db, ctx.tenant.id, async () => {
+    const rows = await db.query.findings.findMany({
+      where: and(
+        eq(findings.tenantId, ctx.tenant.id),
+        inArray(findings.status, ["open", "acknowledged"]),
+        ...(rule ? [eq(findings.rule, rule)] : []),
+      ),
+      orderBy: desc(findings.monthlyImpactCents),
+    });
 
-  await audit(ctx, "export_remediation", {
-    rows: rows.length,
-    rule: rule ?? "all",
-  });
-  const script = generateRemediationScript(rows);
-  return new Response(script, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Content-Disposition": `attachment; filename="licensemeter-remediation${rule ? `-${rule}` : ""}.ps1"`,
-      "Cache-Control": "private, no-store",
-    },
+    await audit(ctx, "export_remediation", {
+      rows: rows.length,
+      rule: rule ?? "all",
+    });
+    const script = generateRemediationScript(rows);
+    return new Response(script, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Disposition": `attachment; filename="licensemeter-remediation${rule ? `-${rule}` : ""}.ps1"`,
+        "Cache-Control": "private, no-store",
+      },
+    });
   });
 };
