@@ -1,0 +1,7 @@
+{
+  "title": "Connecting Microsoft now verifies that consent was actually granted",
+  "summary": "When a Microsoft tenant is connected, LicenseMeter now confirms with Microsoft that the connector app really was authorized in that tenant before attaching it to the workspace. This closes a case where a crafted return link could attach a tenant that had not authorized the app, which could block the tenant's real owner from connecting.",
+  "type": "fixed",
+  "publishedOn": "2026-09-21",
+  "idempotencyKey": "licensemeter:2026-09-21-connect-consent-verification"
+}

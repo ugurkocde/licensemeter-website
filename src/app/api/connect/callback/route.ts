@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after, type NextRequest } from "next/server";
 
+import { env } from "~/env";
 import {
   apiAccess,
   WORKSPACE_COOKIE,
@@ -11,6 +12,7 @@ import {
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
 import { consentStates, msConnections, tenants } from "~/server/db/schema";
+import { verifyManagedConsent } from "~/server/graph/msGraph";
 import { notifyOps } from "~/server/ops";
 import { runSync } from "~/server/sync/runSync";
 
@@ -85,6 +87,21 @@ export const GET = async (req: NextRequest) => {
     !session?.user?.oid ||
     session.user.oid !== stateRow!.oid
   ) {
+    fail("not_allowed");
+  }
+
+  // The plaintext `tenant` and `admin_consent` query params are forgeable:
+  // anyone who starts their own flow and calls this callback directly can
+  // supply an arbitrary tenant GUID. Prove Microsoft actually authorized the
+  // granted tenant before binding. With the managed connector app configured,
+  // an app-only token can only be acquired for a tenant that consented to that
+  // app; without it (BYO-only), only the initiator's own home tenant (the
+  // tenant their app registration belongs to) may be attached.
+  if (env.CONNECTOR_CLIENT_ID && env.CONNECTOR_CLIENT_SECRET) {
+    if (!(await verifyManagedConsent(grantedTid!))) {
+      fail("consent_not_granted");
+    }
+  } else if (!stateRow!.tid || stateRow!.tid !== grantedTid) {
     fail("not_allowed");
   }
 
