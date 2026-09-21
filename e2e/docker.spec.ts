@@ -55,6 +55,19 @@ test("self-hosted image uses runtime configuration and opens the sample tenant",
   expect(await (await request.get("/robots.txt")).text()).toContain(
     "Disallow: /",
   );
+  // PDF rendering depends on pdfkit's assets being traced into the built
+  // image. When they were missing, every PDF download answered 500 while the
+  // unit suite stayed green; this asserts the built output actually renders.
+  const publicDpa = await request.get("/api/export/dpa");
+  expect(publicDpa.ok()).toBe(true);
+  expect(publicDpa.headers()["content-type"]).toContain("application/pdf");
+  expect((await publicDpa.body()).subarray(0, 4).toString()).toBe("%PDF");
+  const report = await page.request.get("/api/export/report");
+  expect(report.ok()).toBe(true);
+  expect(report.headers()["content-type"]).toContain("application/pdf");
+  const findings = await page.request.get("/api/export/findings");
+  expect(findings.ok()).toBe(true);
+  expect(findings.headers()["content-type"]).toContain("text/csv");
   const image = await request.get(
     "/_next/image?url=%2Fbrand-mark.png&w=64&q=75",
   );

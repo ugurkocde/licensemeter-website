@@ -32,6 +32,8 @@ export default defineConfig({
         timeout: 120_000,
         // Exercise the support form with mocked providers, never real email delivery.
         env: {
+          // The demo button in the specs needs the credentials-free entry.
+          DEMO_MODE: "true",
           // Placeholders so the sign-in entry points render; no spec signs in.
           AUTH_MICROSOFT_ENTRA_ID_ID:
             process.env.AUTH_MICROSOFT_ENTRA_ID_ID ??
