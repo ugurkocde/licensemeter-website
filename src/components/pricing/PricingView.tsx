@@ -1,6 +1,6 @@
 import Link from "next/link";
+import { ArrowDown, Building2, ShieldCheck, Sparkles } from "lucide-react";
 
-import { buttonClass } from "~/components/ui";
 import {
   marketplaceOfferUrl,
   polarEnabled,
@@ -87,55 +87,27 @@ const Rich = ({ parts }: { parts: RichText }) => (
   </>
 );
 
-/** Per-plan surface: Pro sits on dark teal, MSP on a faint teal wash. */
+const PLAN_ICONS = { free: ShieldCheck, pro: Sparkles, msp: Building2 };
+const PLAN_BUTTON =
+  "inline-flex min-h-12 w-full touch-manipulation items-center justify-center rounded-full px-5 py-3 text-center text-sm font-semibold transition-colors focus-visible:outline-blue-700";
 const PLAN_STYLE: Record<
   PlanId,
-  {
-    card: string;
-    name: string;
-    tag: string;
-    muted: string;
-    pitch: string;
-    rule: string;
-    check: string;
-    primary: string;
-    secondary: string;
-  }
+  { card: string; primary: string; secondary: string }
 > = {
   free: {
-    card: "border-line bg-card shadow-card",
-    name: "text-ink-faint",
-    tag: "bg-brand-soft text-brand-text",
-    muted: "text-ink-faint",
-    pitch: "text-ink-soft",
-    rule: "border-line",
-    check: "text-brand",
-    primary: buttonClass("secondary", "w-full"),
-    secondary: buttonClass("secondary", "w-full"),
+    card: "border-transparent bg-canvas",
+    primary: `${PLAN_BUTTON} border border-line-strong bg-white text-ink hover:bg-slate-100`,
+    secondary: `${PLAN_BUTTON} border border-line-strong bg-white text-ink hover:bg-slate-100`,
   },
   pro: {
-    card: "border-brand-deep bg-brand-deep shadow-hero bg-[radial-gradient(120%_70%_at_100%_0%,rgba(45,212,191,0.16),transparent_60%)] text-white",
-    name: "text-brand-bright",
-    tag: "bg-brand-bright/15 text-brand-bright",
-    muted: "text-white/65",
-    pitch: "text-white/85",
-    rule: "border-white/15",
-    check: "text-brand-bright",
-    primary:
-      "text-brand-deep hover:bg-brand-soft inline-flex min-h-11 w-full touch-manipulation items-center justify-center rounded-xl bg-white px-5 py-3 text-center text-sm font-semibold transition focus-visible:outline-white",
-    secondary:
-      "inline-flex min-h-11 w-full touch-manipulation items-center justify-center rounded-xl border border-white/30 px-5 py-2.5 text-center text-sm font-medium text-white transition hover:border-white focus-visible:outline-white",
+    card: "border-blue-200 bg-blue-50/60 shadow-float lg:-translate-y-3",
+    primary: `${PLAN_BUTTON} bg-blue-700 text-white hover:bg-blue-800`,
+    secondary: `${PLAN_BUTTON} border border-blue-200 bg-white text-blue-700 hover:bg-blue-50`,
   },
   msp: {
-    card: "border-line-strong bg-card shadow-card bg-[radial-gradient(120%_60%_at_100%_0%,var(--color-brand-soft),transparent_60%)]",
-    name: "text-ink-faint",
-    tag: "bg-brand-soft text-brand-text",
-    muted: "text-ink-faint",
-    pitch: "text-ink-soft",
-    rule: "border-line",
-    check: "text-brand",
-    primary: buttonClass("primary", "w-full text-center"),
-    secondary: buttonClass("secondary", "w-full text-center"),
+    card: "border-transparent bg-canvas",
+    primary: `${PLAN_BUTTON} bg-ink text-white hover:bg-slate-700`,
+    secondary: `${PLAN_BUTTON} border border-line-strong bg-white text-ink hover:bg-slate-100`,
   },
 };
 
@@ -190,279 +162,316 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
   return (
     <main
       lang={lang}
-      className="group/pricing mx-auto max-w-5xl px-4 pt-6 pb-24 sm:px-6"
+      className="group/pricing mx-auto max-w-6xl px-4 pt-10 pb-24 sm:px-6 sm:pt-14 lg:pt-16"
     >
-      <section>
-        <p className={`${EYEBROW} rise`}>{c.hero.eyebrow}</p>
-        <h1 className="font-display rise rise-1 mt-4 max-w-[18ch] text-[clamp(2.125rem,7.5vw,3.25rem)] leading-[1.08] font-semibold tracking-[-0.03em] text-balance">
-          {c.hero.h1.pre}{" "}
-          {/* The amber line of the brand mark, drawn through the cost. The
-              meter-fill keyframes scale it in along its own rotated axis. */}
-          <span
-            aria-hidden="true"
-            className="text-ink-faint after:bg-waste relative whitespace-nowrap after:absolute after:inset-x-[-0.06em] after:top-[54%] after:h-[0.13em] after:-rotate-[7deg] after:content-[''] motion-safe:after:animate-[meter-fill_0.7s_0.35s_cubic-bezier(0.2,0.7,0.2,1)_both]"
-          >
-            {c.hero.h1.struck}
-          </span>{" "}
-          {c.hero.h1.post}
-        </h1>
-        <p className="text-ink-soft rise rise-2 mt-5 max-w-2xl text-[17px] leading-relaxed">
-          {c.hero.lede}
-        </p>
-
-        <div className="rise rise-2 mt-7 flex flex-wrap items-center gap-3">
-          <fieldset className="border-line-strong bg-card shadow-card inline-grid grid-cols-2 rounded-[14px] border p-1">
-            <legend className="sr-only">{c.billing.legend}</legend>
-            <input
-              type="radio"
-              name="bill"
-              id="bill-m"
-              defaultChecked
-              className="peer/m sr-only"
-            />
-            <label
-              htmlFor="bill-m"
-              className="text-ink-soft peer-checked/m:bg-ink peer-focus-visible/m:outline-brand inline-flex min-h-11 cursor-pointer touch-manipulation items-center justify-center rounded-[10px] px-4 text-sm font-medium transition-colors peer-checked/m:text-white peer-focus-visible/m:outline-2 peer-focus-visible/m:outline-offset-2"
-            >
-              {c.billing.month}
-            </label>
-            <input
-              type="radio"
-              name="bill"
-              id="bill-y"
-              className="peer/y sr-only"
-            />
-            <label
-              htmlFor="bill-y"
-              className="text-ink-soft peer-checked/y:bg-ink peer-focus-visible/y:outline-brand inline-flex min-h-11 cursor-pointer touch-manipulation items-center justify-center gap-2 rounded-[10px] px-4 text-sm font-medium transition-colors peer-checked/y:text-white peer-focus-visible/y:outline-2 peer-focus-visible/y:outline-offset-2"
-            >
-              {c.billing.year}
-              <span className="bg-waste-soft text-waste-deep rounded-full px-1.5 py-0.5 text-[11px] font-semibold tracking-wide whitespace-nowrap">
-                {c.billing.save}
-              </span>
-            </label>
-          </fieldset>
-
+      <section aria-labelledby="pricing-heading">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <p className="text-ink-soft text-xs font-semibold tracking-[0.18em] uppercase">
+            {c.hero.eyebrow}
+          </p>
           <div
             role="group"
             aria-label={c.toggleLabel}
-            className="border-line-strong bg-card inline-flex rounded-xl border p-1"
+            className="bg-canvas inline-flex rounded-full p-1"
           >
             {langs.map((l) => (
               <Link
                 key={l.id}
                 href={PRICING_PATHS[l.id]}
                 aria-current={lang === l.id ? "page" : undefined}
-                className={`inline-flex min-h-9 cursor-pointer items-center rounded-lg px-3.5 py-1.5 text-sm font-medium transition ${
-                  lang === l.id
-                    ? "bg-brand-strong text-white"
-                    : "text-ink-soft hover:text-ink"
-                }`}
+                className={`inline-flex min-h-11 items-center rounded-full px-4 text-sm font-medium transition-colors ${lang === l.id ? "text-ink shadow-card bg-white" : "text-ink-soft hover:text-ink"}`}
               >
                 {l.label}
               </Link>
             ))}
           </div>
         </div>
+        <div className="mt-7 grid items-end gap-8 lg:grid-cols-[1fr_auto] lg:gap-12">
+          <div>
+            <h1
+              id="pricing-heading"
+              className="font-display max-w-[19ch] text-[clamp(2rem,4.5vw,3.5rem)] leading-[1.1] font-semibold tracking-[-0.045em] text-balance"
+            >
+              {c.hero.h1.pre}{" "}
+              <span
+                aria-hidden="true"
+                className="text-ink-faint decoration-waste line-through decoration-[3px]"
+              >
+                {c.hero.h1.struck}
+              </span>{" "}
+              {c.hero.h1.post}
+            </h1>
+            <p className="text-ink-soft mt-5 max-w-xl text-base leading-relaxed text-pretty">
+              {c.hero.lede}
+            </p>
+          </div>
+          <div className="flex flex-col items-start gap-3 lg:items-end lg:pb-1">
+            <fieldset className="bg-canvas inline-grid max-w-full grid-cols-2 rounded-full p-1.5">
+              <legend className="sr-only">{c.billing.legend}</legend>
+              <input
+                type="radio"
+                name="bill"
+                id="bill-m"
+                defaultChecked
+                className="peer/m sr-only"
+              />
+              <label
+                htmlFor="bill-m"
+                className="text-ink-soft hover:text-ink inline-flex min-h-12 cursor-pointer touch-manipulation items-center justify-center rounded-full px-4 text-sm font-semibold transition-colors peer-checked/m:bg-blue-700 peer-checked/m:text-white peer-focus-visible/m:outline-2 peer-focus-visible/m:outline-offset-2 peer-focus-visible/m:outline-blue-700"
+              >
+                {c.billing.month}
+              </label>
+              <input
+                type="radio"
+                name="bill"
+                id="bill-y"
+                className="peer/y sr-only"
+              />
+              <label
+                htmlFor="bill-y"
+                className="text-ink-soft hover:text-ink inline-flex min-h-12 cursor-pointer touch-manipulation flex-wrap items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors peer-checked/y:bg-blue-700 peer-checked/y:text-white peer-focus-visible/y:outline-2 peer-focus-visible/y:outline-offset-2 peer-focus-visible/y:outline-blue-700"
+              >
+                {c.billing.year}
+                <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-blue-700">
+                  {c.billing.save}
+                </span>
+              </label>
+            </fieldset>
+            <a
+              href="#compare"
+              className="text-ink-soft inline-flex min-h-11 items-center gap-2 text-sm font-medium transition-colors hover:text-blue-700"
+            >
+              {c.compare.eyebrow}
+              <ArrowDown aria-hidden="true" className="size-4" />
+            </a>
+          </div>
+        </div>
       </section>
 
       <section
         aria-label={c.plansLabel}
-        className="mt-8 grid gap-4 md:grid-cols-2 md:gap-5 lg:grid-cols-3"
+        className="mt-10 grid gap-6 lg:mt-16 lg:grid-cols-3"
       >
         {PLAN_IDS.map((id) => {
           const plan = c.plans[id];
           const style = PLAN_STYLE[id];
+          const Icon = PLAN_ICONS[id];
           const paid = id !== "free";
           return (
             <article
               key={id}
               data-plan={id}
-              className={`rise flex flex-col rounded-[20px] border p-6 md:p-8 lg:p-6 ${
-                id === "free" ? "rise-1 md:col-span-2 lg:col-span-1" : "rise-2"
-              } ${style.card}`}
+              aria-labelledby={`plan-${id}`}
+              className={`relative flex min-w-0 flex-col rounded-[28px] border p-6 sm:p-8 lg:p-6 ${style.card}`}
             >
-              <div className="flex items-center justify-between gap-3">
-                <h2
-                  className={`font-mono text-xs font-medium tracking-[0.16em] uppercase ${style.name}`}
+              <div className="mb-6 flex min-h-11 flex-wrap items-center justify-between gap-3">
+                <span
+                  className={`inline-flex size-11 items-center justify-center rounded-2xl ${id === "pro" ? "bg-blue-700 text-white" : "shadow-card bg-white text-blue-700"}`}
                 >
-                  {planName(id)}
-                </h2>
-                {paid && (
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${style.tag}`}
-                  >
-                    {c.trialTag}
+                  <Icon
+                    aria-hidden="true"
+                    className="size-5"
+                    strokeWidth={1.75}
+                  />
+                </span>
+                {id === "pro" && (
+                  <span className="shadow-card rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-blue-700">
+                    {c.recommended}
                   </span>
                 )}
               </div>
-
-              {paid ? (
-                <>
-                  <p
-                    data-price="month"
-                    className={`tnum mt-5 flex flex-wrap items-baseline gap-2 ${SHOW_MONTHLY}`}
-                  >
-                    <span className="text-5xl leading-none font-semibold tracking-[-0.04em]">
-                      {formatEuro(planPrice(id, "month"), lang)}
-                    </span>
-                    <span className={`text-[15px] ${style.muted}`}>
-                      {c.per.month}
-                    </span>
-                  </p>
-                  <p
-                    data-price="year"
-                    className={`tnum mt-5 flex-wrap items-baseline gap-2 ${SHOW_YEARLY_FLEX}`}
-                  >
-                    <span className="text-5xl leading-none font-semibold tracking-[-0.04em]">
-                      {formatEuro(planPrice(id, "year"), lang)}
-                    </span>
-                    <span className={`text-[15px] ${style.muted}`}>
-                      {c.per.year}
-                    </span>
-                  </p>
-                  <p
-                    className={`mt-2 text-[13px] lg:min-h-[2.8rem] ${style.muted} ${SHOW_MONTHLY}`}
-                  >
-                    {plan.note.month}
-                  </p>
-                  <p
-                    className={`mt-2 text-[13px] lg:min-h-[2.8rem] ${style.muted} ${SHOW_YEARLY_BLOCK}`}
-                  >
-                    {plan.note.year}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="tnum mt-5 flex flex-wrap items-baseline gap-2">
-                    <span className="text-5xl leading-none font-semibold tracking-[-0.04em]">
-                      {formatEuro(0, lang)}
-                    </span>
-                    <span className={`text-[15px] ${style.muted}`}>
-                      {c.per.free}
-                    </span>
-                  </p>
-                  <p
-                    className={`mt-2 text-[13px] lg:min-h-[2.8rem] ${style.muted}`}
-                  >
-                    {plan.note.month}
-                  </p>
-                </>
-              )}
-
-              <p
-                className={`mt-4 text-[15px] lg:min-h-[6.4rem] ${style.pitch}`}
+              <h2
+                id={`plan-${id}`}
+                className="font-display text-3xl font-semibold tracking-tight"
               >
-                {plan.pitch}
-              </p>
-
-              <div className="mt-5 flex flex-col gap-2.5">
+                {planName(id)}
+              </h2>
+              <p className="text-ink-soft mt-2 text-sm">{plan.audience}</p>
+              <div className="mt-6 rounded-[20px] bg-white px-5 py-5">
                 {paid ? (
                   <>
-                    {marketplaceHref && (
-                      <a href={marketplaceHref} className={style.primary}>
-                        {c.cta.marketplace}
-                      </a>
-                    )}
-                    {cardOk && (
-                      <>
-                        <span className={`block ${SHOW_MONTHLY}`}>
-                          <a
-                            href={cardHref("month")}
-                            className={
-                              marketplaceHref ? style.secondary : style.primary
-                            }
-                          >
-                            {c.cta.card}
-                          </a>
-                        </span>
-                        <span className={SHOW_YEARLY_BLOCK}>
-                          <a
-                            href={cardHref("year")}
-                            className={
-                              marketplaceHref ? style.secondary : style.primary
-                            }
-                          >
-                            {c.cta.card}
-                          </a>
-                        </span>
-                      </>
-                    )}
-                    {!marketplaceHref && !cardOk && (
-                      <a href={SUPPORT_MAILTO} className={style.primary}>
-                        {c.cta.talk}
-                      </a>
-                    )}
+                    <p
+                      data-price="month"
+                      className={`tnum flex flex-wrap items-baseline gap-2 ${SHOW_MONTHLY}`}
+                    >
+                      <span className="text-[2.75rem] leading-none font-semibold tracking-[-0.04em]">
+                        {formatEuro(planPrice(id, "month"), lang)}
+                      </span>
+                      <span className="text-ink-soft text-[15px]">
+                        {c.per.month}
+                      </span>
+                    </p>
+                    <p
+                      data-price="year"
+                      className={`tnum flex-wrap items-baseline gap-2 ${SHOW_YEARLY_FLEX}`}
+                    >
+                      <span className="text-[2.75rem] leading-none font-semibold tracking-[-0.04em]">
+                        {formatEuro(planPrice(id, "year"), lang)}
+                      </span>
+                      <span className="text-ink-soft text-[15px]">
+                        {c.per.year}
+                      </span>
+                    </p>
+                    <p
+                      className={`text-ink-soft mt-3 text-xs leading-relaxed lg:min-h-[3.75rem] ${SHOW_MONTHLY}`}
+                    >
+                      {plan.note.month}
+                    </p>
+                    <p
+                      className={`text-ink-soft mt-3 text-xs leading-relaxed lg:min-h-[3.75rem] ${SHOW_YEARLY_BLOCK}`}
+                    >
+                      {plan.note.year}
+                    </p>
                   </>
                 ) : (
-                  <a href={startHref} className={style.primary}>
-                    {c.cta.free}
-                  </a>
+                  <>
+                    <p className="tnum flex flex-wrap items-baseline gap-2">
+                      <span className="text-[2.75rem] leading-none font-semibold tracking-[-0.04em]">
+                        {formatEuro(0, lang)}
+                      </span>
+                      <span className="text-ink-soft text-[15px]">
+                        {c.per.free}
+                      </span>
+                    </p>
+                    <p className="text-ink-soft mt-3 text-xs leading-relaxed lg:min-h-[3.75rem]">
+                      {plan.note.month}
+                    </p>
+                  </>
                 )}
               </div>
-
-              <div className={`mt-6 border-t pt-5 ${style.rule}`}>
-                <h3
-                  className={`text-xs font-medium tracking-[0.14em] uppercase ${style.muted}`}
-                >
-                  {plan.includedTitle}
-                </h3>
-                <ul className="mt-3.5 grid gap-3">
-                  {plan.items.map((item) => (
-                    <li
-                      key={item.text}
-                      className={`grid grid-cols-[18px_1fr] items-start gap-2.5 text-[15px] leading-snug ${
-                        item.off ? style.muted : ""
-                      }`}
-                    >
-                      {item.off ? (
-                        <DashIcon className="text-line-strong mt-0.5 size-[18px]" />
-                      ) : (
-                        <CheckIcon
-                          className={`mt-0.5 size-[18px] ${style.check}`}
-                        />
-                      )}
-                      <span>
-                        {item.text}
-                        {item.detail && (
-                          <small
-                            className={`mt-0.5 block text-[13px] ${style.muted}`}
-                          >
-                            {item.detail}
-                          </small>
-                        )}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {plan.soon && (
-                <div
-                  data-soon
-                  className={`mt-5 border-t border-dashed pt-5 ${style.rule}`}
-                >
-                  <h3
-                    className={`text-xs font-medium tracking-[0.14em] uppercase ${style.muted}`}
+              <ul className="mt-6 grid gap-3.5">
+                {plan.highlights.map((text) => (
+                  <li
+                    key={text}
+                    className="grid grid-cols-[18px_1fr] items-start gap-2.5 text-sm leading-relaxed"
                   >
-                    {c.soonTitle}
+                    <CheckIcon className="mt-0.5 size-[18px] text-blue-700" />
+                    <span>{text}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-auto pt-7">
+                <p className="text-ink-soft mb-3 text-center text-xs">
+                  {paid ? c.trialTag : c.freeTag}
+                </p>
+                <div className="mt-5 flex flex-col gap-2.5">
+                  {paid ? (
+                    <>
+                      {marketplaceHref && (
+                        <a href={marketplaceHref} className={style.primary}>
+                          {c.cta.marketplace}
+                        </a>
+                      )}
+                      {cardOk && (
+                        <>
+                          <span className={`block ${SHOW_MONTHLY}`}>
+                            <a
+                              href={cardHref("month")}
+                              className={
+                                marketplaceHref
+                                  ? style.secondary
+                                  : style.primary
+                              }
+                            >
+                              {c.cta.card}
+                            </a>
+                          </span>
+                          <span className={SHOW_YEARLY_BLOCK}>
+                            <a
+                              href={cardHref("year")}
+                              className={
+                                marketplaceHref
+                                  ? style.secondary
+                                  : style.primary
+                              }
+                            >
+                              {c.cta.card}
+                            </a>
+                          </span>
+                        </>
+                      )}
+                      {!marketplaceHref && !cardOk && (
+                        <a href={SUPPORT_MAILTO} className={style.primary}>
+                          {c.cta.talk}
+                        </a>
+                      )}
+                    </>
+                  ) : (
+                    <a href={startHref} className={style.primary}>
+                      {c.cta.free}
+                    </a>
+                  )}
+                </div>
+              </div>
+              <details className="group/details border-line mt-5 border-t pt-1">
+                <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium hover:text-blue-700 [&::-webkit-details-marker]:hidden">
+                  <span>
+                    <span className="sr-only">{planName(id)}: </span>
+                    {c.planDetails}
+                  </span>
+                  <ArrowDown
+                    aria-hidden="true"
+                    className="size-4 shrink-0 transition-transform group-open/details:rotate-180 motion-reduce:transition-none"
+                  />
+                </summary>
+                <div className="pt-3">
+                  <p className="text-ink-soft mb-5 text-sm leading-relaxed">
+                    {plan.pitch}
+                  </p>
+                  <h3 className="text-ink-soft text-xs font-medium tracking-[0.14em] uppercase">
+                    {plan.includedTitle}
                   </h3>
                   <ul className="mt-3.5 grid gap-3">
-                    {plan.soon.map((text) => (
+                    {plan.items.map((item) => (
                       <li
-                        key={text}
-                        className={`grid grid-cols-[18px_1fr] items-start gap-2.5 text-[15px] leading-snug ${style.muted}`}
+                        key={item.text}
+                        className={`grid grid-cols-[18px_1fr] items-start gap-2.5 text-[15px] leading-snug ${
+                          item.off ? "text-ink-soft" : ""
+                        }`}
                       >
-                        <span
-                          aria-hidden="true"
-                          className="border-line-strong mt-1.5 ml-1 size-2.5 rounded-full border-2"
-                        />
-                        {text}
+                        {item.off ? (
+                          <DashIcon className="text-line-strong mt-0.5 size-[18px]" />
+                        ) : (
+                          <CheckIcon className="mt-0.5 size-[18px] text-blue-700" />
+                        )}
+                        <span>
+                          {item.text}
+                          {item.detail && (
+                            <small className="text-ink-soft mt-0.5 block text-[13px]">
+                              {item.detail}
+                            </small>
+                          )}
+                        </span>
                       </li>
                     ))}
                   </ul>
                 </div>
-              )}
+
+                {plan.soon && (
+                  <div
+                    data-soon
+                    className="border-line mt-5 border-t border-dashed pt-5"
+                  >
+                    <h3 className="text-ink-soft text-xs font-medium tracking-[0.14em] uppercase">
+                      {c.soonTitle}
+                    </h3>
+                    <ul className="mt-3.5 grid gap-3">
+                      {plan.soon.map((text) => (
+                        <li
+                          key={text}
+                          className="text-ink-soft grid grid-cols-[18px_1fr] items-start gap-2.5 text-[15px] leading-snug"
+                        >
+                          <span
+                            aria-hidden="true"
+                            className="border-line-strong mt-1.5 ml-1 size-2.5 rounded-full border-2"
+                          />
+                          {text}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </details>
             </article>
           );
         })}
