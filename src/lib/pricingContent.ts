@@ -163,6 +163,8 @@ export type RichText = (string | { text: string; href: string })[];
 type PlanItem = { text: string; detail?: string; off?: boolean };
 
 type PlanCopy = {
+  audience: string;
+  highlights: string[];
   pitch: string;
   note: Record<BillingInterval, string>;
   includedTitle: string;
@@ -185,6 +187,9 @@ export type PricingContent = {
   per: { free: string; month: string; year: string };
   plansLabel: string;
   trialTag: string;
+  freeTag: string;
+  recommended: string;
+  planDetails: string;
   soonTitle: string;
   cta: { free: string; marketplace: string; card: string; talk: string };
   plans: Record<PlanId, PlanCopy>;
@@ -237,7 +242,7 @@ const en: PricingContent = {
   hero: {
     eyebrow: "Pricing",
     h1: { pre: "Finding the waste costs", struck: "money", post: "nothing." },
-    lede: "LicenseMeter is free to use and open source, with every scan, finding and report included. Pro is for teams that need someone accountable behind it: support by email, a 99.9% uptime target, a signed data processing agreement and an MCP server. MSP extends that across your client tenants.",
+    lede: "Start free with every scan, finding and report. Add email support with Pro, or cover your client portfolio with MSP.",
   },
   billing: {
     legend: "Billing period",
@@ -248,6 +253,9 @@ const en: PricingContent = {
   per: { free: "forever", month: "per month", year: "per year" },
   plansLabel: "Plans",
   trialTag: `${TRIAL_DAYS}-day trial`,
+  freeTag: "Open source · No support",
+  recommended: "Recommended",
+  planDetails: "All plan details",
   soonTitle: "Coming soon",
   cta: {
     free: "Start free",
@@ -257,6 +265,13 @@ const en: PricingContent = {
   },
   plans: {
     free: {
+      audience: "For your first scan and beyond",
+      highlights: [
+        "Every scan, finding and report",
+        "No seat or tenant limit",
+        "12 months of waste history",
+        "Self-host with Docker",
+      ],
       pitch:
         "The full product. Connect a tenant, see what the unused licenses cost per month, and hand IT the script that fixes it.",
       note: {
@@ -282,6 +297,13 @@ const en: PricingContent = {
       ],
     },
     pro: {
+      audience: "For teams that want support",
+      highlights: [
+        "Everything in Free for one tenant",
+        "Email support and a 99.9% uptime target",
+        "Signed DPA and MCP server",
+        "24 months of waste history",
+      ],
       pitch:
         "Everything in Free for one tenant, with support, a signed data processing agreement and an MCP server for your AI assistant.",
       note: {
@@ -311,6 +333,13 @@ const en: PricingContent = {
       ],
     },
     msp: {
+      audience: "For your client portfolio",
+      highlights: [
+        "Everything in Pro",
+        `${MSP_INCLUDED_TENANTS} client tenants included`,
+        "White-label PDF reports",
+        "Client DPA and onboarding call",
+      ],
       pitch:
         "Pro across your client portfolio, with reports under your own brand.",
       note: {
@@ -491,7 +520,7 @@ const de: PricingContent = {
       struck: "Geld",
       post: "nichts.",
     },
-    lede: "LicenseMeter ist kostenlos nutzbar und Open Source, jeder Scan, jedes Ergebnis und jeder Bericht ist enthalten. Pro richtet sich an Teams, die einen verantwortlichen Ansprechpartner brauchen: Support per E-Mail, ein Verfügbarkeitsziel von 99,9 %, ein unterzeichneter Auftragsverarbeitungsvertrag (AVV) und ein MCP-Server. MSP weitet das auf Ihre Kunden-Tenants aus.",
+    lede: "Starten Sie kostenlos mit allen Scans, Ergebnissen und Berichten. Pro ergänzt E-Mail-Support, MSP deckt Ihr Kundenportfolio ab.",
   },
   billing: {
     legend: "Abrechnungszeitraum",
@@ -502,6 +531,9 @@ const de: PricingContent = {
   per: { free: "dauerhaft", month: "pro Monat", year: "pro Jahr" },
   plansLabel: "Tarife",
   trialTag: `${TRIAL_DAYS} Tage Testphase`,
+  freeTag: "Open Source · Kein Support",
+  recommended: "Empfohlen",
+  planDetails: "Alle Tarifdetails",
   soonTitle: "In Vorbereitung",
   cta: {
     free: "Kostenlos starten",
@@ -511,6 +543,13 @@ const de: PricingContent = {
   },
   plans: {
     free: {
+      audience: "Für Ihren ersten Scan und mehr",
+      highlights: [
+        "Alle Scans, Ergebnisse und Berichte",
+        "Kein Nutzer- oder Tenant-Limit",
+        "12 Monate Verlaufsdaten",
+        "Selbst hosten mit Docker",
+      ],
       pitch:
         "Das vollständige Produkt. Verbinden Sie einen Tenant, sehen Sie, was ungenutzte Lizenzen pro Monat kosten, und geben Sie der IT das Skript, das es behebt.",
       note: {
@@ -538,6 +577,13 @@ const de: PricingContent = {
       ],
     },
     pro: {
+      audience: "Für Teams, die Support brauchen",
+      highlights: [
+        "Alles aus Free für einen Tenant",
+        "E-Mail-Support und 99,9 % Verfügbarkeitsziel",
+        "Unterzeichneter AVV und MCP-Server",
+        "24 Monate Verlaufsdaten",
+      ],
       pitch:
         "Alles aus Free für einen Tenant, dazu Support, ein unterzeichneter Auftragsverarbeitungsvertrag und ein MCP-Server für Ihren KI-Assistenten.",
       note: {
@@ -567,6 +613,13 @@ const de: PricingContent = {
       ],
     },
     msp: {
+      audience: "Für Ihr Kundenportfolio",
+      highlights: [
+        "Alles aus Pro",
+        `${MSP_INCLUDED_TENANTS} Kunden-Tenants inklusive`,
+        "White-Label-PDF-Berichte",
+        "Kunden-AVV und Onboarding-Gespräch",
+      ],
       pitch:
         "Pro für Ihr gesamtes Kundenportfolio, mit Berichten unter Ihrer eigenen Marke.",
       note: {

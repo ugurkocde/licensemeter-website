@@ -1,0 +1,7 @@
+{
+  "title": "A clearer way to compare plans",
+  "summary": "The pricing page now puts each plan’s key benefits and billing terms in spacious, easy-to-scan cards. Compare monthly and yearly prices, explore full plan details, and find the recommended Pro plan in English or German.",
+  "type": "improved",
+  "publishedOn": "2026-09-21",
+  "idempotencyKey": "licensemeter:2026-09-21-pricing-page-redesign"
+}
