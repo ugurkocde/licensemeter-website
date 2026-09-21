@@ -6,6 +6,7 @@ import {
   polarWebhookSchema,
   verifyPolarSignature,
 } from "~/server/billing/polar";
+import { readCapped } from "~/server/httpBody";
 
 const MAX_BODY_BYTES = 256_000;
 
@@ -17,11 +18,8 @@ const MAX_BODY_BYTES = 256_000;
 export const POST = async (req: Request): Promise<Response> => {
   if (!env.POLAR_WEBHOOK_SECRET)
     return new Response("Webhook not configured", { status: 503 });
-  if (Number(req.headers.get("content-length")) > MAX_BODY_BYTES)
-    return new Response("Payload too large", { status: 413 });
-  const raw = await req.text();
-  if (Buffer.byteLength(raw) > MAX_BODY_BYTES)
-    return new Response("Payload too large", { status: 413 });
+  const raw = await readCapped(req, MAX_BODY_BYTES);
+  if (raw === null) return new Response("Payload too large", { status: 413 });
 
   const verified = verifyPolarSignature(
     env.POLAR_WEBHOOK_SECRET,
