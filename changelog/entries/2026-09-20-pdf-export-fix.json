@@ -1,0 +1,7 @@
+{
+  "title": "The PDF waste report and signed DPA downloads work again",
+  "summary": "Downloading the PDF waste report or a signed DPA returned an error in the hosted deployment because a PDF library was missing files from the serverless bundle. Both downloads, and the monthly report email, now render correctly.",
+  "type": "fixed",
+  "publishedOn": "2026-09-20",
+  "idempotencyKey": "licensemeter:2026-09-20-pdf-export-fix"
+}
