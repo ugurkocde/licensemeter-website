@@ -225,6 +225,32 @@ const probeReports = async (
 };
 
 /**
+ * Whether the configured central connector app holds admin consent in this
+ * tenant. Used by the admin-consent callback: the plaintext `tenant` and
+ * `admin_consent` query params are forgeable, so the binding is allowed only
+ * after this probe succeeds (the tenant must have actually consented to the
+ * app for an app-only token to be issued). Returns false when the managed app
+ * is not configured.
+ */
+export const verifyManagedConsent = async (tid: string): Promise<boolean> => {
+  if (!env.CONNECTOR_CLIENT_ID || !env.CONNECTOR_CLIENT_SECRET) return false;
+  try {
+    await acquireToken(
+      { mode: "managed", tid },
+      { retryConsentPropagation: false },
+    );
+    return true;
+  } catch (err) {
+    // Log only the message; never echo the raw MSAL error.
+    console.error(
+      "[connect] managed consent probe failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return false;
+  }
+};
+
+/**
  * Test-connection for a Microsoft credential: acquires an app-only token with
  * the given creds and checks the token's `roles` claim contains every required
  * application permission. The roles claim is authoritative for app-only tokens
