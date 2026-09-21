@@ -1,0 +1,7 @@
+{
+  "title": "Start free opens sign-in directly",
+  "summary": "The navigation's Start free button now takes you directly to the sign-in page instead of scrolling to the homepage's getting-started section. Signed-in users can still open their dashboard directly.",
+  "type": "fixed",
+  "publishedOn": "2026-09-21",
+  "idempotencyKey": "licensemeter:header-start-free-sign-in-2026-09-21"
+}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
-import { ButtonLink } from "~/components/ui";
+import { ButtonAnchor, ButtonLink } from "~/components/ui";
 import { SIGN_IN_PAGE } from "~/lib/signIn";
 
 /**
@@ -56,12 +56,12 @@ export const HeaderAuthCta = () => {
       >
         {german ? "Anmelden" : "Sign in"}
       </a>
-      <ButtonLink href="/#get-started" variant="ink" className={compact}>
+      <ButtonAnchor href={SIGN_IN_PAGE} variant="ink" className={compact}>
         <span className="min-[400px]:hidden">Start</span>
         <span className="hidden min-[400px]:inline">
           {german ? "Kostenlos starten" : "Start free"}
         </span>
-      </ButtonLink>
+      </ButtonAnchor>
     </>
   );
 };
