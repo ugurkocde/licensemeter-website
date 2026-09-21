@@ -9,7 +9,18 @@ const config = {
   reactStrictMode: true,
   poweredByHeader: false,
   output: "standalone",
-  serverExternalPackages: ["@electric-sql/pglite"],
+  serverExternalPackages: ["@electric-sql/pglite", "pdfkit"],
+  // pdfkit loads its standard fonts and other assets with dynamic requires that
+  // Next's bundler cannot follow, so a serverless build shipped without them and
+  // every PDF render (waste report, DPA) failed at runtime with
+  // "Cannot find module '/var/task/node_modules/pdfkit/js/standard-fonts/...'".
+  // Marking pdfkit external plus tracing its files keeps them in the output.
+  outputFileTracingIncludes: {
+    "/api/export/report": ["./node_modules/pdfkit/**/*"],
+    "/api/export/dpa": ["./node_modules/pdfkit/**/*"],
+    "/api/export/dpa-signed": ["./node_modules/pdfkit/**/*"],
+    "/api/cron/report": ["./node_modules/pdfkit/**/*"],
+  },
   experimental: {
     serverActions: {
       // The CSV import posts two admin-center exports (5 MB each, checked
