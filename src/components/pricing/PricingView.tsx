@@ -405,7 +405,10 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
               </div>
               <details className="group/details border-line mt-5 border-t pt-1">
                 <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium hover:text-blue-700 [&::-webkit-details-marker]:hidden">
-                  {c.planDetails}
+                  <span>
+                    <span className="sr-only">{planName(id)}: </span>
+                    {c.planDetails}
+                  </span>
                   <ArrowDown
                     aria-hidden="true"
                     className="size-4 shrink-0 transition-transform group-open/details:rotate-180 motion-reduce:transition-none"
