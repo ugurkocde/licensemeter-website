@@ -285,3 +285,30 @@ describe("Polar webhook", () => {
     ]);
   });
 });
+
+describe("Polar webhook body cap", () => {
+  it("stops reading a chunked body once it exceeds the cap", async () => {
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls > 50) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(new Uint8Array(10_000));
+      },
+    });
+    const req = new Request("http://localhost/api/webhooks/polar", {
+      method: "POST",
+      body: stream,
+      duplex: "half",
+    } as RequestInit & { duplex: string });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(413);
+    // 256 KB cap at 10 KB per pull stops near 27; the old code buffered all 50.
+    expect(pulls).toBeLessThan(40);
+  });
+});

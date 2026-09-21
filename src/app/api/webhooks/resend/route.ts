@@ -2,35 +2,10 @@ import { Webhook } from "svix";
 
 import { env } from "~/env";
 import { applyDeliveryEvent } from "~/server/emailDeliveryEvents";
+import { readCapped } from "~/server/httpBody";
 
 /** Resend's delivery events are a few KB; anything near this is not Resend. */
 const MAX_BODY_BYTES = 100_000;
-
-/**
- * Reads at most MAX_BODY_BYTES, streaming, so an oversized body cannot be
- * buffered into memory before it is rejected. Returns null when too large.
- * content-length is only a cheap early exit; a chunked or lying request is
- * still capped while reading.
- */
-const readCapped = async (req: Request): Promise<string | null> => {
-  const declared = Number(req.headers.get("content-length") ?? "0");
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return null;
-  if (!req.body) return "";
-  const reader = req.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > MAX_BODY_BYTES) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString("utf8");
-};
 
 /**
  * Resend delivery webhook (signed with Svix). Only a bad signature answers
@@ -40,9 +15,8 @@ const readCapped = async (req: Request): Promise<string | null> => {
 export const POST = async (req: Request): Promise<Response> => {
   if (!env.RESEND_WEBHOOK_SECRET)
     return new Response("Webhook not configured", { status: 503 });
-  const raw = await readCapped(req);
+  const raw = await readCapped(req, MAX_BODY_BYTES);
   if (raw === null) return new Response("Payload too large", { status: 413 });
-
   try {
     new Webhook(env.RESEND_WEBHOOK_SECRET).verify(raw, {
       "svix-id": req.headers.get("svix-id") ?? "",

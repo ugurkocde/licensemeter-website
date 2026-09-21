@@ -19,6 +19,7 @@ import {
 } from "~/server/billing/marketplace";
 import { db } from "~/server/db";
 import { entitlements } from "~/server/db/schema";
+import { readCapped } from "~/server/httpBody";
 import { notifyOps } from "~/server/ops";
 
 export const runtime = "nodejs";
@@ -68,8 +69,9 @@ export const POST = async (req: NextRequest) => {
     return answer({ error: "marketplace not configured" }, 503);
   }
 
-  const declared = Number(req.headers.get("content-length") ?? "0");
-  if (declared > MAX_BODY_BYTES) {
+  // Cheap pre-auth rejection of a declared oversized body; readCapped below
+  // still bounds the actual read (chunked or understated length).
+  if (Number(req.headers.get("content-length") ?? "0") > MAX_BODY_BYTES) {
     return answer({ error: "payload too large" }, 413);
   }
 
@@ -83,8 +85,8 @@ export const POST = async (req: NextRequest) => {
     return answer({ error: "unauthorized" }, 401);
   }
 
-  const raw = await req.text();
-  if (Buffer.byteLength(raw) > MAX_BODY_BYTES) {
+  const raw = await readCapped(req, MAX_BODY_BYTES);
+  if (raw === null) {
     return answer({ error: "payload too large" }, 413);
   }
   let json: unknown;
