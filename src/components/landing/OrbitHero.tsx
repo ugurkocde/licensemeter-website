@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { ArrowUpRight, Check, ShieldCheck, UsersRound } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  Globe,
+  ShieldCheck,
+  UsersRound,
+} from "lucide-react";
 import {
   ConnectorLogo,
   CONNECTOR_BRANDS,
@@ -59,6 +65,10 @@ export function OrbitHero({
             />
             Read-only by design
           </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Globe className="text-brand-text size-4" aria-hidden="true" />
+            Hosted in the EU
+          </span>
         </div>
         <h1
           id="hero-heading"
@@ -67,9 +77,10 @@ export function OrbitHero({
           Stop paying for
           <br className="hidden sm:block" /> licenses nobody uses.
         </h1>
-        <p className="rise rise-3 text-ink-soft mx-auto mt-6 max-w-[34rem] text-base leading-relaxed sm:text-lg">
+        <p className="rise rise-3 text-ink-soft mx-auto mt-6 max-w-[36rem] text-base leading-relaxed sm:text-lg">
           Bring Microsoft 365, your SaaS seats and AI spend into one clear view.
-          Find what&apos;s unused. Keep the savings.
+          LicenseMeter prices every unused seat in euros per month, so you stop
+          paying for what nobody uses.
         </p>
         <div className="rise rise-4 mt-8">
           <SignInButtons

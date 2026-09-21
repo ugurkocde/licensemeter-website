@@ -1,0 +1,7 @@
+{
+  "title": "The landing page introduces the Free, Pro and MSP plans",
+  "summary": "The home page now gives an overview of the Free, Pro and MSP plans with their current prices and a link to the full pricing page. The hero, the three-step value section and the closing call to action were reworded so the free offering and the paid plans are described accurately, and the page states where the service is hosted.",
+  "type": "improved",
+  "publishedOn": "2026-09-20",
+  "idempotencyKey": "licensemeter:landing-page-plans-2026-09-20"
+}
