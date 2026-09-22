@@ -1,4 +1,5 @@
 import { eq, sql } from "drizzle-orm";
+import { after } from "next/server";
 
 import { env } from "~/env";
 import { db } from "~/server/db";
@@ -13,6 +14,10 @@ export type NotifyOptions = {
   key?: string;
   /** Cooldown window in ms; only meaningful together with key. */
   cooldownMs?: number;
+  /** Longer context (stack excerpt, commit) shown in the email body only. */
+  detail?: string;
+  /** Email subject override; defaults to "LicenseMeter alert: <text>". */
+  subject?: string;
 };
 
 /**
@@ -22,10 +27,25 @@ export type NotifyOptions = {
  * DB-backed cooldown dedup keeps incident storms from flooding either channel.
  * Never throws: alerting must not take down the thing it alerts about.
  */
-export const notifyOps = async (
+export const notifyOps = (
   text: string,
   opts: NotifyOptions = {},
 ): Promise<void> => {
+  const delivery = deliver(text, opts);
+  // Most callers fire and forget. Once the response is sent the platform
+  // suspends the function, so a bare promise dies mid-flight (Resend and the
+  // dedup query then time out). after() keeps the invocation alive until the
+  // alert is out. Outside a request scope (tests, scripts) it throws and the
+  // promise simply runs on its own.
+  try {
+    after(delivery);
+  } catch {
+    // no request scope
+  }
+  return delivery;
+};
+
+const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
   console.error(`[ops] ${text}`);
 
   // Webhook/email fire only from production deployments. Local dev and
@@ -98,9 +118,13 @@ export const notifyOps = async (
     try {
       await sendEmail({
         to: [env.ALERT_EMAIL!],
-        subject: `LicenseMeter alert: ${text.slice(0, 80)}`,
+        subject: opts.subject ?? `LicenseMeter alert: ${text.slice(0, 80)}`,
         html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1c1a16;max-width:560px">
-  <p>${escapeHtml(message)}</p>
+  <p>${escapeHtml(message)}</p>${
+    opts.detail
+      ? `\n  <pre style="font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f4f2ee;padding:12px">${escapeHtml(opts.detail)}</pre>`
+      : ""
+  }
   <p style="font-size:11px;color:#a39d8f">Operational alert from licensemeter.com. Sync failures and crashes are deduplicated per 30-minute window.</p>
 </div>`,
       });

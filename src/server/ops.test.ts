@@ -12,13 +12,25 @@ import * as schema from "~/server/db/schema";
 
 let currentDb: ReturnType<typeof drizzle<typeof schema>>;
 
-vi.mock("~/env", () => ({
+const mocks = vi.hoisted(() => ({
   env: {
     NODE_ENV: "test",
     ALERT_WEBHOOK_URL: "https://hooks.example.test/ops",
-    ALERT_EMAIL: undefined,
+    ALERT_EMAIL: undefined as string | undefined,
   },
+  emailEnabled: vi.fn(() => false),
+  sendEmail: vi.fn((_args: { subject: string; html: string }) =>
+    Promise.resolve(true),
+  ),
+  // Default: behave like a call outside any request scope.
+  after: vi.fn((_task: unknown): void => {
+    throw new Error("`after` was called outside a request scope");
+  }),
 }));
+
+vi.mock("~/env", () => ({ env: mocks.env }));
+
+vi.mock("next/server", () => ({ after: mocks.after }));
 
 vi.mock("~/server/db", () => ({
   db: new Proxy(
@@ -32,8 +44,8 @@ vi.mock("~/server/db", () => ({
 }));
 
 vi.mock("~/server/email", () => ({
-  emailEnabled: () => false,
-  sendEmail: vi.fn(() => Promise.resolve()),
+  emailEnabled: mocks.emailEnabled,
+  sendEmail: mocks.sendEmail,
 }));
 
 const { notifyOps } = await import("~/server/ops");
@@ -51,6 +63,7 @@ beforeEach(async () => {
   for (const stmt of ddl) await client.exec(stmt);
   currentDb = drizzle(client, { schema });
   fetchMock.mockClear();
+  mocks.after.mockClear();
   vi.stubGlobal("fetch", fetchMock);
   vi.stubEnv("NODE_ENV", "production");
   vi.stubEnv("VERCEL_ENV", "");
@@ -105,5 +118,62 @@ describe("notifyOps dedup", () => {
     vi.stubEnv("NODE_ENV", "development");
     await notifyOps("sync FAILED");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("notifyOps delivery", () => {
+  it("hands the delivery to after() inside a request scope", async () => {
+    mocks.after.mockImplementationOnce(() => undefined);
+    const pending = notifyOps("sync FAILED");
+    expect(mocks.after).toHaveBeenCalledTimes(1);
+    expect(mocks.after.mock.calls[0]![0]).toBe(pending);
+    await pending;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("still delivers when after() is unavailable", async () => {
+    await notifyOps("sync FAILED");
+    expect(mocks.after).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("puts the subject override and escaped detail in the email only", async () => {
+    mocks.env.ALERT_EMAIL = "ops@example.test";
+    mocks.emailEnabled.mockReturnValue(true);
+    try {
+      await notifyOps("unhandled error on GET /x: boom", {
+        subject: "LicenseMeter error: GET /x",
+        detail: "Error: boom <b>\n    at handler (route.ts:1:1)",
+      });
+      expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
+      const email = mocks.sendEmail.mock.calls[0]![0];
+      expect(email.subject).toBe("LicenseMeter error: GET /x");
+      expect(email.html).toContain("<pre");
+      expect(email.html).toContain("Error: boom &lt;b&gt;");
+      const body = JSON.parse(fetchMock.mock.calls[0]![1]?.body as string) as {
+        text: string;
+      };
+      expect(body.text).toBe("LicenseMeter: unhandled error on GET /x: boom");
+    } finally {
+      mocks.env.ALERT_EMAIL = undefined;
+      mocks.emailEnabled.mockReturnValue(false);
+      mocks.sendEmail.mockClear();
+    }
+  });
+
+  it("keeps the default subject without an override", async () => {
+    mocks.env.ALERT_EMAIL = "ops@example.test";
+    mocks.emailEnabled.mockReturnValue(true);
+    try {
+      await notifyOps("sync FAILED");
+      expect(mocks.sendEmail.mock.calls[0]![0].subject).toBe(
+        "LicenseMeter alert: sync FAILED",
+      );
+      expect(mocks.sendEmail.mock.calls[0]![0].html).not.toContain("<pre");
+    } finally {
+      mocks.env.ALERT_EMAIL = undefined;
+      mocks.emailEnabled.mockReturnValue(false);
+      mocks.sendEmail.mockClear();
+    }
   });
 });
