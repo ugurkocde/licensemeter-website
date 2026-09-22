@@ -1,6 +1,6 @@
 {
-  "title": "First Microsoft sync no longer fails right after connecting",
-  "summary": "Connecting a Microsoft tenant now waits for the new service principal to appear in Microsoft Entra instead of failing the first sync with an identity error. The retry runs automatically, so the first sync completes and seats appear on the dashboard without disconnecting and reconnecting the tenant.",
+  "title": "First Microsoft sync retries while the service principal propagates",
+  "summary": "Connecting a Microsoft tenant now waits for the new service principal to appear in Microsoft Entra instead of failing the first sync with an identity error. The sync retries automatically for about a minute, so most connections finish and seats appear on the dashboard without disconnecting and reconnecting. If propagation takes longer, the next scheduled sync finishes the job.",
   "type": "fixed",
   "publishedOn": "2026-09-22",
   "idempotencyKey": "licensemeter:microsoft-first-sync-retry-2026-09-22"

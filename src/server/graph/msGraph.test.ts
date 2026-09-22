@@ -128,10 +128,8 @@ describe("service principal propagation on the sync path", () => {
     stubSkusFetch();
     mocks.mint.mockResolvedValue({ accessToken: withoutOid() });
 
-    const client = new MsGraphClient(
-      managedCred("22222222-2222-2222-2222-222222222222"),
-    );
-    const pending = client.getSubscribedSkus();
+    const cred = managedCred("22222222-2222-2222-2222-222222222222");
+    const pending = new MsGraphClient(cred).getSubscribedSkus();
     const assertion = expect(pending).rejects.toThrow(
       "The identity of the calling application could not be established",
     );
@@ -140,6 +138,10 @@ describe("service principal propagation on the sync path", () => {
 
     expect(mocks.mint).toHaveBeenCalledTimes(4);
     expect(mocks.clientsCreated).toBe(4);
+
+    // The rejected client was not left cached: the next call builds a fresh one.
+    await verifyMsCredential(cred);
+    expect(mocks.clientsCreated).toBe(5);
   });
 
   it("does not treat an opaque token as identity-less", async () => {
