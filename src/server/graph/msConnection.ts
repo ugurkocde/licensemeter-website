@@ -68,5 +68,6 @@ export const resolveMsCredential = async (
 /** Build the live Graph client for a workspace's Microsoft connection. */
 export const msGraphClientForTenant = async (
   tenant: TenantRow,
+  deadline?: number,
 ): Promise<MsGraphClient> =>
-  new MsGraphClient(await resolveMsCredential(tenant));
+  new MsGraphClient(await resolveMsCredential(tenant), deadline);

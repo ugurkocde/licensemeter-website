@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { db } from "~/server/db";
 import { adobeConnections, saasConnections, tenants } from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
+import { requestDeadline } from "~/server/sync/deadline";
 import { runSync } from "~/server/sync/runSync";
 import { requireCronAuth } from "~/server/cronAuth";
 
@@ -20,6 +21,9 @@ export const GET = async (req: NextRequest) => {
   const denied = requireCronAuth(req);
   if (denied) return denied;
   const start = Date.now();
+  // One deadline for the whole invocation: every tenant sync clamps to it, so
+  // the function is never killed mid-sync even when the queue is long.
+  const deadline = requestDeadline();
 
   // Tenants with anything to sync: a Microsoft consent (the demo tenant has
   // consentedAt set by its seed) or at least one Adobe/SaaS connection.
@@ -53,7 +57,7 @@ export const GET = async (req: NextRequest) => {
       if (Date.now() - start > DEQUEUE_BUDGET_MS) return;
       const tenant = allTenants[cursor++]!;
       try {
-        const result = await runSync(tenant.id);
+        const result = await runSync(tenant.id, { deadline });
         results.push({ tenantId: tenant.id, status: result.status });
       } catch (err) {
         void notifyOps(

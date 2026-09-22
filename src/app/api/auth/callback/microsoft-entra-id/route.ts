@@ -28,6 +28,7 @@ import { db } from "~/server/db";
 import { seenSignins } from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
 import { resolveScanTenant, runDelegatedScan } from "~/server/scan";
+import { requestDeadline } from "~/server/sync/deadline";
 import { sql } from "drizzle-orm";
 
 /** The delegated instant scan runs inside after() on this route. */
@@ -72,6 +73,8 @@ const handleScanCallback = async (
   req: NextRequest,
   oauth: OAuthPayload,
 ): Promise<Response> => {
+  // The scan runs inside after(), so the deadline covers redemption too.
+  const deadline = requestDeadline();
   const params = req.nextUrl.searchParams;
   const code = params.get("code");
   const state = params.get("state");
@@ -148,7 +151,7 @@ const handleScanCallback = async (
   // The scan runs after the redirect is sent; the connect page polls the
   // sync status exactly like the consent flow's first sync.
   after(async () => {
-    await runDelegatedScan(tenantId, accessToken);
+    await runDelegatedScan(tenantId, accessToken, deadline);
   });
 
   const res = NextResponse.redirect(

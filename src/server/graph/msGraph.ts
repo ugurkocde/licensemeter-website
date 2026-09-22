@@ -4,6 +4,7 @@ import { ConfidentialClientApplication } from "@azure/msal-node";
 
 import { env } from "~/env";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
+import { requestDeadline, withinDeadline } from "~/server/sync/deadline";
 import { csvToRecords, reportDate } from "./reportCsv";
 import {
   GraphHttpError,
@@ -111,19 +112,6 @@ const APP_IDENTITY_WAITS_MS = [15_000, 30_000] as const;
  * callback whose tenant id is caller-supplied.
  */
 const CONSENT_PROBE_WAITS_MS = [15_000, 30_000] as const;
-
-/**
- * Total wall-clock one sync will spend waiting for a new service principal,
- * shared across its token and Graph retries. A deadline (not a per-retry count)
- * keeps stacked retries from exceeding the route's maxDuration.
- */
-const SYNC_PROPAGATION_BUDGET_MS = 120_000;
-
-/** True when waiting waitMs still fits before an absolute deadline. */
-const withinDeadline = (
-  deadline: number | undefined,
-  waitMs: number,
-): boolean => deadline === undefined || Date.now() + waitMs <= deadline;
 
 /**
  * Cache key that changes when the underlying credential changes, so rotating a
@@ -329,12 +317,15 @@ const probeReports = async (
  * app for an app-only token to be issued). Returns false when the managed app
  * is not configured.
  */
-export const verifyManagedConsent = async (tid: string): Promise<boolean> => {
+export const verifyManagedConsent = async (
+  tid: string,
+  deadline?: number,
+): Promise<boolean> => {
   if (!env.CONNECTOR_CLIENT_ID || !env.CONNECTOR_CLIENT_SECRET) return false;
   try {
     await acquireToken(
       { mode: "managed", tid },
-      { waits: CONSENT_PROBE_WAITS_MS, acceptIdentityLessToken: true },
+      { waits: CONSENT_PROBE_WAITS_MS, acceptIdentityLessToken: true, deadline },
     );
     return true;
   } catch (err) {
@@ -455,11 +446,28 @@ export const parseRetryAfter = (
 };
 
 /** Fetch with Graph throttling etiquette: respect Retry-After on 429/503, max 4 tries. */
-const graphFetch = async (token: string, url: string): Promise<Response> => {
-  const timeoutMs = url.includes("/reports/")
+const graphFetch = async (
+  token: string,
+  url: string,
+  deadline?: number,
+): Promise<Response> => {
+  const baseTimeoutMs = url.includes("/reports/")
     ? REPORT_TIMEOUT_MS
     : DIRECTORY_TIMEOUT_MS;
   for (let attempt = 0; ; attempt++) {
+    // Clamp the request timeout to the remaining budget so a call that starts
+    // near the deadline cannot outlive it.
+    const timeoutMs =
+      deadline === undefined
+        ? baseTimeoutMs
+        : Math.min(baseTimeoutMs, deadline - Date.now());
+    if (timeoutMs <= 0) {
+      throw new GraphHttpError(
+        504,
+        "deadline_exceeded",
+        "Sync deadline reached before the request could start",
+      );
+    }
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       redirect: "follow",
@@ -468,17 +476,18 @@ const graphFetch = async (token: string, url: string): Promise<Response> => {
     if (res.status === 429 || res.status === 503) {
       // Drain the body so the connection is released before retrying.
       await res.arrayBuffer().catch(() => undefined);
-      if (attempt >= 3) {
+      const wait =
+        parseRetryAfter(res.headers.get("retry-after"), Date.now()) ??
+        RETRY_AFTER_DEFAULT_MS;
+      // Waiting past the deadline would only get the function killed.
+      if (attempt >= 3 || !withinDeadline(deadline, wait)) {
         throw new GraphHttpError(
           res.status,
           "throttled",
           "Graph throttling persisted",
         );
       }
-      await sleep(
-        parseRetryAfter(res.headers.get("retry-after"), Date.now()) ??
-          RETRY_AFTER_DEFAULT_MS,
-      );
+      await sleep(wait);
       continue;
     }
     if (!res.ok) {
@@ -508,6 +517,7 @@ const MAX_PAGES = 1000;
 const getAllPages = async <T>(
   token: string,
   firstUrl: string,
+  deadline?: number,
 ): Promise<T[]> => {
   const items: T[] = [];
   let url: string | undefined = firstUrl;
@@ -519,7 +529,7 @@ const getAllPages = async <T>(
         `Graph pagination exceeded ${MAX_PAGES} pages`,
       );
     }
-    const res = await graphFetch(token, url);
+    const res = await graphFetch(token, url, deadline);
     const body = (await res.json()) as {
       value?: unknown;
       "@odata.nextLink"?: string;
@@ -553,10 +563,12 @@ const USER_FIELDS =
 const fetchActiveUserDetail = async (
   token: string,
   period: "D90",
+  deadline?: number,
 ): Promise<UsageReportRow[]> => {
   const res = await graphFetch(
     token,
     `${GRAPH}/reports/getOffice365ActiveUserDetail(period='${period}')`,
+    deadline,
   );
   const text = await res.text();
   // Rows without a UPN (deleted accounts, blank trailing rows) cannot join
@@ -578,10 +590,12 @@ const fetchActiveUserDetail = async (
 const fetchCopilotUsage = async (
   token: string,
   period: "D90",
+  deadline?: number,
 ): Promise<CopilotUsageRow[]> => {
   const res = await graphFetch(
     token,
     `${GRAPH}/copilot/reports/getMicrosoft365CopilotUsageUserDetail(period='${period}')?$format=text/csv`,
+    deadline,
   );
   const contentType = res.headers.get("content-type") ?? "";
   if (contentType.includes("json")) {
@@ -608,18 +622,23 @@ const fetchCopilotUsage = async (
 };
 
 export class MsGraphClient implements GraphClient {
-  /** One propagation budget shared by every token and Graph retry in the run. */
-  private readonly deadline = Date.now() + SYNC_PROPAGATION_BUDGET_MS;
+  /** One request deadline shared by every call and retry in the run. */
+  private readonly deadline: number;
 
-  constructor(private readonly cred: MsCredential) {}
+  constructor(
+    private readonly cred: MsCredential,
+    deadline: number = requestDeadline(),
+  ) {
+    this.deadline = deadline;
+  }
 
   /**
    * Runs a Graph call, re-minting a token when Graph itself reports the app's
    * identity is unknown. A token whose service principal is visible is not
    * always accepted by Graph (the SP was deleted or recreated, or the token was
    * cached before it appeared), so retry with a fresh token instead of failing
-   * the sync. Token and Graph waits share one deadline so stacked retries stay
-   * inside the route budget.
+   * the sync. Token and Graph waits share one deadline, and every Graph request
+   * clamps its timeout to it, so no retry can outlive the route budget.
    */
   private async withAppIdentityRetry<T>(
     run: (token: string) => Promise<T>,
@@ -651,6 +670,7 @@ export class MsGraphClient implements GraphClient {
       const res = await graphFetch(
         token,
         `${GRAPH}/organization?$select=displayName`,
+        this.deadline,
       );
       const body = (await res.json()) as { value?: { displayName?: string }[] };
       return body.value?.[0]?.displayName ?? null;
@@ -661,14 +681,22 @@ export class MsGraphClient implements GraphClient {
 
   async getSubscribedSkus(): Promise<GraphSubscribedSku[]> {
     return this.withAppIdentityRetry((token) =>
-      getAllPages<GraphSubscribedSku>(token, `${GRAPH}/subscribedSkus`),
+      getAllPages<GraphSubscribedSku>(
+        token,
+        `${GRAPH}/subscribedSkus`,
+        this.deadline,
+      ),
     );
   }
 
   async getReportConcealment(): Promise<boolean | null> {
     try {
       const body = await this.withAppIdentityRetry(async (token) => {
-        const res = await graphFetch(token, `${GRAPH}/admin/reportSettings`);
+        const res = await graphFetch(
+          token,
+          `${GRAPH}/admin/reportSettings`,
+          this.deadline,
+        );
         return (await res.json()) as { displayConcealedNames?: boolean };
       });
       return body.displayConcealedNames ?? null;
@@ -688,7 +716,7 @@ export class MsGraphClient implements GraphClient {
     const url = `${GRAPH}/users?$select=${select}&$top=250`;
     try {
       return await this.withAppIdentityRetry((token) =>
-        getAllPages<GraphUser>(token, url),
+        getAllPages<GraphUser>(token, url, this.deadline),
       );
     } catch (err) {
       // signInActivity is gated twice for app-only callers: tenant Entra ID P1
@@ -713,13 +741,13 @@ export class MsGraphClient implements GraphClient {
 
   async getActiveUserDetail(period: "D90"): Promise<UsageReportRow[]> {
     return this.withAppIdentityRetry((token) =>
-      fetchActiveUserDetail(token, period),
+      fetchActiveUserDetail(token, period, this.deadline),
     );
   }
 
   async getCopilotUsage(period: "D90"): Promise<CopilotUsageRow[]> {
     return this.withAppIdentityRetry((token) =>
-      fetchCopilotUsage(token, period),
+      fetchCopilotUsage(token, period, this.deadline),
     );
   }
 }
@@ -753,13 +781,21 @@ const isAuthDenied = (err: unknown): boolean =>
  * to analyze.
  */
 export class DelegatedGraphClient implements GraphClient {
-  constructor(private readonly accessToken: string) {}
+  private readonly deadline: number;
+
+  constructor(
+    private readonly accessToken: string,
+    deadline: number = requestDeadline(),
+  ) {
+    this.deadline = deadline;
+  }
 
   async getOrganizationName(): Promise<string | null> {
     try {
       const res = await graphFetch(
         this.accessToken,
         `${GRAPH}/organization?$select=displayName`,
+        this.deadline,
       );
       const body = (await res.json()) as { value?: { displayName?: string }[] };
       return body.value?.[0]?.displayName ?? null;
@@ -775,6 +811,7 @@ export class DelegatedGraphClient implements GraphClient {
     return getAllPages<GraphSubscribedSku>(
       this.accessToken,
       `${GRAPH}/subscribedSkus`,
+      this.deadline,
     );
   }
 
@@ -783,6 +820,7 @@ export class DelegatedGraphClient implements GraphClient {
       const res = await graphFetch(
         this.accessToken,
         `${GRAPH}/admin/reportSettings`,
+        this.deadline,
       );
       const body = (await res.json()) as { displayConcealedNames?: boolean };
       return body.displayConcealedNames ?? null;
@@ -801,7 +839,7 @@ export class DelegatedGraphClient implements GraphClient {
       : USER_FIELDS;
     const url = `${GRAPH}/users?$select=${select}&$top=250`;
     try {
-      return await getAllPages<GraphUser>(this.accessToken, url);
+      return await getAllPages<GraphUser>(this.accessToken, url, this.deadline);
     } catch (err) {
       // signInActivity is doubly gated for delegated callers: tenant P1 AND
       // an auditlog-capable user role. Either denial degrades the same way:
@@ -826,12 +864,12 @@ export class DelegatedGraphClient implements GraphClient {
     // Role-bounded: throws GraphHttpError 403 without Reports Reader/Global
     // Reader. The sync records the failure as a warning and the join treats
     // the missing rows as "no activity signal", never a thrown scan.
-    return fetchActiveUserDetail(this.accessToken, period);
+    return fetchActiveUserDetail(this.accessToken, period, this.deadline);
   }
 
   async getCopilotUsage(period: "D90"): Promise<CopilotUsageRow[]> {
     // Role-bounded like the usage report; failure -> warning step and
     // copilotSignal "none" downstream.
-    return fetchCopilotUsage(this.accessToken, period);
+    return fetchCopilotUsage(this.accessToken, period, this.deadline);
   }
 }

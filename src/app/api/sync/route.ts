@@ -8,6 +8,7 @@ import { isSameOrigin } from "~/server/auth/origin";
 import { db } from "~/server/db";
 import { syncRuns } from "~/server/db/schema";
 import { rateLimitDurable } from "~/server/rateLimit";
+import { requestDeadline } from "~/server/sync/deadline";
 import { runSync } from "~/server/sync/runSync";
 
 export const maxDuration = 300;
@@ -38,6 +39,7 @@ export const GET = async () => {
 
 /** Manual "Sync now". Mirrors the triggerSync server action's guards. */
 export const POST = async (req: Request) => {
+  const deadline = requestDeadline();
   if (!isSameOrigin(req)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
@@ -55,7 +57,7 @@ export const POST = async (req: Request) => {
   await audit(ctx, "sync_triggered", {});
   let result;
   try {
-    result = await runSync(ctx.tenant.id);
+    result = await runSync(ctx.tenant.id, { deadline });
   } catch (err) {
     // runSync records per-step failures itself; anything that still throws
     // (credential resolution, lock bookkeeping) becomes a clean 500.

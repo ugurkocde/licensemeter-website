@@ -244,9 +244,10 @@ describe("service principal propagation on the sync path", () => {
 
     const client = new MsGraphClient(
       managedCred("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+      Date.now() + 10_000,
     );
-    // Move past the 120s budget the client took at construction.
-    await vi.advanceTimersByTimeAsync(130_000);
+    // Move past the deadline before the pull starts.
+    await vi.advanceTimersByTimeAsync(20_000);
 
     const pending = client.getSubscribedSkus();
     const assertion = expect(pending).rejects.toThrow(
@@ -257,6 +258,44 @@ describe("service principal propagation on the sync path", () => {
 
     // The first identity-less token ended the run: no retry sleep was taken.
     expect(mocks.mint).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("fails before the request when the deadline has already passed", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => Response.json({ value: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    const client = new MsGraphClient(
+      managedCred("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+      Date.now() - 1,
+    );
+
+    await expect(client.getSubscribedSkus()).rejects.toThrow(
+      "Sync deadline reached before the request could start",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not sleep on a throttle wait that does not fit the deadline", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(
+      async () =>
+        new Response("", { status: 429, headers: { "retry-after": "30" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    const client = new MsGraphClient(
+      managedCred("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+      Date.now() + 5_000,
+    );
+
+    await expect(client.getSubscribedSkus()).rejects.toThrow(
+      "Graph throttling persisted",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
   });
 });
