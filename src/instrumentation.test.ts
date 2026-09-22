@@ -97,6 +97,13 @@ describe("crashDetail", () => {
   });
 });
 
+describe("crashDetail size", () => {
+  it("caps the detail for huge non-Error values", () => {
+    const detail = crashDetail("x".repeat(50_000), request, context);
+    expect(detail.length).toBe(4000);
+  });
+});
+
 describe("crashSignature", () => {
   it("masks per-occurrence tokens so repeats share one dedup key", () => {
     const a = crashSignature(

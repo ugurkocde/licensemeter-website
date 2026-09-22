@@ -18,6 +18,8 @@ type ErrorContext = {
 
 const CRASH_COOLDOWN_MS = 30 * 60 * 1000;
 const STACK_LINES = 10;
+/** Bounds the email body when a message or stack frame is huge (SQL, JSON). */
+const MAX_DETAIL_CHARS = 4000;
 
 /** Route pattern without query string: stable for dedup, free of user data. */
 const routeOf = (request: RequestInfo, context?: ErrorContext): string =>
@@ -61,7 +63,10 @@ export const crashDetail = (
           .join("\n")
       : String(err),
   ];
-  return lines.filter((l) => l !== null).join("\n");
+  return lines
+    .filter((l) => l !== null)
+    .join("\n")
+    .slice(0, MAX_DETAIL_CHARS);
 };
 
 export const onRequestError = async (
