@@ -325,7 +325,11 @@ export const verifyManagedConsent = async (
   try {
     await acquireToken(
       { mode: "managed", tid },
-      { waits: CONSENT_PROBE_WAITS_MS, acceptIdentityLessToken: true, deadline },
+      {
+        waits: CONSENT_PROBE_WAITS_MS,
+        acceptIdentityLessToken: true,
+        deadline,
+      },
     );
     return true;
   } catch (err) {
