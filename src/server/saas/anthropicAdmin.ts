@@ -118,11 +118,14 @@ export class AnthropicAdminClient {
     return seats;
   }
 
-  async getSpend(sinceDay: string): Promise<AiSpendRow[]> {
+  async getSpend(sinceDay: string, deadline?: number): Promise<AiSpendRow[]> {
     const buckets: AnthropicCostBucket[] = [];
     const endingAt = nextUtcDayBoundary(this.cfg.now?.() ?? new Date());
     let nextPage = "";
     for (let page = 0; page < 30; page++) {
+      if (deadline !== undefined && Date.now() >= deadline) {
+        throw new Error("Sync deadline reached");
+      }
       const params = new URLSearchParams({
         starting_at: `${sinceDay}T00:00:00Z`,
         ending_at: endingAt,
@@ -135,7 +138,11 @@ export class AnthropicAdminClient {
         `${API_BASE}/v1/organizations/cost_report?${params.toString()}`,
         {
           headers: this.headers(),
-          signal: AbortSignal.timeout(30_000),
+          signal: AbortSignal.timeout(
+            deadline === undefined
+              ? 30_000
+              : Math.min(30_000, deadline - Date.now()),
+          ),
         },
       );
       if (!res.ok)

@@ -114,9 +114,12 @@ const syncAiSpend = async (
 ): Promise<void> => {
   const step = `${provider}Spend` as const;
   try {
-    if (deadline !== undefined && Date.now() >= deadline) {
-      throw new Error("Sync deadline reached");
-    }
+    const ensureWithinDeadline = (): void => {
+      if (deadline !== undefined && Date.now() >= deadline) {
+        throw new Error("Sync deadline reached");
+      }
+    };
+    ensureWithinDeadline();
     const [latest] = await db
       .select({ day: sql<string | null>`max(${aiSpendDaily.day})` })
       .from(aiSpendDaily)
@@ -127,8 +130,10 @@ const syncAiSpend = async (
         ),
       );
     const sinceDay = aiSpendSinceDay(latest?.day ?? null, provider, now);
-    const rows = await client.getSpend(sinceDay);
+    ensureWithinDeadline();
+    const rows = await client.getSpend(sinceDay, deadline);
     for (const batch of chunk(rows, 250)) {
+      ensureWithinDeadline();
       await db
         .insert(aiSpendDaily)
         .values(

@@ -7,7 +7,7 @@ export interface SaasClient {
 
 /** SaaS client whose admin API also reports daily spend (openai/anthropic). */
 export type AiSpendClient = SaasClient & {
-  getSpend(sinceDay: string): Promise<AiSpendRow[]>;
+  getSpend(sinceDay: string, deadline?: number): Promise<AiSpendRow[]>;
 };
 
 /** Decrypted credentials as stored on saas_connections. */
