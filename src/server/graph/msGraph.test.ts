@@ -46,9 +46,9 @@ const NOW = Date.parse("2026-09-18T12:00:00Z");
  * When admin consent lands, the connector app's service principal can take a
  * minute to appear. Until then Entra mints an app-only token without the `oid`
  * claim and Graph rejects it with Authorization_IdentityNotFound ("The identity
- * of the calling application could not be established"). The sync path must
- * drop that cached token and retry, while a test connection and the consent
- * probe answer immediately, exactly as before.
+ * of the calling application could not be established"). The sync waits for the
+ * identity, the consent probe waits through a token-endpoint propagation error
+ * but accepts an issued token, and a test connection answers immediately.
  */
 
 const b64 = (value: unknown): string =>
@@ -68,6 +68,9 @@ const stubSkusFetch = () =>
     "fetch",
     vi.fn(async () => Response.json({ value: [] })),
   );
+
+// Well past the full 15s + 30s + 45s propagation schedule.
+const advancePastPropagation = () => vi.advanceTimersByTimeAsync(120_000);
 
 afterEach(() => {
   mocks.mint.mockReset();
@@ -115,7 +118,7 @@ describe("service principal propagation on the sync path", () => {
       managedCred("11111111-1111-1111-1111-111111111111"),
     );
     const pending = client.getSubscribedSkus();
-    await vi.advanceTimersByTimeAsync(60_000);
+    await advancePastPropagation();
 
     await expect(pending).resolves.toEqual([]);
     expect(mocks.mint).toHaveBeenCalledTimes(2);
@@ -123,7 +126,7 @@ describe("service principal propagation on the sync path", () => {
     expect(mocks.clientsCreated).toBe(2);
   });
 
-  it("surfaces the identity error once the retries are exhausted, leaving no cached token", async () => {
+  it("surfaces the identity error once the waits are exhausted, leaving no cached token", async () => {
     vi.useFakeTimers();
     stubSkusFetch();
     mocks.mint.mockResolvedValue({ accessToken: withoutOid() });
@@ -133,7 +136,7 @@ describe("service principal propagation on the sync path", () => {
     const assertion = expect(pending).rejects.toThrow(
       "The identity of the calling application could not be established",
     );
-    await vi.advanceTimersByTimeAsync(60_000);
+    await advancePastPropagation();
     await assertion;
 
     expect(mocks.mint).toHaveBeenCalledTimes(4);
@@ -142,6 +145,37 @@ describe("service principal propagation on the sync path", () => {
     // The rejected client was not left cached: the next call builds a fresh one.
     await verifyMsCredential(cred);
     expect(mocks.clientsCreated).toBe(5);
+  });
+
+  it("retries when Graph itself rejects the app identity", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => {
+      if (fetchMock.mock.calls.length === 1) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: "Authorization_IdentityNotFound",
+              message:
+                "The identity of the calling application could not be established.",
+            },
+          }),
+          { status: 401, headers: { "content-type": "application/json" } },
+        );
+      }
+      return Response.json({ value: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    const client = new MsGraphClient(
+      managedCred("77777777-7777-7777-7777-777777777777"),
+    );
+    const pending = client.getSubscribedSkus();
+    await advancePastPropagation();
+
+    await expect(pending).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mocks.clientsCreated).toBe(2);
   });
 
   it("does not treat an opaque token as identity-less", async () => {
@@ -155,17 +189,32 @@ describe("service principal propagation on the sync path", () => {
     await expect(client.getSubscribedSkus()).resolves.toEqual([]);
     expect(mocks.mint).toHaveBeenCalledTimes(1);
   });
+
+  it("fails the non-critical organization read fast instead of waiting", async () => {
+    mocks.mint.mockResolvedValue({ accessToken: withoutOid() });
+
+    await expect(
+      new MsGraphClient(
+        managedCred("88888888-8888-8888-8888-888888888888"),
+      ).getOrganizationName(),
+    ).resolves.toBeNull();
+    expect(mocks.mint).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("immediate paths before the sync", () => {
-  it("answers a test connection without retrying", async () => {
+  it("answers a test connection now with the service principal message", async () => {
     mocks.mint.mockResolvedValue({ accessToken: withoutOid() });
 
     const result = await verifyMsCredential(
       managedCred("33333333-3333-3333-3333-333333333333"),
     );
 
-    expect(result).toMatchObject({ ok: true });
+    expect(result).toEqual({
+      ok: false,
+      error:
+        "The app has no service principal in that tenant yet. Grant admin consent for the app, then try again.",
+    });
     expect(mocks.mint).toHaveBeenCalledTimes(1);
   });
 
@@ -182,13 +231,32 @@ describe("immediate paths before the sync", () => {
     // The bad token was evicted each time, so each call built a fresh client.
     expect(mocks.clientsCreated).toBe(2);
   });
+});
 
-  it("lets the consent probe succeed while the service principal propagates", async () => {
+describe("consent probe", () => {
+  it("succeeds while the service principal propagates", async () => {
     mocks.mint.mockResolvedValue({ accessToken: withoutOid() });
 
     await expect(
       verifyManagedConsent("66666666-6666-6666-6666-666666666666"),
     ).resolves.toBe(true);
     expect(mocks.mint).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits through a token-endpoint propagation error before answering", async () => {
+    vi.useFakeTimers();
+    mocks.mint
+      .mockRejectedValueOnce(
+        new Error("AADSTS7000229: missing service principal in the tenant"),
+      )
+      .mockResolvedValueOnce({ accessToken: withOid() });
+
+    const pending = verifyManagedConsent(
+      "99999999-9999-9999-9999-999999999999",
+    );
+    await advancePastPropagation();
+
+    await expect(pending).resolves.toBe(true);
+    expect(mocks.mint).toHaveBeenCalledTimes(2);
   });
 });

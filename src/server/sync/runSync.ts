@@ -196,12 +196,12 @@ export const runSync = async (
   // healthy run, or a slow-but-live sync gets force-failed while still writing,
   // letting a second run insert and the two writers prune each other's rows.
   // Worst case: maxDuration 300s of work + Graph throttle sleeps (up to 4
-  // tries x 30s = 120s per throttled call) + consent-propagation waits (45s per
-  // token acquire, up to two acquires on the first pull while a new service
-  // principal propagates, ~90s) -> well under 10 min in practice. 20 min leaves
-  // generous headroom above that ceiling while still clearing a truly dead row
-  // before the next nightly cron, and keeps the instant-scan poller from showing
-  // "syncing" indefinitely after a hard kill.
+  // tries x 30s = 120s per throttled call) + consent-propagation waits (15s +
+  // 30s + 45s = 90s while a new service principal propagates, plus up to 45s
+  // more if Graph still cannot resolve the app identity) -> well under 10 min in
+  // practice. 20 min leaves generous headroom above that ceiling while still
+  // clearing a truly dead row before the next nightly cron, and keeps the
+  // instant-scan poller from showing "syncing" indefinitely after a hard kill.
   const STALE_RUN_MS = 20 * 60 * 1000;
   await db
     .update(syncRuns)

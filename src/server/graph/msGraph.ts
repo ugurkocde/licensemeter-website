@@ -91,9 +91,26 @@ const setCachedApp = (
 const CONSENT_PROPAGATION_PATTERNS =
   /could not be established|AADSTS700016|AADSTS7000229|was not found in the directory/i;
 
-/** Token retries while admin consent propagates, and the pause between them. */
-const CONSENT_PROPAGATION_RETRIES = 3;
-const CONSENT_PROPAGATION_WAIT_MS = 15_000;
+/**
+ * Waits between token attempts while a new service principal propagates after
+ * admin consent: 15s + 30s + 45s = 90s before giving up. A test connection
+ * passes no waits so it answers immediately.
+ */
+const CONSENT_PROPAGATION_WAITS_MS = [15_000, 30_000, 45_000] as const;
+
+/**
+ * Waits between Graph calls when Graph itself reports the app identity is
+ * unknown even though a token was minted (the service principal was deleted or
+ * recreated, or the token was cached before it was visible).
+ */
+const APP_IDENTITY_WAITS_MS = [15_000, 30_000] as const;
+
+/**
+ * Consent probe waits: enough to absorb the initial propagation of a just
+ * consented tenant, kept short because the probe runs in a browser-facing
+ * callback whose tenant id is caller-supplied.
+ */
+const CONSENT_PROBE_WAITS_MS = [15_000, 30_000] as const;
 
 /**
  * Cache key that changes when the underlying credential changes, so rotating a
@@ -139,11 +156,25 @@ const buildApp = (cred: MsCredential): ConfidentialClientApplication => {
   });
 };
 
+export type AcquireTokenOptions = {
+  /**
+   * Waits between attempts when the service principal is not visible yet.
+   * Absent uses the full consent propagation schedule; empty answers now.
+   */
+  waits?: readonly number[];
+  /**
+   * Accept a token that lacks the service principal identity. Only the consent
+   * probe does this: it asks whether a token was issued at all, while the sync
+   * path is what waits for the identity to appear.
+   */
+  acceptIdentityLessToken?: boolean;
+};
+
 const acquireToken = async (
   cred: MsCredential,
-  opts: { retryConsentPropagation?: boolean } = {},
+  opts: AcquireTokenOptions = {},
 ): Promise<string> => {
-  const retryConsent = opts.retryConsentPropagation !== false;
+  const waits = opts.waits ?? CONSENT_PROPAGATION_WAITS_MS;
   const cacheKey = appCacheKey(cred);
   let app = getCachedApp(cacheKey);
   if (!app) {
@@ -167,27 +198,22 @@ const acquireToken = async (
       // minted, so Graph rejects it with Authorization_IdentityNotFound. Drop
       // the client MSAL cached that token in so no later attempt reuses it.
       msalApps.delete(cacheKey);
-      if (!retryConsent) {
-        // A test connection and the consent probe answer now, as before: they
-        // only inspect the token. Waiting for propagation is the sync's job.
-        return result.accessToken;
-      }
-      if (attempt >= CONSENT_PROPAGATION_RETRIES) {
+      if (opts.acceptIdentityLessToken) return result.accessToken;
+      if (attempt >= waits.length) {
         throw new Error(
           "The identity of the calling application could not be established",
         );
       }
       app = buildApp(cred);
       setCachedApp(cacheKey, app);
-      await sleep(CONSENT_PROPAGATION_WAIT_MS);
+      await sleep(waits[attempt]!);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (
-        retryConsent &&
-        attempt < CONSENT_PROPAGATION_RETRIES &&
+        attempt < waits.length &&
         CONSENT_PROPAGATION_PATTERNS.test(message)
       ) {
-        await sleep(CONSENT_PROPAGATION_WAIT_MS);
+        await sleep(waits[attempt]!);
         continue;
       }
       throw err;
@@ -286,7 +312,7 @@ export const verifyManagedConsent = async (tid: string): Promise<boolean> => {
   try {
     await acquireToken(
       { mode: "managed", tid },
-      { retryConsentPropagation: false },
+      { waits: CONSENT_PROBE_WAITS_MS, acceptIdentityLessToken: true },
     );
     return true;
   } catch (err) {
@@ -314,9 +340,8 @@ export const verifyMsCredential = async (
 ): Promise<MsVerifyResult> => {
   let token: string;
   try {
-    // An unknown Client ID matches the consent-propagation patterns; a test
-    // connection must answer now rather than retry for 45 seconds.
-    token = await acquireToken(cred, { retryConsentPropagation: false });
+    // A test connection must answer now rather than wait for propagation.
+    token = await acquireToken(cred, { waits: [] });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // Log only the message: MSAL error objects can carry request context, and
@@ -563,9 +588,38 @@ const fetchCopilotUsage = async (
 export class MsGraphClient implements GraphClient {
   constructor(private readonly cred: MsCredential) {}
 
+  /**
+   * Runs a Graph call, re-minting a token when Graph itself reports the app's
+   * identity is unknown. A token whose service principal is visible is not
+   * always accepted by Graph (the SP was deleted or recreated, or the token was
+   * cached before it appeared), so retry with a fresh token instead of failing
+   * the sync. The non-critical organization read opts out so it does not burn
+   * the wait before the critical SKU pull.
+   */
+  private async withAppIdentityRetry<T>(
+    run: (token: string) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      const token = await acquireToken(this.cred);
+      try {
+        return await run(token);
+      } catch (err) {
+        if (
+          attempt < APP_IDENTITY_WAITS_MS.length &&
+          isAppIdentityRejection(err)
+        ) {
+          msalApps.delete(appCacheKey(this.cred));
+          await sleep(APP_IDENTITY_WAITS_MS[attempt]!);
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
   async getOrganizationName(): Promise<string | null> {
     try {
-      const token = await acquireToken(this.cred);
+      const token = await acquireToken(this.cred, { waits: [] });
       const res = await graphFetch(
         token,
         `${GRAPH}/organization?$select=displayName`,
@@ -578,15 +632,17 @@ export class MsGraphClient implements GraphClient {
   }
 
   async getSubscribedSkus(): Promise<GraphSubscribedSku[]> {
-    const token = await acquireToken(this.cred);
-    return getAllPages<GraphSubscribedSku>(token, `${GRAPH}/subscribedSkus`);
+    return this.withAppIdentityRetry((token) =>
+      getAllPages<GraphSubscribedSku>(token, `${GRAPH}/subscribedSkus`),
+    );
   }
 
   async getReportConcealment(): Promise<boolean | null> {
-    const token = await acquireToken(this.cred);
     try {
-      const res = await graphFetch(token, `${GRAPH}/admin/reportSettings`);
-      const body = (await res.json()) as { displayConcealedNames?: boolean };
+      const body = await this.withAppIdentityRetry(async (token) => {
+        const res = await graphFetch(token, `${GRAPH}/admin/reportSettings`);
+        return (await res.json()) as { displayConcealedNames?: boolean };
+      });
       return body.displayConcealedNames ?? null;
     } catch {
       // ReportSettings.Read.All might not be granted on older consents.
@@ -597,14 +653,15 @@ export class MsGraphClient implements GraphClient {
   async listUsers(opts: {
     includeSignInActivity: boolean;
   }): Promise<GraphUser[]> {
-    const token = await acquireToken(this.cred);
     const select = opts.includeSignInActivity
       ? `${USER_FIELDS},signInActivity`
       : USER_FIELDS;
     // signInActivity caps the page size at lower limits; 250 is safe for both shapes.
     const url = `${GRAPH}/users?$select=${select}&$top=250`;
     try {
-      return await getAllPages<GraphUser>(token, url);
+      return await this.withAppIdentityRetry((token) =>
+        getAllPages<GraphUser>(token, url),
+      );
     } catch (err) {
       // signInActivity is gated twice for app-only callers: tenant Entra ID P1
       // AND AuditLog.Read.All consent. Either denial degrades the same way the
@@ -627,15 +684,29 @@ export class MsGraphClient implements GraphClient {
   }
 
   async getActiveUserDetail(period: "D90"): Promise<UsageReportRow[]> {
-    const token = await acquireToken(this.cred);
-    return fetchActiveUserDetail(token, period);
+    return this.withAppIdentityRetry((token) =>
+      fetchActiveUserDetail(token, period),
+    );
   }
 
   async getCopilotUsage(period: "D90"): Promise<CopilotUsageRow[]> {
-    const token = await acquireToken(this.cred);
-    return fetchCopilotUsage(token, period);
+    return this.withAppIdentityRetry((token) =>
+      fetchCopilotUsage(token, period),
+    );
   }
 }
+
+/**
+ * Graph's "the identity of the calling application could not be established"
+ * response: Graph accepted the token but cannot resolve a service principal for
+ * the calling app.
+ */
+const isAppIdentityRejection = (err: unknown): boolean =>
+  err instanceof GraphHttpError &&
+  (/Authorization_IdentityNotFound/i.test(err.code ?? "") ||
+    /identity of the calling application could not be established/i.test(
+      err.message,
+    ));
 
 /** 401/403: the delegated caller lacks the directory role for this read. */
 const isAuthDenied = (err: unknown): boolean =>

@@ -43,7 +43,7 @@ export const GET = async (req: NextRequest) => {
   });
 
   // Bounded concurrency: sequential syncs would exceed maxDuration once a
-  // handful of tenants are connected (worst case ~90s each on retry paths).
+  // handful of tenants are connected (worst case ~135s each on retry paths).
   const CONCURRENCY = 3;
   const results: { tenantId: string; status: string }[] = [];
   let cursor = 0;
