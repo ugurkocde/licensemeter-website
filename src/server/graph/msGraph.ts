@@ -91,6 +91,10 @@ const setCachedApp = (
 const CONSENT_PROPAGATION_PATTERNS =
   /could not be established|AADSTS700016|AADSTS7000229|was not found in the directory/i;
 
+/** Token retries while admin consent propagates, and the pause between them. */
+const CONSENT_PROPAGATION_RETRIES = 3;
+const CONSENT_PROPAGATION_WAIT_MS = 15_000;
+
 /**
  * Cache key that changes when the underlying credential changes, so rotating a
  * BYO secret never reuses an MSAL client holding the stale secret.
@@ -139,6 +143,7 @@ const acquireToken = async (
   cred: MsCredential,
   opts: { retryConsentPropagation?: boolean } = {},
 ): Promise<string> => {
+  const retryConsent = opts.retryConsentPropagation !== false;
   const cacheKey = appCacheKey(cred);
   let app = getCachedApp(cacheKey);
   if (!app) {
@@ -155,15 +160,30 @@ const acquireToken = async (
           `Failed to acquire app-only token for tenant ${cred.tid}`,
         );
       }
-      return result.accessToken;
+      if (hasServicePrincipalIdentity(result.accessToken)) {
+        return result.accessToken;
+      }
+      // No SP identity: the tenant had no service principal when the token was
+      // minted, so Graph rejects it with Authorization_IdentityNotFound. MSAL
+      // cached that unusable token, so rebuild the client (empty cache) and
+      // wait for the consent to propagate rather than failing the first sync.
+      if (!retryConsent || attempt >= CONSENT_PROPAGATION_RETRIES) {
+        throw new Error(
+          "The identity of the calling application could not be established",
+        );
+      }
+      msalApps.delete(cacheKey);
+      app = buildApp(cred);
+      setCachedApp(cacheKey, app);
+      await sleep(CONSENT_PROPAGATION_WAIT_MS);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (
-        opts.retryConsentPropagation !== false &&
-        attempt < 3 &&
+        retryConsent &&
+        attempt < CONSENT_PROPAGATION_RETRIES &&
         CONSENT_PROPAGATION_PATTERNS.test(message)
       ) {
-        await sleep(15_000);
+        await sleep(CONSENT_PROPAGATION_WAIT_MS);
         continue;
       }
       throw err;
@@ -171,21 +191,40 @@ const acquireToken = async (
   }
 };
 
-/** App-only token's granted application permissions, from the JWT `roles` claim. */
-const decodeRoles = (jwt: string): string[] => {
+/** Decoded JWT payload, or null when the token is malformed. */
+const decodeJwtPayload = (jwt: string): Record<string, unknown> | null => {
   const parts = jwt.split(".");
-  if (parts.length < 2 || !parts[1]) return [];
+  if (parts.length < 2 || !parts[1]) return null;
   try {
     const payload = JSON.parse(
       Buffer.from(parts[1], "base64url").toString("utf8"),
-    ) as { roles?: unknown };
-    return Array.isArray(payload.roles)
-      ? payload.roles.filter((r): r is string => typeof r === "string")
-      : [];
+    ) as unknown;
+    return payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>)
+      : null;
   } catch {
-    return [];
+    return null;
   }
 };
+
+/** App-only token's granted application permissions, from the JWT `roles` claim. */
+const decodeRoles = (jwt: string): string[] => {
+  const roles = decodeJwtPayload(jwt)?.roles;
+  return Array.isArray(roles)
+    ? roles.filter((r): r is string => typeof r === "string")
+    : [];
+};
+
+/**
+ * Whether an app-only token carries the calling service principal's identity.
+ * A token minted while the SP wasn't yet visible in the tenant has no `oid`
+ * claim (service-principal-less authentication, retired March 2026), and Graph
+ * rejects it with Authorization_IdentityNotFound: "The identity of the calling
+ * application could not be established". Detecting it here applies the consent
+ * propagation wait before the unusable token reaches Graph.
+ */
+const hasServicePrincipalIdentity = (jwt: string): boolean =>
+  typeof decodeJwtPayload(jwt)?.oid === "string";
 
 export type MsVerifyResult =
   | {
@@ -292,6 +331,17 @@ export const verifyMsCredential = async (
     }
     if (/AADSTS90002|tenant .* not found/i.test(message)) {
       return { ok: false, error: "That Tenant ID was not found." };
+    }
+    if (
+      /identity of the calling application|missing service principal/i.test(
+        message,
+      )
+    ) {
+      return {
+        ok: false,
+        error:
+          "The app has no service principal in that tenant yet. Grant admin consent for the app, then try again.",
+      };
     }
     return {
       ok: false,
