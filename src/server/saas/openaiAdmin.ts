@@ -99,11 +99,14 @@ export class OpenAiAdminClient {
     return seats;
   }
 
-  async getSpend(sinceDay: string): Promise<AiSpendRow[]> {
+  async getSpend(sinceDay: string, deadline?: number): Promise<AiSpendRow[]> {
     const startTime = Math.floor(Date.parse(`${sinceDay}T00:00:00Z`) / 1000);
     const buckets: OpenAiCostBucket[] = [];
     let nextPage = "";
     for (let page = 0; page < 30; page++) {
+      if (deadline !== undefined && Date.now() >= deadline) {
+        throw new Error("Sync deadline reached");
+      }
       const params = new URLSearchParams({
         start_time: String(startTime),
         bucket_width: "1d",
@@ -115,7 +118,11 @@ export class OpenAiAdminClient {
         `${API_BASE}/v1/organization/costs?${params.toString()}`,
         {
           headers: { Authorization: `Bearer ${this.cfg.apiKey}` },
-          signal: AbortSignal.timeout(30_000),
+          signal: AbortSignal.timeout(
+            deadline === undefined
+              ? 30_000
+              : Math.min(30_000, deadline - Date.now()),
+          ),
         },
       );
       if (!res.ok)

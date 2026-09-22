@@ -14,6 +14,7 @@ import { db } from "~/server/db";
 import { consentStates, msConnections, tenants } from "~/server/db/schema";
 import { verifyManagedConsent } from "~/server/graph/msGraph";
 import { notifyOps } from "~/server/ops";
+import { requestDeadline } from "~/server/sync/deadline";
 import { runSync } from "~/server/sync/runSync";
 
 // The first sync after admin consent runs in after() below and shares this
@@ -38,6 +39,8 @@ const fail = (code: string): never =>
  * tenant to the workspace the flow was started from, and starts the first sync.
  */
 export const GET = async (req: NextRequest) => {
+  // The first sync runs inside after(), so the deadline covers this handler.
+  const deadline = requestDeadline();
   const params = req.nextUrl.searchParams;
   const state = params.get("state");
   const grantedTid = params.get("tenant");
@@ -98,7 +101,7 @@ export const GET = async (req: NextRequest) => {
   // app; without it (BYO-only), only the initiator's own home tenant (the
   // tenant their app registration belongs to) may be attached.
   if (env.CONNECTOR_CLIENT_ID && env.CONNECTOR_CLIENT_SECRET) {
-    if (!(await verifyManagedConsent(grantedTid!))) {
+    if (!(await verifyManagedConsent(grantedTid!, deadline))) {
       fail("consent_not_granted");
     }
   } else if (!stateRow!.tid || stateRow!.tid !== grantedTid) {
@@ -180,7 +183,7 @@ export const GET = async (req: NextRequest) => {
 
   // First sync runs after the redirect is sent; the connect page polls status.
   after(async () => {
-    await runSync(tenantId);
+    await runSync(tenantId, { deadline });
   });
 
   redirect("/app/connectors/microsoft?status=syncing");

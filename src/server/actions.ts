@@ -85,6 +85,7 @@ import {
 } from "~/server/workspaceEmail";
 import { byoConnectorEnabled, siteUrl } from "~/env";
 import { runAnalysis, runSync } from "~/server/sync/runSync";
+import { requestDeadline } from "~/server/sync/deadline";
 import { fetchEcbReferenceRates } from "~/server/exchangeRates";
 import type {
   DomainJoinMode,
@@ -1222,7 +1223,7 @@ export const triggerSync = async (): Promise<ActionResult> => {
   if (!ctx) return fail("Not allowed");
   if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   await audit(ctx, "sync_triggered", {});
-  const result = await runSync(ctx.tenant.id);
+  const result = await runSync(ctx.tenant.id, { deadline: requestDeadline() });
   revalidateApp();
   return result.status === "failed"
     ? fail("Sync failed; see sync history")
@@ -1281,7 +1282,7 @@ export const connectAdobe = async (
     });
   await audit(ctx, "adobe_connected", { orgId });
   // Sync after the response, not inline; see connectSaasConnector.
-  after(() => runSync(ctx.tenant.id));
+  after(() => runSync(ctx.tenant.id, { deadline: requestDeadline() }));
   revalidateApp();
   return ok();
 };
@@ -1386,7 +1387,7 @@ export const connectSaasConnector = async (
   // every connector) runs after the response rather than blocking it, so the
   // connect button is not held pending for the whole sync and cannot outlive
   // the function timeout. The page shows "first sync pending" until it lands.
-  after(() => runSync(ctx.tenant.id));
+  after(() => runSync(ctx.tenant.id, { deadline: requestDeadline() }));
   revalidateApp();
   return ok();
 };
@@ -1648,7 +1649,7 @@ export const connectMicrosoftByo = async (
     previousTid: ctx.tenant.tid ?? null,
   });
   // First sync runs after the response, like the other connectors.
-  after(() => runSync(ctx.tenant.id));
+  after(() => runSync(ctx.tenant.id, { deadline: requestDeadline() }));
   revalidateApp();
   const warning =
     verify.reportsProbe && !verify.reportsProbe.ok

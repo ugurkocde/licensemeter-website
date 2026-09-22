@@ -1,0 +1,7 @@
+{
+  "title": "First Microsoft sync waits for the new service principal",
+  "summary": "Connecting a Microsoft tenant now waits for the new service principal to appear in Microsoft Entra instead of failing the first sync with an identity error. The sync retries automatically for up to about two minutes; if Microsoft is still finishing setup when that runs out, the next scheduled sync finishes the job. Reconnecting is only needed in the rare case where Microsoft cannot confirm the consent yet.",
+  "type": "fixed",
+  "publishedOn": "2026-09-22",
+  "idempotencyKey": "licensemeter:microsoft-first-sync-retry-2026-09-22"
+}

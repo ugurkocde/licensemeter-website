@@ -142,7 +142,10 @@ describe("admin-consent callback tenant binding", () => {
       /redirect:.*status=syncing/,
     );
 
-    expect(verifyManagedConsent).toHaveBeenCalledWith(VICTIM_TID);
+    expect(verifyManagedConsent).toHaveBeenCalledWith(
+      VICTIM_TID,
+      expect.any(Number),
+    );
     const [tenant] = await currentDb
       .select()
       .from(schema.tenants)

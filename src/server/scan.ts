@@ -133,6 +133,10 @@ export const resolveScanTenant = async (
 export const runDelegatedScan = async (
   tenantId: string,
   accessToken: string,
+  deadline?: number,
 ): Promise<void> => {
-  await runSync(tenantId, { client: new DelegatedGraphClient(accessToken) });
+  await runSync(tenantId, {
+    client: new DelegatedGraphClient(accessToken, deadline),
+    deadline,
+  });
 };

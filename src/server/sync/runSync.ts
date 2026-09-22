@@ -110,9 +110,16 @@ const syncAiSpend = async (
   client: AiSpendClient,
   now: Date,
   steps: SyncStep[],
+  deadline?: number,
 ): Promise<void> => {
   const step = `${provider}Spend` as const;
   try {
+    const ensureWithinDeadline = (): void => {
+      if (deadline !== undefined && Date.now() >= deadline) {
+        throw new Error("Sync deadline reached");
+      }
+    };
+    ensureWithinDeadline();
     const [latest] = await db
       .select({ day: sql<string | null>`max(${aiSpendDaily.day})` })
       .from(aiSpendDaily)
@@ -123,8 +130,10 @@ const syncAiSpend = async (
         ),
       );
     const sinceDay = aiSpendSinceDay(latest?.day ?? null, provider, now);
-    const rows = await client.getSpend(sinceDay);
+    ensureWithinDeadline();
+    const rows = await client.getSpend(sinceDay, deadline);
     for (const batch of chunk(rows, 250)) {
+      ensureWithinDeadline();
       await db
         .insert(aiSpendDaily)
         .values(
@@ -166,12 +175,19 @@ const syncAiSpend = async (
  */
 export const runSync = async (
   tenantId: string,
-  { client: clientOverride }: { client?: GraphClient } = {},
+  {
+    client: clientOverride,
+    deadline,
+  }: { client?: GraphClient; deadline?: number } = {},
 ): Promise<SyncResult> => {
   const tenant = await db.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
   });
   if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
+
+  /** True once the request budget is spent: optional sources are skipped. */
+  const outOfTime = (): boolean =>
+    deadline !== undefined && Date.now() >= deadline;
 
   // A workspace that connected Adobe or SaaS tools but never Microsoft has no
   // Graph credential: the Microsoft steps are recorded as skipped and the run
@@ -188,18 +204,18 @@ export const runSync = async (
     ? (clientOverride ??
       (tenant.isDemo
         ? new DemoGraphClient()
-        : await msGraphClientForTenant(tenant)))
+        : await msGraphClientForTenant(tenant, deadline)))
     : null;
 
   // Fail runs stuck in "running" (crashed process) so the lock cannot
   // deadlock. The threshold must STRICTLY exceed the worst-case wall-clock of a
   // healthy run, or a slow-but-live sync gets force-failed while still writing,
   // letting a second run insert and the two writers prune each other's rows.
-  // Worst case: maxDuration 300s of work + Graph throttle sleeps (up to 4
-  // tries x 30s = 120s per throttled call) + up to 3 x 15s consent-propagation
-  // waits (45s) -> well under 10 min in practice. 20 min leaves generous
-  // headroom above that ceiling while still clearing a truly dead row before
-  // the next nightly cron, and keeps the instant-scan poller from showing
+  // Worst case stays well under 10 min: the route deadline caps the whole pull
+  // (every retry, throttle sleep and Graph request clamps to it), and the local
+  // analysis and write after the pull is bounded by the data size. 20 min leaves
+  // generous headroom above that ceiling while still clearing a truly dead row
+  // before the next nightly cron, and keeps the instant-scan poller from showing
   // "syncing" indefinitely after a hard kill.
   const STALE_RUN_MS = 20 * 60 * 1000;
   await db
@@ -268,8 +284,6 @@ export const runSync = async (
         });
       }
     } else {
-      orgName = await client.getOrganizationName();
-
       try {
         skus = await client.getSubscribedSkus();
         steps.push({
@@ -285,6 +299,10 @@ export const runSync = async (
         });
         throw err; // critical: nothing useful without SKUs
       }
+
+      // Read the name only after the critical SKU pull, so the non-critical
+      // lookup cannot consume the propagation budget the SKU retry needs.
+      orgName = await client.getOrganizationName();
 
       try {
         concealmentSetting = await client.getReportConcealment();
@@ -370,6 +388,9 @@ export const runSync = async (
     if (tenant.isDemo || adobeConn) {
       adobeActive = true;
       try {
+        if (outOfTime()) {
+          throw new Error("Sync deadline reached; using stored data");
+        }
         const adobeClient = tenant.isDemo
           ? new DemoAdobeClient()
           : new UmapiClient({
@@ -438,6 +459,9 @@ export const runSync = async (
     for (const provider of activeSaas) {
       const conn = saasConns.find((c) => c.provider === provider);
       try {
+        if (outOfTime()) {
+          throw new Error("Sync deadline reached; using stored data");
+        }
         const saasClient = tenant.isDemo
           ? demoSaasClient(provider)
           : await buildSaasClient(provider, {
@@ -474,6 +498,7 @@ export const runSync = async (
             saasClient as AiSpendClient,
             now,
             steps,
+            deadline,
           );
         }
       } catch (err) {
