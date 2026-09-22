@@ -113,6 +113,19 @@ const APP_IDENTITY_WAITS_MS = [15_000, 30_000] as const;
 const CONSENT_PROBE_WAITS_MS = [15_000, 30_000] as const;
 
 /**
+ * Total wall-clock one sync will spend waiting for a new service principal,
+ * shared across its token and Graph retries. A deadline (not a per-retry count)
+ * keeps stacked retries from exceeding the route's maxDuration.
+ */
+const SYNC_PROPAGATION_BUDGET_MS = 120_000;
+
+/** True when waiting waitMs still fits before an absolute deadline. */
+const withinDeadline = (
+  deadline: number | undefined,
+  waitMs: number,
+): boolean => deadline === undefined || Date.now() + waitMs <= deadline;
+
+/**
  * Cache key that changes when the underlying credential changes, so rotating a
  * BYO secret never reuses an MSAL client holding the stale secret.
  */
@@ -168,6 +181,11 @@ export type AcquireTokenOptions = {
    * path is what waits for the identity to appear.
    */
   acceptIdentityLessToken?: boolean;
+  /**
+   * Absolute time (ms since epoch) after which no further wait is allowed, so
+   * stacked token and Graph retries stay inside the route budget.
+   */
+  deadline?: number;
 };
 
 const acquireToken = async (
@@ -199,7 +217,10 @@ const acquireToken = async (
       // the client MSAL cached that token in so no later attempt reuses it.
       msalApps.delete(cacheKey);
       if (opts.acceptIdentityLessToken) return result.accessToken;
-      if (attempt >= waits.length) {
+      if (
+        attempt >= waits.length ||
+        !withinDeadline(opts.deadline, waits[attempt]!)
+      ) {
         throw new Error(
           "The identity of the calling application could not be established",
         );
@@ -211,6 +232,7 @@ const acquireToken = async (
       const message = err instanceof Error ? err.message : String(err);
       if (
         attempt < waits.length &&
+        withinDeadline(opts.deadline, waits[attempt]!) &&
         CONSENT_PROPAGATION_PATTERNS.test(message)
       ) {
         await sleep(waits[attempt]!);
@@ -586,6 +608,9 @@ const fetchCopilotUsage = async (
 };
 
 export class MsGraphClient implements GraphClient {
+  /** One propagation budget shared by every token and Graph retry in the run. */
+  private readonly deadline = Date.now() + SYNC_PROPAGATION_BUDGET_MS;
+
   constructor(private readonly cred: MsCredential) {}
 
   /**
@@ -593,24 +618,28 @@ export class MsGraphClient implements GraphClient {
    * identity is unknown. A token whose service principal is visible is not
    * always accepted by Graph (the SP was deleted or recreated, or the token was
    * cached before it appeared), so retry with a fresh token instead of failing
-   * the sync. The non-critical organization read opts out so it does not burn
-   * the wait before the critical SKU pull.
+   * the sync. Token and Graph waits share one deadline so stacked retries stay
+   * inside the route budget. The non-critical organization read opts out of the
+   * wait so it does not starve the critical SKU pull.
    */
   private async withAppIdentityRetry<T>(
     run: (token: string) => Promise<T>,
   ): Promise<T> {
     for (let attempt = 0; ; attempt++) {
-      const token = await acquireToken(this.cred);
+      const token = await acquireToken(this.cred, { deadline: this.deadline });
       try {
         return await run(token);
       } catch (err) {
-        if (
-          attempt < APP_IDENTITY_WAITS_MS.length &&
-          isAppIdentityRejection(err)
-        ) {
+        // Never keep a token Graph rejected, even on the final attempt.
+        if (isAppIdentityRejection(err)) {
           msalApps.delete(appCacheKey(this.cred));
-          await sleep(APP_IDENTITY_WAITS_MS[attempt]!);
-          continue;
+          if (
+            attempt < APP_IDENTITY_WAITS_MS.length &&
+            withinDeadline(this.deadline, APP_IDENTITY_WAITS_MS[attempt]!)
+          ) {
+            await sleep(APP_IDENTITY_WAITS_MS[attempt]!);
+            continue;
+          }
         }
         throw err;
       }

@@ -178,6 +178,42 @@ describe("service principal propagation on the sync path", () => {
     expect(mocks.clientsCreated).toBe(2);
   });
 
+  it("evicts the client even when a Graph identity rejection persists", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: {
+                code: "Authorization_IdentityNotFound",
+                message:
+                  "The identity of the calling application could not be established.",
+              },
+            }),
+            { status: 401, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    const cred = managedCred("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    const pending = new MsGraphClient(cred).getSubscribedSkus();
+    const assertion = expect(pending).rejects.toThrow(
+      "The identity of the calling application could not be established",
+    );
+    await advancePastPropagation();
+    await assertion;
+
+    // Initial attempt plus the two Graph waits.
+    expect(mocks.clientsCreated).toBe(3);
+
+    // The rejected client was not left cached: the next call builds a fresh one.
+    await verifyMsCredential(cred);
+    expect(mocks.clientsCreated).toBe(4);
+  });
+
   it("does not treat an opaque token as identity-less", async () => {
     stubSkusFetch();
     mocks.mint.mockResolvedValue({ accessToken: "opaque-token" });
