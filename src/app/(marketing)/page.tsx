@@ -15,6 +15,7 @@ import { FeatureShowcase } from "~/components/landing/FeatureShowcase";
 import { OrbitHero } from "~/components/landing/OrbitHero";
 import { PricingTeaser } from "~/components/landing/PricingTeaser";
 import { Reveal } from "~/components/landing/Reveal";
+import { Testimonial } from "~/components/landing/Testimonial";
 import { buttonClass } from "~/components/ui";
 import { PLAN_PRICES } from "~/lib/pricing";
 import { SITE_DEFINITION, SITE_DESCRIPTION, SITE_TITLE } from "~/lib/site";
@@ -115,6 +116,7 @@ export default function LandingPage() {
         signInHref={signInHref}
         demoEnabled={demoEnabled}
       />
+      <Testimonial />
       <section
         className="border-line border-t px-6 py-20 lg:py-24"
         aria-labelledby="how-it-works"
