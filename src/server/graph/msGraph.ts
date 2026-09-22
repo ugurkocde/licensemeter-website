@@ -619,8 +619,7 @@ export class MsGraphClient implements GraphClient {
    * always accepted by Graph (the SP was deleted or recreated, or the token was
    * cached before it appeared), so retry with a fresh token instead of failing
    * the sync. Token and Graph waits share one deadline so stacked retries stay
-   * inside the route budget. The non-critical organization read opts out of the
-   * wait so it does not starve the critical SKU pull.
+   * inside the route budget.
    */
   private async withAppIdentityRetry<T>(
     run: (token: string) => Promise<T>,

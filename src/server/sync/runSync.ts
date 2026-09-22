@@ -195,13 +195,13 @@ export const runSync = async (
   // deadlock. The threshold must STRICTLY exceed the worst-case wall-clock of a
   // healthy run, or a slow-but-live sync gets force-failed while still writing,
   // letting a second run insert and the two writers prune each other's rows.
-  // Worst case: maxDuration 300s of work + Graph throttle sleeps (up to 4
-  // tries x 30s = 120s per throttled call) + a single 120s propagation budget
-  // shared across the run's token and Graph retries while a new service
-  // principal appears -> well under 10 min in practice. 20 min leaves generous
-  // headroom above that ceiling while still clearing a truly dead row before the
-  // next nightly cron, and keeps the instant-scan poller from showing "syncing"
-  // indefinitely after a hard kill.
+  // Worst case stays well under 10 min: one 120s propagation budget shared
+  // across the run's token and Graph retries while a new service principal
+  // appears, plus Graph throttle sleeps (each 429/503 holds a call for up to
+  // 30s) and the per-request timeouts. 20 min leaves generous headroom above
+  // that ceiling while still clearing a truly dead row before the next nightly
+  // cron, and keeps the instant-scan poller from showing "syncing" indefinitely
+  // after a hard kill.
   const STALE_RUN_MS = 20 * 60 * 1000;
   await db
     .update(syncRuns)
@@ -269,8 +269,6 @@ export const runSync = async (
         });
       }
     } else {
-      orgName = await client.getOrganizationName();
-
       try {
         skus = await client.getSubscribedSkus();
         steps.push({
@@ -286,6 +284,10 @@ export const runSync = async (
         });
         throw err; // critical: nothing useful without SKUs
       }
+
+      // Read the name only after the critical SKU pull, so the non-critical
+      // lookup cannot consume the propagation budget the SKU retry needs.
+      orgName = await client.getOrganizationName();
 
       try {
         concealmentSetting = await client.getReportConcealment();

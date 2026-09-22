@@ -236,6 +236,29 @@ describe("service principal propagation on the sync path", () => {
     ).resolves.toBeNull();
     expect(mocks.mint).toHaveBeenCalledTimes(1);
   });
+
+  it("stops retrying once the propagation deadline has passed", async () => {
+    vi.useFakeTimers();
+    stubSkusFetch();
+    mocks.mint.mockResolvedValue({ accessToken: withoutOid() });
+
+    const client = new MsGraphClient(
+      managedCred("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+    );
+    // Move past the 120s budget the client took at construction.
+    await vi.advanceTimersByTimeAsync(130_000);
+
+    const pending = client.getSubscribedSkus();
+    const assertion = expect(pending).rejects.toThrow(
+      "The identity of the calling application could not be established",
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+    await assertion;
+
+    // The first identity-less token ended the run: no retry sleep was taken.
+    expect(mocks.mint).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
 
 describe("immediate paths before the sync", () => {
