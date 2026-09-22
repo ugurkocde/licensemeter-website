@@ -164,15 +164,19 @@ const acquireToken = async (
         return result.accessToken;
       }
       // No SP identity: the tenant had no service principal when the token was
-      // minted, so Graph rejects it with Authorization_IdentityNotFound. MSAL
-      // cached that unusable token, so rebuild the client (empty cache) and
-      // wait for the consent to propagate rather than failing the first sync.
-      if (!retryConsent || attempt >= CONSENT_PROPAGATION_RETRIES) {
+      // minted, so Graph rejects it with Authorization_IdentityNotFound. Drop
+      // the client MSAL cached that token in so no later attempt reuses it.
+      msalApps.delete(cacheKey);
+      if (!retryConsent) {
+        // A test connection and the consent probe answer now, as before: they
+        // only inspect the token. Waiting for propagation is the sync's job.
+        return result.accessToken;
+      }
+      if (attempt >= CONSENT_PROPAGATION_RETRIES) {
         throw new Error(
           "The identity of the calling application could not be established",
         );
       }
-      msalApps.delete(cacheKey);
       app = buildApp(cred);
       setCachedApp(cacheKey, app);
       await sleep(CONSENT_PROPAGATION_WAIT_MS);
@@ -222,9 +226,15 @@ const decodeRoles = (jwt: string): string[] => {
  * rejects it with Authorization_IdentityNotFound: "The identity of the calling
  * application could not be established". Detecting it here applies the consent
  * propagation wait before the unusable token reaches Graph.
+ *
+ * An undecodable token is left to Graph rather than treated as identity-less,
+ * so a valid opaque token is never rejected locally.
  */
-const hasServicePrincipalIdentity = (jwt: string): boolean =>
-  typeof decodeJwtPayload(jwt)?.oid === "string";
+const hasServicePrincipalIdentity = (jwt: string): boolean => {
+  const payload = decodeJwtPayload(jwt);
+  if (payload === null) return true;
+  return typeof payload.oid === "string";
+};
 
 export type MsVerifyResult =
   | {
@@ -333,7 +343,7 @@ export const verifyMsCredential = async (
       return { ok: false, error: "That Tenant ID was not found." };
     }
     if (
-      /identity of the calling application|missing service principal/i.test(
+      /identity of the calling application|missing service principal|AADSTS7000229/i.test(
         message,
       )
     ) {
