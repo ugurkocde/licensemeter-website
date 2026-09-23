@@ -29,7 +29,6 @@ import type {
   RemediationStatus,
   PaidPlan,
   PlanInterval,
-  PlanTier,
   SaasProvider,
   SubscriptionStatus,
   SyncRunStatus,
@@ -47,18 +46,12 @@ export const mspAccounts = pgTable(
     name: text("name"),
     /** Entra object id of the creator who owns and manages this MSP account. */
     ownerOid: text("owner_oid"),
-    /** Stripe customer id (cus_…) for the MSP quantity subscription. */
-    stripeCustomerId: text("stripe_customer_id"),
     /** Cached subscription status, mirrored from the webhook (same shape as tenants'). */
     subscriptionStatus: text("subscription_status").$type<SubscriptionStatus>(),
     /** Cached current_period_end; the paid-access horizon. Null on trial. */
     paidUntil: timestamp("paid_until", { withTimezone: true }),
     /** Comp / grandfather flag, NEVER written by the webhook. Set => always entitled. */
     compedAt: timestamp("comped_at", { withTimezone: true }),
-    /** The MSP quantity subscription id (sub_…); mirrors subscriptions.stripeSubscriptionId. */
-    stripeSubscriptionId: text("stripe_subscription_id"),
-    /** Cached Price id of the quantity subscription; null until first subscribed. */
-    stripePriceId: text("stripe_price_id"),
     /** Billing interval of the quantity subscription; nullable so an unmapped price is never coerced. */
     interval: text("interval").$type<PlanInterval>(),
     /** Cached current_period_end of the quantity subscription, mirrored from the webhook. */
@@ -89,18 +82,6 @@ export const mspAccounts = pgTable(
       "msp_accounts_brand_logo_size",
       sql`${t.brandLogo} is null or length(${t.brandLogo}) <= 400000`,
     ),
-    // One Stripe customer per MSP account: a mismatched second customer is a DB
-    // error, not a silent overwrite (mirrors tenants.stripeCustomerId).
-    uniqueIndex("msp_accounts_stripe_customer_idx")
-      .on(t.stripeCustomerId)
-      .where(sql`${t.stripeCustomerId} is not null`),
-    // One MSP account per Stripe subscription: a second account pointing at the
-    // same sub is a webhook routing bug, not a silent duplicate (mirrors the
-    // self-serve subscriptions_stripe_subscription guard; partial since the
-    // column is null until first subscribed).
-    uniqueIndex("msp_accounts_stripe_subscription_idx")
-      .on(t.stripeSubscriptionId)
-      .where(sql`${t.stripeSubscriptionId} is not null`),
     // One MSP account per owner (by either identity): the application enforces
     // "one account per owner" via onConflictDoNothing + re-read, but a unique
     // index is the DB backstop so a concurrent double-create can't slip two
@@ -181,9 +162,7 @@ export const tenants = pgTable(
      * No new trial timestamps are written and none of these fields restrict access.
      */
     trialStartedAt: timestamp("trial_started_at", { withTimezone: true }),
-    /** Stripe customer id (cus_…); created lazily at first Checkout, null on trial. */
-    stripeCustomerId: text("stripe_customer_id"),
-    /** Cached subscription status, mirrored from the webhook (source of truth: subscriptions row). */
+    /** Cached subscription status, mirrored from the webhook. */
     subscriptionStatus: text("subscription_status").$type<SubscriptionStatus>(),
     /** Cached current_period_end; the paid-access horizon. Null on trial. */
     paidUntil: timestamp("paid_until", { withTimezone: true }),
@@ -198,7 +177,7 @@ export const tenants = pgTable(
      * billing/entitlement path is unchanged. onDelete "set null" so deleting an
      * MSP account drops its client tenants back to the standalone path rather
      * than cascading them away. TODO(phase-2): stamped when a tenant is attached
-     * to an MSP portfolio (+ Stripe quantity sync on attach/detach).
+     * to an MSP portfolio.
      */
     mspAccountId: uuid("msp_account_id").references(() => mspAccounts.id, {
       onDelete: "set null",
@@ -217,11 +196,6 @@ export const tenants = pgTable(
     index("tenants_domain_idx")
       .on(t.domain)
       .where(sql`${t.domain} is not null`),
-    // One Stripe customer per tenant: a mismatched second customer is a DB
-    // error, not a silent overwrite.
-    uniqueIndex("tenants_stripe_customer_idx")
-      .on(t.stripeCustomerId)
-      .where(sql`${t.stripeCustomerId} is not null`),
     // Portfolio lookup: find every client workspace owned by an MSP account.
     index("tenants_msp_account_idx")
       .on(t.mspAccountId)
@@ -824,48 +798,6 @@ export const snapshots = pgTable(
 );
 
 /**
- * One row per tenant with a Stripe subscription (current or past). The webhook
- * is the source of truth; tenants.subscriptionStatus/paidUntil are a cached
- * read-fast mirror. tier/interval are nullable so an unmapped price is never
- * coerced to the cheapest tier.
- */
-export const subscriptions = pgTable(
-  "subscriptions",
-  {
-    tenantId: uuid("tenant_id")
-      .primaryKey()
-      .references(() => tenants.id, { onDelete: "cascade" }),
-    stripeSubscriptionId: text("stripe_subscription_id").notNull(),
-    stripeCustomerId: text("stripe_customer_id").notNull(),
-    stripePriceId: text("stripe_price_id").notNull(),
-    tier: text("tier").$type<PlanTier>(),
-    interval: text("interval").$type<PlanInterval>(),
-    status: text("status").$type<SubscriptionStatus>().notNull(),
-    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
-    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
-    /** event.created of the last applied webhook; gates stale out-of-order writes. */
-    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (t) => [
-    // One subscriptions row per Stripe subscription: a second tenant pointing
-    // at the same sub is a webhook routing bug, not a silent duplicate. Both
-    // columns are NOT NULL, so a plain unique index suffices (no null collisions).
-    uniqueIndex("subscriptions_stripe_subscription_idx").on(
-      t.stripeSubscriptionId,
-    ),
-    // One Stripe customer maps to at most one subscriptions row, mirroring the
-    // tenants.stripeCustomerId guard.
-    uniqueIndex("subscriptions_stripe_customer_idx").on(t.stripeCustomerId),
-  ],
-);
-
-/**
  * A paid hosted plan. No row means Free. Provider-neutral: Microsoft
  * Marketplace, Polar and hand-set comps all write the same shape. loadEntitlement
  * reads it and entitlementOf decides, so feature checks never know who was paid.
@@ -1055,20 +987,6 @@ export const apiTokens = pgTable(
     index("api_tokens_tenant_idx").on(t.tenantId),
   ],
 ).enableRLS();
-
-/**
- * Idempotency ledger for Stripe webhook deliveries. Insert-on-receipt inside
- * the same transaction as the handler: a duplicate event id is a no-op, and a
- * handler failure rolls the row back so Stripe's retry re-processes exactly
- * once. No FK — survives tenant deletion.
- */
-export const stripeEvents = pgTable("stripe_events", {
-  id: text("id").primaryKey(),
-  type: text("type").notNull(),
-  receivedAt: timestamp("received_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
 
 /**
  * Delivery ledger for the scheduled emails (weekly digest, monthly report) and

@@ -85,6 +85,13 @@
       "when": 1789925751885,
       "tag": "0011_retire_legacy_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790173916035,
+      "tag": "0012_retire_stripe",
+      "breakpoints": true
     }
   ]
 }

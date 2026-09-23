@@ -48,9 +48,6 @@ export type DeliveryStatus =
 /** The permanent failures: the address is not mailed again. */
 export type EmailBlockReason = "bounced" | "suppressed" | "complained";
 
-/** Historical column type, read-only. Legacy plan tiers still referenced by the schema. */
-export type PlanTier = "starter" | "growth" | "scale";
-
 /** Historical column type, read-only. Legacy recurring interval still referenced by the schema. */
 export type PlanInterval = "month" | "year";
 
