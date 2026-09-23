@@ -1,0 +1,7 @@
+{
+  "title": "Clearer workspace join settings for colleagues",
+  "summary": "The Who can join options in Settings now explain what happens to a colleague who signs in without an invite, and what viewers can see when they join automatically. Colleagues who end up in an empty workspace of their own now see that their organization already uses LicenseMeter, whether their request to join is pending, and that they can ask an owner or admin for an invite.",
+  "type": "improved",
+  "publishedOn": "2026-09-23",
+  "idempotencyKey": "licensemeter:2026-09-23-who-can-join-clarity"
+}

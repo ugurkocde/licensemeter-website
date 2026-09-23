@@ -19,10 +19,13 @@ import type { DomainJoinMode } from "~/server/types";
  */
 export const DomainJoinControl = ({
   domain,
+  tenantConnected,
   initial,
   canEdit,
 }: {
-  domain: string;
+  domain: string | null;
+  /** Colleagues from a connected Microsoft tenant are matched by tenant id. */
+  tenantConnected: boolean;
   initial: DomainJoinMode;
   canEdit: boolean;
 }) => {
@@ -81,7 +84,10 @@ export const DomainJoinControl = ({
         </span>
       </div>
       <p className="text-ink-faint mt-0.5 text-xs break-words">
-        People with a verified @{domain} email
+        Applies to people signing in
+        {tenantConnected && " from your Microsoft tenant"}
+        {tenantConnected && domain && " or"}
+        {domain && ` with a verified @${domain} email`}.
       </p>
 
       {canEdit ? (
@@ -111,6 +117,11 @@ export const DomainJoinControl = ({
               </span>
             </label>
           ))}
+          {/* A decided request is final (decideDomainJoin), whatever the mode. */}
+          <p className="text-ink-faint mt-1 text-xs">
+            Someone who was declined, or removed after joining, only gets back
+            in by invitation.
+          </p>
         </fieldset>
       ) : (
         <p className="mt-2 text-sm">
