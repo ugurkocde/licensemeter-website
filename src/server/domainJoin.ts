@@ -93,6 +93,33 @@ export const holdsJoinableDomain = async (
 };
 
 /**
+ * For a person looking at an empty workspace: whether their organization
+ * already has a workspace they are not a member of, and whether their request
+ * to join it is pending. The match is the one a first sign-in makes (tid of
+ * the verified token, else a proven email domain), so it reveals nothing the
+ * person's own sign-in could not reach. Null when there is nothing to point at.
+ */
+export const findOrganizationWorkspaceHint = async (
+  db: Db,
+  who: Pick<SignInIdentity, "oid" | "tid" | "email" | "emailVerified">,
+  memberOf: readonly string[],
+): Promise<{ requestPending: boolean } | null> => {
+  const domain = corporateDomainOf(who.email, who.emailVerified);
+  const tenant =
+    (await findTenantWorkspace(db, who.tid)) ??
+    (domain ? await findDomainWorkspace(db, domain) : null);
+  if (!tenant || memberOf.includes(tenant.id)) return null;
+  const [request] = await db
+    .select({ status: joinRequests.status })
+    .from(joinRequests)
+    .where(
+      and(eq(joinRequests.tenantId, tenant.id), eq(joinRequests.oid, who.oid)),
+    )
+    .limit(1);
+  return { requestPending: request?.status === "pending" };
+};
+
+/**
  * Gives the person a viewer membership keyed on their object id and reports
  * whether they now have one. A row they already hold keeps its role. A row
  * under their address that belongs to another object id is never touched. An

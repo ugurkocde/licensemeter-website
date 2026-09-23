@@ -25,7 +25,9 @@ import { ALL_RULES, RULE_META } from "~/lib/rules";
 import { upgradePath } from "~/lib/upgrade";
 import type { WasteRuleId } from "~/server/types";
 import { requireAccess, hasRole } from "~/server/access";
+import { auth } from "~/server/auth";
 import { db } from "~/server/db";
+import { findOrganizationWorkspaceHint } from "~/server/domainJoin";
 import { workspaceHasConnectorOrData } from "~/server/workspaceState";
 import { daysUntilDate } from "~/server/digestDelta";
 import { loadWasteHistory } from "~/server/historyStore";
@@ -51,9 +53,27 @@ export default async function OverviewPage() {
   const hasConnectorOrData =
     ctx.tenant.isDemo || (await workspaceHasConnectorOrData(tenantId));
   if (!hasConnectorOrData) {
+    // A colleague who was not let into their organization's workspace lands
+    // here; say so instead of leaving them to wonder where the data is.
+    const session = await auth();
+    const organizationHint = session
+      ? await findOrganizationWorkspaceHint(
+          db,
+          {
+            oid: ctx.user.oid,
+            tid: ctx.user.tid,
+            email:
+              session.user.emailProven === true
+                ? (session.user.email ?? "").trim().toLowerCase()
+                : "",
+            emailVerified: session.user.emailProven === true,
+          },
+          ctx.workspaces.map((w) => w.id),
+        )
+      : null;
     return (
       <>
-        <OnboardingEmptyState />
+        <OnboardingEmptyState organizationHint={organizationHint} />
         {ctx.membership.welcomeTourAt === null && (
           <Tour
             phase="welcome"

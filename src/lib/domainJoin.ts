@@ -61,12 +61,16 @@ export const DOMAIN_JOIN_LABEL: Record<DomainJoinMode, string> = {
   off: "Invite only",
 };
 
-/** One-line explanation shown next to each option in Settings. */
+/**
+ * Explanation shown next to each option in Settings. Each one says what a
+ * colleague without an invite gets, because that is the consequence an owner
+ * cannot see from their own seat.
+ */
 export const DOMAIN_JOIN_DESCRIPTION: Record<DomainJoinMode, string> = {
   approval:
-    "Colleagues request access when they sign in. An owner or admin approves it.",
-  auto: "Colleagues join as viewer when they sign in. Owners and admins get an email.",
-  off: "Nobody joins by email domain. People get in by invitation only.",
+    "Colleagues send an access request when they first sign in. Requests appear here and are emailed to owners and admins. Until one is approved, that colleague gets an empty workspace of their own.",
+  auto: "Colleagues are added as viewers when they first sign in and can see all license, user and cost data. Owners and admins get an email.",
+  off: "Only invited people get access. Colleagues who sign in without an invite get an empty workspace of their own.",
 };
 
 export type DomainJoinDecision = "join" | "request" | "none";

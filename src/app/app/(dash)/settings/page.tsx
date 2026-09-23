@@ -569,9 +569,10 @@ export default async function SettingsPage() {
             </div>
           )}
 
-          {joinByDomain && ctx.tenant.domain && (
+          {joinByDomain && (
             <DomainJoinControl
               domain={ctx.tenant.domain}
+              tenantConnected={Boolean(ctx.tenant.tid)}
               initial={ctx.tenant.domainJoinMode}
               canEdit={isOwner}
             />

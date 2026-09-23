@@ -68,8 +68,28 @@ const Monogram = ({ name }: { name: string }) => (
   </span>
 );
 
-export const OnboardingEmptyState = () => (
+export const OnboardingEmptyState = ({
+  organizationHint,
+}: {
+  /** Set when the person's organization already has another workspace. */
+  organizationHint?: { requestPending: boolean } | null;
+}) => (
   <div className="mx-auto max-w-3xl py-6">
+    {organizationHint && (
+      <aside
+        aria-label="Your organization's workspace"
+        className="rise rise-1 border-brand/20 bg-brand-soft text-brand-text mb-6 rounded-xl border p-4 text-sm"
+      >
+        <p className="font-semibold">
+          Your organization already uses LicenseMeter
+        </p>
+        <p className="mt-1">
+          {organizationHint.requestPending
+            ? "Your request to join its workspace is waiting for an owner or admin there. Once approved, it opens the next time you visit LicenseMeter. Until then you can use this workspace of your own."
+            : "Its data is in a separate workspace. Ask an owner or admin there to invite you. Once they do, it opens the next time you visit LicenseMeter."}
+        </p>
+      </aside>
+    )}
     <header className="rise rise-1">
       <p className="text-brand-text text-xs font-medium tracking-[0.14em] uppercase">
         Get started

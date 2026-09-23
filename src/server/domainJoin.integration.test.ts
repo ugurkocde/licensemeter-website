@@ -9,6 +9,7 @@ import * as schema from "~/server/db/schema";
 import {
   approveJoinRequestRow,
   declineJoinRequestRow,
+  findOrganizationWorkspaceHint,
   holdsJoinableDomain,
   pendingJoinRequests,
   pendingJoinRequestsOf,
@@ -561,5 +562,73 @@ describe("concurrent first sign-ins", () => {
     const tenants = await db.select().from(schema.tenants);
     expect(tenants).toHaveLength(2);
     expect(tenants.filter((t) => t.domain === "acme.com")).toHaveLength(1);
+  });
+});
+
+describe("organization workspace hint", () => {
+  const memberOf = async (oid: string) =>
+    (await membershipsOf(oid)).map((m) => m.tenantId);
+
+  it("points an invite-only colleague at the domain workspace", async () => {
+    await seedDomainWorkspace("off");
+    await provisionForSignIn(db, COLLEAGUE);
+
+    expect(
+      await findOrganizationWorkspaceHint(
+        db,
+        COLLEAGUE,
+        await memberOf(CASEY_OID),
+      ),
+    ).toEqual({ requestPending: false });
+  });
+
+  it("reports a pending request", async () => {
+    await seedDomainWorkspace("approval");
+    await provisionForSignIn(db, COLLEAGUE, {
+      allowRequest: () => Promise.resolve(true),
+    });
+
+    expect(
+      await findOrganizationWorkspaceHint(
+        db,
+        COLLEAGUE,
+        await memberOf(CASEY_OID),
+      ),
+    ).toEqual({ requestPending: true });
+  });
+
+  it("matches by Microsoft tenant without a proven email", async () => {
+    await db.insert(schema.tenants).values({
+      name: "Acme",
+      tid: ACME_TID,
+      domainJoinMode: "off",
+    });
+    const unproven = { ...COLLEAGUE, email: "", emailVerified: false };
+
+    expect(await findOrganizationWorkspaceHint(db, unproven, [])).toEqual({
+      requestPending: false,
+    });
+  });
+
+  it("says nothing to members, strangers or unproven addresses", async () => {
+    const { tenantId } = await seedDomainWorkspace("off");
+
+    expect(
+      await findOrganizationWorkspaceHint(db, OWNER, [tenantId]),
+    ).toBeNull();
+    expect(
+      await findOrganizationWorkspaceHint(
+        db,
+        { ...COLLEAGUE, tid: OTHER_TID, email: "casey@other.com" },
+        [],
+      ),
+    ).toBeNull();
+    expect(
+      await findOrganizationWorkspaceHint(
+        db,
+        { ...COLLEAGUE, tid: OTHER_TID, emailVerified: false },
+        [],
+      ),
+    ).toBeNull();
   });
 });
