@@ -1,0 +1,8 @@
+{
+  "title": "Buy Pro and MSP through Microsoft Marketplace",
+  "summary": "LicenseMeter is now listed on Microsoft Marketplace, so you can subscribe to Pro or MSP on your existing Microsoft agreement instead of paying by card. The charge lands on your Microsoft invoice, there is no new vendor to onboard and no purchase order to raise, and the subscription attaches to the tenant you bought with. After subscribing you choose Configure account now, sign in with the same Microsoft work account and confirm your workspace, which is when the plan activates and the one month trial starts. Paying by card through Polar stays available and both routes give you the same plans and the same features. One difference worth knowing: Marketplace prices are set in US dollars and converted by Microsoft, so the amount on your Microsoft invoice can differ slightly from the card prices on our pricing page.",
+  "type": "new",
+  "publishedOn": "2026-09-23",
+  "idempotencyKey": "licensemeter:2026-09-23-microsoft-marketplace",
+  "sourceUrl": "https://www.licensemeter.com/pricing"
+}

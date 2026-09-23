@@ -365,7 +365,7 @@ const en: PricingContent = {
   buy: {
     eyebrow: "Two ways to buy Pro or MSP",
     h2: "Use the channel your procurement already approved.",
-    sub: "Same plans, same prices, same features. Your subscription attaches to your tenant either way.",
+    sub: "Same plans, same features, and your subscription attaches to your tenant either way. Marketplace prices are set in US dollars and converted by Microsoft, so the amount on your Microsoft invoice can differ slightly from the card prices shown here.",
     options: [
       {
         kicker: "Option 01",
@@ -648,7 +648,7 @@ const de: PricingContent = {
   buy: {
     eyebrow: "Zwei Wege zu Pro oder MSP",
     h2: "Nutzen Sie den Weg, den Ihr Einkauf bereits freigegeben hat.",
-    sub: "Gleiche Tarife, gleiche Preise, gleicher Funktionsumfang. Ihr Abonnement wird in beiden Fällen Ihrem Tenant zugeordnet.",
+    sub: "Gleiche Tarife, gleicher Funktionsumfang, und Ihr Abonnement wird in beiden Fällen Ihrem Tenant zugeordnet. Die Preise im Marketplace sind in US-Dollar hinterlegt und werden von Microsoft umgerechnet. Der Betrag auf Ihrer Microsoft-Rechnung kann daher geringfügig von den hier gezeigten Kartenpreisen abweichen.",
     options: [
       {
         kicker: "Option 01",
