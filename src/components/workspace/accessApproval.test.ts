@@ -7,14 +7,17 @@ vi.mock("~/server/accessRequestActions", () => ({
   acknowledgeDeclinedRequest: vi.fn(),
 }));
 
+const navigation = vi.hoisted(() => ({ path: "/app" }));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
-  usePathname: () => "/app",
+  usePathname: () => navigation.path,
 }));
 
 import { JoinRequestNotice } from "./JoinRequestNotice";
 import { OnboardingEmptyState } from "./OnboardingEmptyState";
 import { NavLinks } from "./NavLinks";
+import { AccessRequestStrip } from "./AccessRequestStrip";
 
 describe("approval guidance", () => {
   it("replaces connector onboarding with the waiting instructions", () => {
@@ -102,4 +105,28 @@ it("never renders contacts in a decided card, even with stale props", () => {
     );
     expect(html).not.toContain("private@acme.example");
   }
+});
+
+it("keeps declines reachable on a populated Overview without a global notice", () => {
+  const props = {
+    requests: [{ id: "request", workspaceName: "Acme", status: "declined" }],
+    fullCardOnOverview: false,
+  };
+  navigation.path = "/app";
+  const overview = renderToStaticMarkup(
+    createElement(AccessRequestStrip, props),
+  );
+  expect(overview).toContain('href="/app/access-requests"');
+  expect(overview).toContain("declined");
+  expect(overview).not.toContain("awaiting approval");
+  navigation.path = "/app/settings";
+  expect(renderToStaticMarkup(createElement(AccessRequestStrip, props))).toBe(
+    "",
+  );
+  navigation.path = "/app";
+  expect(
+    renderToStaticMarkup(
+      createElement(AccessRequestStrip, { ...props, fullCardOnOverview: true }),
+    ),
+  ).toBe("");
 });

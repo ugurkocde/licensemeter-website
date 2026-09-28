@@ -18,7 +18,7 @@ export const AccessRequestStrip = ({
   )
     return null;
   return requests
-    .filter((request) => request.status !== "declined")
+    .filter((request) => request.status !== "declined" || path === "/app")
     .map((request) => (
       <aside
         key={request.id}
@@ -27,7 +27,12 @@ export const AccessRequestStrip = ({
       >
         <p className="min-w-0 break-words">
           Your access to <strong>{request.workspaceName}</strong> is{" "}
-          {request.status === "approved" ? "approved" : "awaiting approval"}.
+          {request.status === "approved"
+            ? "approved"
+            : request.status === "declined"
+              ? "declined"
+              : "awaiting approval"}
+          .
         </p>
         <Link
           href="/app/access-requests"
