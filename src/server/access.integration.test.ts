@@ -409,24 +409,28 @@ describe("first sign-in", () => {
     expect(sent).toHaveLength(0);
   });
 
-  it("notifies admins once about a request from their own Microsoft tenant", async () => {
-    await currentDb
-      .insert(schema.tenants)
-      .values({ id: tenantId(1), name: "Victim", tid: VICTIM_TID });
-    session = victimSession(false);
+  it.each([false, true])(
+    "notifies admins once without setup email for a pending colleague (proven email: %s)",
+    async (emailProven) => {
+      await currentDb
+        .insert(schema.tenants)
+        .values({ id: tenantId(1), name: "Victim", tid: VICTIM_TID });
+      session = victimSession(emailProven);
 
-    const ctx = await apiAccess();
-    await apiAccess();
+      const ctx = await apiAccess();
+      await apiAccess();
 
-    expect(ctx!.tenant.id).not.toBe(tenantId(1));
-    expect(afterTasks).toHaveLength(1);
-    await afterTasks[0]!();
-    expect(joinRequestNotice).toHaveBeenCalledTimes(1);
-    expect(domainJoinedNotice).not.toHaveBeenCalled();
-    const requests = await currentDb.select().from(schema.joinRequests);
-    expect(requests).toHaveLength(1);
-    expect(requests[0]).toMatchObject({ oid: VICTIM_OID, tid: VICTIM_TID });
-  });
+      expect(ctx!.tenant.id).not.toBe(tenantId(1));
+      expect(afterTasks).toHaveLength(1);
+      await afterTasks[0]!();
+      expect(joinRequestNotice).toHaveBeenCalledTimes(1);
+      expect(sent).toEqual([]);
+      expect(domainJoinedNotice).not.toHaveBeenCalled();
+      const requests = await currentDb.select().from(schema.joinRequests);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({ oid: VICTIM_OID, tid: VICTIM_TID });
+    },
+  );
 
   it("joins the workspace of the proven domain in auto mode and tells its admins", async () => {
     await currentDb.insert(schema.tenants).values({

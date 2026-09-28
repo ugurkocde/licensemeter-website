@@ -1,4 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
+import { AccessRequestCards } from "~/components/workspace/AccessRequestCards";
+import { AccessGrantedNotice } from "~/components/workspace/AccessGrantedNotice";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -27,7 +30,11 @@ import type { WasteRuleId } from "~/server/types";
 import { requireAccess, hasRole } from "~/server/access";
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
-import { findOrganizationWorkspaceHint } from "~/server/domainJoin";
+import {
+  findOrganizationWorkspaceHint,
+  accessRequestNoticesOf,
+  ownAccessRequest,
+} from "~/server/domainJoin";
 import { workspaceHasConnectorOrData } from "~/server/workspaceState";
 import { daysUntilDate } from "~/server/digestDelta";
 import { loadWasteHistory } from "~/server/historyStore";
@@ -43,9 +50,27 @@ import {
 
 export const metadata: Metadata = { title: "Overview" };
 
-export default async function OverviewPage() {
+export default async function OverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ accessRequest?: string }>;
+}) {
   const ctx = await requireAccess("viewer");
   const tenantId = ctx.tenant.id;
+  const params = await searchParams;
+  const successRequest =
+    !ctx.user.isDemo &&
+    z.string().uuid().safeParse(params.accessRequest).success
+      ? await ownAccessRequest(db, ctx.user.oid, params.accessRequest!)
+      : null;
+  const confirmation =
+    successRequest?.role && successRequest.tenantId === tenantId ? (
+      <AccessGrantedNotice
+        key={successRequest.id}
+        workspaceName={successRequest.tenantName ?? "your company’s workspace"}
+        role={successRequest.role}
+      />
+    ) : null;
 
   // Workspace-first onboarding: a workspace that has connected no service yet
   // lands on the dashboard but sees the onboarding empty state (nudge to connect
@@ -53,6 +78,16 @@ export default async function OverviewPage() {
   const hasConnectorOrData =
     ctx.tenant.isDemo || (await workspaceHasConnectorOrData(tenantId));
   if (!hasConnectorOrData) {
+    const requests = ctx.user.isDemo
+      ? []
+      : await accessRequestNoticesOf(db, ctx.user.oid);
+    if (requests.length)
+      return (
+        <>
+          {confirmation}
+          <AccessRequestCards requests={requests} />
+        </>
+      );
     // A colleague who was not let into their organization's workspace lands
     // here; say so instead of leaving them to wonder where the data is.
     const session = await auth();
@@ -73,8 +108,9 @@ export default async function OverviewPage() {
       : null;
     return (
       <>
+        {confirmation}
         <OnboardingEmptyState organizationHint={organizationHint} />
-        {ctx.membership.welcomeTourAt === null && (
+        {!organizationHint && ctx.membership.welcomeTourAt === null && (
           <Tour
             phase="welcome"
             storageId={ctx.membership.id}
@@ -410,6 +446,7 @@ export default async function OverviewPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
+      {confirmation}
       {ctx.membership.dataTourAt === null && (
         <Tour
           phase="data"

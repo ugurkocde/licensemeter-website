@@ -68,7 +68,7 @@ export const DOMAIN_JOIN_LABEL: Record<DomainJoinMode, string> = {
  */
 export const DOMAIN_JOIN_DESCRIPTION: Record<DomainJoinMode, string> = {
   approval:
-    "Colleagues send an access request when they first sign in. Requests appear here and are emailed to owners and admins. Until one is approved, that colleague gets an empty workspace of their own.",
+    "Colleagues send an access request when they first sign in. Requests appear here and in an alert for owners and admins. While a request is pending, the colleague can see signed-in owners’ and admins’ names and email addresses to contact an approver. These contacts are hidden after a decision. Email notifications are also sent when configured. Approved colleagues get viewer access.",
   auto: "Colleagues are added as viewers when they first sign in and can see all license, user and cost data. Owners and admins get an email.",
   off: "Only invited people get access. Colleagues who sign in without an invite get an empty workspace of their own.",
 };

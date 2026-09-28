@@ -80,6 +80,7 @@ import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import { maybeSendWelcome } from "~/server/welcome";
 import {
   sendJoinApproved,
+  sendJoinDeclined,
   sendWorkspaceDeleted,
   workspaceAdminEmails,
 } from "~/server/workspaceEmail";
@@ -806,7 +807,7 @@ export const approveJoinRequest = async (
   return ok();
 };
 
-/** Decline an access request. The person is not notified and not asked about again. */
+/** Decline an access request and notify the requester once. */
 export const declineJoinRequest = async (
   requestId: string,
 ): Promise<ActionResult> => {
@@ -829,6 +830,9 @@ export const declineJoinRequest = async (
   }
   if (result.changed) {
     await audit(ctx, "member_join_declined", { email: result.request.email });
+    after(() =>
+      sendJoinDeclined(ctx.tenant, result.request.email).catch(() => null),
+    );
   }
   revalidateApp();
   return ok();

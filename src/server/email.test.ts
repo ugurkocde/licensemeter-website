@@ -8,6 +8,7 @@ const {
   domainJoinedHtml,
   inviteHtml,
   joinApprovedHtml,
+  joinDeclinedHtml,
   joinRequestHtml,
   leakAlertHtml,
   reportHtml,
@@ -45,6 +46,7 @@ const TEMPLATES: Record<string, string> = {
     appUrl,
   }),
   joinApproved: joinApprovedHtml({ tenantName: HOSTILE, appUrl }),
+  joinDeclined: joinDeclinedHtml({ tenantName: HOSTILE, appUrl }),
   digest: digestHtml({
     tenantName: HOSTILE,
     currency: "EUR",
@@ -152,9 +154,12 @@ describe("app links", () => {
     const to = (path: string) =>
       `href="https://licensemeter.com/sign-in?returnTo=${encodeURIComponent(path)}"`;
     expect(TEMPLATES.invite).toContain(to("/app"));
-    expect(TEMPLATES.joinRequest).toContain(to("/app/settings"));
+    expect(TEMPLATES.joinRequest).toContain(
+      to("/app/settings#access-requests"),
+    );
     expect(TEMPLATES.domainJoined).toContain(to("/app/settings"));
     expect(TEMPLATES.joinApproved).toContain(to("/app"));
+    expect(TEMPLATES.joinDeclined).toContain(to("/app"));
     expect(TEMPLATES.digest).toContain(to("/app/findings"));
     expect(TEMPLATES.allClear).toContain(to("/app/findings"));
     expect(TEMPLATES.report).toContain(to("/app"));

@@ -3,15 +3,22 @@ import Link from "next/link";
 
 import { BrandMark } from "~/components/BrandMark";
 import { ChangelogBell } from "~/components/changelog/ChangelogBell";
-import { JoinRequestNotice } from "~/components/workspace/JoinRequestNotice";
+import {
+  AccessRequestStrip,
+  ApproverRequestBanner,
+} from "~/components/workspace/AccessRequestStrip";
+import { workspaceHasConnectorOrData } from "~/server/workspaceState";
 import { MobileNav } from "~/components/workspace/MobileNav";
 import { NavLinks } from "~/components/workspace/NavLinks";
 import { PlanBadge } from "~/components/workspace/PlanBadge";
 import { WorkspaceSwitcher } from "~/components/workspace/WorkspaceSwitcher";
 import { workspaceLabel } from "~/lib/format";
-import { requireAccess } from "~/server/access";
+import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
-import { pendingJoinRequestsOf } from "~/server/domainJoin";
+import {
+  accessRequestNoticesOf,
+  pendingJoinRequestCount,
+} from "~/server/domainJoin";
 import { signOutAction } from "~/app/auth/actions";
 
 /* Auth already gates these routes; noindex closes the gap robots.txt leaves
@@ -27,10 +34,20 @@ export default async function WorkspaceLayout({
   const tenantName = workspaceLabel(ctx.tenant);
   // The demo sign-in is shared by every visitor, so it has no account page.
   const accountEnabled = !ctx.user.isDemo;
-  // The notice disappears once the request is decided.
-  const waitingOn = accountEnabled
-    ? await pendingJoinRequestsOf(db, ctx.user.oid)
-    : [];
+  // Requesters see their status; approvers see requests for the active workspace.
+  const [waitingOn, pendingAccessRequests] = await Promise.all([
+    accountEnabled
+      ? accessRequestNoticesOf(db, ctx.user.oid)
+      : Promise.resolve([]),
+    accountEnabled && hasRole(ctx, "admin")
+      ? pendingJoinRequestCount(db, ctx.tenant.id)
+      : Promise.resolve(0),
+  ]);
+
+  const fullCardOnOverview =
+    waitingOn.length > 0 &&
+    !ctx.tenant.isDemo &&
+    !(await workspaceHasConnectorOrData(ctx.tenant.id));
 
   return (
     <div className="bg-canvas min-h-screen lg:flex">
@@ -50,6 +67,7 @@ export default async function WorkspaceLayout({
         workspaces={ctx.workspaces}
         activeId={ctx.tenant.id}
         entitlement={ctx.entitlement}
+        pendingAccessRequests={pendingAccessRequests}
       />
 
       <aside className="bg-sidebar border-line sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r lg:flex">
@@ -75,7 +93,7 @@ export default async function WorkspaceLayout({
             </div>
           )}
           <div className="text-sidebar-soft mt-0.5 text-[11px] tracking-wider uppercase">
-            {ctx.tenant.isDemo ? "Demo workspace" : "Connected tenant"}
+            {ctx.tenant.isDemo ? "Demo workspace" : "Workspace"}
           </div>
           <PlanBadge entitlement={ctx.entitlement} className="mt-2" />
         </div>
@@ -84,6 +102,7 @@ export default async function WorkspaceLayout({
           <NavLinks
             showPortfolio={ctx.workspaces.length > 1}
             entitlement={ctx.entitlement}
+            pendingAccessRequests={pendingAccessRequests}
           />
         </div>
 
@@ -121,13 +140,18 @@ export default async function WorkspaceLayout({
         id="content"
         className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-8 lg:px-12"
       >
-        {waitingOn.map((request) => (
-          <JoinRequestNotice
-            key={request.id}
-            requestId={request.id}
-            workspaceName={request.tenantName ?? "a workspace"}
-          />
-        ))}
+        <ApproverRequestBanner
+          count={pendingAccessRequests}
+          workspaceName={tenantName}
+        />
+        <AccessRequestStrip
+          fullCardOnOverview={fullCardOnOverview}
+          requests={waitingOn.map((request) => ({
+            id: request.id,
+            status: request.status,
+            workspaceName: request.tenantName ?? "your company’s workspace",
+          }))}
+        />
         {children}
       </main>
     </div>

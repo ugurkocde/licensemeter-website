@@ -213,6 +213,7 @@ export type AuditAction =
   | "member_join_requested"
   | "member_join_approved"
   | "member_join_declined"
+  | "member_join_notice_acknowledged"
   | "member_domain_joined"
   | "domain_join_mode_changed"
   | "member_identity_linked"

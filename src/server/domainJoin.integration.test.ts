@@ -8,6 +8,10 @@ import type { Db } from "~/server/db";
 import * as schema from "~/server/db/schema";
 import {
   approveJoinRequestRow,
+  accessRequestNoticesOf,
+  acknowledgeAccessDecision,
+  ownAccessRequest,
+  pendingJoinRequestCount,
   declineJoinRequestRow,
   findOrganizationWorkspaceHint,
   holdsJoinableDomain,
@@ -579,7 +583,7 @@ describe("organization workspace hint", () => {
         COLLEAGUE,
         await memberOf(CASEY_OID),
       ),
-    ).toEqual({ requestPending: false });
+    ).toEqual({ requestStatus: null });
   });
 
   it("reports a pending request", async () => {
@@ -594,7 +598,7 @@ describe("organization workspace hint", () => {
         COLLEAGUE,
         await memberOf(CASEY_OID),
       ),
-    ).toEqual({ requestPending: true });
+    ).toEqual({ requestStatus: "pending" });
   });
 
   it("matches by Microsoft tenant without a proven email", async () => {
@@ -606,7 +610,7 @@ describe("organization workspace hint", () => {
     const unproven = { ...COLLEAGUE, email: "", emailVerified: false };
 
     expect(await findOrganizationWorkspaceHint(db, unproven, [])).toEqual({
-      requestPending: false,
+      requestStatus: null,
     });
   });
 
@@ -630,5 +634,154 @@ describe("organization workspace hint", () => {
         [],
       ),
     ).toBeNull();
+  });
+});
+
+describe("access request visibility", () => {
+  it("reveals only claimed approvers of the requester's workspace", async () => {
+    const { tenantId } = await seedDomainWorkspace("approval");
+    await provisionForSignIn(db, COLLEAGUE);
+    const [other] = await db
+      .insert(schema.tenants)
+      .values({ name: "Other" })
+      .returning();
+    await db.insert(schema.memberships).values([
+      { tenantId, email: "admin@acme.com", oid: "admin", role: "admin" },
+      { tenantId, email: "invited@acme.com", role: "admin" },
+      { tenantId, email: "viewer@acme.com", oid: "viewer", role: "viewer" },
+      {
+        tenantId: other!.id,
+        email: "owner@other.com",
+        oid: "other",
+        role: "owner",
+      },
+    ]);
+    const notices = await accessRequestNoticesOf(db, CASEY_OID);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]!.status).toBe("pending");
+    expect(notices[0]!.contacts.map((c) => c.email).sort()).toEqual([
+      "admin@acme.com",
+      "owner@acme.com",
+    ]);
+    expect(await accessRequestNoticesOf(db, MALLORY_OID)).toEqual([]);
+    expect(await pendingJoinRequestCount(db, tenantId)).toBe(1);
+    expect(await pendingJoinRequestCount(db, other!.id)).toBe(0);
+  });
+
+  it("keeps a decline visible and removes it when an invitation restores access", async () => {
+    const { tenantId, ownerMembershipId } =
+      await seedDomainWorkspace("approval");
+    await provisionForSignIn(db, COLLEAGUE);
+    const [request] = await pendingJoinRequests(db, tenantId);
+    await declineJoinRequestRow(db, {
+      tenantId,
+      requestId: request!.id,
+      decidedByMembershipId: ownerMembershipId,
+    });
+    expect((await accessRequestNoticesOf(db, CASEY_OID))[0]!.status).toBe(
+      "declined",
+    );
+    expect(await pendingJoinRequestCount(db, tenantId)).toBe(0);
+    await db.insert(schema.memberships).values({
+      tenantId,
+      email: COLLEAGUE.email,
+      oid: CASEY_OID,
+      role: "viewer",
+    });
+    expect(await accessRequestNoticesOf(db, CASEY_OID)).toEqual([]);
+  });
+
+  it("shows approval until acknowledged and then clears the notice", async () => {
+    const { tenantId, ownerMembershipId } =
+      await seedDomainWorkspace("approval");
+    await provisionForSignIn(db, COLLEAGUE);
+    const [request] = await pendingJoinRequests(db, tenantId);
+    await approveJoinRequestRow(db, {
+      tenantId,
+      requestId: request!.id,
+      decidedByMembershipId: ownerMembershipId,
+    });
+    expect((await accessRequestNoticesOf(db, CASEY_OID))[0]).toMatchObject({
+      status: "approved",
+      contacts: [],
+    });
+    expect(await acknowledgeAccessDecision(db, CASEY_OID, request!.id)).toBe(
+      true,
+    );
+    expect(await accessRequestNoticesOf(db, CASEY_OID)).toEqual([]);
+    expect(await pendingJoinRequestCount(db, tenantId)).toBe(0);
+    expect(await membershipsOf(CASEY_OID)).toContainEqual({
+      tenantId,
+      role: "viewer",
+    });
+  });
+});
+
+describe("request acknowledgement", () => {
+  it("hides declined contacts, persists acknowledgement and keeps the decision", async () => {
+    const { tenantId, ownerMembershipId } =
+      await seedDomainWorkspace("approval");
+    await provisionForSignIn(db, COLLEAGUE);
+    const [request] = await pendingJoinRequests(db, tenantId);
+    expect(await acknowledgeAccessDecision(db, CASEY_OID, request!.id)).toBe(
+      false,
+    );
+    expect(await ownAccessRequest(db, MALLORY_OID, request!.id)).toBeNull();
+    await declineJoinRequestRow(db, {
+      tenantId,
+      requestId: request!.id,
+      decidedByMembershipId: ownerMembershipId,
+    });
+    expect((await accessRequestNoticesOf(db, CASEY_OID))[0]).toMatchObject({
+      status: "declined",
+      contacts: [],
+    });
+    expect(await acknowledgeAccessDecision(db, MALLORY_OID, request!.id)).toBe(
+      false,
+    );
+    expect(await acknowledgeAccessDecision(db, CASEY_OID, request!.id)).toBe(
+      true,
+    );
+    expect(await acknowledgeAccessDecision(db, CASEY_OID, request!.id)).toBe(
+      true,
+    );
+    expect(await accessRequestNoticesOf(db, CASEY_OID)).toEqual([]);
+    expect(await ownAccessRequest(db, CASEY_OID, request!.id)).toMatchObject({
+      status: "declined",
+      role: null,
+    });
+    expect(
+      (await auditActions(tenantId)).filter(
+        (a) => a === "member_join_notice_acknowledged",
+      ),
+    ).toHaveLength(1);
+    expect(await findOrganizationWorkspaceHint(db, COLLEAGUE, [])).toEqual({
+      requestStatus: "declined",
+    });
+    expect((await provisionForSignIn(db, COLLEAGUE)).outcome.kind).toBe("none");
+  });
+
+  it("never offers an approved workspace after membership was revoked", async () => {
+    const { tenantId, ownerMembershipId } =
+      await seedDomainWorkspace("approval");
+    await provisionForSignIn(db, COLLEAGUE);
+    const [request] = await pendingJoinRequests(db, tenantId);
+    await approveJoinRequestRow(db, {
+      tenantId,
+      requestId: request!.id,
+      decidedByMembershipId: ownerMembershipId,
+    });
+    await db
+      .delete(schema.memberships)
+      .where(
+        and(
+          eq(schema.memberships.tenantId, tenantId),
+          eq(schema.memberships.oid, CASEY_OID),
+        ),
+      );
+    expect(await accessRequestNoticesOf(db, CASEY_OID)).toEqual([]);
+    expect(await acknowledgeAccessDecision(db, CASEY_OID, request!.id)).toBe(
+      false,
+    );
   });
 });

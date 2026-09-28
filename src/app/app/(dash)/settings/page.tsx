@@ -540,17 +540,23 @@ export default async function SettingsPage() {
           </ul>
 
           {joinRequests.length > 0 && (
-            <div className="border-line mt-4 border-t pt-4">
+            <div
+              id="access-requests"
+              className="border-line mt-4 scroll-mt-24 border-t pt-4"
+            >
               <h3 className="text-sm font-medium">Access requests</h3>
               <p className="text-ink-faint mt-0.5 text-xs">
-                Colleagues who signed in with a verified company email. Approved
-                people start as viewer.
+                Colleagues matched by their Microsoft tenant or verified company
+                email. Approve to give viewer access to dashboards, findings and
+                exports. Decline to keep access closed. Requesters can check
+                their status in LicenseMeter and receive an email when
+                notifications are enabled.
               </p>
               <ul className="mt-1 flex flex-col">
                 {joinRequests.map((r) => (
                   <li
                     key={r.id}
-                    className="border-line flex items-center justify-between gap-3 border-b py-2.5 text-sm last:border-b-0"
+                    className="border-line flex flex-col items-stretch justify-between gap-3 border-b py-2.5 text-sm last:border-b-0 sm:flex-row sm:items-center"
                   >
                     <div className="min-w-0">
                       <div className="truncate font-medium">
@@ -560,7 +566,7 @@ export default async function SettingsPage() {
                         {r.email} · asked {fmtDate(r.createdAt)}
                       </div>
                     </div>
-                    <div className="shrink-0">
+                    <div className="min-w-0 sm:shrink-0">
                       <JoinRequestActions requestId={r.id} email={r.email} />
                     </div>
                   </li>

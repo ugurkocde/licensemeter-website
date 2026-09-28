@@ -26,6 +26,7 @@ export const MobileNav = ({
   workspaces,
   activeId,
   entitlement,
+  pendingAccessRequests = 0,
 }: {
   tenantName: string;
   isDemo: boolean;
@@ -36,6 +37,7 @@ export const MobileNav = ({
   workspaces: WorkspaceSummary[];
   activeId: string;
   entitlement: Entitlement;
+  pendingAccessRequests?: number;
 }) => {
   const [open, setOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
@@ -151,7 +153,7 @@ export const MobileNav = ({
             </div>
           )}
           <div className="text-sidebar-soft mt-0.5 text-[11px] tracking-wider uppercase">
-            {isDemo ? "Demo workspace" : "Connected tenant"}
+            {isDemo ? "Demo workspace" : "Workspace"}
           </div>
           {/* In the drawer, not the top bar: the bar has no room at 320px. */}
           <PlanBadge
@@ -164,6 +166,7 @@ export const MobileNav = ({
           onNavigate={() => setOpen(false)}
           showPortfolio={showPortfolio}
           entitlement={entitlement}
+          pendingAccessRequests={pendingAccessRequests}
           navLabel="Mobile workspace navigation"
         />
         <div className="border-sidebar-line mt-3 flex items-center justify-between border-t px-4 pt-3">
