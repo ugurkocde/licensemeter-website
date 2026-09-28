@@ -106,12 +106,18 @@ export const NavLinks = ({
                   {item.label}
                   {item.href === "/app/settings" &&
                     pendingAccessRequests > 0 && (
-                      <span
-                        className="bg-brand-soft text-brand-text rounded-full px-2 py-0.5 text-xs tabular-nums"
-                        aria-label={`${pendingAccessRequests} pending access requests`}
-                      >
-                        {pendingAccessRequests}
-                      </span>
+                      <>
+                        <span
+                          aria-hidden="true"
+                          className="bg-brand-strong rounded-full px-2 py-0.5 text-xs text-white tabular-nums"
+                        >
+                          {pendingAccessRequests}
+                        </span>
+                        <span className="sr-only">
+                          , {pendingAccessRequests} pending access{" "}
+                          {pendingAccessRequests === 1 ? "request" : "requests"}
+                        </span>
+                      </>
                     )}
                 </span>
               )}

@@ -72,41 +72,25 @@ export const OnboardingEmptyState = ({
   organizationHint,
 }: {
   /** Set when the person's organization already has another workspace. */
-  organizationHint?: { requestPending: boolean } | null;
+  organizationHint?: { requestStatus: "pending" | "declined" | null } | null;
 }) =>
-  organizationHint?.requestPending ? (
+  organizationHint ? (
     <section className="mx-auto max-w-3xl py-6">
       <h1 className="font-display text-2xl tracking-tight">
         Your company already has a workspace
       </h1>
       <p className="text-ink-soft mt-3 text-sm leading-relaxed">
-        Your access request has been sent. You do not need to connect Microsoft
-        365 to join it or ask for Microsoft admin permissions. An owner or admin
-        of the LicenseMeter workspace needs to approve your access.
+        {organizationHint.requestStatus === "declined"
+          ? "Your access request was declined. Ask your company’s LicenseMeter owner or IT team for an invitation if you still need access."
+          : "Ask an owner or admin of your company’s LicenseMeter workspace for access. You do not need to connect Microsoft 365 again."}
       </p>
-      <p className="text-ink-soft mt-3 text-sm leading-relaxed">
-        Follow the steps above to contact an approver and check your request.
-        Once approved, you can view the company’s dashboards, findings and
-        exports.
+      <p className="text-ink-faint mt-3 text-sm">
+        This is your separate workspace. Company data stays private until access
+        is granted.
       </p>
     </section>
   ) : (
     <div className="mx-auto max-w-3xl py-6">
-      {organizationHint && (
-        <aside
-          aria-label="Your organization's workspace"
-          className="rise rise-1 border-brand/20 bg-brand-soft text-brand-text mb-6 rounded-xl border p-4 text-sm"
-        >
-          <p className="font-semibold">
-            Your organization already uses LicenseMeter
-          </p>
-          <p className="mt-1">
-            Its data is in a separate workspace. Ask an owner or admin there to
-            invite you. Once you have access, choose the company workspace from
-            the workspace menu.
-          </p>
-        </aside>
-      )}
       <header className="rise rise-1">
         <p className="text-brand-text text-xs font-medium tracking-[0.14em] uppercase">
           Get started

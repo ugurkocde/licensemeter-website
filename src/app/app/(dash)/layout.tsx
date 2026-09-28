@@ -3,7 +3,11 @@ import Link from "next/link";
 
 import { BrandMark } from "~/components/BrandMark";
 import { ChangelogBell } from "~/components/changelog/ChangelogBell";
-import { JoinRequestNotice } from "~/components/workspace/JoinRequestNotice";
+import {
+  AccessRequestStrip,
+  ApproverRequestBanner,
+} from "~/components/workspace/AccessRequestStrip";
+import { workspaceHasConnectorOrData } from "~/server/workspaceState";
 import { MobileNav } from "~/components/workspace/MobileNav";
 import { NavLinks } from "~/components/workspace/NavLinks";
 import { PlanBadge } from "~/components/workspace/PlanBadge";
@@ -39,6 +43,11 @@ export default async function WorkspaceLayout({
       ? pendingJoinRequestCount(db, ctx.tenant.id)
       : Promise.resolve(0),
   ]);
+
+  const fullCardOnOverview =
+    waitingOn.length > 0 &&
+    !ctx.tenant.isDemo &&
+    !(await workspaceHasConnectorOrData(ctx.tenant.id));
 
   return (
     <div className="bg-canvas min-h-screen lg:flex">
@@ -131,35 +140,18 @@ export default async function WorkspaceLayout({
         id="content"
         className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-8 lg:px-12"
       >
-        {pendingAccessRequests > 0 && (
-          <aside
-            aria-label="Requests awaiting your review"
-            className="border-brand/20 bg-brand-soft text-brand-text mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-sm"
-          >
-            <p>
-              {pendingAccessRequests}{" "}
-              {pendingAccessRequests === 1 ? "colleague is" : "colleagues are"}{" "}
-              waiting for access to{" "}
-              <strong className="break-words">{tenantName}</strong>.
-            </p>
-            <Link
-              href="/app/settings#access-requests"
-              className="hover:text-ink inline-flex min-h-11 items-center font-medium underline underline-offset-4"
-            >
-              Review access requests
-            </Link>
-          </aside>
-        )}
-        {waitingOn.map((request) => (
-          <JoinRequestNotice
-            key={request.id}
-            workspaceName={
-              request.tenantName ?? "your organization’s workspace"
-            }
-            status={request.status === "declined" ? "declined" : "pending"}
-            contacts={request.contacts}
-          />
-        ))}
+        <ApproverRequestBanner
+          count={pendingAccessRequests}
+          workspaceName={tenantName}
+        />
+        <AccessRequestStrip
+          fullCardOnOverview={fullCardOnOverview}
+          requests={waitingOn.map((request) => ({
+            id: request.id,
+            status: request.status,
+            workspaceName: request.tenantName ?? "your company’s workspace",
+          }))}
+        />
         {children}
       </main>
     </div>

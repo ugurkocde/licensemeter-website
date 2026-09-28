@@ -144,7 +144,7 @@ export const joinRequestHtml = (args: {
     email and requested access to the workspace ${emailStrong(args.tenantName)}.
     Nothing is shared until an owner or admin approves the request. Approved
     people start as viewer: read-only dashboards, findings and exports. In
-    LicenseMeter, choose this workspace and open Settings, Members, Access requests.`,
+    LicenseMeter, choose this workspace and open Settings &gt; Members &gt; Access requests.`,
     cta: {
       href: emailAppLink(args.appUrl, "/app/settings#access-requests"),
       label: "Review the request",
@@ -205,8 +205,7 @@ export const joinDeclinedHtml = (args: {
     title: "Your access request was declined",
     heading: `Your request to join ${escapeHtml(args.tenantName)} was declined`,
     body: `An owner or admin declined your access request. You do not have access
-    to this company workspace. If this was unexpected, open LicenseMeter to see
-    the approver contacts and ask one of them for an invitation. Signing in again
+    to this company workspace. If this was unexpected, ask your company’s LicenseMeter owner or IT team for an invitation. Signing in again
     does not submit another request.`,
     cta: {
       href: emailAppLink(args.appUrl, "/app"),

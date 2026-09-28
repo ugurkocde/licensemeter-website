@@ -3,10 +3,12 @@ import {
   asc,
   count,
   eq,
+  exists,
   inArray,
   isNotNull,
   isNull,
   notExists,
+  or,
   sql,
 } from "drizzle-orm";
 
@@ -113,7 +115,7 @@ export const findOrganizationWorkspaceHint = async (
   db: Db,
   who: Pick<SignInIdentity, "oid" | "tid" | "email" | "emailVerified">,
   memberOf: readonly string[],
-): Promise<{ requestPending: boolean } | null> => {
+): Promise<{ requestStatus: "pending" | "declined" | null } | null> => {
   const domain = corporateDomainOf(who.email, who.emailVerified);
   const tenant =
     (await findTenantWorkspace(db, who.tid)) ??
@@ -126,7 +128,12 @@ export const findOrganizationWorkspaceHint = async (
       and(eq(joinRequests.tenantId, tenant.id), eq(joinRequests.oid, who.oid)),
     )
     .limit(1);
-  return { requestPending: request?.status === "pending" };
+  return {
+    requestStatus:
+      request?.status === "pending" || request?.status === "declined"
+        ? request.status
+        : null,
+  };
 };
 
 /**
@@ -528,7 +535,10 @@ export const pendingJoinRequestsOf = (
     .where(and(eq(joinRequests.oid, oid), eq(joinRequests.status, "pending")))
     .orderBy(asc(joinRequests.createdAt));
 
-/** Only the signed-in requester's own requests may disclose approver contacts. */
+/** Only the signed-in requester's own requests may disclose approver contacts.
+ * Acknowledgements are durable events in the existing workspace activity log.
+ * They never remove the request or affect whether the person may join again.
+ */
 export const accessRequestNoticesOf = async (db: Db, oid: string) => {
   const requests = await db
     .select({
@@ -536,55 +546,163 @@ export const accessRequestNoticesOf = async (db: Db, oid: string) => {
       tenantId: tenants.id,
       tenantName: tenants.name,
       status: joinRequests.status,
+      createdAt: joinRequests.createdAt,
     })
     .from(joinRequests)
     .innerJoin(tenants, eq(joinRequests.tenantId, tenants.id))
     .where(
       and(
         eq(joinRequests.oid, oid),
-        inArray(joinRequests.status, ["pending", "declined"]),
-        // An invitation after a decline can already have given this person access.
+        // Show approved requests only while access still exists. A later
+        // invitation supersedes a declined/pending notice.
+        or(
+          and(
+            eq(joinRequests.status, "approved"),
+            exists(
+              db
+                .select({ id: memberships.id })
+                .from(memberships)
+                .where(
+                  and(
+                    eq(memberships.tenantId, joinRequests.tenantId),
+                    eq(memberships.oid, oid),
+                  ),
+                ),
+            ),
+          ),
+          and(
+            inArray(joinRequests.status, ["pending", "declined"]),
+            notExists(
+              db
+                .select({ id: memberships.id })
+                .from(memberships)
+                .where(
+                  and(
+                    eq(memberships.tenantId, joinRequests.tenantId),
+                    eq(memberships.oid, oid),
+                  ),
+                ),
+            ),
+          ),
+        ),
         notExists(
           db
-            .select({ id: memberships.id })
-            .from(memberships)
+            .select({ id: auditLog.id })
+            .from(auditLog)
             .where(
               and(
-                eq(memberships.tenantId, joinRequests.tenantId),
-                eq(memberships.oid, oid),
+                eq(auditLog.tenantId, joinRequests.tenantId),
+                eq(auditLog.actorOid, oid),
+                eq(auditLog.action, "member_join_notice_acknowledged"),
+                sql`${auditLog.detail}->>'requestId' = ${joinRequests.id}::text`,
+                sql`${auditLog.detail}->>'status' = ${joinRequests.status}`,
               ),
             ),
         ),
       ),
     )
     .orderBy(asc(joinRequests.createdAt));
-  if (requests.length === 0) return [];
-  const contacts = await db
-    .select({
-      tenantId: memberships.tenantId,
-      email: memberships.email,
-      name: memberships.name,
-      role: memberships.role,
-    })
-    .from(memberships)
-    .where(
-      and(
-        inArray(
-          memberships.tenantId,
-          requests.map((r) => r.tenantId),
-        ),
-        inArray(memberships.role, ["owner", "admin"]),
-        isNotNull(memberships.oid),
-      ),
-    )
-    .orderBy(asc(memberships.createdAt));
+  const pendingTenantIds = requests
+    .filter((r) => r.status === "pending")
+    .map((r) => r.tenantId);
+  const contacts =
+    pendingTenantIds.length === 0
+      ? []
+      : await db
+          .select({
+            tenantId: memberships.tenantId,
+            email: memberships.email,
+            name: memberships.name,
+            role: memberships.role,
+          })
+          .from(memberships)
+          .where(
+            and(
+              inArray(memberships.tenantId, pendingTenantIds),
+              inArray(memberships.role, ["owner", "admin"]),
+              isNotNull(memberships.oid),
+            ),
+          )
+          .orderBy(asc(memberships.createdAt));
   return requests.map((request) => ({
     ...request,
-    contacts: contacts
-      .filter((c) => c.tenantId === request.tenantId)
-      .map(({ email, name, role }) => ({ email, name, role })),
+    contacts:
+      request.status !== "pending"
+        ? []
+        : contacts
+            .filter((c) => c.tenantId === request.tenantId)
+            .map(({ email, name, role }) => ({ email, name, role })),
   }));
 };
+
+/** Fresh status and current membership, always scoped to the requester's identity. */
+export const ownAccessRequest = async (
+  db: Db,
+  oid: string,
+  requestId: string,
+) => {
+  const [row] = await db
+    .select({
+      id: joinRequests.id,
+      tenantId: tenants.id,
+      tenantName: tenants.name,
+      status: joinRequests.status,
+      email: joinRequests.email,
+      role: memberships.role,
+    })
+    .from(joinRequests)
+    .innerJoin(tenants, eq(joinRequests.tenantId, tenants.id))
+    .leftJoin(
+      memberships,
+      and(eq(memberships.tenantId, tenants.id), eq(memberships.oid, oid)),
+    )
+    .where(and(eq(joinRequests.id, requestId), eq(joinRequests.oid, oid)))
+    .limit(1);
+  return row ?? null;
+};
+
+/** Records the requester's acknowledgement once, with the request retained.
+ * Unlike best-effort activity logging, this write must succeed before hiding
+ * the notice. The row lock serializes repeated clicks from different devices.
+ */
+export const acknowledgeAccessDecision = async (
+  db: Db,
+  oid: string,
+  requestId: string,
+) =>
+  db.transaction(async (tx) => {
+    const [locked] = await tx
+      .select({ id: joinRequests.id })
+      .from(joinRequests)
+      .where(and(eq(joinRequests.id, requestId), eq(joinRequests.oid, oid)))
+      .for("update");
+    if (!locked) return false;
+    const request = await ownAccessRequest(tx, oid, requestId);
+    if (!request || request.status === "pending") return false;
+    if (request.status === "approved" && !request.role) return false;
+    const [existing] = await tx
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenantId, request.tenantId),
+          eq(auditLog.actorOid, oid),
+          eq(auditLog.action, "member_join_notice_acknowledged"),
+          sql`${auditLog.detail}->>'requestId' = ${requestId}`,
+          sql`${auditLog.detail}->>'status' = ${request.status}`,
+        ),
+      )
+      .limit(1);
+    if (!existing)
+      await tx.insert(auditLog).values({
+        tenantId: request.tenantId,
+        actorOid: oid,
+        actorEmail: request.email,
+        action: "member_join_notice_acknowledged",
+        detail: { requestId, status: request.status },
+      });
+    return true;
+  });
 
 /** Call only after checking owner/admin access to the active workspace. */
 export const pendingJoinRequestCount = async (db: Db, tenantId: string) => {
