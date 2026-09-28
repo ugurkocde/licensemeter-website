@@ -1,0 +1,7 @@
+{
+  "title": "Clearer next steps for workspace access requests",
+  "summary": "Colleagues waiting to join a company workspace now see their request status, approver contacts and a way to check for approval, without being prompted to connect Microsoft 365 again. Owners and admins see pending request counts and a direct link to review requests. Declined requests remain visible with instructions for getting an invitation, and decision emails are sent when email is configured. Approval still grants viewer access; no one receives access automatically.",
+  "type": "improved",
+  "publishedOn": "2026-09-28",
+  "idempotencyKey": "licensemeter:access-approval-guidance-2026-09-28"
+}

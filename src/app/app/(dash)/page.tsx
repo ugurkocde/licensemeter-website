@@ -74,14 +74,15 @@ export default async function OverviewPage() {
     return (
       <>
         <OnboardingEmptyState organizationHint={organizationHint} />
-        {ctx.membership.welcomeTourAt === null && (
-          <Tour
-            phase="welcome"
-            storageId={ctx.membership.id}
-            steps={welcomeTourSteps}
-            finalButtonLabel="Got it"
-          />
-        )}
+        {!organizationHint?.requestPending &&
+          ctx.membership.welcomeTourAt === null && (
+            <Tour
+              phase="welcome"
+              storageId={ctx.membership.id}
+              steps={welcomeTourSteps}
+              finalButtonLabel="Got it"
+            />
+          )}
       </>
     );
   }

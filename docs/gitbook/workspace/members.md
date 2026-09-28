@@ -43,7 +43,11 @@ Ask the person to confirm the workspace name and visible role. A Viewer should b
 
 Eligible colleagues whose Microsoft sign-in carries a verified company email can be matched to the workspace associated with that domain. This is governed by **Who can join**; it is not unrestricted access for everyone using Microsoft sign-in. Public email providers are not treated as a shared company domain.
 
-When a request is pending, an Admin or Owner opens **Settings > Members > Access requests**, checks the identity and selects **Approve** or **Decline**. Approval grants **Viewer** access. Raise the role separately only when needed. The requester can continue in their own workspace while waiting; that does not give them access to yours.
+When a request is pending, an Admin or Owner opens **Settings > Members > Access requests**, checks the identity and selects **Approve** or **Decline**. Approval grants **Viewer** access. Raise the role separately only when needed. Owners and Admins see a pending-request count beside **Settings** and a **Review access requests** banner in the active workspace. The banner opens **Settings > Members > Access requests**.
+
+While waiting, the requester sees a persistent status notice with the names and email addresses of signed-in Owners and Admins who can review the request. Their overview explains that they do not need to connect Microsoft 365 again. They can contact an approver, leave the page and return later, or use **Check approval status**. After approval, they can select the company workspace from the workspace menu.
+
+Declining requires confirmation. The requester sees the declined status and can ask an Owner or Admin for an invitation if the decision was unexpected. Signing in again does not create a new request. Approval and decline emails are sent when email is configured, but delivery is not required to check the decision in the app.
 
 <figure><img src="../.gitbook/assets/onboarding-access.webp" alt="Who can join policy and access request controls with a pending-request notice"><figcaption><p>Illustrative local fixture using the application's actual components. Requester and administrator states are shown together for explanation; they normally appear to different people. No request was sent.</p></figcaption></figure>
 
@@ -71,7 +75,7 @@ Keep an accessible Owner account before reducing Owner access. The application p
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | Invite email did not arrive                              | Check the address and spam folder, then use Resend. Where mail is disabled, sign in directly with the invited identity.                 |
 | Invitation expired                                       | Ask an authorized member to use Resend.                                                                                                 |
-| Approval notice remains                                  | Check the decision in the correct workspace. Dismissing the notice is not an approval.                                                  |
+| Approval notice remains                                  | Check the decision in the correct workspace. Use **Check approval status**; the notice stays visible while the request is pending.                                                  |
 | Removed or declined user cannot rejoin by domain         | Use an explicit invitation if access should be granted again; repeated sign-in is not a new approval.                                   |
 | New user sees an empty workspace instead of company data | Verify email, membership, request state and active workspace. Do not connect the organization's Microsoft tenant to a second workspace. |
 | Microsoft tenant already connected elsewhere             | Ask an Admin of the existing workspace for an invitation.                                                                               |

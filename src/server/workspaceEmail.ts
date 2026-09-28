@@ -8,6 +8,7 @@ import {
   domainJoinedHtml,
   emailEnabled,
   joinApprovedHtml,
+  joinDeclinedHtml,
   joinRequestHtml,
   sendEmail,
   workspaceDeletedHtml,
@@ -178,5 +179,22 @@ export const sendJoinApproved = async (
       }),
     },
     "join-approved",
+  );
+};
+
+/** A declined requester can still see the decision if email is unavailable. */
+export const sendJoinDeclined = async (
+  tenant: Tenant,
+  requesterEmail: string,
+): Promise<void> => {
+  if (!emailEnabled() || tenant.isDemo) return;
+  const name = workspaceLabel(tenant);
+  await sendToEach(
+    [requesterEmail],
+    {
+      subject: `Your request to join ${name} was declined`,
+      html: joinDeclinedHtml({ tenantName: name, appUrl: siteUrl() }),
+    },
+    "join-declined",
   );
 };

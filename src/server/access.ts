@@ -169,7 +169,7 @@ const provisionWorkspace = async (session: Session): Promise<boolean> => {
   // a colleague who joined an existing one is not onboarding from zero. And
   // only at a proven address: an unproven one is free text another tenant's
   // admin can set, which would let them aim our mail at a stranger's mailbox.
-  if (createdWorkspace && emailProven) {
+  if (createdWorkspace && emailProven && outcome.kind !== "requested") {
     after(() =>
       sendOnboardingEmail({ oid, email, name: session.user.name || null }),
     );

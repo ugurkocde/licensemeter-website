@@ -18,6 +18,7 @@ export const JoinRequestActions = ({
   email: string;
 }) => {
   const [pending, startTransition] = useTransition();
+  const [confirmDecline, setConfirmDecline] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
   const router = useRouter();
@@ -34,6 +35,10 @@ export const JoinRequestActions = ({
           return;
         }
         router.refresh();
+      } catch {
+        setError(
+          "Could not save the decision. Check your connection and try again.",
+        );
       } finally {
         inFlight.current = false;
       }
@@ -41,7 +46,7 @@ export const JoinRequestActions = ({
   };
 
   return (
-    <div className="flex flex-col items-end">
+    <div className="flex flex-col items-start sm:items-end">
       <div className="flex items-center gap-2">
         <Button
           variant="micro"
@@ -55,11 +60,35 @@ export const JoinRequestActions = ({
           variant="micro"
           disabled={pending}
           aria-label={`Decline ${email}`}
-          onClick={() => decide(declineJoinRequest)}
+          onClick={() => setConfirmDecline(true)}
         >
           Decline
         </Button>
       </div>
+      {confirmDecline && (
+        <div className="border-line mt-2 max-w-xs rounded-lg border p-3 text-sm">
+          <p className="[overflow-wrap:anywhere] break-words">
+            Decline access for {email}? They will see the decision and need an
+            invitation to join later.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              variant="micro"
+              disabled={pending}
+              onClick={() => decide(declineJoinRequest)}
+            >
+              Confirm decline
+            </Button>
+            <Button
+              variant="micro"
+              disabled={pending}
+              onClick={() => setConfirmDecline(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
       <span
         role="status"
         aria-live="polite"

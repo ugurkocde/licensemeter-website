@@ -1,4 +1,14 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  notExists,
+  sql,
+} from "drizzle-orm";
 
 import {
   corporateDomainOf,
@@ -517,3 +527,75 @@ export const pendingJoinRequestsOf = (
     .innerJoin(tenants, eq(joinRequests.tenantId, tenants.id))
     .where(and(eq(joinRequests.oid, oid), eq(joinRequests.status, "pending")))
     .orderBy(asc(joinRequests.createdAt));
+
+/** Only the signed-in requester's own requests may disclose approver contacts. */
+export const accessRequestNoticesOf = async (db: Db, oid: string) => {
+  const requests = await db
+    .select({
+      id: joinRequests.id,
+      tenantId: tenants.id,
+      tenantName: tenants.name,
+      status: joinRequests.status,
+    })
+    .from(joinRequests)
+    .innerJoin(tenants, eq(joinRequests.tenantId, tenants.id))
+    .where(
+      and(
+        eq(joinRequests.oid, oid),
+        inArray(joinRequests.status, ["pending", "declined"]),
+        // An invitation after a decline can already have given this person access.
+        notExists(
+          db
+            .select({ id: memberships.id })
+            .from(memberships)
+            .where(
+              and(
+                eq(memberships.tenantId, joinRequests.tenantId),
+                eq(memberships.oid, oid),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(asc(joinRequests.createdAt));
+  if (requests.length === 0) return [];
+  const contacts = await db
+    .select({
+      tenantId: memberships.tenantId,
+      email: memberships.email,
+      name: memberships.name,
+      role: memberships.role,
+    })
+    .from(memberships)
+    .where(
+      and(
+        inArray(
+          memberships.tenantId,
+          requests.map((r) => r.tenantId),
+        ),
+        inArray(memberships.role, ["owner", "admin"]),
+        isNotNull(memberships.oid),
+      ),
+    )
+    .orderBy(asc(memberships.createdAt));
+  return requests.map((request) => ({
+    ...request,
+    contacts: contacts
+      .filter((c) => c.tenantId === request.tenantId)
+      .map(({ email, name, role }) => ({ email, name, role })),
+  }));
+};
+
+/** Call only after checking owner/admin access to the active workspace. */
+export const pendingJoinRequestCount = async (db: Db, tenantId: string) => {
+  const [row] = await db
+    .select({ total: count() })
+    .from(joinRequests)
+    .where(
+      and(
+        eq(joinRequests.tenantId, tenantId),
+        eq(joinRequests.status, "pending"),
+      ),
+    );
+  return row?.total ?? 0;
+};

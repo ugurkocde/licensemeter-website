@@ -9,9 +9,12 @@ import { NavLinks } from "~/components/workspace/NavLinks";
 import { PlanBadge } from "~/components/workspace/PlanBadge";
 import { WorkspaceSwitcher } from "~/components/workspace/WorkspaceSwitcher";
 import { workspaceLabel } from "~/lib/format";
-import { requireAccess } from "~/server/access";
+import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
-import { pendingJoinRequestsOf } from "~/server/domainJoin";
+import {
+  accessRequestNoticesOf,
+  pendingJoinRequestCount,
+} from "~/server/domainJoin";
 import { signOutAction } from "~/app/auth/actions";
 
 /* Auth already gates these routes; noindex closes the gap robots.txt leaves
@@ -27,10 +30,15 @@ export default async function WorkspaceLayout({
   const tenantName = workspaceLabel(ctx.tenant);
   // The demo sign-in is shared by every visitor, so it has no account page.
   const accountEnabled = !ctx.user.isDemo;
-  // The notice disappears once the request is decided.
-  const waitingOn = accountEnabled
-    ? await pendingJoinRequestsOf(db, ctx.user.oid)
-    : [];
+  // Requesters see their status; approvers see requests for the active workspace.
+  const [waitingOn, pendingAccessRequests] = await Promise.all([
+    accountEnabled
+      ? accessRequestNoticesOf(db, ctx.user.oid)
+      : Promise.resolve([]),
+    accountEnabled && hasRole(ctx, "admin")
+      ? pendingJoinRequestCount(db, ctx.tenant.id)
+      : Promise.resolve(0),
+  ]);
 
   return (
     <div className="bg-canvas min-h-screen lg:flex">
@@ -50,6 +58,7 @@ export default async function WorkspaceLayout({
         workspaces={ctx.workspaces}
         activeId={ctx.tenant.id}
         entitlement={ctx.entitlement}
+        pendingAccessRequests={pendingAccessRequests}
       />
 
       <aside className="bg-sidebar border-line sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r lg:flex">
@@ -75,7 +84,7 @@ export default async function WorkspaceLayout({
             </div>
           )}
           <div className="text-sidebar-soft mt-0.5 text-[11px] tracking-wider uppercase">
-            {ctx.tenant.isDemo ? "Demo workspace" : "Connected tenant"}
+            {ctx.tenant.isDemo ? "Demo workspace" : "Workspace"}
           </div>
           <PlanBadge entitlement={ctx.entitlement} className="mt-2" />
         </div>
@@ -84,6 +93,7 @@ export default async function WorkspaceLayout({
           <NavLinks
             showPortfolio={ctx.workspaces.length > 1}
             entitlement={ctx.entitlement}
+            pendingAccessRequests={pendingAccessRequests}
           />
         </div>
 
@@ -121,11 +131,33 @@ export default async function WorkspaceLayout({
         id="content"
         className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-8 lg:px-12"
       >
+        {pendingAccessRequests > 0 && (
+          <aside
+            aria-label="Requests awaiting your review"
+            className="border-brand/20 bg-brand-soft text-brand-text mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-sm"
+          >
+            <p>
+              {pendingAccessRequests}{" "}
+              {pendingAccessRequests === 1 ? "colleague is" : "colleagues are"}{" "}
+              waiting for access to{" "}
+              <strong className="break-words">{tenantName}</strong>.
+            </p>
+            <Link
+              href="/app/settings#access-requests"
+              className="hover:text-ink inline-flex min-h-11 items-center font-medium underline underline-offset-4"
+            >
+              Review access requests
+            </Link>
+          </aside>
+        )}
         {waitingOn.map((request) => (
           <JoinRequestNotice
             key={request.id}
-            requestId={request.id}
-            workspaceName={request.tenantName ?? "a workspace"}
+            workspaceName={
+              request.tenantName ?? "your organization’s workspace"
+            }
+            status={request.status === "declined" ? "declined" : "pending"}
+            contacts={request.contacts}
           />
         ))}
         {children}

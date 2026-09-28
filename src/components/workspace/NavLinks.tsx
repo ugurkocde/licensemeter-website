@@ -43,6 +43,7 @@ export const NavLinks = ({
   showPortfolio = false,
   navLabel = "Workspace navigation",
   entitlement,
+  pendingAccessRequests = 0,
 }: {
   onNavigate?: () => void;
   showPortfolio?: boolean;
@@ -50,6 +51,7 @@ export const NavLinks = ({
   navLabel?: string;
   /** Decides which items with a feature render locked. */
   entitlement?: Entitlement;
+  pendingAccessRequests?: number;
 }) => {
   const pathname = usePathname();
 
@@ -100,7 +102,18 @@ export const NavLinks = ({
                   <LockMark feature={locked} />
                 </span>
               ) : (
-                item.label
+                <span className="flex items-center justify-between gap-2">
+                  {item.label}
+                  {item.href === "/app/settings" &&
+                    pendingAccessRequests > 0 && (
+                      <span
+                        className="bg-brand-soft text-brand-text rounded-full px-2 py-0.5 text-xs tabular-nums"
+                        aria-label={`${pendingAccessRequests} pending access requests`}
+                      >
+                        {pendingAccessRequests}
+                      </span>
+                    )}
+                </span>
               )}
             </Link>
           </div>

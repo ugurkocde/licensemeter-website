@@ -140,12 +140,13 @@ export const joinRequestHtml = (args: {
     appUrl: args.appUrl,
     title: "A colleague asked to join your workspace",
     heading: `${emailAddressText(args.requesterEmail)} asked to join ${escapeHtml(args.tenantName)}`,
-    body: `${emailStrong(args.requesterEmail)} signed in with a verified company
-    email and asked for access to the workspace ${emailStrong(args.tenantName)}.
+    body: `${emailStrong(args.requesterEmail)} signed in from your Microsoft tenant or with a verified company
+    email and requested access to the workspace ${emailStrong(args.tenantName)}.
     Nothing is shared until an owner or admin approves the request. Approved
-    people start as viewer: read-only dashboards, findings and exports.`,
+    people start as viewer: read-only dashboards, findings and exports. In
+    LicenseMeter, choose this workspace and open Settings, Members, Access requests.`,
     cta: {
-      href: emailAppLink(args.appUrl, "/app/settings"),
+      href: emailAppLink(args.appUrl, "/app/settings#access-requests"),
       label: "Review the request",
     },
     footer: `You get this because you are an owner or admin of this workspace.
@@ -192,6 +193,26 @@ export const joinApprovedHtml = (args: {
     },
     footer: `You get this because you asked to join this workspace. If that was
     not you, you can ignore this email.`,
+  });
+
+/** To the requester: a declined request is final, but an owner can invite later. */
+export const joinDeclinedHtml = (args: {
+  tenantName: string;
+  appUrl: string;
+}): string =>
+  noticeShell({
+    appUrl: args.appUrl,
+    title: "Your access request was declined",
+    heading: `Your request to join ${escapeHtml(args.tenantName)} was declined`,
+    body: `An owner or admin declined your access request. You do not have access
+    to this company workspace. If this was unexpected, open LicenseMeter to see
+    the approver contacts and ask one of them for an invitation. Signing in again
+    does not submit another request.`,
+    cta: {
+      href: emailAppLink(args.appUrl, "/app"),
+      label: "View request status",
+    },
+    footer: `You get this because you requested access to this workspace.`,
   });
 
 /**
