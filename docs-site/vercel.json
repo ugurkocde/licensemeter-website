@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "astro",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "ignoreCommand": "git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- .",
+  "trailingSlash": true,
+  "redirects": [
+    { "source": "/readme", "destination": "/", "permanent": true },
+    { "source": "/readme.md", "destination": "/", "permanent": true },
+    { "source": "/welcome", "destination": "/", "permanent": true }
+  ]
+}

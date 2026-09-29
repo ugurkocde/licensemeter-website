@@ -24,6 +24,13 @@ updates:
       # Stay on the Node 24 LTS line; revisit when Node 26 is LTS.
       - dependency-name: "@types/node"
         versions: [">=25"]
+  - package-ecosystem: npm
+    directory: /docs-site
+    schedule:
+      interval: weekly
+    groups:
+      docs-site-minor-and-patch:
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
