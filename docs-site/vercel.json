@@ -7,7 +7,9 @@
   "trailingSlash": true,
   "redirects": [
     { "source": "/readme", "destination": "/", "permanent": true },
+    { "source": "/readme/", "destination": "/", "permanent": true },
     { "source": "/readme.md", "destination": "/", "permanent": true },
-    { "source": "/welcome", "destination": "/", "permanent": true }
+    { "source": "/welcome", "destination": "/", "permanent": true },
+    { "source": "/welcome/", "destination": "/", "permanent": true }
   ]
 }
