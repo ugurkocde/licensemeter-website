@@ -1,5 +1,5 @@
 /**
- * Renders the emails shown in docs/gitbook/workspace/emails.md from the real
+ * Renders the emails shown in docs-site/src/content/docs/workspace/emails.mdx from the real
  * templates with fictional data, and writes them as WebP documentation assets.
  * Nothing is sent and no database or mail service is touched.
  *
@@ -93,7 +93,7 @@ const emails: Record<string, string> = {
   }),
 };
 
-const assets = path.join(repo, "docs/gitbook/.gitbook/assets");
+const assets = path.join(repo, "docs-site/src/assets");
 const raw = fs.mkdtempSync(path.join(os.tmpdir(), "licensemeter-email-docs-"));
 const browser = await chromium.launch();
 try {

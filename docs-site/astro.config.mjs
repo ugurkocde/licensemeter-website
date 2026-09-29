@@ -52,7 +52,6 @@ export default defineConfig({
 			lastUpdated: false,
 			// The self-hosting guide links to http://localhost:3000 on purpose.
 			plugins: [starlightLinksValidator({ errorOnLocalLinks: false }), starlightLlmsTxt()],
-			// Mirrors docs/gitbook/SUMMARY.md.
 			sidebar: [
 				{ label: 'Welcome', link: '/' },
 				{
