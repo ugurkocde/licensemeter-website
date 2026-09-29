@@ -11,6 +11,7 @@ export default tseslint.config(
       "**/.next/**",
       ".claude/**",
       "demo-video/**",
+      "docs-site/**",
       "next-env.d.ts",
       "node_modules/**",
       "playwright-report/**",

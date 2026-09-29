@@ -3,6 +3,7 @@
 .pglite/
 coverage/
 demo-video/
+docs-site/
 node_modules/
 playwright-report/
 test-results/
