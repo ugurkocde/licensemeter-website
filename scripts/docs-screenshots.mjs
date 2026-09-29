@@ -15,7 +15,7 @@ const wrapper = path.join(
 );
 const session = "licensemeter-docs-capture";
 const raw = path.resolve("output/playwright/licensemeter-docs");
-const assets = path.resolve("docs/gitbook/.gitbook/assets");
+const assets = path.resolve("docs-site/src/assets");
 fs.mkdirSync(raw, { recursive: true });
 fs.mkdirSync(assets, { recursive: true });
 const shots = [

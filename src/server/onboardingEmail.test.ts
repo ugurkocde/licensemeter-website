@@ -91,15 +91,17 @@ describe("onboardingHtml", () => {
 });
 
 describe("documentation links", () => {
-  // The docs site is published from docs/gitbook, so a path the email links
-  // must exist there as a page or a section README.
-  it("all point at a page in docs/gitbook", () => {
-    const root = join(process.cwd(), "docs", "gitbook");
+  // The docs site is built from docs-site, so a path the email links must
+  // exist there as a page or a section index.
+  it("all point at a page in docs-site", () => {
+    const root = join(process.cwd(), "docs-site", "src", "content", "docs");
     for (const path of ONBOARDING_DOC_PATHS) {
-      const found =
-        existsSync(join(root, `${path}.md`)) ||
-        existsSync(join(root, path, "README.md"));
-      expect(found, `docs/gitbook has no page for ${path}`).toBe(true);
+      const found = [".md", ".mdx"].some(
+        (ext) =>
+          existsSync(join(root, `${path}${ext}`)) ||
+          existsSync(join(root, path, `index${ext}`)),
+      );
+      expect(found, `docs-site has no page for ${path}`).toBe(true);
     }
   });
 });

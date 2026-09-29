@@ -15,7 +15,7 @@ Used an isolated archive of the application revision with a new embedded databas
 Verified the following through the real application controls:
 
 1. Empty workspace, Microsoft setup alternatives, expanded BYO form, CSV form and member invitation controls.
-2. Imported `gitbook/.gitbook/assets/example-users.csv`: two fictional users, one disabled-account finding.
+2. Imported `docs-site/public/downloads/example-users.csv`: two fictional users, one disabled-account finding.
 3. Saved EUR 20 per seat for the single example product. Total assigned spend changed to EUR 40; the finding estimate changed to EUR 20 per month.
 4. Saved a planned review, assignee, due date and notes; acknowledged the finding and reloaded to verify persistence. Acknowledgement left the finding active.
 5. Requested the Overview PDF report using the fixture session: HTTP 200, `application/pdf`, 4,516 bytes and a valid `%PDF-` signature.
@@ -35,7 +35,7 @@ All `onboarding-*.webp` images are screenshots, not generated artwork. Raw PNGs 
 | `sync-running`, `sync-failed` | Actual sync-status component with a Playwright-intercepted response; no provider sync occurred |
 | `access` | Actual access components composed in a local illustration; requester and administrator states shown together, explicitly captioned |
 
-To refresh, follow the disposable-copy rules in [the maintenance guide](gitbook-maintenance.md). Capture setup views before importing, then repeat the numbered walkthrough. For sync-state illustrations, intercept only the local `/api/sync` response and capture the Tenant connected card. Never use a real consent grant merely to create a progress screenshot. For access illustrations, render the existing components with fictional props in the disposable copy. Keep these fixture routes out of the deployable repository. Capture hosted sign-in separately with empty fields, inspect every image, then optimize with Sharp WebP quality 85.
+To refresh, follow the disposable-copy rules in [the maintenance guide](docs-maintenance.md). Capture setup views before importing, then repeat the numbered walkthrough. For sync-state illustrations, intercept only the local `/api/sync` response and capture the Tenant connected card. Never use a real consent grant merely to create a progress screenshot. For access illustrations, render the existing components with fictional props in the disposable copy. Keep these fixture routes out of the deployable repository. Capture hosted sign-in separately with empty fields, inspect every image, then optimize with Sharp WebP quality 85.
 
 ## Verification limits
 
