@@ -135,6 +135,27 @@ export default function PrivacyPolicyPage() {
         </p>
       </Section>
 
+      <Section title="Optional Windows Software Metering">
+        <p>
+          When an organization enables Software Metering, a separate Microsoft
+          application requests additional read-only consent. LicenseMeter stores
+          device names and identifiers from Intune, application catalogue keys,
+          last-launch dates, coverage dates and collection health. The customer
+          deploys and controls the Windows detection script. Its output excludes
+          usernames, command lines, document paths and raw event logs.
+          Device-linked activity can still relate to employees and requires the
+          organization’s review before collection.
+        </p>
+        <p>
+          Daily metering history is pruned to 120 days during successful
+          refreshes. The latest device snapshot remains until refreshed or
+          disconnected. Disabling metering deletes its stored connection,
+          pending consent requests, snapshots and history. The organization must
+          separately revoke the app’s consent in Microsoft Entra and unassign
+          its collector in Intune.
+        </p>
+      </Section>
+
       <Section title="5. Free and paid plans">
         <p>
           The Free plan requires no payment method. Paid plans are bought

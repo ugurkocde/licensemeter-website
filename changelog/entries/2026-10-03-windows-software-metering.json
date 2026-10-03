@@ -1,0 +1,7 @@
+{
+  "title": "Optional Windows software metering",
+  "summary": "Review the last observed launch of selected Windows applications, collection coverage and stale reports, with CSV export. Metering uses separate Microsoft consent and requires your administrator to configure the connection, enable process auditing and deploy the Intune collector. A sample report is available in the demo. Missing data stays unknown, and observations do not measure active working time or trigger license removal.",
+  "type": "new",
+  "publishedOn": "2026-10-03",
+  "idempotencyKey": "licensemeter:windows-software-metering-v1"
+}

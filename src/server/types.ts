@@ -86,6 +86,7 @@ export type SyncStep = {
     | "claudeSeats"
     | "openaiSpend"
     | "anthropicSpend"
+    | "windowsMetering"
     | "wasteAnalysis";
   status: "ok" | "warning" | "failed" | "skipped";
   message?: string;
@@ -155,6 +156,7 @@ export type AdobeUser = {
 };
 
 export type AuditAction =
+  | "export_metering_csv"
   | "export_findings_csv"
   | "export_licenses_csv"
   | "export_remediation"

@@ -1,6 +1,7 @@
 import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 
 import { workspaceLabel } from "~/lib/format";
+import { syncMetering } from "~/server/metering/sync";
 import { db } from "~/server/db";
 import {
   adobeConnections,
@@ -946,6 +947,32 @@ export const runSync = async (
           ...(orgName && !tenant.isDemo ? { name: orgName } : {}),
         })
         .where(eq(tenants.id, tenantId));
+    }
+
+    // Optional device collection cannot fail the existing Microsoft 365 sync.
+    if (!tenant.isDemo && !clientOverride && !outOfTime()) {
+      try {
+        const metering = await syncMetering(tenantId, { deadline });
+        if (metering.status !== "skipped")
+          steps.push({
+            step: "windowsMetering",
+            status: metering.status === "ok" ? "ok" : "warning",
+            count: metering.count,
+            ...(metering.status === "failed"
+              ? {
+                  message:
+                    "Metering needs attention. Review Software Metering for details.",
+                }
+              : {}),
+          });
+      } catch {
+        steps.push({
+          step: "windowsMetering",
+          status: "warning",
+          message:
+            "Metering needs attention. Microsoft 365 collection is unaffected.",
+        });
+      }
     }
 
     const status: SyncRunStatus = steps.some((s) => s.status === "failed")

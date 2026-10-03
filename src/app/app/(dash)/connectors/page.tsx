@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { ConnectorCatalog } from "~/components/workspace/ConnectorCatalog";
+import { ButtonLink } from "~/components/ui";
 import {
   WORKSPACE_CONNECTORS,
   connectorStatus,
@@ -86,11 +87,23 @@ export default async function ConnectorsPage() {
     return { id: connector.id, status, detail };
   });
   return (
-    <ConnectorCatalog
-      summaries={summaries}
-      isDemo={ctx.tenant.isDemo}
-      canManage={hasRole(ctx, "admin") && !ctx.tenant.isDemo}
-      microsoftConnected={Boolean(microsoft)}
-    />
+    <div className="flex flex-col gap-6">
+      <ConnectorCatalog
+        summaries={summaries}
+        isDemo={ctx.tenant.isDemo}
+        canManage={hasRole(ctx, "admin") && !ctx.tenant.isDemo}
+        microsoftConnected={Boolean(microsoft)}
+      />
+      <div className="border-line bg-card flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5">
+        <div>
+          <h2 className="font-medium">Windows Software Metering</h2>
+          <p className="text-ink-soft mt-1 text-sm">
+            Optional application launch evidence through Intune, with separate
+            consent.
+          </p>
+        </div>
+        <ButtonLink href="/app/metering">Open Software Metering</ButtonLink>
+      </div>
+    </div>
   );
 }
