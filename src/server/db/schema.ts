@@ -299,7 +299,7 @@ export const meteringConnections = pgTable(
   (t) => [
     check("metering_inactivity_days", sql`${t.inactivityDays} in (30, 60, 90)`),
   ],
-);
+).enableRLS();
 
 export const meteringConsentStates = pgTable("metering_consent_states", {
   state: uuid("state").primaryKey(),
@@ -314,7 +314,7 @@ export const meteringConsentStates = pgTable("metering_consent_states", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}).enableRLS();
 
 export const meteringDevices = pgTable(
   "metering_devices",
@@ -335,7 +335,7 @@ export const meteringDevices = pgTable(
     payload: jsonb("payload").$type<MeteringPayload>(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.deviceId] })],
-);
+).enableRLS();
 
 /** Daily observations of validated aggregates only; no raw script output or user identities. */
 export const meteringHistory = pgTable(
@@ -352,7 +352,7 @@ export const meteringHistory = pgTable(
     payload: jsonb("payload").$type<MeteringPayload>().notNull(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.deviceId, t.day] })],
-);
+).enableRLS();
 
 /** Who may sign in to which tenant workspace, and as what. */
 export const memberships = pgTable(

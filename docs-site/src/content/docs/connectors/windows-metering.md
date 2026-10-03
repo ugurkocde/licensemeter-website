@@ -56,7 +56,7 @@ Create a **new** Microsoft Entra application registration for Software Metering.
    - `DeviceManagementManagedDevices.Read.All`: read device identifiers, names and operating systems.
 4. Remove default permissions that the registration does not need. No Graph write permissions are needed.
 5. Create a client secret and configure `METERING_CLIENT_ID` and `METERING_CLIENT_SECRET` in the server environment. Keep the secret server-side and rotate it through your normal process.
-6. Deploy the database migration and application together. Docker applies committed migrations on startup. Hosted operators must also apply their existing tenant-table RLS and role grants to the new tables.
+6. Deploy the database migration and application together. Docker applies committed migrations on startup. The metering migrations enable row-level security and install policies for the existing application and tenant roles. Hosted operators must apply both the table and policy migrations through their approved schema process before serving the new application. Confirm the policies match any custom role configuration.
 
 Do not reuse the sign-in or Microsoft 365 connector application. Do not add these permissions to the base connector. The implementation rejects a reused application ID and access tokens containing additional application roles.
 
@@ -98,7 +98,7 @@ Download **Collect-LicenseMeterUsage.ps1** from the setup panel. Review the scri
 
 The script exits with code 0 and emits a small JSON report. It does not remediate devices. Microsoft limits script output to 2,048 characters; the fixed catalogue keeps output within this limit. Do not append diagnostic text or change catalogue keys.
 
-The first run establishes coverage from that moment. It does not reconstruct past months from a short event log. A protected local checkpoint in `%ProgramData%\LicenseMeter\Metering\usage-v1.json` carries launch dates forward across log rollover. If events were lost before they were read, the log was reset, the audit policy changed, coverage restarts. Collection is bounded to 100,000 relevant events and 90 seconds per run; exceeding either limit discards that interval with a coverage gap and advances the checkpoint so the next run can recover. Powering a device off does not by itself reset coverage if all intervening events remain available.
+The first run establishes coverage from that moment. It does not reconstruct past months from a short event log. A protected local checkpoint in `%ProgramData%\LicenseMeter\Metering\usage-v1.json` carries launch dates forward across log rollover. Coverage restarts if events were lost before they were read, if the log was reset, or if the audit policy changed. Collection is bounded to 100,000 relevant events and 90 seconds per run; exceeding either limit discards that interval with a coverage gap and advances the checkpoint so the next run can recover. Powering a device off does not by itself reset coverage if all intervening events remain available.
 
 ### 4. Select the package and refresh
 

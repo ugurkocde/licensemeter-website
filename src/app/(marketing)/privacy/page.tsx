@@ -28,9 +28,7 @@ export default function PrivacyPolicyPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 pt-6 pb-24">
       <h1 className="font-display text-4xl tracking-tight">Privacy Policy</h1>
-      <p className="text-ink-faint mt-3 text-xs">
-        Last updated: September 2026
-      </p>
+      <p className="text-ink-faint mt-3 text-xs">Last updated: October 2026</p>
 
       <Section title="1. Controller">
         <p>
@@ -135,7 +133,7 @@ export default function PrivacyPolicyPage() {
         </p>
       </Section>
 
-      <Section title="Optional Windows Software Metering">
+      <Section title="4a. Optional Windows Software Metering">
         <p>
           When an organization enables Software Metering, a separate Microsoft
           application requests additional read-only consent. LicenseMeter stores
