@@ -30,6 +30,7 @@ import {
   emailSignups,
   findings,
   memberships,
+  meteringConnections,
   msConnections,
   priceBook,
   saasConnections,
@@ -1682,6 +1683,9 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
     await tx
       .delete(msConnections)
       .where(eq(msConnections.tenantId, ctx.tenant.id));
+    await tx
+      .delete(meteringConnections)
+      .where(eq(meteringConnections.tenantId, ctx.tenant.id));
     await tx
       .delete(findings)
       .where(

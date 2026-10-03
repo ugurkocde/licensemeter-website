@@ -28,9 +28,7 @@ export default function PrivacyPolicyPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 pt-6 pb-24">
       <h1 className="font-display text-4xl tracking-tight">Privacy Policy</h1>
-      <p className="text-ink-faint mt-3 text-xs">
-        Last updated: September 2026
-      </p>
+      <p className="text-ink-faint mt-3 text-xs">Last updated: October 2026</p>
 
       <Section title="1. Controller">
         <p>
@@ -132,6 +130,27 @@ export default function PrivacyPolicyPage() {
           used solely for the read-only sync; they are never logged or
           disclosed. A data processing agreement (DPA) is provided to each
           organization before production use.
+        </p>
+      </Section>
+
+      <Section title="4a. Optional Windows Software Metering">
+        <p>
+          When an organization enables Software Metering, a separate Microsoft
+          application requests additional read-only consent. LicenseMeter stores
+          device names and identifiers from Intune, application catalogue keys,
+          last-launch dates, coverage dates and collection health. The customer
+          deploys and controls the Windows detection script. Its output excludes
+          usernames, command lines, document paths and raw event logs.
+          Device-linked activity can still relate to employees and requires the
+          organization’s review before collection.
+        </p>
+        <p>
+          Daily metering history is pruned to 120 days during successful
+          refreshes. The latest device snapshot remains until refreshed or
+          disconnected. Disabling metering deletes its stored connection,
+          pending consent requests, snapshots and history. The organization must
+          separately revoke the app’s consent in Microsoft Entra and unassign
+          its collector in Intune.
         </p>
       </Section>
 

@@ -91,6 +91,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Overview', slug: 'connectors' },
 						{ label: 'Microsoft 365', slug: 'connectors/microsoft' },
+						{ label: 'Windows software metering', slug: 'connectors/windows-metering' },
 						{ label: 'Connect with managed consent', slug: 'connectors/microsoft-managed' },
 						{ label: 'Connect with your own app', slug: 'connectors/microsoft-byo' },
 						{ label: 'Adobe', slug: 'connectors/adobe' },

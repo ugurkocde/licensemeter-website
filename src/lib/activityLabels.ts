@@ -1,4 +1,5 @@
 const SYNC_STEP_LABELS: Record<string, string> = {
+  windowsMetering: "Windows software metering",
   subscribedSkus: "Microsoft subscriptions",
   reportSettings: "Report privacy settings",
   signInActivity: "Sign-in activity",
@@ -10,6 +11,7 @@ const SYNC_STEP_LABELS: Record<string, string> = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
+  export_metering_csv: "Metering CSV exported",
   finding_status_changed: "Finding status changed",
   finding_workflow_updated: "Finding workflow updated",
   findings_bulk_updated: "Findings updated in bulk",

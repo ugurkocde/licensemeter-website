@@ -117,3 +117,12 @@ jobs:
       - name: Remove disposable CI containers and volumes
         if: always()
         run: docker compose --env-file .env.docker down -v
+
+  windows-metering:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate Windows PowerShell 5.1 collector on a disposable runner
+        shell: powershell
+        run: ./scripts/test-metering-collector.ps1

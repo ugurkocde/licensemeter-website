@@ -22,6 +22,7 @@ const ITEMS: NavItem[] = [
   { href: "/app/licenses", label: "Licenses & prices" },
   { href: "/app/renewals", label: "Renewals" },
   { href: "/app/ai-costs", label: "AI costs" },
+  { href: "/app/metering", label: "Software Metering" },
   { href: "/app/connectors", label: "Connectors" },
   { href: "/app/billing", label: "Plan and billing" },
   { href: "/app/agreement", label: "Agreement" },

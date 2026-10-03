@@ -92,6 +92,20 @@
       "when": 1790173916035,
       "tag": "0012_retire_stripe",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791051082468,
+      "tag": "0013_windows_metering",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791052831740,
+      "tag": "0014_metering_row_security",
+      "breakpoints": true
     }
   ]
 }

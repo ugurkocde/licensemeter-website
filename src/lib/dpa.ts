@@ -134,9 +134,10 @@ export type DpaDoc = {
 // commercial register entry in the party and signature blocks.
 // 2.1: removed the separate sign-in sub-processor. Sign-in is Microsoft Entra
 // ID only, already covered by the Microsoft row, so no sub-processor was added.
-export const DPA_VERSION = "2.1";
-const EFFECTIVE_EN = "19 September 2026";
-const EFFECTIVE_DE = "19. September 2026";
+// 2.2: added optional Windows metering metadata, permissions and retention.
+export const DPA_VERSION = "2.2";
+const EFFECTIVE_EN = "3 October 2026";
+const EFFECTIVE_DE = "3. Oktober 2026";
 
 const PROCESSOR_NAME = "Ugurlabs UG (haftungsbeschränkt)";
 const PROCESSOR_REGISTER: Record<DpaLang, string> = {
@@ -265,20 +266,20 @@ export const annexIIIHeadings = (lang: DpaLang): string[] =>
 const ANNEX_II: Record<DpaLang, string[]> = {
   en: [
     "The controller's employees and other directory users; holders of seats in connected source systems; the controller's own workspace members who sign in to the Service.",
-    "Display name; user principal name (UPN) / email address; directory object and tenant identifiers; account status and user type; account creation date; assigned license SKUs; last sign-in and per-workload last-activity timestamps; for connected source systems, seat email, status and product assignments; for workspace members, name, email, role and sign-in activity.",
-    "None. The Service is not intended for special categories of personal data (Art. 9 GDPR). Mailbox, file and message content is never accessed: the permissions the Service requests in the Microsoft 365 tenant are read-only and cover directory, license, sign-in activity and usage report data only.",
+    "Display name; user principal name (UPN) / email address; directory object and tenant identifiers; account status and user type; account creation date; assigned license SKUs; last sign-in and per-workload last-activity timestamps; for connected source systems, seat email, status and product assignments; for workspace members, name, email, role and sign-in activity; when optional Windows Software Metering is enabled, device names and identifiers, application catalogue keys, last-launch dates, coverage dates and collection health.",
+    "None. The Service is not intended for special categories of personal data (Art. 9 GDPR). Mailbox, file and message content is never accessed: the permissions the Service requests in the Microsoft 365 tenant are read-only and cover directory, license, sign-in activity and usage report data, plus optional device metadata and bounded metering aggregates.",
     "Read-only collection, storage, aggregation and analysis of license, directory and activity metadata, and the generation of reports and exports from it. Synchronization runs on a schedule (typically nightly) and on demand when a user of the controller starts it.",
     "Solely to identify unused, oversized and misaligned license assignments and their cost, and to report them to the controller. The processor does not use the personal data to monitor or evaluate the performance or behavior of individual employees of the controller, does not create profiles for such purposes, and does not provide the Service as a tool for performance or behavior monitoring. Activity metadata is processed solely to determine whether a paid license seat is used, unused or oversized.",
-    "For as long as the workspace exists. The owner can delete the workspace at any time, which deletes all synchronized data, the activity log and the stored connection credentials immediately and irreversibly.",
+    "For as long as the workspace exists. The owner can delete the workspace at any time, which deletes all synchronized data, the activity log and the stored connection credentials immediately and irreversibly. Disabling Software Metering also deletes its connection, pending consent, device snapshots and history. Its daily history is pruned to 120 days on successful refreshes; the latest snapshot remains until refreshed or disconnected.",
     "The sub-processors in Annex IV host the application, store the data, provide sign-in and deliver email, each for the purpose named there and for the duration of this agreement.",
   ],
   de: [
     "Beschäftigte und sonstige Verzeichnisnutzer des Verantwortlichen; Inhaber von Lizenzplätzen in verbundenen Quellsystemen; die eigenen Arbeitsbereichs-Mitglieder des Verantwortlichen, die sich am Dienst anmelden.",
-    "Anzeigename; User Principal Name (UPN) / E-Mail-Adresse; Verzeichnis-Objekt- und Tenant-Kennungen; Kontostatus und Nutzertyp; Erstellungsdatum des Kontos; zugewiesene Lizenz-SKUs; Zeitstempel der letzten Anmeldung und der letzten Aktivität je Dienst; bei verbundenen Quellsystemen E-Mail, Status und Produktzuweisungen der Lizenzplätze; bei Arbeitsbereichs-Mitgliedern Name, E-Mail, Rolle und Anmeldeaktivität.",
-    "Keine. Der Dienst ist nicht für besondere Kategorien personenbezogener Daten (Art. 9 DSGVO) bestimmt. Auf Postfach-, Datei- und Nachrichteninhalte wird zu keinem Zeitpunkt zugegriffen: Die Berechtigungen, die der Dienst im Microsoft-365-Tenant anfordert, sind ausschließlich lesend und umfassen nur Verzeichnis-, Lizenz-, Anmeldeaktivitäts- und Nutzungsberichtsdaten.",
+    "Anzeigename; User Principal Name (UPN) / E-Mail-Adresse; Verzeichnis-Objekt- und Tenant-Kennungen; Kontostatus und Nutzertyp; Erstellungsdatum des Kontos; zugewiesene Lizenz-SKUs; Zeitstempel der letzten Anmeldung und der letzten Aktivität je Dienst; bei verbundenen Quellsystemen E-Mail, Status und Produktzuweisungen der Lizenzplätze; bei Arbeitsbereichs-Mitgliedern Name, E-Mail, Rolle und Anmeldeaktivität; bei aktiviertem optionalem Windows Software Metering Gerätenamen und Gerätekennungen, Anwendungsschlüssel, letzte Startzeitpunkte, Erfassungszeiträume und Erfassungsstatus.",
+    "Keine. Der Dienst ist nicht für besondere Kategorien personenbezogener Daten (Art. 9 DSGVO) bestimmt. Auf Postfach-, Datei- und Nachrichteninhalte wird zu keinem Zeitpunkt zugegriffen: Die Berechtigungen, die der Dienst im Microsoft-365-Tenant anfordert, sind ausschließlich lesend und umfassen Verzeichnis-, Lizenz-, Anmeldeaktivitäts- und Nutzungsberichtsdaten sowie optionale Gerätemetadaten und begrenzte Metering-Aggregate.",
     "Ausschließlich lesende Erhebung, Speicherung, Aggregation und Analyse von Lizenz-, Verzeichnis- und Aktivitätsmetadaten sowie die Erstellung von Berichten und Exporten daraus. Die Synchronisierung läuft nach Zeitplan (in der Regel nächtlich) und auf Anforderung, wenn ein Nutzer des Verantwortlichen sie startet.",
     "Ausschließlich zur Ermittlung ungenutzter, überdimensionierter und fehlerhaft zugewiesener Lizenzen und der damit verbundenen Kosten sowie zur Berichterstattung darüber an den Verantwortlichen. Der Auftragsverarbeiter verwendet die personenbezogenen Daten nicht zur Überwachung oder Bewertung der Leistung oder des Verhaltens einzelner Beschäftigter des Verantwortlichen, erstellt keine Profile zu solchen Zwecken und stellt den Dienst nicht als Instrument zur Leistungs- oder Verhaltenskontrolle bereit. Aktivitätsmetadaten werden allein verarbeitet, um festzustellen, ob ein bezahlter Lizenzplatz genutzt, ungenutzt oder überdimensioniert ist.",
-    "Solange der Arbeitsbereich besteht. Der Owner kann den Arbeitsbereich jederzeit löschen; dadurch werden alle synchronisierten Daten, das Aktivitätsprotokoll und die gespeicherten Verbindungszugangsdaten unmittelbar und unwiderruflich gelöscht.",
+    "Solange der Arbeitsbereich besteht. Der Owner kann den Arbeitsbereich jederzeit löschen; dadurch werden alle synchronisierten Daten, das Aktivitätsprotokoll und die gespeicherten Verbindungszugangsdaten unmittelbar und unwiderruflich gelöscht. Das Deaktivieren von Software Metering löscht dessen Verbindung, offene Zustimmungen, Geräteübersichten und Verlauf. Der tägliche Verlauf wird bei erfolgreicher Aktualisierung auf 120 Tage begrenzt; die letzte Übersicht bleibt bis zur Aktualisierung oder Trennung gespeichert.",
     "Die Unterauftragsverarbeiter in Anhang IV hosten die Anwendung, speichern die Daten, stellen die Anmeldung bereit und versenden E-Mails, jeweils zu dem dort genannten Zweck und für die Dauer dieser Vereinbarung.",
   ],
 };
@@ -316,7 +317,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
     1: [
       "Every request resolves the signed-in user's workspace membership on the server, and data is read and written scoped to that workspace. Identifiers sent by the browser are never trusted on their own.",
       "In the hosted database, row-level security is enabled on every table. The application connects with a dedicated role that holds data manipulation rights only and owns no tables. The database provider's public Data API roles have no policy and no grants, so they cannot read or write anything.",
-      "Access to the Microsoft 365 tenant is read-only: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All and ReportSettings.Read.All. The Service holds no write permission and cannot change anything in the tenant. Remediation scripts are generated for the controller to review and run itself; the Service never executes them.",
+      "Access to the Microsoft 365 tenant is read-only: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All and ReportSettings.Read.All. Optional Software Metering uses a separate application and consent for DeviceManagementScripts.Read.All and DeviceManagementManagedDevices.Read.All. These permissions are tenant-wide; the Service imports only the selected package’s validated metering output. The Service holds no write permission and cannot change anything in the tenant. Remediation scripts are generated for the controller to review and run itself; the Service never executes them.",
       "State-changing routes check the request origin, and sensitive endpoints such as synchronization, invitations and the support form are rate limited with counters kept in the database.",
       "A content security policy, a ban on framing, MIME sniffing protection, a referrer policy and a permissions policy are sent with every response.",
       "Synchronization tolerates missing optional permissions, and only one synchronization can run per workspace at a time.",
@@ -356,7 +357,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
     ],
     // src/lib/scopes.ts
     12: [
-      "The Service requests only the permissions listed above and reads metadata only. Activity is stored as the date of the last sign-in and of the last use per workload, not as a record of what a person did.",
+      "The Service requests only the permissions listed above and reads metadata only. Activity is stored as the date of the last sign-in and of the last use per workload, not as a record of what a person did. Optional metering retains device-level last-launch and coverage aggregates, without usernames, command lines, file paths or raw event logs.",
     ],
     // src/server/sync/runSync.ts
     13: [
@@ -384,7 +385,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
     1: [
       "Jede Anfrage ermittelt auf dem Server die Arbeitsbereichs-Mitgliedschaft des angemeldeten Nutzers; Daten werden nur im Rahmen dieses Arbeitsbereichs gelesen und geschrieben. Vom Browser gesendeten Kennungen wird für sich genommen nie vertraut.",
       "In der gehosteten Datenbank ist Row-Level-Security auf jeder Tabelle aktiviert. Die Anwendung verbindet sich mit einer eigenen Rolle, die nur Rechte zur Datenbearbeitung besitzt und keine Tabellen besitzt. Die öffentlichen Data-API-Rollen des Datenbankanbieters haben weder Policy noch Rechte und können daher nichts lesen oder schreiben.",
-      "Der Zugriff auf den Microsoft-365-Tenant ist ausschließlich lesend: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All und ReportSettings.Read.All. Der Dienst besitzt keine Schreibberechtigung und kann im Tenant nichts verändern. Skripte zur Bereinigung werden erzeugt, damit der Verantwortliche sie prüft und selbst ausführt; der Dienst führt sie nie aus.",
+      "Der Zugriff auf den Microsoft-365-Tenant ist ausschließlich lesend: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All und ReportSettings.Read.All. Optionales Software Metering verwendet eine separate Anwendung und Zustimmung für DeviceManagementScripts.Read.All und DeviceManagementManagedDevices.Read.All. Diese Berechtigungen gelten tenantweit; der Dienst importiert nur die validierte Metering-Ausgabe des ausgewählten Pakets. Der Dienst besitzt keine Schreibberechtigung und kann im Tenant nichts verändern. Skripte zur Bereinigung werden erzeugt, damit der Verantwortliche sie prüft und selbst ausführt; der Dienst führt sie nie aus.",
       "Zustandsändernde Routen prüfen die Herkunft der Anfrage; sensible Endpunkte wie Synchronisierung, Einladungen und das Support-Formular sind ratenbegrenzt, die Zähler liegen in der Datenbank.",
       "Mit jeder Antwort werden eine Content Security Policy, ein Framing-Verbot, ein Schutz vor MIME-Sniffing, eine Referrer-Policy und eine Permissions-Policy gesendet.",
       "Die Synchronisierung kommt mit fehlenden optionalen Berechtigungen zurecht, und je Arbeitsbereich kann nur eine Synchronisierung gleichzeitig laufen.",
@@ -416,7 +417,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
       "Die Voreinstellungen sind restriktiv: Wer einem Arbeitsbereich über dessen verifizierte Unternehmensdomain beitritt, beginnt als Viewer, und Verbraucher-E-Mail-Domains treten nie dem Arbeitsbereich eines anderen Nutzers bei.",
     ],
     12: [
-      "Der Dienst fordert nur die oben genannten Berechtigungen an und liest ausschließlich Metadaten. Aktivität wird als Datum der letzten Anmeldung und der letzten Nutzung je Dienst gespeichert, nicht als Aufzeichnung dessen, was eine Person getan hat.",
+      "Der Dienst fordert nur die oben genannten Berechtigungen an und liest ausschließlich Metadaten. Aktivität wird als Datum der letzten Anmeldung und der letzten Nutzung je Dienst gespeichert, nicht als Aufzeichnung dessen, was eine Person getan hat. Optionales Metering speichert aggregierte letzte Startzeitpunkte und Erfassungszeiträume je Gerät, ohne Benutzernamen, Befehlszeilen, Dateipfade oder rohe Ereignisprotokolle.",
     ],
     13: [
       "Jede Synchronisierung liest die Daten erneut aus dem Quellsystem, sodass eine Korrektur an der Quelle mit dem nächsten Lauf im Dienst ankommt.",
