@@ -83,7 +83,7 @@ const req = (patch: Record<string, string> = {}) =>
     `https://app.test/api/connect/metering/callback?${new URLSearchParams({ state: nonce, tenant: tid, admin_consent: "True", ...patch })}`,
   );
 const source = (): MeteringSource => ({
-  packages: vi.fn(async () => []),
+  packages: vi.fn(async () => [{ id: scriptId, displayName: "Collector" }]),
   devices: vi.fn(async () => [
     { id: deviceId, deviceName: "Test Windows", operatingSystem: "Windows" },
   ]),
@@ -155,6 +155,8 @@ describe("metering sync persistence and isolation", () => {
       "skipped",
     );
     expect(graph.devices).not.toHaveBeenCalled();
+    expect(graph.packages).not.toHaveBeenCalled();
+    expect(graph.states).not.toHaveBeenCalled();
   });
   it("stores only normalized aggregates and deduplicates daily history", async () => {
     await seedConnection();
@@ -211,6 +213,32 @@ describe("metering sync persistence and isolation", () => {
     expect(await rows()).toHaveLength(1);
     expect((await conn())?.lastError).not.toContain("secret");
     expect((await conn())?.syncLock).toBeNull();
+  });
+  it("preserves observations when a missing package returns an empty run-state collection", async () => {
+    await seedConnection();
+    await syncMetering(tenantId, { source: source() });
+    const previousRows = await rows();
+    const previousHistory = await history();
+    const lastSyncAt = (await conn())!.lastSyncAt;
+    const graph = source();
+    graph.packages = vi.fn(async () => [
+      { id: other, displayName: "Different collector" },
+    ]);
+    graph.states = vi.fn(async () => []);
+
+    expect(await syncMetering(tenantId, { source: graph })).toEqual({
+      status: "failed",
+      count: 0,
+    });
+    expect(await rows()).toEqual(previousRows);
+    expect(await history()).toEqual(previousHistory);
+    expect(await conn()).toMatchObject({
+      lastSyncAt,
+      lastError:
+        "The selected remediation package is no longer available. Select a package again.",
+      syncLock: null,
+      syncStartedAt: null,
+    });
   });
   it("does not resurrect observations after disable and re-enable during network work", async () => {
     await seedConnection();

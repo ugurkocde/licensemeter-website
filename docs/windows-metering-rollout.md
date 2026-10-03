@@ -52,6 +52,8 @@ Claude Code using `claude-opus-5-5` reviewed both the concept and implementation
 
 Read-only Lokka Graph beta calls successfully exercised package discovery with paging, managed-device fields with paging, the exact selected/expanded run-state endpoint, and invalid-field error handling. The current tenant's existing packages returned empty run-state collections. The active verification credential had broader rights, so these results do not prove the minimum two-role application or a complete collector-to-report path. Those exact remaining checks require the pilot above.
 
+A repeat live check on 2026-10-03 found 10 packages and 9 managed devices (4 Windows). Single-item paging reached the end of both collections, including empty terminal pages, and matched the application's 100-item queries. All 10 selected/expanded run-state queries returned empty collections. An invalid selected field returned HTTP 400. A nonexistent package returned HTTP 404 when requested directly, but HTTP 200 with an empty collection from its run-state endpoint. Sync now checks package availability after an empty run-state response and preserves prior observations with a setup error when the selected package is missing. Populated run-state fields, device linkage, output delivery and access with only the two metering permissions remain unverified in the live tenant.
+
 ## Follow-up after the pilot
 
 Evaluate customer-defined catalogues with output-size budgets, a dedicated BYO metering connection UI, installation evidence, scale beyond current collection limits, and longer-term Graph beta compatibility. Keep them out of inactivity claims until their evidence is available.

@@ -59,6 +59,17 @@ export async function syncMetering(
       (await meteringClient(connection.tid, options.deadline));
     const devices = await source.devices();
     const states = await source.states(connection.scriptId);
+    // Graph can return 200 with no run states even after the package is gone.
+    // Confirm an empty collection before replacing prior observations.
+    if (!states.length) {
+      const packages = await source.packages();
+      if (
+        !packages.some(
+          (pkg) => pkg.id.toLowerCase() === connection.scriptId!.toLowerCase(),
+        )
+      )
+        throw new MeteringError("missing");
+    }
     const now = new Date();
     // Conflicting duplicate results are ambiguous, never pick one by page order.
     const byDevice = new Map<string, MeteringRunState | null>();
