@@ -42,6 +42,18 @@ const command = z.discriminatedUnion("action", [
     assign: z.enum(["all", "none"]),
   }),
   z.object({ action: z.literal("update") }),
+  // One app's settings from the Apps page; optionally pushed to Intune at once.
+  z.object({
+    action: z.literal("app"),
+    id: ENTRY_ID,
+    // Omitted: keep as is. Empty: back to automatic. Otherwise: admin entry.
+    programs: z
+      .array(z.string().trim().toLowerCase().regex(PROGRAM))
+      .max(10)
+      .optional(),
+    excluded: z.boolean(),
+    updateIntune: z.boolean(),
+  }),
   z.object({ action: z.literal("verify") }),
   z.object({
     action: z.literal("configure"),
@@ -49,25 +61,51 @@ const command = z.discriminatedUnion("action", [
     scriptId: z.string().regex(GUID).optional(),
     inactivityDays: z.union([z.literal(30), z.literal(60), z.literal(90)]),
   }),
-  z.object({
-    action: z.literal("apps"),
-    excluded: z.array(ENTRY_ID).max(2000),
-    overrides: z
-      .record(
-        ENTRY_ID,
-        z.array(z.string().trim().toLowerCase().regex(PROGRAM)).max(10),
-      )
-      .refine((value) => Object.keys(value).length <= 2000),
-  }),
 ]);
+
+type MeteringConnection = typeof meteringConnections.$inferSelect;
+
+/**
+ * After an app setting is saved: writes the new program list to the collector
+ * in Intune, or leaves it alone when the list did not change.
+ */
+async function updateAfterSave(
+  ctx: NonNullable<Awaited<ReturnType<typeof apiAccess>>>,
+  connection: MeteringConnection,
+) {
+  const client = await meteringClient(connection.tid, requestDeadline());
+  if (!client.canWrite) throw new MeteringError("write");
+  const existing = await client.collectors();
+  const chosen =
+    existing.find((pkg) => pkg.id === connection.scriptId?.toLowerCase()) ??
+    (existing.length === 1 ? existing[0] : undefined);
+  if (!chosen)
+    return fail(
+      "Saved. The collector package was not found in Intune; create it in Setup.",
+      409,
+    );
+  const generated = await generateCollector(connection, requestDeadline());
+  const changed = generated.id !== chosen.catalogId;
+  if (changed) {
+    await client.updateCollector(chosen.id, generated.script);
+    await audit(ctx, "metering_collector_updated", {
+      programs: generated.programs.length,
+    });
+  }
+  forgetMetering(connection.id);
+  revalidatePath("/app/metering", "layout");
+  return NextResponse.json({
+    ok: true,
+    intune: changed ? "updated" : "current",
+  });
+}
 
 export async function POST(req: Request) {
   if (!isSameOrigin(req)) return fail("Not allowed", 403);
   const ctx = await apiAccess("admin");
   if (!ctx || ctx.tenant.isDemo) return fail("Not allowed", 403);
   const raw = await req.text();
-  // Only the app list may be large: up to 2000 exclusions and override lists.
-  if (raw.length > 262_144) return fail("Request too large", 413);
+  if (raw.length > 4096) return fail("Request too large", 413);
   let parsed;
   try {
     parsed = command.safeParse(JSON.parse(raw));
@@ -76,8 +114,6 @@ export async function POST(req: Request) {
   }
   if (!parsed.success) return fail("Check your metering settings.");
   const data = parsed.data;
-  if (data.action !== "apps" && raw.length > 4096)
-    return fail("Request too large", 413);
   // Disabling stays possible after a downgrade; everything else needs the plan.
   if (data.action !== "disable" && !hasFeature(ctx.entitlement, "metering"))
     return fail(PLAN_REQUIRED, 402);
@@ -212,23 +248,24 @@ export async function POST(req: Request) {
           });
         }
         forgetMetering(connection.id);
-      } else if (data.action === "apps") {
-        const overrides = Object.fromEntries(
-          Object.entries(data.overrides)
-            .map(
-              ([id, programs]) =>
-                [id, [...new Set(programs)]] as [string, string[]],
-            )
-            .filter(([, programs]) => programs.length),
-        );
+      } else if (data.action === "app") {
+        const overrides = { ...connection.programOverrides };
+        if (data.programs !== undefined) {
+          const programs = [...new Set(data.programs)];
+          if (programs.length) overrides[data.id] = programs;
+          else delete overrides[data.id];
+        }
         if (
           new Set(Object.values(overrides).flat()).size > METERING_MAX_PROGRAMS
         )
           return fail("Too many program files.");
+        const excluded = new Set(connection.excludedApps);
+        if (data.excluded) excluded.add(data.id);
+        else excluded.delete(data.id);
         const [updated] = await db
           .update(meteringConnections)
           .set({
-            excludedApps: [...new Set(data.excluded)],
+            excludedApps: [...excluded],
             programOverrides: overrides,
             revision: sql`${meteringConnections.revision} + 1`,
           })
@@ -243,9 +280,16 @@ export async function POST(req: Request) {
         if (!updated) throw new MeteringError("changed");
         forgetMetering(connection.id);
         await audit(ctx, "metering_apps_changed", {
-          excluded: data.excluded.length,
-          overrides: Object.keys(overrides).length,
+          excluded: data.excluded ? 1 : 0,
+          overrides: data.programs?.length ?? 0,
         });
+        if (data.updateIntune) {
+          try {
+            return await updateAfterSave(ctx, updated);
+          } catch (err) {
+            return fail(`Saved. ${meteringErrorText(err)}`, 502);
+          }
+        }
       } else {
         // A fresh live read replaces the cached one; nothing is written.
         await readMetering(connection, {
@@ -258,6 +302,6 @@ export async function POST(req: Request) {
       return fail(meteringErrorText(err), 502);
     }
   }
-  revalidatePath("/app/metering");
+  revalidatePath("/app/metering", "layout");
   return NextResponse.json({ ok: true });
 }

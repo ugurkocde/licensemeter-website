@@ -98,7 +98,7 @@ export function meteringDemo(now = new Date()): {
     const id = `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
     return {
       id,
-      appId: id,
+      appIds: [id],
       name: app.name,
       publisher: app.publisher,
       programs: app.programs,
@@ -128,7 +128,7 @@ export function meteringDemo(now = new Date()): {
     const started: MeteringPayload["a"] = [];
     DEMO_APPS.forEach((app, appIndex) => {
       if (next() >= app.installed) return;
-      (installs[catalog[appIndex]!.appId] ??= []).push(deviceId);
+      (installs[catalog[appIndex]!.appIds[0]!] ??= []).push(deviceId);
       if (!app.programs.length || next() >= app.used) return;
       const days = next() < 0.8 ? next() * 30 : 30 + next() * 85;
       started.push([

@@ -10,7 +10,7 @@ const programs = ["acad.exe", "visio.exe"];
 const current = catalogId(programs);
 const app = (id: string, name: string, program: string) => ({
   id,
-  appId: id,
+  appIds: [id],
   name,
   publisher: "",
   programs: [program],

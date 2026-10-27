@@ -99,7 +99,9 @@ export function deviceApps(
   days: number,
   now = new Date(),
 ): DeviceApp[] {
-  const installed = new Set(report.installs[entry.appId] ?? []);
+  const installed = new Set(
+    entry.appIds.flatMap((appId) => report.installs[appId] ?? []),
+  );
   const watched = watchedBy(knownVersions(report, versions));
   return report.rows.map((row) => ({
     row,

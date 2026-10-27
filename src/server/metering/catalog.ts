@@ -86,10 +86,13 @@ const OFFICE_PROGRAMS = [
 
 export type ProgramSource = "admin" | "detection" | "catalog" | "none";
 export interface CatalogEntry {
-  /** Intune app id, or "<app id>:visio" for a suite product. */
+  /**
+   * Stable entry id: the lowest Intune app id of the group, or
+   * "<app id>:visio" for a suite product. Settings are keyed by it.
+   */
   id: string;
-  /** Intune app whose install status applies. */
-  appId: string;
+  /** Intune apps whose install status applies; duplicates share one entry. */
+  appIds: string[];
   name: string;
   publisher: string;
   programs: string[];
@@ -118,12 +121,13 @@ export function buildCatalog(
   const entries: CatalogEntry[] = [];
   const add = (
     id: string,
-    app: MeteringApp,
+    group: MeteringApp[],
     name: string,
     fallback: string[],
   ) => {
+    const app = group[0]!;
     const manual = unique(settings.programOverrides[id] ?? []);
-    const detected = unique(app.detected);
+    const detected = unique(group.flatMap((member) => member.detected));
     const known = unique(fallback);
     const [programs, source]: [string[], ProgramSource] = manual.length
       ? [manual, "admin"]
@@ -134,7 +138,7 @@ export function buildCatalog(
           : [[], "none"];
     entries.push({
       id,
-      appId: app.id,
+      appIds: group.map((member) => member.id),
       name,
       publisher: app.publisher,
       programs,
@@ -142,15 +146,25 @@ export function buildCatalog(
       excluded: settings.excludedApps.includes(id),
     });
   };
+  // The same software is often assigned several times (versions, rings).
+  // One row per name and publisher keeps the list readable.
+  const groups = new Map<string, MeteringApp[]>();
   for (const app of apps) {
     if (app.type === "officeSuiteApp") {
-      add(app.id, app, app.name, OFFICE_PROGRAMS);
+      add(app.id, [app], app.name, OFFICE_PROGRAMS);
       const products = app.products.map((product) => product.toLowerCase());
       if (products.some((product) => product.startsWith("visio")))
-        add(`${app.id}:visio`, app, "Microsoft Visio", ["visio.exe"]);
+        add(`${app.id}:visio`, [app], "Microsoft Visio", ["visio.exe"]);
       if (products.some((product) => product.startsWith("project")))
-        add(`${app.id}:project`, app, "Microsoft Project", ["winproj.exe"]);
-    } else add(app.id, app, app.name, knownPrograms(app));
+        add(`${app.id}:project`, [app], "Microsoft Project", ["winproj.exe"]);
+      continue;
+    }
+    const key = `${app.name.trim().toLowerCase()}|${app.publisher.trim().toLowerCase()}`;
+    groups.set(key, [...(groups.get(key) ?? []), app]);
+  }
+  for (const group of groups.values()) {
+    group.sort((a, b) => a.id.localeCompare(b.id));
+    add(group[0]!.id, group, group[0]!.name, knownPrograms(group[0]!));
   }
   return entries.sort((a, b) => a.name.localeCompare(b.name));
 }

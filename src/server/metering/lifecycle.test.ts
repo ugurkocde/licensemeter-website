@@ -324,21 +324,70 @@ describe("live metering reads", () => {
     expect(response.status).toBe(502);
     expect(JSON.stringify(await response.json())).not.toContain("forbidden");
   });
-  it("saves a large app list", async () => {
-    await seedConnection();
-    const excluded = Array.from(
-      { length: 500 },
-      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
-    );
-    const response = await action(
+  const saveApp = (body: object) =>
+    action(
       new Request("https://app.test/api/metering", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "apps", excluded, overrides: {} }),
+        body: JSON.stringify({ action: "app", ...body }),
       }),
     );
+  it("saves one app's settings and keeps the others", async () => {
+    await seedConnection();
+    await database
+      .update(schema.meteringConnections)
+      .set({
+        excludedApps: ["00000000-0000-4000-8000-000000000002"],
+        programOverrides: {
+          "00000000-0000-4000-8000-000000000002": ["other.exe"],
+        },
+      })
+      .where(eq(schema.meteringConnections.tenantId, tenantId));
+    const response = await saveApp({
+      id: "00000000-0000-4000-8000-000000000001",
+      programs: ["Tool.exe", "tool.exe"],
+      excluded: false,
+      updateIntune: false,
+    });
     expect(response.status).toBe(200);
-    expect((await conn())?.excludedApps).toHaveLength(500);
+    const saved = await conn();
+    expect(saved?.programOverrides).toEqual({
+      "00000000-0000-4000-8000-000000000002": ["other.exe"],
+      "00000000-0000-4000-8000-000000000001": ["tool.exe"],
+    });
+    expect(saved?.excludedApps).toEqual([
+      "00000000-0000-4000-8000-000000000002",
+    ]);
+    expect(saved?.revision).toBe(1);
+
+    await saveApp({
+      id: "00000000-0000-4000-8000-000000000001",
+      programs: [],
+      excluded: true,
+      updateIntune: false,
+    });
+    expect((await conn())?.programOverrides).toEqual({
+      "00000000-0000-4000-8000-000000000002": ["other.exe"],
+    });
+    expect((await conn())?.excludedApps).toEqual([
+      "00000000-0000-4000-8000-000000000002",
+      "00000000-0000-4000-8000-000000000001",
+    ]);
+  });
+  it("keeps the saved setting when Intune cannot be updated", async () => {
+    await seedConnection();
+    const response = await saveApp({
+      id: "00000000-0000-4000-8000-000000000001",
+      excluded: true,
+      updateIntune: true,
+    });
+    expect(response.status).toBe(502);
+    const { error } = (await response.json()) as { error: string };
+    expect(error).toMatch(/^Saved\. /);
+    expect(error).not.toContain("forbidden");
+    expect((await conn())?.excludedApps).toEqual([
+      "00000000-0000-4000-8000-000000000001",
+    ]);
   });
   it("expires cached reads after five minutes without another read", async () => {
     vi.useFakeTimers();

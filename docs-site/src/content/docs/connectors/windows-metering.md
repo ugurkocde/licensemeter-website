@@ -17,7 +17,7 @@ The collector watches program file names, such as `acad.exe` for AutoCAD. Intune
 2. The app's Intune detection rule, when it checks for an `.exe` file.
 3. LicenseMeter's list of common licensed software, matched on the app name.
 
-Apps without a program file are listed as unknown and are not metered until an Admin adds one under **Software Metering › Apps › Program files**. Admins can also leave apps out there, for example tools that need no license review.
+Apps without a program file show **Needs a program file** and are not metered until an Admin adds one. Open the app under **Software Metering › Apps** and enter its program file in the app's settings. Admins can also leave apps out there, for example tools that need no license review. The same app assigned several times in Intune appears once.
 
 For each app, the report shows how many Windows devices have it installed, how many of those started it in the observation period, and the number of starts in the last 24 hours. A program that starts copies of itself, such as a browser, counts once per start. Software Metering has three pages in the sidebar: **Dashboard** for the charts, **Apps** to search apps and see their devices, and **Setup**.
 
@@ -118,7 +118,7 @@ Reads are capped at 50,000 returned rows and 500 pages per resource, with bounde
 
 ### 5. Keep the app list current
 
-When apps are added to Intune or you change program files, devices keep running the collector you deployed. LicenseMeter reads the deployed script, so it knows exactly which apps it watches. Apps it does not watch yet show **Not watched yet**, and Setup lists them. Select **Update in Intune** in Setup to replace the detection script in the same package, or download the collector again and replace it yourself. The assignment stays, and devices switch on their next run. Coverage for apps already watched continues; newly added apps start collecting from that run.
+When apps are added to Intune or you change program files, devices keep running the collector you deployed. LicenseMeter reads the deployed script, so it knows exactly which apps it watches. Apps it does not watch yet show **Not watched yet**, and Setup lists them. When LicenseMeter can write to Intune, saving an app's settings under **Apps** updates the collector right away (**Save and update Intune**). Otherwise select **Update in Intune** in Setup to replace the detection script in the same package, or download the collector again and replace it yourself. The assignment stays, and devices switch on their next run. Coverage for apps already watched continues; newly added apps start collecting from that run.
 
 ## Troubleshooting
 
@@ -131,7 +131,7 @@ When apps are added to Intune or you change program files, devices keep running 
 | Enable process auditing | Effective Process Creation Success policy on the device. |
 | Still collecting after a gap | Device missed scheduled runs, Security log rolled over before collection (increase its maximum size), or local state was reset. |
 | Collection error | Review the collector's health value in Intune. Wrong scripts, malformed output and output over 2,048 characters are rejected. |
-| Program file unknown | Add the app's program file under **Apps › Program files**, then update the collector from Setup. |
+| Program file unknown | Open the app under **Apps**, enter its program file and select **Save and update Intune**. Without write access, update the collector from Setup afterwards. |
 | Not watched yet | Download the collector again from Setup and replace the detection script in Intune. |
 | Report stale | Device has not supplied a recent valid report. Intune may report unchanged results on a weekly cycle. |
 | Results could not be read | Intune or Microsoft Graph was unavailable or limited the request. No results are shown because none are stored; open the report again later. |
