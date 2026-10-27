@@ -143,6 +143,15 @@ describe("pricing content", () => {
     expect(allStrings("en").join("\n")).not.toMatch(/team roles|delegation/i);
   });
 
+  it("says every price covers unlimited users and devices", () => {
+    expect(PRICING_CONTENT.en.unlimited.title).toMatch(
+      /unlimited users.*unlimited devices/i,
+    );
+    expect(PRICING_CONTENT.de.unlimited.title).toMatch(
+      /unbegrenzte nutzer.*unbegrenzte ger\u00e4te/i,
+    );
+  });
+
   it("states the limits and commitments of the model", () => {
     const row = (id: string) =>
       comparisonGroups("en", ALL_CHANNELS)

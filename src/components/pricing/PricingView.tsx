@@ -4,8 +4,11 @@ import {
   ArrowDown,
   ArrowRight,
   Building2,
+  Infinity as InfinityIcon,
+  MonitorSmartphone,
   ShieldCheck,
   Sparkles,
+  UsersRound,
 } from "lucide-react";
 
 import { MeteringSample } from "~/components/blog/MeteringSample";
@@ -274,8 +277,35 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
       </section>
 
       <section
+        aria-labelledby="unlimited-heading"
+        className="shadow-card mt-10 flex flex-col gap-4 rounded-[24px] border border-blue-200 bg-white p-5 sm:flex-row sm:items-center sm:gap-5 sm:px-6 lg:mt-14"
+      >
+        <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-2xl bg-blue-700 text-white">
+          <InfinityIcon aria-hidden="true" className="size-5" strokeWidth={2} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2
+            id="unlimited-heading"
+            className="font-display text-lg font-semibold tracking-tight text-balance"
+          >
+            {c.unlimited.title}
+          </h2>
+          <p className="text-ink-soft mt-1 text-sm leading-relaxed text-pretty">
+            {c.unlimited.body}
+          </p>
+        </div>
+        <span
+          aria-hidden="true"
+          className="hidden shrink-0 items-center gap-2 text-blue-700 md:flex"
+        >
+          <UsersRound className="size-5" strokeWidth={1.75} />
+          <MonitorSmartphone className="size-5" strokeWidth={1.75} />
+        </span>
+      </section>
+
+      <section
         aria-label={c.plansLabel}
-        className="mt-10 grid gap-6 lg:mt-16 lg:grid-cols-3"
+        className="mt-6 grid gap-6 lg:mt-10 lg:grid-cols-3"
       >
         {PLAN_IDS.map((id) => {
           const plan = c.plans[id];
