@@ -47,7 +47,7 @@ Open **http://localhost:3000** and choose **Open the sample tenant**. Real tenan
 
 - [Getting started](https://docs.licensemeter.com/getting-started) and the [sample workspace](https://docs.licensemeter.com/getting-started/sample-workspace)
 - [Connectors](https://docs.licensemeter.com/connectors), [Findings](https://docs.licensemeter.com/findings), and [Licenses and prices](https://docs.licensemeter.com/licenses-and-prices)
-- [AI API costs](https://docs.licensemeter.com/ai-costs), [renewals](https://docs.licensemeter.com/renewals), and [exports and reports](https://docs.licensemeter.com/exports)
+- [AI API costs](https://docs.licensemeter.com/ai-costs), [renewals](https://docs.licensemeter.com/renewals), [exports and reports](https://docs.licensemeter.com/exports), and the [MCP server](https://docs.licensemeter.com/mcp)
 - [Self-hosting with Docker](https://docs.licensemeter.com/self-hosting) and [Microsoft application setup](https://docs.licensemeter.com/self-hosting/microsoft-setup)
 
 ## Project

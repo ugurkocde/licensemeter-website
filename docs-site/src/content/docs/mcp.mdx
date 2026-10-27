@@ -1,0 +1,190 @@
+---
+title: "MCP server"
+description: "Connect Claude, GitHub Copilot or any MCP client to your workspace and ask about license waste, findings and trends in plain language."
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+The MCP server lets an AI assistant read your workspace through the [Model Context Protocol](https://modelcontextprotocol.io/). Connect Claude, GitHub Copilot in VS Code, Cursor or another MCP client, then ask questions such as "Which products wasted the most last quarter?" or "List the open findings for inactive seats."
+
+The server is read-only. It can query waste, findings, trends and the license inventory, and it cannot change anything in LicenseMeter or in your tenants. Each token reads exactly one workspace.
+
+The MCP server is included in the Pro and MSP plans. On the Free plan, **MCP server** appears in the sidebar with a lock and leads to the upgrade page. Self-hosted installations include it.
+
+## Prerequisites
+
+- A Pro or MSP plan for the workspace.
+- The Owner or Admin role to create and revoke tokens. Viewers can open the page and see which tokens exist. See [Roles and access](/workspace/roles/).
+- An MCP client that supports remote servers over HTTP with a custom `Authorization` header.
+
+## Create a token
+
+<Steps>
+
+1. ## Open the MCP server page
+
+   Select **MCP server** in the workspace sidebar. The page shows the endpoint URL, a client configuration to copy and the tokens of this workspace.
+
+2. ## Name the token
+
+   Enter where the token will be used, for example `Finance laptop` or `Claude Code`, and select **Create token**. One token per person or device makes it easy to revoke a single one later.
+
+3. ## Copy it now
+
+   The token starts with `lm_mcp_` and is shown once. LicenseMeter stores only a hash of it, so it cannot be displayed again. If you lose it, revoke it and create a new one.
+
+</Steps>
+
+A workspace can have up to 10 active tokens. The list shows when each token was created and last used.
+
+## Connect a client
+
+The hosted endpoint is:
+
+```text
+https://www.licensemeter.com/api/mcp
+```
+
+On a self-hosted installation, use `https://YOUR-APP-HOST/api/mcp`, with the public origin of your installation. The **MCP server** page always shows the right URL for your installation.
+
+Send the token in the `Authorization` header as `Bearer lm_mcp_...`. The endpoint never accepts it in the URL. Replace `YOUR_TOKEN` in the examples below with your token.
+
+### Claude Code
+
+```sh
+claude mcp add --transport http licensemeter https://www.licensemeter.com/api/mcp \
+  --header "Authorization: Bearer YOUR_TOKEN"
+```
+
+Run `claude mcp list` to check that the server connects, then ask Claude about your license waste.
+
+### Claude Desktop
+
+Claude Desktop reads remote servers with custom headers through the `mcp-remote` bridge, which needs Node.js. Open **Settings › Developer › Edit Config** and add the server to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "licensemeter": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://www.licensemeter.com/api/mcp",
+        "--header",
+        "Authorization:${LICENSEMETER_AUTH}"
+      ],
+      "env": {
+        "LICENSEMETER_AUTH": "Bearer YOUR_TOKEN"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving. Keeping the token in `env` avoids a Windows quoting problem with spaces in arguments.
+
+### GitHub Copilot in VS Code
+
+Add the server to `.vscode/mcp.json` in a workspace, or to your user configuration with **MCP: Open User Configuration**. The `inputs` entry makes VS Code prompt for the token once and store it securely, so it never lands in a file you might commit:
+
+```json
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "licensemeter-token",
+      "description": "LicenseMeter MCP token",
+      "password": true
+    }
+  ],
+  "servers": {
+    "licensemeter": {
+      "type": "http",
+      "url": "https://www.licensemeter.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:licensemeter-token}"
+      }
+    }
+  }
+}
+```
+
+Open Copilot Chat in agent mode and select the LicenseMeter tools.
+
+### Cursor and other clients
+
+Most clients accept the configuration shown on the **MCP server** page. In Cursor, add it to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "licensemeter": {
+      "url": "https://www.licensemeter.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_TOKEN"
+      }
+    }
+  }
+}
+```
+
+The exact file and keys depend on the client. Look for "remote", "HTTP" or "Streamable HTTP" servers in its documentation. Clients that only offer OAuth sign-in for remote servers, such as custom connectors on claude.ai, cannot use a token.
+
+### Test the connection
+
+To check a token without an AI client, list the tools with `curl`:
+
+```sh
+curl https://www.licensemeter.com/api/mcp \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+A working token returns the four tools below. The **Last used** column on the **MCP server** page updates as well.
+
+## Tools
+
+Amounts are in the workspace currency and per month unless a field says otherwise. The figures match what the portal shows.
+
+| Tool | Returns | Arguments |
+| --- | --- | --- |
+| `get_waste_summary` | Monthly and annualized waste, the split by category, the number of open findings and when data was last synced. Matches **Overview**. | None |
+| `list_findings` | Findings, largest monthly amount first, with category, amount, affected count, status and first and last seen dates. Without a status it returns open and acknowledged findings, like **Findings**. | `status`, `category`, `limit`, `include_users` |
+| `get_waste_trend` | Monthly spend, waste and seats over time, oldest first, within the history window of your plan. | `interval`: `monthly` (default) or `daily` |
+| `list_licenses` | Per Microsoft 365 product: purchased, assigned and unused seats, the monthly price and the monthly cost of unused seats. Matches the license inventory CSV. | None |
+
+`list_findings` accepts these arguments:
+
+- `status`: `open`, `acknowledged` or `resolved`.
+- `category`: one detection rule, for example `inactive_90d`, `disabled_account_with_license`, `never_active`, `shelfware`, `copilot_unused`, `licensed_guest`, `overlapping_licenses`, `service_plans_disabled`, `adobe_disabled_in_entra`, `adobe_orphaned`, `saas_disabled_in_entra`, `saas_orphaned` or `saas_inactive`. See [Detection rules](/findings/rules/).
+- `limit`: 1 to 200 findings, 50 by default.
+- `include_users`: see below.
+
+### Personal data
+
+By default, `list_findings` leaves out user names and sign-in addresses. Findings about one person show the category label instead of a title with their name. The assistant only receives the user principal name and the full title when it sets `include_users` to `true`, the same detail the findings CSV export contains. Your assistant may do this when you ask about specific people, so consider what your AI provider does with the data before you ask.
+
+## Limits and errors
+
+| Response | Meaning |
+| --- | --- |
+| 401 | The token is missing, mistyped or revoked. |
+| 402 | The workspace plan no longer includes the MCP server. |
+| 429 | More than 120 requests per minute for this token. Wait a minute and try again. |
+
+The server answers each request on its own and keeps no session. It does not stream, so clients that only support the older SSE transport cannot connect.
+
+## Revoke a token or change plans
+
+An Owner or Admin can revoke a token on the **MCP server** page at any time. The token stops working with the next request.
+
+When a workspace moves to the Free plan, its tokens are refused with 402 but kept. They work again after an upgrade unless you revoke them, and you can still revoke them on the Free plan.
+
+## Security
+
+- A token reads only the workspace it was created in. No tool accepts a workspace or tenant ID.
+- Every request checks the token, the workspace and its plan again.
+- LicenseMeter stores a hash of each token and the first characters for display, never the token itself.
+- Treat a token like a password. Do not paste it into shared files or chats, and revoke it when a person leaves or a device is replaced.

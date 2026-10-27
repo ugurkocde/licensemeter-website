@@ -18,6 +18,8 @@ import {
 
 export const metadata: Metadata = { title: "MCP server" };
 
+const MCP_DOCS = "https://docs.licensemeter.com/mcp/";
+
 const TokenTable = ({
   tokens,
   canManage,
@@ -143,7 +145,11 @@ export default async function McpPage() {
               <p className="text-ink-faint mt-2 text-xs">
                 Replace YOUR_TOKEN with a token from the list below. The token
                 travels in the Authorization header only, never in the URL. The
-                exact file and keys depend on your MCP client.
+                exact file and keys depend on your MCP client.{" "}
+                <a className="underline" href={MCP_DOCS}>
+                  Setup for Claude, VS Code and other clients
+                </a>
+                .
               </p>
             </div>
           </div>
