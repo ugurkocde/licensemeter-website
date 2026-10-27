@@ -2,7 +2,6 @@ import Link from "next/link";
 import { ButtonAnchor, ButtonLink, Card } from "~/components/ui";
 import { FeatureLockPanel } from "~/components/workspace/FeatureLock";
 import { MeteringDisable } from "~/components/workspace/MeteringDisable";
-import { HealthList } from "~/components/workspace/MeteringCharts";
 import { MeteringRefresh } from "~/components/workspace/MeteringRefresh";
 import { fmtDateTime } from "~/lib/format";
 import type { MeteringView, SetupStep } from "~/server/metering/view";
@@ -182,7 +181,7 @@ export function FinishSetup({ view }: { view: MeteringView }) {
     waiting:
       "The collector is deployed. The first device results can take a few hours to appear in Intune.",
   };
-  // While waiting for the first report, the Getting started card shows the steps.
+  // While waiting for the first report, the dashboard shows a collecting strip.
   if (
     view.step === "done" ||
     view.step === "unavailable" ||
@@ -215,86 +214,74 @@ export const coverageLabel = (days: number, period: number) =>
   days < 1 ? `First day of ${period}` : `Day ${days} of ${period}`;
 
 /**
- * The first weeks, in one card: where setup stands, how far coverage has
- * come, why devices are or are not reporting, and the first app starts.
+ * A slim strip above the dashboard while no device has covered the whole
+ * period yet. The charts below fill in as results arrive.
  */
-export function GettingStarted({ view }: { view: MeteringView }) {
+export function CollectingNotice({ view }: { view: MeteringView }) {
   const summary = view.summary;
-  if (!summary) return null;
+  if (!summary || summary.health.reporting > 0) return null;
+  const waiting = summary.reporting === 0;
   const progress = Math.min(1, summary.coverageDays / view.days);
   return (
-    <Card title="Getting started">
-      <div className="grid gap-8 lg:grid-cols-[1fr_1.1fr]">
-        <div className="flex flex-col gap-5">
-          {view.step !== "done" && <SetupProgress step={view.step} />}
-          <div>
-            <div className="flex justify-between gap-3 text-sm">
-              <span className="font-medium">
-                {coverageLabel(summary.coverageDays, view.days)}
-              </span>
-              <span className="text-ink-faint">
-                {summary.reporting} of {summary.devices} devices reporting
-              </span>
-            </div>
+    <div className="border-line bg-card flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border px-4 py-3 text-sm">
+      <div className="flex min-w-48 flex-1 items-center gap-3">
+        <span className="font-medium whitespace-nowrap">
+          {waiting
+            ? "Waiting for the first device report"
+            : coverageLabel(summary.coverageDays, view.days)}
+        </span>
+        {!waiting && (
+          <div
+            className="bg-subtle h-1.5 max-w-40 flex-1 overflow-hidden rounded-full"
+            role="progressbar"
+            aria-label="Coverage of the observation period"
+            aria-valuemin={0}
+            aria-valuemax={view.days}
+            aria-valuenow={summary.coverageDays}
+          >
             <div
-              className="bg-subtle mt-2 h-2 overflow-hidden rounded-full"
-              role="progressbar"
-              aria-label="Coverage of the observation period"
-              aria-valuemin={0}
-              aria-valuemax={view.days}
-              aria-valuenow={summary.coverageDays}
-            >
-              <div
-                className="bg-brand h-full rounded-full"
-                style={{ width: `${Math.max(2, progress * 100)}%` }}
-              />
-            </div>
-            <p className="text-ink-soft mt-3 text-sm">
-              Starts show right away. “App not started” needs {view.days} days
-              without a start, so the full charts appear once a device has
-              reported for the whole period.
-            </p>
+              className="bg-brand h-full rounded-full"
+              style={{ width: `${Math.max(3, progress * 100)}%` }}
+            />
           </div>
-          <div>
-            <h3 className="mb-2 text-sm font-medium">Devices</h3>
-            <HealthList health={summary.health} />
-            {summary.health.noReport > 0 && (
-              <p className="text-ink-faint mt-2 text-xs">
-                Devices outside the collector’s assignment never report. That is
-                expected during a pilot.
-              </p>
-            )}
-          </div>
-        </div>
-        <div>
-          <h3 className="text-sm font-medium">Recent app starts</h3>
-          {summary.recentStarts.length ? (
-            <ul className="mt-2 flex flex-col">
-              {summary.recentStarts.map((start, index) => (
-                <li
-                  key={`${start.device}-${start.app}-${index}`}
-                  className="border-line flex justify-between gap-3 border-b py-2 text-sm last:border-b-0"
-                >
-                  <span>
-                    <span className="font-medium">{start.app}</span>
-                    <span className="text-ink-faint"> · {start.device}</span>
-                  </span>
-                  <span className="text-ink-soft whitespace-nowrap">
-                    {fmtDateTime(start.at)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-ink-soft mt-2 text-sm">
-              {summary.reporting > 0
-                ? "None of the metered apps has been started on a reporting device yet."
-                : "App starts appear here once the first device reports."}
-            </p>
-          )}
-        </div>
+        )}
       </div>
-    </Card>
+      <p className="text-ink-soft basis-full text-xs sm:basis-auto sm:text-sm">
+        {waiting
+          ? "The collector is deployed. First results can take a few hours to appear in Intune."
+          : `Starts show as they arrive. “App not started” needs ${view.days} days without a start.`}
+      </p>
+    </div>
+  );
+}
+
+/** Newest app starts across devices, so first results are visible at once. */
+export function RecentStarts({ view }: { view: MeteringView }) {
+  const summary = view.summary;
+  if (!summary) return null;
+  return summary.recentStarts.length ? (
+    <ul className="flex flex-col">
+      {summary.recentStarts.map((start, index) => (
+        <li
+          key={`${start.device}-${start.app}-${index}`}
+          className="border-line flex justify-between gap-3 border-b py-2 text-sm last:border-b-0"
+        >
+          <span className="min-w-0 truncate">
+            <span className="font-medium">{start.app}</span>
+            <span className="text-ink-faint"> · {start.device}</span>
+          </span>
+          <span className="text-ink-soft whitespace-nowrap">
+            {fmtDateTime(start.at)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p className="text-ink-soft text-sm">
+      {summary.reporting > 0
+        ? "None of the metered apps has been started on a reporting device yet."
+        : "App starts appear here once the first device reports."}
+    </p>
   );
 }
 

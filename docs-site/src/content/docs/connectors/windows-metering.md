@@ -110,7 +110,7 @@ The first run establishes coverage from that moment. It does not reconstruct pas
 
 LicenseMeter finds the Remediations package that runs the collector by itself, by reading the deployed script. You never select a package. Step 2 of Setup confirms the package it found. If several packages run the collector, choose one under **Settings** on the Setup page, where you can also change the observation period (60 days by default).
 
-Step 3 shows when the first device reports. Until a device has covered the whole observation period, the **Dashboard** shows a collecting view with coverage progress and the most recent app starts; the full charts follow. The report reads the latest results from Intune whenever you open it or export the CSV. A read is reused for up to five minutes; select **Read latest results** to read again immediately.
+Step 3 shows when the first device reports. The **Dashboard** shows its full charts right away and fills them in as devices report. App starts appear as soon as they arrive; until a device has covered the whole observation period, its apps show as still collecting and a strip above the charts shows the coverage progress. The report reads the latest results from Intune whenever you open it or export the CSV. A read is reused for up to five minutes; select **Read latest results** to read again immediately.
 
 Verify a known app start, the device identity, the report date, and coverage health. Then expand the assignment. Intune controls when device results become available; LicenseMeter does not remotely run scripts. The first result for a newly assigned device can take several hours to appear in Intune reporting, even after the device has run the script.
 
