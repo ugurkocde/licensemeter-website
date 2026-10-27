@@ -1,0 +1,7 @@
+{
+  "title": "Software Metering shows results right after a collector update",
+  "summary": "After the collector script changed in Intune, devices could show as not reporting until their next run, even though their last result was valid. Those results now count. The dashboard's first-weeks view is also clearer: one Getting started card shows coverage progress, why each device is or is not reporting, and the first app starts.",
+  "type": "fixed",
+  "publishedOn": "2026-10-27",
+  "idempotencyKey": "licensemeter:metering-pending-results"
+}

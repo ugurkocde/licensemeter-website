@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ButtonAnchor, ButtonLink, Card } from "~/components/ui";
 import { FeatureLockPanel } from "~/components/workspace/FeatureLock";
 import { MeteringDisable } from "~/components/workspace/MeteringDisable";
+import { HealthList } from "~/components/workspace/MeteringCharts";
 import { MeteringRefresh } from "~/components/workspace/MeteringRefresh";
 import { fmtDateTime } from "~/lib/format";
 import type { MeteringView, SetupStep } from "~/server/metering/view";
@@ -181,7 +182,13 @@ export function FinishSetup({ view }: { view: MeteringView }) {
     waiting:
       "The collector is deployed. The first device results can take a few hours to appear in Intune.",
   };
-  if (view.step === "done" || view.step === "unavailable") return null;
+  // While waiting for the first report, the Getting started card shows the steps.
+  if (
+    view.step === "done" ||
+    view.step === "unavailable" ||
+    view.step === "waiting"
+  )
+    return null;
   return (
     <Card title="Finish setup">
       <div className="grid gap-6 sm:grid-cols-[1fr_auto] sm:items-center">
@@ -191,7 +198,7 @@ export function FinishSetup({ view }: { view: MeteringView }) {
         </div>
         {view.admin ? (
           <ButtonLink variant="primary" href="/app/metering/setup">
-            {view.step === "waiting" ? "View setup" : "Continue setup"}
+            Continue setup
           </ButtonLink>
         ) : (
           <p className="text-ink-soft text-sm">
@@ -203,24 +210,27 @@ export function FinishSetup({ view }: { view: MeteringView }) {
   );
 }
 
-/** The first days: coverage grows towards the observation period. */
+/** "First day of 60", then "Day 3 of 60". */
+export const coverageLabel = (days: number, period: number) =>
+  days < 1 ? `First day of ${period}` : `Day ${days} of ${period}`;
+
+/**
+ * The first weeks, in one card: where setup stands, how far coverage has
+ * come, why devices are or are not reporting, and the first app starts.
+ */
 export function GettingStarted({ view }: { view: MeteringView }) {
   const summary = view.summary;
   if (!summary) return null;
   const progress = Math.min(1, summary.coverageDays / view.days);
   return (
-    <Card title="Collecting">
-      <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-        <div className="flex flex-col gap-4">
-          <p className="text-ink-soft text-sm">
-            “App started” shows from the first run. “App not started” needs{" "}
-            {view.days} days of continuous coverage, so the full charts appear
-            once the first device has covered the period.
-          </p>
+    <Card title="Getting started">
+      <div className="grid gap-8 lg:grid-cols-[1fr_1.1fr]">
+        <div className="flex flex-col gap-5">
+          {view.step !== "done" && <SetupProgress step={view.step} />}
           <div>
-            <div className="flex justify-between text-xs">
+            <div className="flex justify-between gap-3 text-sm">
               <span className="font-medium">
-                Day {summary.coverageDays} of {view.days}
+                {coverageLabel(summary.coverageDays, view.days)}
               </span>
               <span className="text-ink-faint">
                 {summary.reporting} of {summary.devices} devices reporting
@@ -239,6 +249,21 @@ export function GettingStarted({ view }: { view: MeteringView }) {
                 style={{ width: `${Math.max(2, progress * 100)}%` }}
               />
             </div>
+            <p className="text-ink-soft mt-3 text-sm">
+              Starts show right away. “App not started” needs {view.days} days
+              without a start, so the full charts appear once a device has
+              reported for the whole period.
+            </p>
+          </div>
+          <div>
+            <h3 className="mb-2 text-sm font-medium">Devices</h3>
+            <HealthList health={summary.health} />
+            {summary.health.noReport > 0 && (
+              <p className="text-ink-faint mt-2 text-xs">
+                Devices outside the collector’s assignment never report. That is
+                expected during a pilot.
+              </p>
+            )}
           </div>
         </div>
         <div>
@@ -262,7 +287,9 @@ export function GettingStarted({ view }: { view: MeteringView }) {
             </ul>
           ) : (
             <p className="text-ink-soft mt-2 text-sm">
-              No metered app has been started on a reporting device yet.
+              {summary.reporting > 0
+                ? "None of the metered apps has been started on a reporting device yet."
+                : "App starts appear here once the first device reports."}
             </p>
           )}
         </div>

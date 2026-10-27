@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ButtonAnchor, ButtonLink, Card } from "~/components/ui";
+import { HealthList } from "~/components/workspace/MeteringCharts";
 import { MeteringDisable } from "~/components/workspace/MeteringDisable";
 import {
   MeteringFootnote,
@@ -273,20 +274,37 @@ export default async function MeteringSetupPage({
             {canWrite && !collector && !several && step !== "unavailable" && (
               <MeteringIntuneAction mode="create" />
             )}
-            <div className="flex flex-wrap items-center gap-3">
-              <ButtonAnchor
-                variant={
-                  canWrite || (collector && !summary?.notWatched.length)
-                    ? "secondary"
-                    : "primary"
-                }
-                href="/api/metering/collector"
-                download
-              >
-                Download collector
-              </ButtonAnchor>
-              <MeteringRefresh />
-            </div>
+            {collector && !summary?.notWatched.length ? (
+              <div className="flex flex-col gap-3">
+                <p className="text-ink-faint text-xs">
+                  {step === "waiting"
+                    ? "Check that the package is assigned to your pilot devices in Intune; until then no device reports. "
+                    : "Nothing to do here. "}
+                  <a
+                    className="underline"
+                    href="/api/metering/collector"
+                    download
+                  >
+                    Download the current collector
+                  </a>{" "}
+                  to review it.
+                </p>
+                <div>
+                  <MeteringRefresh />
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3">
+                <ButtonAnchor
+                  variant={canWrite ? "secondary" : "primary"}
+                  href="/api/metering/collector"
+                  download
+                >
+                  Download collector
+                </ButtonAnchor>
+                <MeteringRefresh />
+              </div>
+            )}
             {!collector && !several && step !== "unavailable" && (
               <ManualSteps open={!canWrite}>
                 <ol className="text-ink-soft list-decimal space-y-1 pl-5">
@@ -340,11 +358,14 @@ export default async function MeteringSetupPage({
             </div>
           </>
         ) : collector ? (
-          <p className="text-ink-soft">
-            Waiting for the first device. After assignment, Intune runs the
-            collector within the hour, and it can take a few more hours until
-            the result is visible here.
-          </p>
+          <>
+            <p className="text-ink-soft">
+              No device has a usable report yet. After assignment, Intune runs
+              the collector within the hour, and it can take a few more hours
+              until the result is visible here.
+            </p>
+            {summary && <HealthList health={summary.health} />}
+          </>
         ) : (
           <p className="text-ink-faint">Available after step 2.</p>
         )}

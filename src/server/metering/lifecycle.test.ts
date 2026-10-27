@@ -206,6 +206,19 @@ describe("live metering reads", () => {
     expect(result.catalog[0]?.excluded).toBe(true);
     expect(graph.installs).not.toHaveBeenCalled();
   });
+  it("keeps a valid result while Intune reports the run as pending", async () => {
+    const graph = source();
+    const [state] = await source().states(scriptId);
+    graph.states = async () => [{ ...state!, detectionState: "pending" }];
+    expect((await collectMetering(graph, target())).rows[0]).toMatchObject({
+      status: "ok",
+    });
+    graph.states = async () => [{ ...state!, detectionState: "fail" }];
+    expect((await collectMetering(graph, target())).rows[0]).toMatchObject({
+      status: "script_error",
+      payload: null,
+    });
+  });
   it("treats empty, failed, duplicate and malformed results as unknown", async () => {
     const graph = source();
     graph.states = async () => [];
