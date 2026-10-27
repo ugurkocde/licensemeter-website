@@ -221,14 +221,16 @@ export function CollectingNotice({ view }: { view: MeteringView }) {
   const summary = view.summary;
   if (!summary || summary.health.reporting > 0) return null;
   const waiting = summary.reporting === 0;
-  const progress = Math.min(1, summary.coverageDays / view.days);
+  // A stale or outdated device can cover more than the period.
+  const covered = Math.min(summary.coverageDays, view.days);
+  const progress = covered / view.days;
   return (
     <div className="border-line bg-card flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border px-4 py-3 text-sm">
       <div className="flex min-w-48 flex-1 items-center gap-3">
         <span className="font-medium whitespace-nowrap">
           {waiting
             ? "Waiting for the first device report"
-            : coverageLabel(summary.coverageDays, view.days)}
+            : coverageLabel(covered, view.days)}
         </span>
         {!waiting && (
           <div
@@ -237,7 +239,7 @@ export function CollectingNotice({ view }: { view: MeteringView }) {
             aria-label="Coverage of the observation period"
             aria-valuemin={0}
             aria-valuemax={view.days}
-            aria-valuenow={summary.coverageDays}
+            aria-valuenow={covered}
           >
             <div
               className="bg-brand h-full rounded-full"
