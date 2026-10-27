@@ -51,6 +51,7 @@ import { pickLeakFindings } from "~/server/leakAlerts";
 import { notifyOps } from "~/server/ops";
 import { workspaceAdminEmails } from "~/server/workspaceEmail";
 import { aiSpendSinceDay } from "~/server/sync/aiSpendWindow";
+import { mergeAdobeUsers, mergeSaasSeats } from "~/server/sync/mergeByEmail";
 import {
   entraIdentitiesOf,
   joinSignals,
@@ -74,7 +75,16 @@ const chunk = <T>(arr: T[], size: number): T[][] => {
  * members): length-bounded, no stack traces. Full errors go to server logs.
  */
 const errText = (err: unknown): string => {
-  const message = err instanceof Error ? err.message : String(err);
+  // Drizzle wraps database errors as "Failed query: <sql>" and keeps the
+  // Postgres message on `cause`; the SQL alone tells an admin nothing.
+  const cause =
+    err instanceof Error && err.cause instanceof Error ? err.cause : null;
+  const message =
+    err instanceof Error
+      ? err.message.startsWith("Failed query:") && cause
+        ? `Database error: ${cause.message}`
+        : err.message
+      : String(err);
   // Log only the message: MSAL/Graph error objects can carry request context
   // (token request bodies, credentials) that must never reach the logs.
   console.error("[sync]", message);
@@ -401,7 +411,7 @@ export const runSync = async (
                 secretAad(adobeConn!.tenantId, "adobe", "clientSecretEnc"),
               ),
             });
-        adobeRows = await adobeClient.getUsers();
+        adobeRows = mergeAdobeUsers(await adobeClient.getUsers());
         steps.push({
           step: "adobeUsers",
           status: "ok",
@@ -472,7 +482,7 @@ export const runSync = async (
                 secretAad(conn!.tenantId, conn!.provider, "secretEnc"),
               ),
             });
-        const seats = await saasClient.getSeats();
+        const seats = mergeSaasSeats(await saasClient.getSeats());
         saasRows.set(provider, seats);
         saasPersist.add(provider);
         steps.push({
