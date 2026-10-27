@@ -14,7 +14,15 @@ import {
 } from "./summary";
 import { requestDeadline } from "~/server/sync/deadline";
 
-export type SetupStep = "connect" | "deploy" | "waiting" | "done";
+export type SetupStep =
+  | "connect"
+  | "deploy"
+  /** Several packages run the collector and none is chosen. */
+  | "choose"
+  | "waiting"
+  | "done"
+  /** Intune could not be read; the step is unknown, never "deploy again". */
+  | "unavailable";
 
 /** Everything the three metering pages need, from one cached live read. */
 export async function loadMetering(ctx: AccessContext) {
@@ -51,11 +59,15 @@ export async function loadMetering(ctx: AccessContext) {
     ? "done"
     : !linked
       ? "connect"
-      : !report?.collector
-        ? "deploy"
-        : summary && summary.reporting > 0
-          ? "done"
-          : "waiting";
+      : !report
+        ? "unavailable"
+        : !report.collector
+          ? report.collectors.length > 1
+            ? "choose"
+            : "deploy"
+          : summary && summary.reporting > 0
+            ? "done"
+            : "waiting";
   return {
     connection,
     demo,

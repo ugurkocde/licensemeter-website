@@ -269,6 +269,34 @@ describe("isolated metering Graph reads", () => {
     expect(new URL(url as string).pathname).toBe("/beta/$batch");
     expect(init?.method).toBe("POST");
   });
+  it("reads program names with brackets", async () => {
+    const script = Buffer.from(
+      await collectorScript(["app (x86).exe", "acad.exe"]),
+    ).toString("base64");
+    expect(parseCollector(script)?.programs).toEqual([
+      "app (x86).exe",
+      "acad.exe",
+    ]);
+  });
+  it("skips a deleted package but fails on a throttled one", async () => {
+    const listed = response({ value: [{ id, displayName: "Pilot" }] });
+    fetchMock
+      .mockResolvedValueOnce(listed)
+      .mockResolvedValueOnce(
+        response({ responses: [{ id: "0", status: 404, body: {} }] }),
+      );
+    expect(await new MeteringGraphClient("test").collectors()).toEqual([]);
+    fetchMock
+      .mockResolvedValueOnce(
+        response({ value: [{ id, displayName: "Pilot" }] }),
+      )
+      .mockResolvedValueOnce(
+        response({ responses: [{ id: "0", status: 429, body: {} }] }),
+      );
+    await expect(
+      new MeteringGraphClient("test").collectors(),
+    ).rejects.toMatchObject({ code: "throttled" });
+  });
   it("ignores scripts that are not the collector or carry invalid names", () => {
     const encode = (text: string) => Buffer.from(text).toString("base64");
     expect(parseCollector(encode("$CatalogId = 'a1b2c3d4'"))).toBeNull();

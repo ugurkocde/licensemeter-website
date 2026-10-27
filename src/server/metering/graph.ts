@@ -166,7 +166,8 @@ export function parseCollector(
   }
   if (!script.includes(COLLECTOR_MARKER)) return null;
   const id = /^\$CatalogId = '([0-9a-f]{8})'\r?$/m.exec(script)?.[1];
-  const list = /^\$Programs = @\(([^)\r\n]*)\)\r?$/m.exec(script)?.[1];
+  // Greedy: program names may contain brackets; quotes delimit each name.
+  const list = /^\$Programs = @\((.*)\)\r?$/m.exec(script)?.[1];
   if (!id || list === undefined) return null;
   const programs = [...list.matchAll(/'([^']*)'/g)].map((m) => m[1]!);
   if (!programs.length || programs.some((name) => !PROGRAM.test(name)))
@@ -318,7 +319,19 @@ export class MeteringGraphClient implements MeteringSource {
       for (const response of parsed.data.responses) {
         const pkg = chunk[Number(response.id)];
         const content = scriptSchema.safeParse(response.body);
-        if (!pkg || response.status !== 200 || !content.success) continue;
+        // A package deleted since the list was read is simply gone. Any other
+        // failure must not make the collector look absent.
+        if (!pkg || response.status === 404) continue;
+        if (response.status !== 200 || !content.success)
+          throw new MeteringError(
+            response.status === 429
+              ? "throttled"
+              : response.status === 403
+                ? "forbidden"
+                : response.status === 401
+                  ? "consent"
+                  : "response",
+          );
         const collector = parseCollector(
           content.data.detectionScriptContent ?? "",
         );

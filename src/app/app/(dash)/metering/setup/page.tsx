@@ -83,10 +83,14 @@ export default async function MeteringSetupPage({
         overQuantity={ctx.entitlement.state === "overQuantity"}
       />
     );
-  const error = typeof sp.error === "string" ? ERRORS[sp.error] : null;
+  const error =
+    typeof sp.error === "string" && Object.hasOwn(ERRORS, sp.error)
+      ? ERRORS[sp.error]
+      : null;
   const { connection, report, summary, step } = view;
   const connected = step !== "connect";
   const collector = report?.collector ?? null;
+  const several = !collector && (report?.collectors.length ?? 0) > 1;
 
   if (view.demo || !view.admin)
     return (
@@ -209,6 +213,16 @@ export default async function MeteringSetupPage({
                   ({collector.programs.length} program files).
                 </p>
               )
+            ) : step === "unavailable" ? (
+              <p className="text-ink-soft">
+                Intune could not be read just now, so the collector status is
+                unknown. Try “Read latest results” in a moment.
+              </p>
+            ) : several ? (
+              <p className="text-waste-text">
+                Several Remediations packages run the collector. Choose the one
+                to read under Settings below.
+              </p>
             ) : (
               <p className="text-ink-soft">
                 LicenseMeter has not found the collector in Intune yet. It looks
@@ -229,7 +243,7 @@ export default async function MeteringSetupPage({
               </ButtonAnchor>
               <MeteringRefresh />
             </div>
-            {!collector && (
+            {!collector && !several && step !== "unavailable" && (
               <ol className="text-ink-soft list-decimal space-y-1 pl-5">
                 <li>
                   Turn on <strong>Audit Process Creation (Success)</strong> for
@@ -256,11 +270,6 @@ export default async function MeteringSetupPage({
                   <strong>Read latest results</strong>.
                 </li>
               </ol>
-            )}
-            {(report?.collectors.length ?? 0) > 1 && !collector && (
-              <p className="text-waste-text">
-                Several packages run the collector. Choose one under Settings.
-              </p>
             )}
           </>
         )}

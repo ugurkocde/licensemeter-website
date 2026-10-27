@@ -110,7 +110,10 @@ export function MeteringNotices({ view }: { view: MeteringView }) {
   );
 }
 
-const STEPS: { key: Exclude<SetupStep, "done">; label: string }[] = [
+const STEPS: {
+  key: Exclude<SetupStep, "done" | "choose" | "unavailable">;
+  label: string;
+}[] = [
   { key: "connect", label: "Connect to Microsoft" },
   { key: "deploy", label: "Deploy the collector in Intune" },
   { key: "waiting", label: "First device report" },
@@ -118,7 +121,14 @@ const STEPS: { key: Exclude<SetupStep, "done">; label: string }[] = [
 
 /** Where setup stands, as three ticked or pending steps. */
 export function SetupProgress({ step }: { step: SetupStep }) {
-  const reached = step === "done" ? 3 : STEPS.findIndex((s) => s.key === step);
+  // Choosing among several packages is part of deploying; an unreadable
+  // tenant is at least connected.
+  const reached =
+    step === "done"
+      ? 3
+      : step === "choose" || step === "unavailable"
+        ? 1
+        : STEPS.findIndex((s) => s.key === step);
   return (
     <ol className="flex flex-col gap-2">
       {STEPS.map((item, index) => {
@@ -161,15 +171,17 @@ export function SetupProgress({ step }: { step: SetupStep }) {
 
 /** Shown on the dashboard until setup is complete. */
 export function FinishSetup({ view }: { view: MeteringView }) {
-  const text: Record<Exclude<SetupStep, "done">, string> = {
+  const text: Record<Exclude<SetupStep, "done" | "unavailable">, string> = {
     connect:
       "Connect the separate, read-only Software Metering app to your Microsoft tenant.",
     deploy:
       "Download the collector and add it to Intune as a Remediations script. LicenseMeter finds it automatically.",
+    choose:
+      "Several Remediations packages run the collector. Choose the one LicenseMeter reads in Setup.",
     waiting:
       "The collector is deployed. The first device results can take a few hours to appear in Intune.",
   };
-  if (view.step === "done") return null;
+  if (view.step === "done" || view.step === "unavailable") return null;
   return (
     <Card title="Finish setup">
       <div className="grid gap-6 sm:grid-cols-[1fr_auto] sm:items-center">
