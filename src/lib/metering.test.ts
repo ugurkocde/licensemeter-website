@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   lastStart,
   meteringSignal,
+  meteringAccess,
   METERING_SCOPES,
   parseMeteringOutput,
   startsLastDay,
@@ -135,10 +136,30 @@ describe("metering evidence", () => {
 });
 
 describe("permissions", () => {
-  it("keeps metering read-only and separate from the five base connector permissions", () => {
-    expect(METERING_SCOPES.every((scope) => scope.endsWith(".Read.All"))).toBe(
-      true,
+  it("writes only scripts, and keeps devices and apps read-only", () => {
+    expect(
+      METERING_SCOPES.filter((scope) => !scope.endsWith(".Read.All")),
+    ).toEqual(["DeviceManagementScripts.ReadWrite.All"]);
+  });
+  it("accepts the write set or the earlier read-only set, nothing else", () => {
+    const base = [
+      "DeviceManagementManagedDevices.Read.All",
+      "DeviceManagementApps.Read.All",
+    ];
+    expect(meteringAccess([...METERING_SCOPES])).toEqual({
+      ok: true,
+      canWrite: true,
+    });
+    expect(
+      meteringAccess([...base, "DeviceManagementScripts.Read.All"]),
+    ).toEqual({ ok: true, canWrite: false });
+    expect(meteringAccess(base).ok).toBe(false);
+    expect(meteringAccess([...METERING_SCOPES, "User.Read.All"]).ok).toBe(
+      false,
     );
+    expect(meteringAccess(undefined).ok).toBe(false);
+  });
+  it("leaves the five base connector permissions unchanged", () => {
     expect(CONNECTOR_SCOPES.map((item) => item.scope)).toEqual([
       "User.Read.All",
       "AuditLog.Read.All",

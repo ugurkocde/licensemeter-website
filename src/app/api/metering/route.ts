@@ -16,6 +16,7 @@ import {
   MeteringError,
   verifyMeteringConsent,
 } from "~/server/metering/graph";
+import { generateCollector } from "~/server/metering/collector";
 import { forgetMetering, readMetering } from "~/server/metering/live";
 import { rateLimitDurable } from "~/server/rateLimit";
 import { requestDeadline } from "~/server/sync/deadline";
@@ -35,6 +36,12 @@ const command = z.discriminatedUnion("action", [
   z.object({ action: z.literal("enable") }),
   z.object({ action: z.literal("disable") }),
   z.object({ action: z.literal("refresh") }),
+  // Write in Intune, only for LicenseMeter's own collector package.
+  z.object({
+    action: z.literal("deploy"),
+    assign: z.enum(["all", "none"]),
+  }),
+  z.object({ action: z.literal("update") }),
   z.object({ action: z.literal("verify") }),
   z.object({
     action: z.literal("configure"),
@@ -173,6 +180,38 @@ export async function POST(req: Request) {
           provider: "windows_metering",
           days: data.inactivityDays,
         });
+      } else if (data.action === "deploy" || data.action === "update") {
+        const client = await meteringClient(connection.tid, requestDeadline());
+        if (!client.canWrite) throw new MeteringError("write");
+        const existing = await client.collectors();
+        const chosen =
+          existing.find(
+            (pkg) => pkg.id === connection.scriptId?.toLowerCase(),
+          ) ?? (existing.length === 1 ? existing[0] : undefined);
+        if (data.action === "deploy" && existing.length)
+          return fail(
+            "The collector already runs in Intune. Update it instead.",
+            409,
+          );
+        if (data.action === "update" && !chosen)
+          return fail("Choose the collector package in Setup first.", 409);
+        const generated = await generateCollector(
+          connection,
+          requestDeadline(),
+        );
+        if (data.action === "deploy") {
+          await client.createCollector(generated.script, data.assign === "all");
+          await audit(ctx, "metering_collector_created", {
+            assigned: data.assign,
+            programs: generated.programs.length,
+          });
+        } else {
+          await client.updateCollector(chosen!.id, generated.script);
+          await audit(ctx, "metering_collector_updated", {
+            programs: generated.programs.length,
+          });
+        }
+        forgetMetering(connection.id);
       } else if (data.action === "apps") {
         const overrides = Object.fromEntries(
           Object.entries(data.overrides)

@@ -1,0 +1,7 @@
+{
+  "title": "Create and update the metering collector in Intune",
+  "summary": "Software Metering setup can now create the Intune Remediations package for you, with the right settings, and update its script when new apps need watching, each with one confirmed click. LicenseMeter only ever writes its own collector package, and every write appears in the activity log. This needs an updated permission on the separate Software Metering app: workspaces connected before are asked to approve it once, and until then they keep downloading the collector and adding it themselves. The Microsoft 365 connection stays read-only.",
+  "type": "new",
+  "publishedOn": "2026-10-27",
+  "idempotencyKey": "licensemeter:software-metering-create-in-intune"
+}

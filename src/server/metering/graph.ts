@@ -1,14 +1,14 @@
 import { ConfidentialClientApplication } from "@azure/msal-node";
 import { z } from "zod";
 import { env } from "~/env";
-import { GUID, METERING_SCOPES, PROGRAM } from "~/lib/metering";
+import { GUID, meteringAccess, PROGRAM } from "~/lib/metering";
 
 const GRAPH = "https://graph.microsoft.com/beta";
 export const METERING_ERRORS: Record<string, string> = {
   configuration:
     "Software Metering is not configured on this installation. Ask the operator to configure its separate Microsoft application.",
   consent:
-    "Metering access could not be verified. Grant all three metering permissions, allow a few minutes for consent to propagate, then retry.",
+    "Metering access could not be verified. Grant the metering permissions, allow a few minutes for consent to propagate, then retry.",
   forbidden:
     "Microsoft denied metering access. Check consent, Intune licensing, and tenant access policies.",
   missing:
@@ -18,6 +18,10 @@ export const METERING_ERRORS: Record<string, string> = {
   throttled: "Microsoft temporarily limited requests. Retry later.",
   response: "Microsoft returned an unexpected metering response. Retry later.",
   changed: "Metering settings changed during the request. Try again.",
+  programs:
+    "No assigned Windows app in Intune has a known program file yet. Add program files on the Apps page.",
+  write:
+    "LicenseMeter cannot change scripts in Intune yet. Approve the updated metering permissions, or download the collector and add it yourself.",
 };
 export class MeteringError extends Error {
   constructor(public code: string) {
@@ -120,6 +124,8 @@ export interface CollectorPackage {
   programs: string[];
 }
 export interface MeteringSource {
+  /** Whether consent includes write on scripts (create and update the collector). */
+  readonly canWrite?: boolean;
   packages(this: void): Promise<MeteringPackage[]>;
   /** Packages running the collector, read from their deployed scripts. */
   collectors(this: void): Promise<CollectorPackage[]>;
@@ -182,17 +188,23 @@ export class MeteringGraphClient implements MeteringSource {
   constructor(
     private token: string,
     private deadline = Date.now() + 240_000,
+    /** True only when the token holds DeviceManagementScripts.ReadWrite.All. */
+    readonly canWrite = false,
   ) {}
 
   /** One request with bounded retries for throttling and transient errors. */
-  private async request(url: string, body?: unknown): Promise<unknown> {
+  private async request(
+    url: string,
+    body?: unknown,
+    method?: "POST" | "PATCH",
+  ): Promise<unknown> {
     let response: Response | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       const remaining = this.deadline - Date.now();
       if (remaining <= 0) throw new MeteringError("timeout");
       try {
         response = await fetch(url, {
-          method: body === undefined ? "GET" : "POST",
+          method: method ?? (body === undefined ? "GET" : "POST"),
           headers: {
             Authorization: `Bearer ${this.token}`,
             ...(body === undefined
@@ -233,6 +245,7 @@ export class MeteringGraphClient implements MeteringSource {
               ? "missing"
               : "response",
       );
+    if (response.status === 204) return null;
     try {
       return await response.json();
     } catch {
@@ -344,6 +357,69 @@ export class MeteringGraphClient implements MeteringSource {
       }
     }
     return found.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  /**
+   * Creates the collector package as detection-only, SYSTEM, 64-bit. With
+   * assignAll it is assigned to all devices hourly; otherwise the Admin
+   * assigns it in Intune. Only ever called for LicenseMeter's own script.
+   */
+  async createCollector(script: string, assignAll: boolean): Promise<string> {
+    if (!this.canWrite) throw new MeteringError("write");
+    const url = checkedMeteringUrl(
+      GRAPH + "/deviceManagement/deviceHealthScripts",
+      "/deviceManagement/deviceHealthScripts",
+    );
+    const created = z.object({ id: z.string().regex(GUID) }).safeParse(
+      await this.request(url, {
+        "@odata.type": "#microsoft.graph.deviceHealthScript",
+        displayName: "LicenseMeter Software Metering collector",
+        description:
+          "Reports which Intune-deployed Windows apps were started. Generated and managed by LicenseMeter. Detection only; changes nothing on devices.",
+        publisher: "LicenseMeter",
+        detectionScriptContent: Buffer.from(script).toString("base64"),
+        runAsAccount: "system",
+        enforceSignatureCheck: false,
+        runAs32Bit: false,
+      }),
+    );
+    if (!created.success) throw new MeteringError("response");
+    const id = created.data.id.toLowerCase();
+    if (assignAll) {
+      const path = `/deviceManagement/deviceHealthScripts/${id}/assign`;
+      await this.request(checkedMeteringUrl(GRAPH + path, path), {
+        deviceHealthScriptAssignments: [
+          {
+            "@odata.type": "#microsoft.graph.deviceHealthScriptAssignment",
+            target: {
+              "@odata.type": "#microsoft.graph.allDevicesAssignmentTarget",
+            },
+            runRemediationScript: false,
+            runSchedule: {
+              "@odata.type":
+                "#microsoft.graph.deviceHealthScriptHourlySchedule",
+              interval: 1,
+            },
+          },
+        ],
+      });
+    }
+    return id;
+  }
+  /** Replaces the detection script of a package already identified as the collector. */
+  async updateCollector(id: string, script: string): Promise<void> {
+    if (!this.canWrite) throw new MeteringError("write");
+    if (!GUID.test(id)) throw new MeteringError("missing");
+    if (!(await this.collectors()).some((pkg) => pkg.id === id.toLowerCase()))
+      throw new MeteringError("missing");
+    const path = `/deviceManagement/deviceHealthScripts/${id}`;
+    await this.request(
+      checkedMeteringUrl(GRAPH + path, path),
+      {
+        "@odata.type": "#microsoft.graph.deviceHealthScript",
+        detectionScriptContent: Buffer.from(script).toString("base64"),
+      },
+      "PATCH",
+    );
   }
   devices() {
     return this.list(
@@ -483,13 +559,14 @@ export async function meteringClient(
     if (
       !claims.oid ||
       claims.tid?.toLowerCase() !== tid.toLowerCase() ||
-      !METERING_SCOPES.every((scope) => claims.roles?.includes(scope)) ||
-      claims.roles?.some(
-        (role) => !METERING_SCOPES.some((scope) => scope === role),
-      )
+      !meteringAccess(claims.roles).ok
     )
       throw new MeteringError("consent");
-    return new MeteringGraphClient(token.accessToken, deadline);
+    return new MeteringGraphClient(
+      token.accessToken,
+      deadline,
+      meteringAccess(claims.roles).canWrite,
+    );
   } catch (err) {
     throw err instanceof MeteringError ? err : new MeteringError("consent");
   }

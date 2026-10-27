@@ -136,9 +136,12 @@ export type DpaDoc = {
 // ID only, already covered by the Microsoft row, so no sub-processor was added.
 // 2.2: added optional Windows metering metadata and permissions. Metering
 // results are read live and not stored.
-export const DPA_VERSION = "2.2";
-const EFFECTIVE_EN = "3 October 2026";
-const EFFECTIVE_DE = "3. Oktober 2026";
+// 2.3: the optional metering application may create and update the
+// Service's own collector script in Intune, only when an Admin starts it.
+// The Microsoft 365 connection stays read-only.
+export const DPA_VERSION = "2.3";
+const EFFECTIVE_EN = "27 October 2026";
+const EFFECTIVE_DE = "27. Oktober 2026";
 
 const PROCESSOR_NAME = "Ugurlabs UG (haftungsbeschränkt)";
 const PROCESSOR_REGISTER: Record<DpaLang, string> = {
@@ -318,7 +321,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
     1: [
       "Every request resolves the signed-in user's workspace membership on the server, and data is read and written scoped to that workspace. Identifiers sent by the browser are never trusted on their own.",
       "In the hosted database, row-level security is enabled on every table. The application connects with a dedicated role that holds data manipulation rights only and owns no tables. The database provider's public Data API roles have no policy and no grants, so they cannot read or write anything.",
-      "Access to the Microsoft 365 tenant is read-only: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All and ReportSettings.Read.All. Optional Software Metering uses a separate application and consent for DeviceManagementScripts.Read.All, DeviceManagementManagedDevices.Read.All and DeviceManagementApps.Read.All. These permissions are tenant-wide; the Service reads only the selected package’s validated metering output. The Service holds no write permission and cannot change anything in the tenant. Remediation scripts are generated for the controller to review and run itself; the Service never executes them.",
+      "Access to the Microsoft 365 tenant is read-only: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All and ReportSettings.Read.All. Optional Software Metering uses a separate application and consent for DeviceManagementScripts.ReadWrite.All, DeviceManagementManagedDevices.Read.All and DeviceManagementApps.Read.All. These permissions are tenant-wide; the Service reads metering output only from the Remediations package that runs its collector. It uses the write permission solely to create that package or replace its detection script with the collector it generates, and only when a workspace Admin starts the action; each write is recorded in the activity log. Apart from that, the Service holds no write permission and cannot change anything in the tenant. Remediation scripts for license clean-up are generated for the controller to review and run itself; the Service never executes them.",
       "State-changing routes check the request origin, and sensitive endpoints such as synchronization, invitations and the support form are rate limited with counters kept in the database.",
       "A content security policy, a ban on framing, MIME sniffing protection, a referrer policy and a permissions policy are sent with every response.",
       "Synchronization tolerates missing optional permissions, and only one synchronization can run per workspace at a time.",
@@ -386,7 +389,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
     1: [
       "Jede Anfrage ermittelt auf dem Server die Arbeitsbereichs-Mitgliedschaft des angemeldeten Nutzers; Daten werden nur im Rahmen dieses Arbeitsbereichs gelesen und geschrieben. Vom Browser gesendeten Kennungen wird für sich genommen nie vertraut.",
       "In der gehosteten Datenbank ist Row-Level-Security auf jeder Tabelle aktiviert. Die Anwendung verbindet sich mit einer eigenen Rolle, die nur Rechte zur Datenbearbeitung besitzt und keine Tabellen besitzt. Die öffentlichen Data-API-Rollen des Datenbankanbieters haben weder Policy noch Rechte und können daher nichts lesen oder schreiben.",
-      "Der Zugriff auf den Microsoft-365-Tenant ist ausschließlich lesend: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All und ReportSettings.Read.All. Optionales Software Metering verwendet eine separate Anwendung und Zustimmung für DeviceManagementScripts.Read.All, DeviceManagementManagedDevices.Read.All und DeviceManagementApps.Read.All. Diese Berechtigungen gelten tenantweit; der Dienst liest nur die validierte Metering-Ausgabe des ausgewählten Pakets. Der Dienst besitzt keine Schreibberechtigung und kann im Tenant nichts verändern. Skripte zur Bereinigung werden erzeugt, damit der Verantwortliche sie prüft und selbst ausführt; der Dienst führt sie nie aus.",
+      "Der Zugriff auf den Microsoft-365-Tenant ist ausschließlich lesend: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All und ReportSettings.Read.All. Optionales Software Metering verwendet eine separate Anwendung und Zustimmung für DeviceManagementScripts.ReadWrite.All, DeviceManagementManagedDevices.Read.All und DeviceManagementApps.Read.All. Diese Berechtigungen gelten tenantweit; der Dienst liest Metering-Ausgaben nur aus dem Remediations-Paket, das seinen Collector ausführt. Die Schreibberechtigung nutzt er ausschließlich, um dieses Paket anzulegen oder sein Erkennungsskript durch den von ihm erzeugten Collector zu ersetzen, und nur wenn ein Admin des Arbeitsbereichs die Aktion auslöst; jeder Schreibvorgang wird im Aktivitätsprotokoll erfasst. Darüber hinaus besitzt der Dienst keine Schreibberechtigung und kann im Tenant nichts verändern. Skripte zur Lizenzbereinigung werden erzeugt, damit der Verantwortliche sie prüft und selbst ausführt; der Dienst führt sie nie aus.",
       "Zustandsändernde Routen prüfen die Herkunft der Anfrage; sensible Endpunkte wie Synchronisierung, Einladungen und das Support-Formular sind ratenbegrenzt, die Zähler liegen in der Datenbank.",
       "Mit jeder Antwort werden eine Content Security Policy, ein Framing-Verbot, ein Schutz vor MIME-Sniffing, eine Referrer-Policy und eine Permissions-Policy gesendet.",
       "Die Synchronisierung kommt mit fehlenden optionalen Berechtigungen zurecht, und je Arbeitsbereich kann nur eine Synchronisierung gleichzeitig laufen.",

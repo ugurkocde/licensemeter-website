@@ -13,6 +13,8 @@ const ACTION_LABELS: Record<string, string> = {
   export_metering_csv: "Metering CSV exported",
   metering_apps_changed: "Metering app list changed",
   metering_collector_downloaded: "Metering collector downloaded",
+  metering_collector_created: "Metering collector created in Intune",
+  metering_collector_updated: "Metering collector updated in Intune",
   finding_status_changed: "Finding status changed",
   finding_workflow_updated: "Finding workflow updated",
   findings_bulk_updated: "Findings updated in bulk",

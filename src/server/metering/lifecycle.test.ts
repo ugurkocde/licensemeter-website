@@ -383,6 +383,8 @@ describe("Pro plan boundary", () => {
       { action: "verify" },
       { action: "refresh" },
       { action: "configure", scriptId, inactivityDays: 60 },
+      { action: "deploy", assign: "none" },
+      { action: "update" },
     ])
       expect((await post(body)).status).toBe(402);
     expect(verify).not.toHaveBeenCalled();

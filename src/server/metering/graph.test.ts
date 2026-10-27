@@ -319,14 +319,73 @@ describe("isolated metering Graph reads", () => {
       settings.METERING_CLIENT_ID = previous;
     }
   });
+  it("writes the collector only with write consent, and only a known collector", async () => {
+    await expect(
+      new MeteringGraphClient("test").createCollector("script", false),
+    ).rejects.toMatchObject({ code: "write" });
+    await expect(
+      new MeteringGraphClient("test").updateCollector(id, "script"),
+    ).rejects.toMatchObject({ code: "write" });
+    const created = "44444444-4444-4444-4444-444444444444";
+    fetchMock
+      .mockResolvedValueOnce(response({ id: created }, 201))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    expect(
+      await new MeteringGraphClient("test", undefined, true).createCollector(
+        "script",
+        true,
+      ),
+    ).toBe(created);
+    const [, createInit] = fetchMock.mock.calls[0]!;
+    expect(JSON.parse(createInit!.body as string)).toMatchObject({
+      runAsAccount: "system",
+      runAs32Bit: false,
+      detectionScriptContent: Buffer.from("script").toString("base64"),
+    });
+    const [assignUrl, assignInit] = fetchMock.mock.calls[1]!;
+    expect(new URL(assignUrl as string).pathname).toBe(
+      `/beta/deviceManagement/deviceHealthScripts/${created}/assign`,
+    );
+    expect(JSON.parse(assignInit!.body as string)).toMatchObject({
+      deviceHealthScriptAssignments: [
+        {
+          runRemediationScript: false,
+          runSchedule: { interval: 1 },
+        },
+      ],
+    });
+    // An unknown package is never written.
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce(response({ value: [] }))
+      .mockResolvedValueOnce(response({ responses: [] }));
+    await expect(
+      new MeteringGraphClient("test", undefined, true).updateCollector(
+        id,
+        "script",
+      ),
+    ).rejects.toMatchObject({ code: "missing" });
+    expect(
+      fetchMock.mock.calls.every(([, init]) => init?.method !== "PATCH"),
+    ).toBe(true);
+  });
   it("accepts exactly the metering roles in the bound tenant", async () => {
     const token = (roles: string[], tid = id) => ({
       accessToken: `header.${Buffer.from(JSON.stringify({ tid, oid: id, roles })).toString("base64url")}.signature`,
     });
     acquire.mockResolvedValue(token([...METERING_SCOPES]));
-    await expect(meteringClient(id)).resolves.toBeInstanceOf(
-      MeteringGraphClient,
+    const writer = await meteringClient(id);
+    expect(writer).toBeInstanceOf(MeteringGraphClient);
+    expect(writer.canWrite).toBe(true);
+    // Consent from before write was added still reads, without automation.
+    acquire.mockResolvedValue(
+      token([
+        "DeviceManagementScripts.Read.All",
+        "DeviceManagementManagedDevices.Read.All",
+        "DeviceManagementApps.Read.All",
+      ]),
     );
+    expect((await meteringClient(id)).canWrite).toBe(false);
     for (const value of [
       token([METERING_SCOPES[0]]),
       token([...METERING_SCOPES, "User.Read.All"]),

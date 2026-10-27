@@ -53,18 +53,18 @@ Create a **new** Microsoft Entra application registration for Software Metering.
 1. Select accounts in any organizational directory for a multi-tenant deployment.
 2. Add a Web redirect URI of `https://YOUR-APP-HOST/api/connect/metering/callback`. Use the public origin configured for your installation.
 3. Under Microsoft Graph, add only these **Application** permissions:
-   - `DeviceManagementScripts.Read.All`: find the Remediations package that runs the collector and read its results.
+   - `DeviceManagementScripts.ReadWrite.All`: find the Remediations package that runs the collector and read its results, and create that package or update its script when an Admin asks for it in Setup.
    - `DeviceManagementManagedDevices.Read.All`: read device identifiers, names and operating systems.
    - `DeviceManagementApps.Read.All`: read the assigned Intune apps and their per-device install status.
-4. Remove default permissions that the registration does not need. No Graph write permissions are needed.
+4. Remove default permissions that the registration does not need. The only write permission is on scripts, used for LicenseMeter's own collector package.
 5. Create a client secret and configure `METERING_CLIENT_ID` and `METERING_CLIENT_SECRET` in the server environment. Keep the secret server-side and rotate it through your normal process.
 6. Deploy the database migration and application together. Docker applies committed migrations on startup. The metering migrations add tables for the metering settings and pending consent only; device results are never stored. They enable row-level security and install policies for the existing application and tenant roles. Hosted operators must apply both the table and policy migrations through their approved schema process before serving the new application. Confirm the policies match any custom role configuration.
 
-Do not reuse the sign-in or Microsoft 365 connector application. Do not add these permissions to the base connector. The implementation rejects a reused application ID and access tokens containing additional application roles.
+Do not reuse the sign-in or Microsoft 365 connector application. Do not add these permissions to the base connector. The implementation rejects a reused application ID and access tokens containing additional application roles. Consent granted with `DeviceManagementScripts.Read.All` instead of the write permission keeps working; Setup then only offers the download, and asks to approve the updated permissions to enable creating and updating the package.
 
 Microsoft supports incremental consent for delegated permissions. Application-permission consent using `.default` covers the application's configured permissions. A separate application keeps metering consent optional and independently revocable. See [Microsoft's consent model](https://learn.microsoft.com/en-us/entra/identity-platform/consent-types-developer) and [admin consent endpoint](https://learn.microsoft.com/en-us/entra/identity-platform/v2-admin-consent).
 
-The permissions are tenant-wide and read-only. LicenseMeter identifies the collector by its script, reads results only from that package, and does not keep any other script. The permission itself is not narrowed: the scripts permission can read other Intune scripts and results. Device reads include metadata for the tenant's managed devices. The Intune install status report can include user names; LicenseMeter requests only the device and install state columns and rejects any response that contains other columns.
+The device and app permissions are read-only; the scripts permission includes write. All three are tenant-wide. LicenseMeter identifies the collector by its script, reads results only from that package, and does not keep any other script. The permission itself is not narrowed: the scripts permission can read other Intune scripts and results. Device reads include metadata for the tenant's managed devices. The Intune install status report can include user names; LicenseMeter requests only the device and install state columns and rejects any response that contains other columns.
 
 ## Customer setup
 
@@ -92,13 +92,15 @@ The collector checks this policy without changing it. It reads process creation 
 
 ### 3. Deploy the detection script
 
-After consent, select **Download collector** in step 2 of Setup. LicenseMeter generates **Collect-LicenseMeterUsage.ps1** with the program files of your metered apps built in; the list is visible at the top of the script. Review the script, then create an Intune Remediations package with:
+In **Setup**, step 2, select **Create in Intune** to let LicenseMeter create the Remediations package for you: detection script only, SYSTEM, 64-bit. Choose whether to assign it to all devices hourly, or to assign it yourself in Intune, which is recommended for a pilot group. LicenseMeter writes only this one package and only when you confirm. The action appears in the activity log.
+
+To add it yourself instead, select **Download collector**. LicenseMeter generates **Collect-LicenseMeterUsage.ps1** with the program files of your metered apps built in; the list is visible at the top of the script. Review the script, then create an Intune Remediations package with:
 
 - The downloaded file as the detection script, with no remediation script.
 - **Run this script using the logged-on credentials: No**, so it runs as SYSTEM.
 - **Run script in 64-bit PowerShell: Yes**.
 - An hourly schedule, initially assigned only to a small Windows pilot group. Hourly runs keep the interval between event reads short, so a normally sized Security log does not roll over between runs.
-- Signature enforcement consistent with your policy. The downloaded script is unsigned; sign it with a trusted organizational certificate if your policy requires signatures.
+- Signature enforcement consistent with your policy. The downloaded script is unsigned; sign it with a trusted organizational certificate if your policy requires signatures. Packages that LicenseMeter creates do not enforce signatures.
 
 The script exits with code 0 and emits a small JSON report: the started programs with their last start and starts in the last 24 hours, the coverage period, health and the version of its program list. It never reports paths, command lines or user names. It does not remediate devices. Microsoft limits script output to 2,048 characters; the script reports only started programs, and if a device ever exceeds the limit it drops the oldest starts and marks the report as truncated, so those apps show no data instead of a false "not started". Do not edit the script.
 
@@ -116,7 +118,7 @@ Reads are capped at 50,000 returned rows and 500 pages per resource, with bounde
 
 ### 5. Keep the app list current
 
-When apps are added to Intune or you change program files, devices keep running the collector you deployed. LicenseMeter reads the deployed script, so it knows exactly which apps it watches. Apps it does not watch yet show **Not watched yet**, and Setup lists them. Download the collector again and replace the detection script in the same Remediations package. The assignment stays, and devices switch on their next run. Coverage for apps already watched continues; newly added apps start collecting from that run.
+When apps are added to Intune or you change program files, devices keep running the collector you deployed. LicenseMeter reads the deployed script, so it knows exactly which apps it watches. Apps it does not watch yet show **Not watched yet**, and Setup lists them. Select **Update in Intune** in Setup to replace the detection script in the same package, or download the collector again and replace it yourself. The assignment stays, and devices switch on their next run. Coverage for apps already watched continues; newly added apps start collecting from that run.
 
 ## Troubleshooting
 
