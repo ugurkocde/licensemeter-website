@@ -16,7 +16,7 @@ export type BillingActionResult = { ok: boolean; error?: string };
 
 const fail = (error: string): BillingActionResult => ({ ok: false, error });
 
-const tenantIdSchema = z.string().uuid();
+const tenantIdSchema = z.guid();
 
 const ATTACH_ERRORS: Record<AttachRefusal, string> = {
   demoUser: "The demo workspace is read-only.",

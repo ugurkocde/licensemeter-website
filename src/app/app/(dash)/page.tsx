@@ -59,8 +59,7 @@ export default async function OverviewPage({
   const tenantId = ctx.tenant.id;
   const params = await searchParams;
   const successRequest =
-    !ctx.user.isDemo &&
-    z.string().uuid().safeParse(params.accessRequest).success
+    !ctx.user.isDemo && z.guid().safeParse(params.accessRequest).success
       ? await ownAccessRequest(db, ctx.user.oid, params.accessRequest!)
       : null;
   const confirmation =

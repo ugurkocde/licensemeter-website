@@ -25,7 +25,7 @@ export const applyDeliveryEvent = async (input: unknown): Promise<void> => {
   const status = deliveryStatusForEvent(type);
   if (!status) return;
   // The tag covers an event that arrives before the provider id was stored.
-  const tagged = z.string().uuid().safeParse(data.tags?.[DELIVERY_TAG]);
+  const tagged = z.guid().safeParse(data.tags?.[DELIVERY_TAG]);
 
   await db.transaction(async (tx) => {
     const rows = await tx

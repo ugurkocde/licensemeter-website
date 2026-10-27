@@ -70,7 +70,7 @@ export const polarSubscriptionSchema = z
       .object({ external_id: z.string().nullish() })
       .passthrough()
       .nullish(),
-    metadata: z.record(z.unknown()).nullish(),
+    metadata: z.record(z.string(), z.unknown()).nullish(),
     /** Null for a product without seat-based pricing. */
     seats: z.number().int().nullish(),
     current_period_end: timestamp.nullish(),

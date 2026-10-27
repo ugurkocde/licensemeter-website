@@ -14,11 +14,7 @@ import {
 /** Returns fresh state. Only an existing membership can open the target workspace. */
 export const checkAccessRequest = async (requestId: string) => {
   const session = await auth();
-  if (
-    !session ||
-    session.user.isDemo ||
-    !z.string().uuid().safeParse(requestId).success
-  )
+  if (!session || session.user.isDemo || !z.guid().safeParse(requestId).success)
     return {
       ok: false as const,
       error: "Sign in with the account that requested access and try again.",
@@ -60,11 +56,7 @@ export const checkAccessRequest = async (requestId: string) => {
 /** Acknowledge a decline without deleting the request or reopening access. */
 export const acknowledgeDeclinedRequest = async (requestId: string) => {
   const session = await auth();
-  if (
-    !session ||
-    session.user.isDemo ||
-    !z.string().uuid().safeParse(requestId).success
-  )
+  if (!session || session.user.isDemo || !z.guid().safeParse(requestId).success)
     return {
       ok: false as const,
       error: "Sign in again to acknowledge this request.",

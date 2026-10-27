@@ -8,7 +8,7 @@ export const env = createEnv({
   server: {
     NODE_ENV: z.enum(["development", "test", "production"]),
     SELF_HOSTED: z.enum(["true", "false"]).optional(),
-    CRISP_WEBSITE_ID: z.string().uuid().optional(),
+    CRISP_WEBSITE_ID: z.guid().optional(),
     SUPPORT_TO_EMAIL: z.string().email().optional(),
 
     /**
@@ -59,7 +59,7 @@ export const env = createEnv({
     CONNECTOR_CLIENT_ID: z.string().optional(),
     CONNECTOR_CLIENT_SECRET: z.string().optional(),
     /** Optional, separate metering registration. Never reuse sign-in or core connector IDs. */
-    METERING_CLIENT_ID: z.string().uuid().optional(),
+    METERING_CLIENT_ID: z.guid().optional(),
     METERING_CLIENT_SECRET: z.string().optional(),
 
     /**

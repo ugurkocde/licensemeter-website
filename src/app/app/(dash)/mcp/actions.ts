@@ -23,7 +23,7 @@ export type CreateMcpTokenResult =
 export type RevokeMcpTokenResult = { ok: boolean; error?: string };
 
 const nameSchema = z.string().trim().min(1).max(TOKEN_NAME_MAX);
-const tokenIdSchema = z.string().uuid();
+const tokenIdSchema = z.guid();
 
 type Gate = { ctx: AccessContext } | { error: string };
 

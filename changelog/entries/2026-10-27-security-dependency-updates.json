@@ -1,0 +1,7 @@
+{
+  "title": "Security updates for the web app and Microsoft sign-in",
+  "summary": "LicenseMeter now runs on patched versions of its web framework, image processing, Microsoft sign-in library and input validation, picking up the latest upstream security fixes. Nothing changes in how you use the app. If you self-host LicenseMeter with Docker, rebuild your image from the latest release to get the same fixes.",
+  "type": "maintenance",
+  "publishedOn": "2026-10-27",
+  "idempotencyKey": "licensemeter:security-dependency-updates-2026-10"
+}

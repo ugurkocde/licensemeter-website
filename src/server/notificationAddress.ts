@@ -41,7 +41,7 @@ export const sharedAddressSchema = z
 
 /** Shape of the confirm link; the HMAC-free token is checked against the hash. */
 export const verificationInput = z.object({
-  workspace: z.string().uuid(),
+  workspace: z.guid(),
   token: z.string().regex(/^[0-9a-f]{64}$/),
 });
 

@@ -28,7 +28,7 @@ const submission = z.object({
   message: z.string().trim().min(1).max(10000),
   website: z.string().max(0),
   token: z.string().max(2048).optional(),
-  requestId: z.string().uuid(),
+  requestId: z.guid(),
 });
 const reply = (body: object, status = 200) =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store" } });

@@ -720,7 +720,7 @@ const MEMBERS_DEMO_READONLY =
   "The demo workspace keeps its members fixed. Connect your own tenant to manage people.";
 
 const domainJoinModeSchema = z.enum(["off", "approval", "auto"]);
-const joinRequestIdSchema = z.string().uuid();
+const joinRequestIdSchema = z.guid();
 
 /**
  * Owner-only: how verified colleagues on the workspace's email domain get in.
