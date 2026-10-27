@@ -107,6 +107,7 @@ export default defineConfig({
 				{ label: 'AI API costs', slug: 'ai-costs' },
 				{ label: 'Exports and reports', slug: 'exports' },
 				{ label: 'Renewal calendar', slug: 'renewals' },
+				{ label: 'MCP server', slug: 'mcp' },
 				{
 					label: 'Self-hosting with Docker',
 					items: [

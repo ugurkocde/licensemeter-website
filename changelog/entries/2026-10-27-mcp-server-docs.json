@@ -1,0 +1,8 @@
+{
+  "title": "Setup guide for the MCP server",
+  "summary": "A new documentation page shows how to connect Claude Code, Claude Desktop, GitHub Copilot in VS Code, Cursor and other MCP clients to a Pro or MSP workspace with a read-only token. It lists the four tools, their arguments, how personal data is handled and what each error means. The MCP server page in the app now links to it.",
+  "type": "improved",
+  "publishedOn": "2026-10-27",
+  "idempotencyKey": "licensemeter:mcp-server-setup-docs",
+  "sourceUrl": "https://docs.licensemeter.com/mcp/"
+}

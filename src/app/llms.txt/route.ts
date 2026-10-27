@@ -41,6 +41,7 @@ Operated by Ugurlabs UG and maintained by Ugur Koc, Microsoft MVP for Intune and
 - [Connectors](${base}/connectors): step-by-step setup guides for all ${CONNECTOR_GUIDES.length} connectors (${CONNECTOR_GUIDES.map((g) => g.name).join(", ")})
 - [Support](${base}/support): contact the Ugurlabs team by chat or email
 - [Status](${base}/status): live operational status for LicenseMeter and the infrastructure it relies on
+- [MCP server docs](https://docs.licensemeter.com/mcp/): connect Claude, GitHub Copilot or another MCP client to a Pro or MSP workspace with a read-only token, and the four tools it offers
 `;
   return new Response(body, {
     headers: { "Content-Type": "text/plain; charset=utf-8" },
