@@ -275,17 +275,24 @@ export default async function MeteringSetupPage({
               <MeteringIntuneAction mode="create" />
             )}
             {collector && !summary?.notWatched.length ? (
-              <p className="text-ink-faint text-xs">
-                Nothing to do here.{" "}
-                <a
-                  className="underline"
-                  href="/api/metering/collector"
-                  download
-                >
-                  Download the current collector
-                </a>{" "}
-                if you want to review it.
-              </p>
+              <div className="flex flex-col gap-3">
+                <p className="text-ink-faint text-xs">
+                  {step === "waiting"
+                    ? "Check that the package is assigned to your pilot devices in Intune; until then no device reports. "
+                    : "Nothing to do here. "}
+                  <a
+                    className="underline"
+                    href="/api/metering/collector"
+                    download
+                  >
+                    Download the current collector
+                  </a>{" "}
+                  to review it.
+                </p>
+                <div>
+                  <MeteringRefresh />
+                </div>
+              </div>
             ) : (
               <div className="flex flex-wrap items-center gap-3">
                 <ButtonAnchor
