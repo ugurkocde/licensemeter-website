@@ -1,0 +1,7 @@
+{
+  "title": "Software Metering announcement, a new blog and a clearer pricing page",
+  "summary": "LicenseMeter now has a blog, and its first post explains Software Metering: what it shows for the Windows apps you deploy through Intune, how setup works, how it protects privacy, and what you need to use it. A banner at the top of the website links to the post. The pricing page now shows Software Metering on the Pro and MSP plans, in its own section with a sample report, in the plan comparison and in the FAQ, in English and German.",
+  "type": "new",
+  "publishedOn": "2026-10-27",
+  "idempotencyKey": "licensemeter:2026-10-27-software-metering-announcement"
+}

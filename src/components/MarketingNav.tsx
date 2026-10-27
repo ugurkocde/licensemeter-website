@@ -10,6 +10,7 @@ const ENGLISH = [
   { href: "/connectors", label: "Connectors" },
   { href: "/msp", label: "MSP" },
   { href: "/pricing", label: "Pricing" },
+  { href: "/blog", label: "Blog" },
   { href: "/trust-center", label: "Trust Center" },
   { href: "https://docs.licensemeter.com/", label: "Docs" },
   { href: "/support", label: "Support" },
@@ -38,7 +39,10 @@ export const MarketingNav = () => {
   const navLabel = pathname.startsWith("/de/") ? "Hauptnavigation" : "Main";
   return (
     <>
-      <nav aria-label={navLabel} className="hidden items-center gap-5 lg:flex">
+      <nav
+        aria-label={navLabel}
+        className="hidden items-center gap-3.5 lg:flex xl:gap-5"
+      >
         {items.map((item) => (
           <Link
             key={item.href}
