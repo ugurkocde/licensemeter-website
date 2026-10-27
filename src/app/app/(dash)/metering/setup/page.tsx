@@ -10,6 +10,7 @@ import {
 import { MeteringRefresh } from "~/components/workspace/MeteringRefresh";
 import {
   MeteringConnect,
+  MeteringIntuneAction,
   MeteringSettingsForm,
   MeteringVerify,
 } from "~/components/workspace/MeteringSetupActions";
@@ -33,6 +34,23 @@ const ERRORS: Record<string, string> = {
   rate_limited: "Please wait a moment before connecting again.",
   plan_required: "Software Metering is included in the Pro plan.",
 };
+
+/** The manual Intune steps; folded away when LicenseMeter can create the package. */
+const ManualSteps = ({
+  open,
+  children,
+}: {
+  open: boolean;
+  children: React.ReactNode;
+}) =>
+  open ? (
+    <>{children}</>
+  ) : (
+    <details className="text-ink-soft">
+      <summary className="cursor-pointer">Add it yourself instead</summary>
+      <div className="mt-2">{children}</div>
+    </details>
+  );
 
 const Step = ({
   id,
@@ -91,6 +109,7 @@ export default async function MeteringSetupPage({
   const connected = step !== "connect";
   const collector = report?.collector ?? null;
   const several = !collector && (report?.collectors.length ?? 0) > 1;
+  const canWrite = report?.canWrite ?? false;
 
   if (view.demo || !view.admin)
     return (
@@ -117,7 +136,7 @@ export default async function MeteringSetupPage({
       <MeteringHeader
         view={view}
         title="Setup"
-        lead="Three steps: connect Microsoft, deploy the collector in Intune, and wait for the first report. LicenseMeter only reads; it never changes anything in your tenant."
+        lead="Three steps: connect Microsoft, deploy the collector in Intune, and wait for the first report. LicenseMeter changes nothing in your tenant unless you ask it to create or update its own collector."
         actions={false}
       />
       {error && (
@@ -144,9 +163,20 @@ export default async function MeteringSetupPage({
         done={connected}
       >
         {connected ? (
-          <p className="text-ink-soft">
-            Connected with read-only access to Intune scripts, devices and apps.
-          </p>
+          report && !canWrite ? (
+            <>
+              <p className="text-ink-soft">
+                Connected with read-only access. Approve the updated permissions
+                to let LicenseMeter create and update the collector for you.
+              </p>
+              <MeteringConnect enabled label="Approve updated permissions" />
+            </>
+          ) : (
+            <p className="text-ink-soft">
+              Connected. LicenseMeter reads Intune devices and apps, and changes
+              only its own collector script, when you ask it to.
+            </p>
+          )
         ) : !view.microsoftConnected ? (
           <p className="text-ink-soft">
             Connect Microsoft 365 first, then come back here.{" "}
@@ -161,8 +191,10 @@ export default async function MeteringSetupPage({
         ) : (
           <>
             <p className="text-ink-soft">
-              A Global Administrator approves a separate, read-only app. Your
-              Microsoft 365 connection keeps its own permissions.
+              A Global Administrator approves a separate app. It reads Intune
+              devices and apps, and creates or updates LicenseMeter&rsquo;s own
+              collector script only when you ask it to. Your Microsoft 365
+              connection keeps its own read-only permissions.
             </p>
             <ul className="text-ink-faint space-y-0.5 text-xs">
               {METERING_SCOPES.map((scope) => (
@@ -203,9 +235,11 @@ export default async function MeteringSetupPage({
                     .slice(0, 6)
                     .map((entry) => entry.name)
                     .join(", ")}
-                  {summary.notWatched.length > 6 ? ", …" : ""}. Download the
-                  collector again and replace the detection script in “
-                  {collector.name}”. The assignment stays as it is.
+                  {summary.notWatched.length > 6 ? ", …" : ""}.{" "}
+                  {canWrite
+                    ? `Update the collector in “${collector.name}”.`
+                    : `Download the collector again and replace the detection script in “${collector.name}”.`}{" "}
+                  The assignment stays as it is.
                 </p>
               ) : (
                 <p className="text-good-text">
@@ -225,14 +259,24 @@ export default async function MeteringSetupPage({
               </p>
             ) : (
               <p className="text-ink-soft">
-                LicenseMeter has not found the collector in Intune yet. It looks
-                for it automatically, so you never select a package.
+                {canWrite
+                  ? "LicenseMeter can create the collector package in Intune for you. Devices also need Audit Process Creation (Success) turned on, for example in an Intune settings catalog policy. If you prefer, download the collector and add it yourself; LicenseMeter finds it automatically."
+                  : "LicenseMeter has not found the collector in Intune yet. It looks for it automatically, so you never select a package."}
               </p>
+            )}
+            {canWrite && collector && summary?.notWatched.length ? (
+              <MeteringIntuneAction
+                mode="update"
+                packageName={collector.name}
+              />
+            ) : null}
+            {canWrite && !collector && !several && step !== "unavailable" && (
+              <MeteringIntuneAction mode="create" />
             )}
             <div className="flex flex-wrap items-center gap-3">
               <ButtonAnchor
                 variant={
-                  collector && !summary?.notWatched.length
+                  canWrite || (collector && !summary?.notWatched.length)
                     ? "secondary"
                     : "primary"
                 }
@@ -244,32 +288,34 @@ export default async function MeteringSetupPage({
               <MeteringRefresh />
             </div>
             {!collector && !several && step !== "unavailable" && (
-              <ol className="text-ink-soft list-decimal space-y-1 pl-5">
-                <li>
-                  Turn on <strong>Audit Process Creation (Success)</strong> for
-                  your devices, for example in an Intune settings catalog
-                  policy.
-                </li>
-                <li>
-                  In Intune, open{" "}
-                  <strong>Devices › Scripts and remediations</strong> and create
-                  a script package.
-                </li>
-                <li>
-                  Upload the downloaded file as the{" "}
-                  <strong>detection script</strong>. Leave the remediation
-                  script empty.
-                </li>
-                <li>
-                  Run as SYSTEM (logged-on credentials: <strong>No</strong>), in
-                  64-bit PowerShell (<strong>Yes</strong>).
-                </li>
-                <li>
-                  Assign it to a small pilot group with an{" "}
-                  <strong>hourly</strong> schedule, then return here and select{" "}
-                  <strong>Read latest results</strong>.
-                </li>
-              </ol>
+              <ManualSteps open={!canWrite}>
+                <ol className="text-ink-soft list-decimal space-y-1 pl-5">
+                  <li>
+                    Turn on <strong>Audit Process Creation (Success)</strong>{" "}
+                    for your devices, for example in an Intune settings catalog
+                    policy.
+                  </li>
+                  <li>
+                    In Intune, open{" "}
+                    <strong>Devices › Scripts and remediations</strong> and
+                    create a script package.
+                  </li>
+                  <li>
+                    Upload the downloaded file as the{" "}
+                    <strong>detection script</strong>. Leave the remediation
+                    script empty.
+                  </li>
+                  <li>
+                    Run as SYSTEM (logged-on credentials: <strong>No</strong>),
+                    in 64-bit PowerShell (<strong>Yes</strong>).
+                  </li>
+                  <li>
+                    Assign it to a small pilot group with an{" "}
+                    <strong>hourly</strong> schedule, then return here and
+                    select <strong>Read latest results</strong>.
+                  </li>
+                </ol>
+              </ManualSteps>
             )}
           </>
         )}

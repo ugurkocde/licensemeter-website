@@ -136,14 +136,16 @@ export default function PrivacyPolicyPage() {
       <Section title="4a. Optional Windows Software Metering">
         <p>
           When an organization enables Software Metering, a separate Microsoft
-          application requests additional read-only consent. The customer
-          deploys and controls the Windows detection script, which reports the
-          program file names of started apps deployed through its Intune, their
-          last start, the number of starts in the last 24 hours, coverage dates
-          and collection health to the organization’s own Intune tenant. Its
-          output excludes usernames, command lines, file paths and raw event
-          logs. Device-linked activity can still relate to employees and
-          requires the organization’s review before collection.
+          application requests additional consent. It reads Intune devices and
+          apps, and creates or updates LicenseMeter&rsquo;s own collector script
+          only when a workspace Admin asks it to. The customer controls the
+          Windows detection script, which reports the program file names of
+          started apps deployed through its Intune, their last start, the number
+          of starts in the last 24 hours, coverage dates and collection health
+          to the organization’s own Intune tenant. Its output excludes
+          usernames, command lines, file paths and raw event logs. Device-linked
+          activity can still relate to employees and requires the organization’s
+          review before collection.
         </p>
         <p>
           LicenseMeter does not store these results. It reads them, together

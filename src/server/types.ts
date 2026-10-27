@@ -158,6 +158,8 @@ export type AuditAction =
   | "export_metering_csv"
   | "metering_apps_changed"
   | "metering_collector_downloaded"
+  | "metering_collector_created"
+  | "metering_collector_updated"
   | "export_findings_csv"
   | "export_licenses_csv"
   | "export_remediation"

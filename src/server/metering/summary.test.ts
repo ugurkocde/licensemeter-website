@@ -41,6 +41,7 @@ const report = (
   rows: MeteringRow[],
   installs: Record<string, string[]>,
 ): MeteringReport => ({
+  canWrite: false,
   collector: { id: "pkg", name: "Collector", catalogId: current, programs },
   collectors: [],
   rows,

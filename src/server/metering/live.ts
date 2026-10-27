@@ -16,6 +16,8 @@ export interface MeteringRow {
   payload: MeteringPayload | null;
 }
 export interface MeteringReport {
+  /** Consent includes write on scripts, so Setup can create and update the collector. */
+  canWrite: boolean;
   /** The package devices report from, or null until one is deployed. */
   collector: CollectorPackage | null;
   /** Every package running the collector; more than one needs a choice. */
@@ -120,6 +122,7 @@ export async function collectMetering(
     ),
   ];
   return {
+    canWrite: source.canWrite ?? false,
     collector,
     collectors,
     rows: meteringRows(devices, states, now),

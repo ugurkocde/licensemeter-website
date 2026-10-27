@@ -1,11 +1,35 @@
 import { z } from "zod";
 
-/** These application permissions belong ONLY to the optional metering app. */
+/**
+ * The application permissions the optional metering app requests. They belong
+ * ONLY to that app, never to the sign-in or Microsoft 365 connector apps.
+ * Write on scripts lets LicenseMeter create and update its own collector
+ * package when an Admin asks it to.
+ */
 export const METERING_SCOPES = [
-  "DeviceManagementScripts.Read.All",
+  "DeviceManagementScripts.ReadWrite.All",
   "DeviceManagementManagedDevices.Read.All",
   "DeviceManagementApps.Read.All",
 ] as const;
+/** Consent granted before write was added; still accepted, without automation. */
+export const METERING_SCRIPTS_READ = "DeviceManagementScripts.Read.All";
+export const METERING_SCRIPTS_WRITE = "DeviceManagementScripts.ReadWrite.All";
+
+/** Accepted role sets: devices and apps read, plus scripts read or write. Nothing else. */
+export function meteringAccess(roles: readonly string[] | undefined): {
+  ok: boolean;
+  canWrite: boolean;
+} {
+  const list = roles ?? [];
+  const allowed = new Set<string>([...METERING_SCOPES, METERING_SCRIPTS_READ]);
+  const ok =
+    list.includes("DeviceManagementManagedDevices.Read.All") &&
+    list.includes("DeviceManagementApps.Read.All") &&
+    (list.includes(METERING_SCRIPTS_READ) ||
+      list.includes(METERING_SCRIPTS_WRITE)) &&
+    list.every((role) => allowed.has(role));
+  return { ok, canWrite: ok && list.includes(METERING_SCRIPTS_WRITE) };
+}
 
 export const GUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

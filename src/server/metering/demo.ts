@@ -167,6 +167,7 @@ export function meteringDemo(now = new Date()): {
   };
   return {
     report: {
+      canWrite: false,
       collector,
       collectors: [collector],
       rows: rows.sort((a, b) => a.deviceName.localeCompare(b.deviceName)),
