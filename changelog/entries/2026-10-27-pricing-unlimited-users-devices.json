@@ -1,0 +1,8 @@
+{
+  "title": "Pricing now states unlimited users and devices",
+  "summary": "The pricing page now highlights that every plan price covers your whole tenant, with unlimited users and unlimited devices and no per-user or per-device fees.",
+  "type": "improved",
+  "publishedOn": "2026-10-27",
+  "idempotencyKey": "licensemeter:pricing-unlimited-users-devices",
+  "sourceUrl": "https://licensemeter.com/pricing"
+}

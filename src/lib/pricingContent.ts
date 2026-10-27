@@ -196,6 +196,8 @@ export type PricingContent = {
   billing: { legend: string; month: string; year: string; save: string };
   per: { free: string; month: string; year: string };
   plansLabel: string;
+  /** The band above the plan cards: what every price covers. */
+  unlimited: { title: string; body: string };
   trialTag: string;
   freeTag: string;
   recommended: string;
@@ -273,6 +275,10 @@ const en: PricingContent = {
   },
   per: { free: "forever", month: "per month", year: "per year" },
   plansLabel: "Plans",
+  unlimited: {
+    title: "Unlimited users. Unlimited devices.",
+    body: "Every price covers your whole tenant, however many people and devices it has. No per-user or per-device fees.",
+  },
   trialTag: `${TRIAL_DAYS}-day trial`,
   freeTag: "Open source · No support",
   recommended: "Recommended",
@@ -591,6 +597,10 @@ const de: PricingContent = {
   },
   per: { free: "dauerhaft", month: "pro Monat", year: "pro Jahr" },
   plansLabel: "Tarife",
+  unlimited: {
+    title: "Unbegrenzte Nutzer. Unbegrenzte Geräte.",
+    body: "Jeder Preis gilt für Ihren gesamten Tenant, egal wie viele Personen und Geräte er umfasst. Keine Gebühren pro Nutzer oder Gerät.",
+  },
   trialTag: `${TRIAL_DAYS} Tage Testphase`,
   freeTag: "Open Source · Kein Support",
   recommended: "Empfohlen",
