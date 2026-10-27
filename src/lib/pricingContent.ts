@@ -54,6 +54,8 @@ type RowSpec<Id extends string> = {
   id: Id;
   /** Free, Pro, MSP. */
   cells: readonly [CellSpec, CellSpec, CellSpec];
+  /** Recently launched: the row carries a "New" badge. */
+  isNew?: boolean;
 };
 
 const ALL: RowSpec<string>["cells"] = ["yes", "yes", "yes"];
@@ -84,7 +86,7 @@ const COMPARISON_GROUPS = [
       { id: "reports", cells: ALL },
       { id: "scripts", cells: ALL },
       { id: "mcp", cells: PAID },
-      { id: "metering", cells: PAID },
+      { id: "metering", cells: PAID, isNew: true },
     ],
   },
   {
@@ -153,7 +155,12 @@ export type ComparisonGroup = {
   label: string;
   /** True for the group of features that are announced but not available. */
   soon: boolean;
-  rows: { id: RowId; label: string; cells: ComparisonCell[] }[];
+  rows: {
+    id: RowId;
+    label: string;
+    isNew: boolean;
+    cells: ComparisonCell[];
+  }[];
 };
 
 /* -------------------------------------------------------------- content */
@@ -168,6 +175,8 @@ type PlanCopy = {
   highlights: string[];
   pitch: string;
   note: Record<BillingInterval, string>;
+  /** A launched feature called out on the card, linking to its section. */
+  spotlight?: string;
   includedTitle: string;
   items: PlanItem[];
   /** Announced, not available: rendered apart, without checkmarks. */
@@ -192,8 +201,19 @@ export type PricingContent = {
   recommended: string;
   planDetails: string;
   soonTitle: string;
+  newBadge: string;
   cta: { free: string; marketplace: string; card: string; talk: string };
   plans: Record<PlanId, PlanCopy>;
+  /** The Software Metering spotlight under the plan cards. */
+  metering: {
+    eyebrow: string;
+    h2: string;
+    body: string;
+    points: { title: string; body: string }[];
+    requirement: string;
+    post: string;
+    docs: string;
+  };
   buy: {
     eyebrow: string;
     h2: string;
@@ -236,14 +256,14 @@ const msp = PLAN_PRICES.msp;
 const en: PricingContent = {
   meta: {
     title: "Pricing",
-    description: `LicenseMeter pricing: the Free plan finds and prices Microsoft 365 license waste at no cost. Pro (${formatEuro(pro.month, "en")} per month) adds support by email, a 99.9% uptime target, a signed DPA (AVV), an MCP server and 24 months of history. MSP (${formatEuro(msp.month, "en")} per month) covers ${MSP_INCLUDED_TENANTS} client tenants and adds white-label reports.`,
+    description: `LicenseMeter pricing: the Free plan finds and prices Microsoft 365 license waste at no cost. Pro (${formatEuro(pro.month, "en")} per month) adds Windows Software Metering through Intune, support by email, a 99.9% uptime target, a signed DPA (AVV), an MCP server and 24 months of history. MSP (${formatEuro(msp.month, "en")} per month) covers ${MSP_INCLUDED_TENANTS} client tenants and adds white-label reports.`,
   },
   breadcrumb: { home: "Home", page: "Pricing" },
   toggleLabel: "Language",
   hero: {
     eyebrow: "Pricing",
     h1: { pre: "Finding the waste costs", struck: "money", post: "nothing." },
-    lede: "Start free with every scan, finding and report. Add email support with Pro, or cover your client portfolio with MSP.",
+    lede: "Start free with every scan, finding and report. Pro adds support and Software Metering for your Windows apps. MSP covers your client portfolio.",
   },
   billing: {
     legend: "Billing period",
@@ -258,6 +278,7 @@ const en: PricingContent = {
   recommended: "Recommended",
   planDetails: "All plan details",
   soonTitle: "Coming soon",
+  newBadge: "New",
   cta: {
     free: "Start free",
     marketplace: "Buy on Microsoft Marketplace",
@@ -306,13 +327,19 @@ const en: PricingContent = {
         "24 months of waste history",
       ],
       pitch:
-        "Everything in Free for one tenant, with support, a signed data processing agreement and an MCP server for your AI assistant.",
+        "Everything in Free for one tenant, with support, Software Metering for your Windows apps, a signed data processing agreement and an MCP server for your AI assistant.",
       note: {
         month: "Excluding VAT. Cancel any time.",
         year: "Excluding VAT. Twelve months for the price of ten.",
       },
+      spotlight: "Software Metering for Windows apps",
       includedTitle: "Everything in Free, plus",
       items: [
+        {
+          text: "Windows Software Metering",
+          detail:
+            "Installed versus started for every Windows app you deploy through Intune",
+        },
         { text: "Support", detail: "By email" },
         {
           text: "99.9% uptime target",
@@ -342,11 +369,12 @@ const en: PricingContent = {
         "Client DPA and onboarding call",
       ],
       pitch:
-        "Pro across your client portfolio, with reports under your own brand.",
+        "Pro across your client portfolio, with reports under your own brand and Software Metering on every covered client tenant.",
       note: {
         month: `Excluding VAT. ${MSP_INCLUDED_TENANTS} client tenants included, then ${formatEuro(MSP_EXTRA_TENANT_PRICE.month, "en")} each per month.`,
         year: `Excluding VAT. ${MSP_INCLUDED_TENANTS} client tenants included, then ${formatEuro(MSP_EXTRA_TENANT_PRICE.year, "en")} each per year.`,
       },
+      spotlight: "Software Metering on every client tenant",
       includedTitle: "Everything in Pro, plus",
       items: [
         {
@@ -362,6 +390,33 @@ const en: PricingContent = {
       ],
       soon: ["Portfolio alerts", "One team across all client tenants"],
     },
+  },
+  metering: {
+    eyebrow: "Included in Pro and MSP",
+    h2: "Software Metering: find the Windows licenses nobody starts.",
+    body: "For every Windows app you deploy through Intune, see how many devices have it installed and how many started it in the last 30, 60 or 90 days. Visio, Project, Acrobat Pro, AutoCAD: the desktop seats that Microsoft 365 reports cannot see.",
+    points: [
+      {
+        title: "Every Windows app in Intune",
+        body: "Win32, Store, WinGet and line-of-business apps, and Microsoft 365 Apps with Visio and Project listed on their own.",
+      },
+      {
+        title: "Set up in three steps",
+        body: "LicenseMeter creates the Intune Remediations collector for you once an Admin confirms, or you deploy the script yourself.",
+      },
+      {
+        title: "Read live, never stored",
+        body: "Results stay in Intune. LicenseMeter reads them when you open or export the report.",
+      },
+      {
+        title: "No user names",
+        body: "Program names and start times per device only, under its own optional Microsoft consent.",
+      },
+    ],
+    requirement:
+      "Needs Windows devices managed by Intune and Remediations licensing, such as Windows Enterprise E3 or E5.",
+    post: "Read the announcement",
+    docs: "Setup guide",
   },
   buy: {
     eyebrow: "Two ways to buy Pro or MSP",
@@ -484,6 +539,10 @@ const en: PricingContent = {
         a: "Pro and MSP include a Model Context Protocol server for your workspace. Connect it to Claude, Copilot or any MCP client and ask questions in plain language, such as which SKUs wasted the most last quarter. Access is read-only and scoped to the tenants you can already see.",
       },
       {
+        q: "What is Software Metering?",
+        a: "Pro and MSP include Software Metering for the Windows apps you deploy through Intune. For each app it shows how many devices have it installed and how many started it in the observation period, so you can see which desktop licenses go unused before a renewal. It has its own optional Microsoft consent and a collector that runs as an Intune Remediation, which needs Remediations licensing such as Windows Enterprise E3 or E5. Results are read live from Intune and not stored, and no user names are collected.",
+      },
+      {
         channel: "marketplace",
         q: "How does buying through Microsoft Marketplace work?",
         a: `You subscribe in Microsoft Marketplace or the Azure portal, sign in to LicenseMeter with the same Microsoft account, and your plan activates on your tenant. The charge appears on your Microsoft invoice. The ${TRIAL_DAYS}-day trial runs there too.`,
@@ -511,7 +570,7 @@ const en: PricingContent = {
 const de: PricingContent = {
   meta: {
     title: "Preise",
-    description: `Preise von LicenseMeter: Der Free-Tarif findet und beziffert Lizenzverschwendung in Microsoft 365 kostenlos. Pro (${formatEuro(pro.month, "de")} pro Monat) ergänzt Support per E-Mail, ein Verfügbarkeitsziel von 99,9 %, einen unterzeichneten Auftragsverarbeitungsvertrag (AVV), einen MCP-Server und 24 Monate Verlauf. MSP (${formatEuro(msp.month, "de")} pro Monat) deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants ab und ergänzt White-Label-Berichte.`,
+    description: `Preise von LicenseMeter: Der Free-Tarif findet und beziffert Lizenzverschwendung in Microsoft 365 kostenlos. Pro (${formatEuro(pro.month, "de")} pro Monat) ergänzt Windows Software Metering über Intune, Support per E-Mail, ein Verfügbarkeitsziel von 99,9 %, einen unterzeichneten Auftragsverarbeitungsvertrag (AVV), einen MCP-Server und 24 Monate Verlauf. MSP (${formatEuro(msp.month, "de")} pro Monat) deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants ab und ergänzt White-Label-Berichte.`,
   },
   breadcrumb: { home: "Startseite", page: "Preise" },
   toggleLabel: "Sprache",
@@ -522,7 +581,7 @@ const de: PricingContent = {
       struck: "Geld",
       post: "nichts.",
     },
-    lede: "Starten Sie kostenlos mit allen Scans, Ergebnissen und Berichten. Pro ergänzt E-Mail-Support, MSP deckt Ihr Kundenportfolio ab.",
+    lede: "Starten Sie kostenlos mit allen Scans, Ergebnissen und Berichten. Pro ergänzt Support und Software Metering für Ihre Windows-Apps. MSP deckt Ihr Kundenportfolio ab.",
   },
   billing: {
     legend: "Abrechnungszeitraum",
@@ -537,6 +596,7 @@ const de: PricingContent = {
   recommended: "Empfohlen",
   planDetails: "Alle Tarifdetails",
   soonTitle: "In Vorbereitung",
+  newBadge: "Neu",
   cta: {
     free: "Kostenlos starten",
     marketplace: "Im Microsoft Marketplace kaufen",
@@ -587,13 +647,19 @@ const de: PricingContent = {
         "24 Monate Verlaufsdaten",
       ],
       pitch:
-        "Alles aus Free für einen Tenant, dazu Support, ein unterzeichneter Auftragsverarbeitungsvertrag und ein MCP-Server für Ihren KI-Assistenten.",
+        "Alles aus Free für einen Tenant, dazu Support, Software Metering für Ihre Windows-Apps, ein unterzeichneter Auftragsverarbeitungsvertrag und ein MCP-Server für Ihren KI-Assistenten.",
       note: {
         month: "Zzgl. USt. Jederzeit kündbar.",
         year: "Zzgl. USt. Zwölf Monate zum Preis von zehn.",
       },
+      spotlight: "Software Metering für Windows-Apps",
       includedTitle: "Alles aus Free, zusätzlich",
       items: [
+        {
+          text: "Windows Software Metering",
+          detail:
+            "Installiert und gestartet, für jede Windows-App, die Sie über Intune verteilen",
+        },
         { text: "Support", detail: "Per E-Mail" },
         {
           text: "Verfügbarkeitsziel von 99,9 %",
@@ -623,11 +689,12 @@ const de: PricingContent = {
         "Kunden-AVV und Onboarding-Gespräch",
       ],
       pitch:
-        "Pro für Ihr gesamtes Kundenportfolio, mit Berichten unter Ihrer eigenen Marke.",
+        "Pro für Ihr gesamtes Kundenportfolio, mit Berichten unter Ihrer eigenen Marke und Software Metering auf jedem abgedeckten Kunden-Tenant.",
       note: {
         month: `Zzgl. USt. ${MSP_INCLUDED_TENANTS} Kunden-Tenants inklusive, jeder weitere ${formatEuro(MSP_EXTRA_TENANT_PRICE.month, "de")} pro Monat.`,
         year: `Zzgl. USt. ${MSP_INCLUDED_TENANTS} Kunden-Tenants inklusive, jeder weitere ${formatEuro(MSP_EXTRA_TENANT_PRICE.year, "de")} pro Jahr.`,
       },
+      spotlight: "Software Metering auf jedem Kunden-Tenant",
       includedTitle: "Alles aus Pro, zusätzlich",
       items: [
         {
@@ -646,6 +713,33 @@ const de: PricingContent = {
         "Ein Team für alle Kunden-Tenants",
       ],
     },
+  },
+  metering: {
+    eyebrow: "Enthalten in Pro und MSP",
+    h2: "Software Metering: Finden Sie die Windows-Lizenzen, die niemand startet.",
+    body: "Sehen Sie für jede Windows-App, die Sie über Intune verteilen, auf wie vielen Geräten sie installiert ist und auf wie vielen sie in den letzten 30, 60 oder 90 Tagen gestartet wurde. Visio, Project, Acrobat Pro, AutoCAD: die Desktop-Lizenzen, die Microsoft-365-Berichte nicht zeigen.",
+    points: [
+      {
+        title: "Jede Windows-App in Intune",
+        body: "Win32-, Store-, WinGet- und Branchen-Apps sowie Microsoft 365 Apps, mit Visio und Project als eigenen Einträgen.",
+      },
+      {
+        title: "In drei Schritten eingerichtet",
+        body: "LicenseMeter legt das Intune-Remediations-Paket für Sie an, sobald ein Admin bestätigt, oder Sie verteilen das Skript selbst.",
+      },
+      {
+        title: "Live gelesen, nie gespeichert",
+        body: "Die Ergebnisse bleiben in Intune. LicenseMeter liest sie, wenn Sie den Bericht öffnen oder exportieren.",
+      },
+      {
+        title: "Keine Benutzernamen",
+        body: "Nur Programmnamen und Startzeiten pro Gerät, mit einer eigenen, optionalen Microsoft-Einwilligung.",
+      },
+    ],
+    requirement:
+      "Voraussetzung sind über Intune verwaltete Windows-Geräte und eine Lizenz für Remediations, etwa Windows Enterprise E3 oder E5.",
+    post: "Zur Ankündigung (EN)",
+    docs: "Einrichtungsanleitung (EN)",
   },
   buy: {
     eyebrow: "Zwei Wege zu Pro oder MSP",
@@ -773,6 +867,10 @@ const de: PricingContent = {
         a: "Pro und MSP enthalten einen Model-Context-Protocol-Server für Ihren Workspace. Verbinden Sie ihn mit Claude, Copilot oder einem anderen MCP-Client und stellen Sie Fragen in natürlicher Sprache, etwa welche SKUs im letzten Quartal am meisten Verschwendung verursacht haben. Der Zugriff ist nur lesend und auf die Tenants beschränkt, die Sie ohnehin sehen dürfen.",
       },
       {
+        q: "Was ist Software Metering?",
+        a: "Pro und MSP enthalten Software Metering für die Windows-Apps, die Sie über Intune verteilen. Für jede App sehen Sie, auf wie vielen Geräten sie installiert ist und auf wie vielen sie im Beobachtungszeitraum gestartet wurde. So erkennen Sie vor einer Verlängerung, welche Desktop-Lizenzen ungenutzt bleiben. Software Metering hat eine eigene, optionale Microsoft-Einwilligung und einen Collector, der als Intune Remediation läuft. Dafür ist eine Lizenz für Remediations nötig, etwa Windows Enterprise E3 oder E5. Die Ergebnisse werden live aus Intune gelesen und nicht gespeichert, Benutzernamen werden nicht erfasst.",
+      },
+      {
         channel: "marketplace",
         q: "Wie funktioniert der Kauf über den Microsoft Marketplace?",
         a: `Sie schließen das Abonnement im Microsoft Marketplace oder im Azure-Portal ab, melden sich mit demselben Microsoft-Konto bei LicenseMeter an, und Ihr Tarif wird für Ihren Tenant aktiviert. Der Betrag erscheint auf Ihrer Microsoft-Rechnung. Die Testphase von ${TRIAL_DAYS} Tagen gilt dort ebenfalls.`,
@@ -835,6 +933,7 @@ export const comparisonGroups = (
       .map((row) => ({
         id: row.id,
         label: c.rows[row.id],
+        isNew: "isNew" in row && row.isNew,
         cells: row.cells.map((cell): ComparisonCell =>
           typeof cell === "string"
             ? { kind: cell }

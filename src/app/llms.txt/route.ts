@@ -1,4 +1,5 @@
 import { siteUrl } from "~/env";
+import { BLOG_POSTS } from "~/lib/blog";
 import { CONNECTOR_GUIDES } from "~/lib/connectorGuides";
 import { SITE_DEFINITION } from "~/lib/site";
 
@@ -18,13 +19,14 @@ Operated by Ugurlabs UG and maintained by Ugur Koc, Microsoft MVP for Intune and
 - Read-only by design: the connector app holds no write scopes; remediation ships as generated PowerShell scripts that admins review and run themselves.
 - Never reads content: no mailboxes, files or messages. License assignments, sign-in activity and usage metadata only.
 - EU data residency (Postgres, Frankfurt); disconnecting a workspace deletes all synced data immediately.
-- Free for every workspace: all connectors, waste rules, continuous monitoring, reports and exports, with no time limit. MSP portfolios are free too. The optional Pro and MSP plans add support by email, a signed DPA (AVV), an MCP server and 24 months of waste history.
+- Free for every workspace: all connectors, waste rules, continuous monitoring, reports and exports, with no time limit. MSP portfolios are free too. The optional Pro and MSP plans add support by email, a signed DPA (AVV), an MCP server, Windows Software Metering through Intune and 24 months of waste history.
 - Works with and without Entra ID P1: detection falls back to Microsoft 365 usage reports when precise sign-in timestamps are unavailable.
 
 ## Pages
 
 - [Home](${base}/): product overview, live demo entry and the free waste scan
 - [Pricing](${base}/pricing): the Free, Pro and MSP plans with prices, a feature comparison and the two ways to buy (German version at ${base}/de/pricing)
+- [Blog](${base}/blog): product announcements (${BLOG_POSTS.map((p) => p.title).join("; ")})
 - [For MSPs](${base}/msp): portfolio view across client tenants, consultant consent flow, per-client price books and QBR-ready reports
 - [ROI calculator](${base}/roi): estimate the monthly license waste for a tenant by seat count and per-seat cost, computed entirely in the browser
 - [Waste patterns](${base}/waste): explainer per detection rule (disabled accounts still licensed, never active, inactive 90+ days, unassigned seats, unused Copilot, licensed guests) with manual PowerShell detection and how LicenseMeter automates it

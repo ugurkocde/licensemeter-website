@@ -3,6 +3,7 @@ import { connection } from "next/server";
 
 import { siteUrl } from "~/env";
 import { WASTE_EXPLAINERS } from "~/app/(marketing)/waste/content";
+import { BLOG_POSTS } from "~/lib/blog";
 import { CONNECTOR_GUIDES } from "~/lib/connectorGuides";
 
 /** Legal pages: indexable but low priority, they rarely change. */
@@ -27,6 +28,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/compare/powershell-audit",
     "/compare/m365-admin-center",
     "/compare/excel-license-tracking",
+    "/blog",
+    ...BLOG_POSTS.map((p) => `/blog/${p.slug}`),
     "/waste",
     ...WASTE_EXPLAINERS.map((e) => `/waste/${e.slug}`),
     "/security",

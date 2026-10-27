@@ -72,6 +72,24 @@ describe("pricing content", () => {
     expect(de.faq.items).toHaveLength(en.faq.items.length);
     expect(de.facts.items).toHaveLength(en.facts.items.length);
     expect(de.buy.options).toHaveLength(en.buy.options.length);
+    expect(de.metering.points).toHaveLength(en.metering.points.length);
+  });
+
+  it("puts Software Metering on both paid plans and nowhere in Free", () => {
+    for (const lang of PRICING_LANGS) {
+      const { plans } = PRICING_CONTENT[lang];
+      expect(plans.free.spotlight).toBeUndefined();
+      expect(plans.pro.spotlight).toMatch(/Software Metering/);
+      expect(plans.msp.spotlight).toMatch(/Software Metering/);
+      expect(
+        plans.pro.items.some((item) => item.text.includes("Software Metering")),
+      ).toBe(true);
+      const row = comparisonGroups(lang, ALL_CHANNELS)
+        .flatMap((g) => g.rows)
+        .find((r) => r.id === "metering")!;
+      expect(row.isNew).toBe(true);
+      expect(row.cells.map((cell) => cell.kind)).toEqual(["no", "yes", "yes"]);
+    }
   });
 
   it("follows the writing rules in every string", () => {

@@ -1,5 +1,14 @@
 import Link from "next/link";
-import { ArrowDown, Building2, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  Activity,
+  ArrowDown,
+  ArrowRight,
+  Building2,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
+
+import { MeteringSample } from "~/components/blog/MeteringSample";
 
 import {
   marketplaceOfferUrl,
@@ -19,6 +28,7 @@ import {
   type PricingLang,
   type RichText,
 } from "~/lib/pricingContent";
+import { ANNOUNCED_POST } from "~/lib/blog";
 import { planName } from "~/lib/planLabel";
 import { SUPPORT_MAILTO } from "~/lib/support";
 import { UPGRADE_PATH } from "~/lib/upgrade";
@@ -47,6 +57,10 @@ const SECTION_H2 =
   "font-display mt-3 text-2xl font-semibold tracking-tight text-balance sm:text-[2rem] sm:leading-tight";
 const TEXT_LINK =
   "text-ink hover:text-brand-text font-medium underline underline-offset-4";
+const NEW_BADGE =
+  "rounded-full bg-blue-700 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-white uppercase";
+const METERING_DOCS =
+  "https://docs.licensemeter.com/connectors/windows-metering/";
 
 const CheckIcon = ({ className }: { className: string }) => (
   <svg viewBox="0 0 20 20" aria-hidden="true" className={className}>
@@ -204,6 +218,17 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
             <p className="text-ink-soft mt-5 max-w-xl text-base leading-relaxed text-pretty">
               {c.hero.lede}
             </p>
+            <a
+              href="#software-metering"
+              className="group shadow-card mt-6 inline-flex min-h-11 max-w-full items-center gap-2.5 rounded-full border border-blue-200 bg-white py-1.5 pr-4 pl-1.5 text-sm font-medium transition-colors hover:border-blue-400"
+            >
+              <span className={NEW_BADGE}>{c.newBadge}</span>
+              <span className="min-w-0">{c.plans.pro.spotlight}</span>
+              <ArrowDown
+                aria-hidden="true"
+                className="size-4 shrink-0 text-blue-700 transition-transform group-hover:translate-y-0.5 motion-reduce:transition-none"
+              />
+            </a>
           </div>
           <div className="flex flex-col items-start gap-3 lg:items-end lg:pb-1">
             <fieldset className="bg-canvas inline-grid max-w-full grid-cols-2 rounded-full p-1.5">
@@ -339,6 +364,24 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
                   </>
                 )}
               </div>
+              {plan.spotlight && (
+                <a
+                  href="#software-metering"
+                  className="group mt-4 flex min-h-12 items-center gap-3 rounded-2xl border border-blue-200 bg-white px-3 py-2.5 text-sm font-medium transition-colors hover:border-blue-400"
+                >
+                  <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+                    <Activity
+                      aria-hidden="true"
+                      className="size-4"
+                      strokeWidth={2}
+                    />
+                  </span>
+                  <span className="min-w-0 flex-1 leading-snug">
+                    {plan.spotlight}
+                  </span>
+                  <span className={NEW_BADGE}>{c.newBadge}</span>
+                </a>
+              )}
               <ul className="mt-6 grid gap-3.5">
                 {plan.highlights.map((text) => (
                   <li
@@ -477,6 +520,65 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
         })}
       </section>
 
+      <section
+        id="software-metering"
+        aria-labelledby="software-metering-heading"
+        className="mt-14 scroll-mt-24 md:mt-20"
+      >
+        <div className="grid gap-10 overflow-hidden rounded-[28px] border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-white p-6 sm:p-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-center lg:gap-12">
+          <div className="min-w-0">
+            <p className="flex flex-wrap items-center gap-2.5">
+              <span className={NEW_BADGE}>{c.newBadge}</span>
+              <span className="text-xs font-medium tracking-[0.2em] text-blue-700 uppercase">
+                {c.metering.eyebrow}
+              </span>
+            </p>
+            <h2
+              id="software-metering-heading"
+              className="font-display mt-4 text-2xl font-semibold tracking-tight text-balance sm:text-[2.25rem] sm:leading-tight"
+            >
+              {c.metering.h2}
+            </h2>
+            <p className="text-ink-soft mt-4 max-w-2xl text-base leading-relaxed text-pretty">
+              {c.metering.body}
+            </p>
+            <dl className="mt-7 grid gap-x-6 gap-y-5 sm:grid-cols-2">
+              {c.metering.points.map((point) => (
+                <div
+                  key={point.title}
+                  className="grid grid-cols-[18px_1fr] gap-x-2.5"
+                >
+                  <CheckIcon className="mt-0.5 size-[18px] text-blue-700" />
+                  <dt className="text-[15px] font-semibold">{point.title}</dt>
+                  <dd className="text-ink-soft col-start-2 mt-1 text-sm leading-relaxed">
+                    {point.body}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <p className="text-ink-soft mt-7 text-xs leading-relaxed">
+              {c.metering.requirement}
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2.5">
+              <Link
+                href={`/blog/${ANNOUNCED_POST}`}
+                className="inline-flex min-h-12 touch-manipulation items-center justify-center gap-2 rounded-full bg-blue-700 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-800"
+              >
+                {c.metering.post}
+                <ArrowRight aria-hidden="true" className="size-4" />
+              </Link>
+              <a
+                href={METERING_DOCS}
+                className="inline-flex min-h-12 touch-manipulation items-center justify-center rounded-full border border-blue-200 bg-white px-5 py-3 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-50"
+              >
+                {c.metering.docs}
+              </a>
+            </div>
+          </div>
+          <MeteringSample lang={lang} className="min-w-0" />
+        </div>
+      </section>
+
       {/* "Two ways to buy" only while there are two. */}
       {c.buy.options.length > 1 && (
         <section id="buy" className="scroll-mt-24 pt-14 md:pt-20">
@@ -561,6 +663,11 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
                 >
                   <span role="cell" className="col-span-3 md:col-span-1">
                     {row.label}
+                    {row.isNew && (
+                      <span className={`${NEW_BADGE} ml-2 align-[2px]`}>
+                        {c.newBadge}
+                      </span>
+                    )}
                   </span>
                   {row.cells.map((cell, i) => (
                     <Cell key={PLAN_IDS[i]} cell={cell} sr={c.compare.sr} />

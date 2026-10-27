@@ -39,6 +39,7 @@ const ENGLISH = {
     {
       title: "Learn",
       links: [
+        ["/blog", "Blog"],
         ["/waste", "Waste patterns"],
         ["/sample-report", "Sample report"],
         ["/roi", "ROI calculator"],
