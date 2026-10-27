@@ -1,6 +1,6 @@
 {
   "title": "Sync no longer fails when accounts share an email address",
-  "summary": "Some SaaS tools, Salesforce in particular, allow several user accounts with the same email address. A workspace with such accounts could see every sync fail. Those accounts are now combined into one person with all of their licenses, so syncs complete and seat counts stay correct. When a sync does fail because of a database problem, the error now explains the cause instead of showing a cut-off query.",
+  "summary": "Some SaaS tools, Salesforce in particular, allow several user accounts with the same email address. A workspace with such accounts could see every sync fail. Those accounts are now combined into one person with all of their licenses, so syncs complete and seat counts stay correct. Activity is judged across the combined accounts, so an unused account is not flagged on its own while another account with the same email is in use. When a sync does fail because of a database problem, the error now explains the cause instead of showing a cut-off query.",
   "type": "fixed",
   "publishedOn": "2026-10-27",
   "idempotencyKey": "licensemeter:sync-shared-email-accounts"
