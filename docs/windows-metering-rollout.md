@@ -33,9 +33,9 @@ Independent reviews covered both the concept and implementation. The implementat
 
 ## Launch sequence and owners
 
-1. **Service operator:** create the separate metering registration, configure the production Web redirect, add exactly the two application permissions, store its secret server-side, and configure `METERING_CLIENT_ID` / `METERING_CLIENT_SECRET`. Never alter the sign-in or base connector app permissions. Complete secret rotation ownership.
+1. **Service operator:** create the separate metering registration, configure the production Web redirect, add exactly the three application permissions, store its secret server-side, and configure `METERING_CLIENT_ID` / `METERING_CLIENT_SECRET`. Never alter the sign-in or base connector app permissions. Complete secret rotation ownership.
 2. **Service operator:** deploy the committed migration with the application, apply both the table and policy migrations and verify RLS and runtime-role grants for the new tenant tables, and confirm the optional setup panel is available. Review the DPA 2.2 metadata changes and the existing agreement acceptance flow before launch.
-3. **Pilot tenant admin:** approve the optional application. Use a Lokka connection authenticated as that application with only the two required roles. Re-run the read-only beta package, managed-device and run-state requests in that tenant. Confirm documented read access works without any broader roles.
+3. **Pilot tenant admin:** approve the optional application. Use a Lokka connection authenticated as that application with only the three required roles. Re-run the read-only beta package, managed-device and run-state requests in that tenant. Confirm documented read access works without any broader roles.
 4. **Pilot device admin:** review privacy and licensing prerequisites, enable Process Creation Success auditing through approved policy, then deploy the downloaded detection-only script to a small Windows group as SYSTEM, 64-bit, hourly. Do not enable command-line logging solely for this feature.
 5. **Pilot owner:** run the acceptance cases below, including reports spanning at least two days. Confirm Intune output encoding, timestamps and managed-device linkage before broad deployment. Record sanitized outcomes, never raw logs or identifiers in public release material.
 6. **Service operator:** expand assignment only after successful pilot and healthy sync. Watch sanitized error rates and request duration. A collection caps at 50,000 rows / 500 pages per resource; assess large tenants before enabling them.
@@ -57,7 +57,7 @@ Independent reviews covered both the concept and implementation. The implementat
 
 ## Live verification completed
 
-Read-only Lokka Graph beta calls successfully exercised package discovery with paging, managed-device fields with paging, the exact selected/expanded run-state endpoint, and invalid-field error handling. The current tenant's existing packages returned empty run-state collections. The active verification credential had broader rights, so these results do not prove the minimum two-role application or a complete collector-to-report path. Those exact remaining checks require the pilot above.
+Read-only Lokka Graph beta calls successfully exercised package discovery with paging, managed-device fields with paging, the exact selected/expanded run-state endpoint, and invalid-field error handling. The current tenant's existing packages returned empty run-state collections. The active verification credential had broader rights, so these results do not prove the minimum-role application or a complete collector-to-report path. Those exact remaining checks require the pilot above.
 
 A repeat live check on 2026-10-03 found 10 packages and 9 managed devices (4 Windows). Single-item paging reached the end of both collections, including empty terminal pages, and matched the application's 100-item queries. All 10 selected/expanded run-state queries returned empty collections. An invalid selected field returned HTTP 400. A nonexistent package returned HTTP 404 when requested directly, but HTTP 200 with an empty collection from its run-state endpoint. Reads now check package availability after an empty run-state response and report a setup error when the selected package is missing. Populated run-state fields, device linkage, output delivery and access with only the two metering permissions remain unverified in the live tenant.
 
@@ -73,7 +73,17 @@ One Entra-joined Windows 11 Pro lab device, Intune-enrolled with no Entra user s
 - With hourly runs and a 200 MB Security log, consecutive runs kept continuous coverage (`health: "ok"`). The Security log size policy reached the device but only takes effect after the Event Log service restarts, so setup guidance now says so.
 - End to end: a renamed test executable matching a catalogue entry was launched once. The next run reported its exact launch time with `health: "ok"`. Intune published the run state about 2 minutes after the run. The application parser accepted the output and classified the application as observed and the untouched catalogue entries as learning.
 
-Still open: access with only the two metering permissions, and a live read through the deployed LicenseMeter application.
+## Second live test (2026-10-27): Intune app catalogue, local LicenseMeter build
+
+LicenseMeter ran locally against the lab tenant with a separate test registration holding only the three metering permissions, consented by a Global Administrator.
+
+- Consent verification, package listing, collector download and live reads all worked with exactly the three roles.
+- The tenant had 50 assigned Windows apps. 30 resolved to program files (known-app list and detection rules), 20 stayed unknown and were listed but not metered.
+- The generated collector (32 program files) ran from the pilot package. Graph returned protocol 2 output, and the dashboard showed the device, its last start and its 24-hour start count. A preinstalled app started on the device appeared as started but not reported installed, as designed.
+- Install status came back without user columns.
+- Fixed during the test: overlapping on-demand and scheduled runs produced `collector_error` (the second run now waits for the first); one install report call per app was throttled (now up to 20 apps per call); the refresh action and the page did not share the read cache (now shared through `globalThis`).
+
+Still open: a live read through the deployed production application with the operator's own metering registration.
 
 ## Follow-up after the pilot
 

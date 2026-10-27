@@ -136,7 +136,7 @@ When apps are added to Intune or you change the app list, devices keep running t
 
 LicenseMeter does not store metering results. Device names and identifiers, app install status, program file names, last starts, start counts, coverage dates and health are read from Intune when someone opens or exports the report, and are kept in server memory for at most five minutes. LicenseMeter stores only the metering settings: that metering is enabled, the selected package, the observation period, the consent status, excluded apps, program files entered by Admins, and the program lists of recently generated collectors. The report shows the current Intune results only; it has no history of its own. Last starts survive between runs through the collector's checkpoint on each device.
 
-The collector never reads or reports user names, and LicenseMeter never requests user columns from the Intune install report, so the report contains no user identities.
+The collector reads Security log events locally on the device, and Windows records fields such as the user account and, if enabled, the command line in them. The collector uses only the program file name and start time, and never reports user names, command lines or paths. LicenseMeter never requests user columns from the Intune install report. The report therefore contains no user identities.
 
 To stop the feature:
 

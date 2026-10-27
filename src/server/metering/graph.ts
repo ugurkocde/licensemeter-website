@@ -8,7 +8,7 @@ export const METERING_ERRORS: Record<string, string> = {
   configuration:
     "Software Metering is not configured on this installation. Ask the operator to configure its separate Microsoft application.",
   consent:
-    "Metering access could not be verified. Grant both metering permissions, allow a few minutes for consent to propagate, then retry.",
+    "Metering access could not be verified. Grant all three metering permissions, allow a few minutes for consent to propagate, then retry.",
   forbidden:
     "Microsoft denied metering access. Check consent, Intune licensing, and tenant access policies.",
   missing:

@@ -279,6 +279,34 @@ describe("live metering reads", () => {
     expect(response.status).toBe(502);
     expect(JSON.stringify(await response.json())).not.toContain("forbidden");
   });
+  it("saves a large app list", async () => {
+    await seedConnection();
+    const excluded = Array.from(
+      { length: 500 },
+      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    );
+    const response = await action(
+      new Request("https://app.test/api/metering", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "apps", excluded, overrides: {} }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect((await conn())?.excludedApps).toHaveLength(500);
+  });
+  it("expires cached reads after five minutes without another read", async () => {
+    vi.useFakeTimers();
+    try {
+      const graph = source();
+      await readMetering(target(9), { source: graph });
+      vi.advanceTimersByTime(300_001);
+      await readMetering(target(9), { source: graph });
+      expect(graph.states).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("deletes only the disabled workspace's settings", async () => {
     await seedConnection();
     await database

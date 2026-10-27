@@ -152,6 +152,10 @@ function cached<T>(
   if (hit && !fresh) return hit.value as Promise<T>;
   const value = load();
   cache.set(key, { at: now, value });
+  // Expire on a timer, so results never outlive five minutes in an idle process.
+  setTimeout(() => {
+    if (cache.get(key)?.value === value) cache.delete(key);
+  }, CACHE_MS).unref?.();
   // A failed read is never reused.
   value.catch(() => {
     if (cache.get(key)?.value === value) cache.delete(key);

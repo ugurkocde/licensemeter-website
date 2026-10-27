@@ -88,7 +88,8 @@ export async function POST(req: Request) {
   const ctx = await apiAccess("admin");
   if (!ctx || ctx.tenant.isDemo) return fail("Not allowed", 403);
   const raw = await req.text();
-  if (raw.length > 4096) return fail("Request too large", 413);
+  // Only the app list may be large: up to 2000 exclusions and override lists.
+  if (raw.length > 262_144) return fail("Request too large", 413);
   let parsed;
   try {
     parsed = command.safeParse(JSON.parse(raw));
@@ -97,6 +98,8 @@ export async function POST(req: Request) {
   }
   if (!parsed.success) return fail("Check your metering settings.");
   const data = parsed.data;
+  if (data.action !== "apps" && raw.length > 4096)
+    return fail("Request too large", 413);
   // Disabling stays possible after a downgrade; everything else needs the plan.
   if (data.action !== "disable" && !hasFeature(ctx.entitlement, "metering"))
     return fail(PLAN_REQUIRED, 402);
