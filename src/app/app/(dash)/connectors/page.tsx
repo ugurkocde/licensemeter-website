@@ -1,6 +1,8 @@
 import { eq, sql } from "drizzle-orm";
 import { ConnectorCatalog } from "~/components/workspace/ConnectorCatalog";
 import { ButtonLink } from "~/components/ui";
+import { PlanBadge } from "~/components/workspace/FeatureLock";
+import { hasFeature } from "~/server/entitlement";
 import {
   WORKSPACE_CONNECTORS,
   connectorStatus,
@@ -96,10 +98,16 @@ export default async function ConnectorsPage() {
       />
       <div className="border-line bg-card flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5">
         <div>
-          <h2 className="font-medium">Windows Software Metering</h2>
+          <h2 className="flex items-center gap-2 font-medium">
+            Windows Software Metering
+            <PlanBadge
+              feature="metering"
+              locked={!hasFeature(ctx.entitlement, "metering")}
+            />
+          </h2>
           <p className="text-ink-soft mt-1 text-sm">
-            Optional application launch evidence through Intune, with separate
-            consent. Included in Pro.
+            See which Windows apps you deploy through Intune are installed and
+            started, with separate consent.
           </p>
         </div>
         <ButtonLink href="/app/metering">Open Software Metering</ButtonLink>

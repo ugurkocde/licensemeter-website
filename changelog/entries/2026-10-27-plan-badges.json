@@ -1,0 +1,7 @@
+{
+  "title": "Plan badges for paid features",
+  "summary": "Paid features now show a plan badge, with a lock when your plan does not include them yet. In the sidebar, Software Metering and the MCP server are marked Pro and report branding MSP. The Software Metering card on the Connectors page and the 24-month history hint below the dashboard trend chart carry the Pro badge too.",
+  "type": "improved",
+  "publishedOn": "2026-10-27",
+  "idempotencyKey": "licensemeter:plan-badges-sidebar"
+}
