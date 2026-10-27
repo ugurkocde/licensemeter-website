@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { METERING_SCOPES } from "~/lib/metering";
+import { collectorScript } from "./catalog";
 
 const { acquire, settings } = vi.hoisted(() => ({
   acquire: vi.fn(),
@@ -21,6 +22,7 @@ import {
   MeteringGraphClient,
   meteringClient,
   meteringConfigured,
+  parseCollector,
 } from "./graph";
 
 const id = "22222222-2222-2222-2222-222222222222";
@@ -223,6 +225,88 @@ describe("isolated metering Graph reads", () => {
     await expect(
       new MeteringGraphClient("test").installs([id]),
     ).rejects.toMatchObject({ code: "response" });
+  });
+  it("finds the collector package by its deployed script", async () => {
+    const script = Buffer.from(
+      await collectorScript(["acad.exe", "photoshop.exe"]),
+    ).toString("base64");
+    const other = Buffer.from("Write-Output 'unrelated'").toString("base64");
+    const second = "33333333-3333-3333-3333-333333333333";
+    fetchMock
+      .mockResolvedValueOnce(
+        response({
+          value: [
+            { id, displayName: "LicenseMeter pilot" },
+            { id: second, displayName: "Disk cleanup" },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        response({
+          responses: [
+            {
+              id: "0",
+              status: 200,
+              body: { id, detectionScriptContent: script },
+            },
+            {
+              id: "1",
+              status: 200,
+              body: { id: second, detectionScriptContent: other },
+            },
+          ],
+        }),
+      );
+    expect(await new MeteringGraphClient("test").collectors()).toEqual([
+      {
+        id,
+        name: "LicenseMeter pilot",
+        catalogId: expect.stringMatching(/^[0-9a-f]{8}$/) as string,
+        programs: ["acad.exe", "photoshop.exe"],
+      },
+    ]);
+    const [url, init] = fetchMock.mock.calls[1]!;
+    expect(new URL(url as string).pathname).toBe("/beta/$batch");
+    expect(init?.method).toBe("POST");
+  });
+  it("reads program names with brackets", async () => {
+    const script = Buffer.from(
+      await collectorScript(["app (x86).exe", "acad.exe"]),
+    ).toString("base64");
+    expect(parseCollector(script)?.programs).toEqual([
+      "app (x86).exe",
+      "acad.exe",
+    ]);
+  });
+  it("skips a deleted package but fails on a throttled one", async () => {
+    const listed = response({ value: [{ id, displayName: "Pilot" }] });
+    fetchMock
+      .mockResolvedValueOnce(listed)
+      .mockResolvedValueOnce(
+        response({ responses: [{ id: "0", status: 404, body: {} }] }),
+      );
+    expect(await new MeteringGraphClient("test").collectors()).toEqual([]);
+    fetchMock
+      .mockResolvedValueOnce(
+        response({ value: [{ id, displayName: "Pilot" }] }),
+      )
+      .mockResolvedValueOnce(
+        response({ responses: [{ id: "0", status: 429, body: {} }] }),
+      );
+    await expect(
+      new MeteringGraphClient("test").collectors(),
+    ).rejects.toMatchObject({ code: "throttled" });
+  });
+  it("ignores scripts that are not the collector or carry invalid names", () => {
+    const encode = (text: string) => Buffer.from(text).toString("base64");
+    expect(parseCollector(encode("$CatalogId = 'a1b2c3d4'"))).toBeNull();
+    expect(
+      parseCollector(
+        encode(
+          "LicenseMeter Windows usage collector, protocol 2\n$CatalogId = 'a1b2c3d4'\n$Programs = @('C:\\evil.exe')",
+        ),
+      ),
+    ).toBeNull();
   });
   it("never uses the base or sign-in application for metering", () => {
     const previous = settings.METERING_CLIENT_ID;

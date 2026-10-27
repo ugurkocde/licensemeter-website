@@ -12,7 +12,7 @@ export const maxDuration = 120;
 export async function GET(req: NextRequest) {
   const back = (error?: string) =>
     NextResponse.redirect(
-      `${appBaseUrl()}/app/metering${error ? `?error=${error}` : "?connected=1"}`,
+      `${appBaseUrl()}/app/metering/setup${error ? `?error=${error}` : "?connected=1"}`,
     );
   const params = req.nextUrl.searchParams;
   const nonce = params.get("state");
