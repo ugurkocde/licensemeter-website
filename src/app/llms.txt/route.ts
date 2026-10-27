@@ -16,7 +16,7 @@ export function GET(): Response {
 
 Operated by Ugurlabs UG and maintained by Ugur Koc, Microsoft MVP for Intune and Security Copilot. Key facts:
 
-- Read-only by design: the connector app holds no write scopes; remediation ships as generated PowerShell scripts that admins review and run themselves.
+- Read-only by design: the Microsoft 365 connector app holds no write scopes; remediation ships as generated PowerShell scripts that admins review and run themselves. The optional Software Metering app is separate and can only create or update LicenseMeter's own Intune collector package, after an Admin confirms.
 - Never reads content: no mailboxes, files or messages. License assignments, sign-in activity and usage metadata only.
 - EU data residency (Postgres, Frankfurt); disconnecting a workspace deletes all synced data immediately.
 - Free for every workspace: all connectors, waste rules, continuous monitoring, reports and exports, with no time limit. MSP portfolios are free too. The optional Pro and MSP plans add support by email, a signed DPA (AVV), an MCP server, Windows Software Metering through Intune and 24 months of waste history.

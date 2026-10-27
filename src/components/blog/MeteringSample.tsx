@@ -34,7 +34,7 @@ const LABELS: Record<
     notStarted: "Not started",
     of: (started, installed) => `${started} of ${installed}`,
     caption:
-      "Illustrative figures, not customer data. Devices are counted where the app is installed.",
+      "Illustrative figures, not customer data. Devices are counted where the app is installed, and every device shown has full 60-day coverage.",
   },
   de: {
     title: "Software Metering",
@@ -44,7 +44,7 @@ const LABELS: Record<
     notStarted: "Nicht gestartet",
     of: (started, installed) => `${started} von ${installed}`,
     caption:
-      "Beispielwerte, keine Kundendaten. Gezählt werden Geräte, auf denen die App installiert ist.",
+      "Beispielwerte, keine Kundendaten. Gezählt werden Geräte, auf denen die App installiert ist, und jedes gezeigte Gerät ist volle 60 Tage erfasst.",
   },
 };
 

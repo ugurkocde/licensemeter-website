@@ -56,7 +56,7 @@ export const BLOG_POSTS: BlogPost[] = [
     description:
       "LicenseMeter Software Metering shows, for every Windows app you deploy through Intune, how many devices have it installed and how many started it. Read live from Intune, no user names, included in Pro and MSP.",
     excerpt:
-      "Microsoft 365 tells you who signs in. It does not tell you whether the Visio, Acrobat Pro or AutoCAD on a laptop was opened since the day it was installed. Software Metering does.",
+      "Microsoft 365 tells you who signs in. It does not tell you whether the Visio, Acrobat Pro or AutoCAD on a laptop actually gets opened. Software Metering does, from the day you roll it out.",
     publishedOn: "2026-10-27",
     author: UGUR,
     tag: "Product",

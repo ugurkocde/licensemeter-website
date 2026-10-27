@@ -394,7 +394,7 @@ const en: PricingContent = {
   metering: {
     eyebrow: "Included in Pro and MSP",
     h2: "Software Metering: find the Windows licenses nobody starts.",
-    body: "For every Windows app you deploy through Intune, see how many devices have it installed and how many started it in the last 30, 60 or 90 days. Visio, Project, Acrobat Pro, AutoCAD: the desktop seats that Microsoft 365 reports cannot see.",
+    body: "For every Windows app you deploy through Intune, see how many devices have it installed and, once LicenseMeter knows its program file, how many started it in the last 30, 60 or 90 days. Visio, Project, Acrobat Pro, AutoCAD: the desktop seats that Microsoft 365 reports cannot see.",
     points: [
       {
         title: "Every Windows app in Intune",
@@ -717,7 +717,7 @@ const de: PricingContent = {
   metering: {
     eyebrow: "Enthalten in Pro und MSP",
     h2: "Software Metering: Finden Sie die Windows-Lizenzen, die niemand startet.",
-    body: "Sehen Sie für jede Windows-App, die Sie über Intune verteilen, auf wie vielen Geräten sie installiert ist und auf wie vielen sie in den letzten 30, 60 oder 90 Tagen gestartet wurde. Visio, Project, Acrobat Pro, AutoCAD: die Desktop-Lizenzen, die Microsoft-365-Berichte nicht zeigen.",
+    body: "Sehen Sie für jede Windows-App, die Sie über Intune verteilen, auf wie vielen Geräten sie installiert ist und, sobald LicenseMeter ihre Programmdatei kennt, auf wie vielen sie in den letzten 30, 60 oder 90 Tagen gestartet wurde. Visio, Project, Acrobat Pro, AutoCAD: die Desktop-Lizenzen, die Microsoft-365-Berichte nicht zeigen.",
     points: [
       {
         title: "Jede Windows-App in Intune",
