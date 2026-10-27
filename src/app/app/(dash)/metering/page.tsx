@@ -71,9 +71,12 @@ export default async function MeteringPage() {
       />
       <MeteringNotices view={view} />
       <FinishSetup view={view} />
-      {summary && report && early && view.step !== "connect" && (
-        <GettingStarted view={view} />
-      )}
+      {summary &&
+        report &&
+        early &&
+        (view.step === "waiting" || view.step === "done") && (
+          <GettingStarted view={view} />
+        )}
       {summary && report && !early && (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

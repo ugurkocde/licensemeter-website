@@ -62,7 +62,11 @@ export function meteringRows(
         : null;
       const reportedAt = date && Number.isFinite(date.getTime()) ? date : null;
       const success =
-        state?.detectionState === "success" &&
+        // Intune reports "pending" after the package's script changes, while
+        // the device's last output stays valid; its time and version are
+        // checked below, so only a failed run is discarded.
+        (state?.detectionState === "success" ||
+          state?.detectionState === "pending") &&
         !state.preRemediationDetectionScriptError;
       const payload =
         success && reportedAt

@@ -197,8 +197,8 @@ const HEALTH: {
 }[] = [
   {
     key: "reporting",
-    label: "Reporting",
-    hint: "Full coverage, current script",
+    label: "Full coverage",
+    hint: "Reported for the whole period",
     tone: "bg-good-soft text-good-text",
     mark: "✓",
   },
