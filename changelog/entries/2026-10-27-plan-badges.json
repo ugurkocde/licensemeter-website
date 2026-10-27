@@ -1,0 +1,7 @@
+{
+  "title": "Plan badges for paid features",
+  "summary": "The sidebar now marks Pro and MSP features with a plan badge, with a lock when your plan does not include them yet, so you can see at a glance what Software Metering, the MCP server, report branding and 24 months of history need.",
+  "type": "improved",
+  "publishedOn": "2026-10-27",
+  "idempotencyKey": "licensemeter:plan-badges-sidebar"
+}

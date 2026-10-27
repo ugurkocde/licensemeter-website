@@ -13,29 +13,34 @@ import {
 } from "~/server/entitlement";
 
 /**
- * Inline marker for a nav item or button that leads to a locked feature. The
- * plan is always there as text: visible by default, screen-reader only when
- * the host has no room for it.
+ * Plan badge for a paid feature: "Pro" in the brand colour, "MSP" in plum.
+ * With `locked`, a lock shows the workspace does not have it yet. The plan is
+ * always readable text, so the badge never relies on colour alone.
  */
-export const LockMark = ({
+export const PlanBadge = ({
   feature,
-  showPlan = true,
+  locked = false,
   className = "",
 }: {
   feature: Feature;
-  showPlan?: boolean;
+  locked?: boolean;
   className?: string;
-}) => (
-  <span
-    className={`inline-flex shrink-0 items-center gap-1 text-[11px] font-medium tracking-wide uppercase ${className}`}
-  >
-    <Lock aria-hidden="true" className="size-3.5" />
-    <span className={showPlan ? undefined : "sr-only"}>
-      <span className="sr-only">, requires </span>
-      {planName(planFor(feature))}
+}) => {
+  const plan = planFor(feature);
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] leading-4 font-semibold tracking-wide uppercase ${
+        plan === "pro"
+          ? "bg-brand-soft text-brand-deep"
+          : "bg-plum-soft text-plum"
+      } ${className}`}
+    >
+      {locked && <Lock aria-hidden="true" className="size-3" />}
+      <span className="sr-only">, {locked ? "requires" : "included in"} </span>
+      {planName(plan)}
     </span>
-  </span>
-);
+  );
+};
 
 /**
  * Stands in for a feature page or section the workspace has not paid for:

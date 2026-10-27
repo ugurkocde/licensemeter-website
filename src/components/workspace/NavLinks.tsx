@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { LockMark } from "./FeatureLock";
+import { PlanBadge } from "./FeatureLock";
 import { upgradePath } from "~/lib/upgrade";
 import type { Entitlement, Feature } from "~/server/entitlement";
 
@@ -112,10 +112,11 @@ export const NavLinks = ({
                     : "text-sidebar-soft hover:border-sidebar-soft hover:text-ink border-transparent"
               }`}
             >
-              {locked ? (
+              {item.feature ? (
                 <span className="flex items-center justify-between gap-2">
                   {item.label}
-                  <LockMark feature={locked} />
+                  {/* Always shown: paid features stay visible as an upsell. */}
+                  <PlanBadge feature={item.feature} locked={Boolean(locked)} />
                 </span>
               ) : (
                 <span className="flex items-center justify-between gap-2">

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PlanBadge } from "./FeatureLock";
 
 import { fmtMoney } from "~/lib/format";
 
@@ -39,11 +40,12 @@ const buildPath = (
  * decides when that is the case; older snapshots stay stored either way.
  */
 const HistoryWindowHint = ({ href }: { href: string }) => (
-  <p className="text-ink-faint mt-2 text-xs">
-    Showing the last 12 months.{" "}
+  <p className="text-ink-faint mt-2 flex flex-wrap items-center gap-2 text-xs">
+    Showing the last 12 months.
     <Link href={href} className="hover:text-ink underline underline-offset-4">
       Pro and MSP show 24 months.
     </Link>
+    <PlanBadge feature="history24" locked />
   </p>
 );
 
