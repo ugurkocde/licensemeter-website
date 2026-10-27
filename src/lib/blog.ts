@@ -126,7 +126,7 @@ export const BLOG_POSTS: BlogPost[] = [
           {
             title: "Read the report",
             body: [
-              "LicenseMeter finds the package that runs the collector on its own and reads the results from Intune whenever you open the report. In the first weeks the Dashboard shows coverage progress and the most recent app starts, until enough time has passed for the full charts.",
+              "LicenseMeter finds the package that runs the collector on its own and reads the results from Intune whenever you open the report. The Dashboard shows its charts from the first report and fills them in as devices report, with the most recent app starts listed alongside.",
             ],
           },
         ],

@@ -43,6 +43,9 @@ test("metering demo: sidebar sections, overview charts, app search and mobile fi
   await expect(
     content.getByRole("heading", { name: "Collection health" }),
   ).toBeVisible();
+  await expect(
+    content.getByRole("heading", { name: "Recent app starts" }),
+  ).toBeVisible();
   await expect(content.getByRole("link", { name: "Export CSV" })).toHaveCount(
     0,
   );

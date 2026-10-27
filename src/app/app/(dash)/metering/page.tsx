@@ -7,12 +7,13 @@ import {
   Recency,
 } from "~/components/workspace/MeteringCharts";
 import {
+  CollectingNotice,
   FinishSetup,
-  GettingStarted,
   MeteringFootnote,
   MeteringHeader,
   MeteringLocked,
   MeteringNotices,
+  RecentStarts,
 } from "~/components/workspace/MeteringParts";
 import { fmtDateTime } from "~/lib/format";
 import { requireAccess } from "~/server/access";
@@ -59,8 +60,12 @@ export default async function MeteringPage() {
     .filter((app) => app.installed > 0 && app.entry.programs.length > 0)
     .slice(0, 10);
   const selected = chartApps[0] ?? apps.find((app) => app.installed > 0);
-  // Full charts need at least one device with complete coverage.
-  const early = !summary || summary.health.reporting === 0;
+  // The dashboard shows as soon as the collector is deployed; evidence fills
+  // in as devices report, so there is no separate waiting view.
+  const live =
+    view.step === "waiting" ||
+    view.step === "done" ||
+    Boolean(summary && summary.health.reporting > 0);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 pb-8">
@@ -71,14 +76,9 @@ export default async function MeteringPage() {
       />
       <MeteringNotices view={view} />
       <FinishSetup view={view} />
-      {summary &&
-        report &&
-        early &&
-        (view.step === "waiting" || view.step === "done") && (
-          <GettingStarted view={view} />
-        )}
-      {summary && report && !early && (
+      {summary && report && live && (
         <>
+          <CollectingNotice view={view} />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Tile
               label="Windows devices in Intune"
@@ -146,26 +146,37 @@ export default async function MeteringPage() {
             )}
           </Card>
 
-          {selected && (
-            <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-              <Card title="Days since last start">
-                <p className="text-ink-soft mb-4 text-sm">
-                  <strong className="text-ink font-medium">
-                    {selected.entry.name}
-                  </strong>
-                  , installed devices with a start or full coverage. Choose
-                  another app on the Apps page.
-                </p>
-                <Recency app={selected} buckets={recencyBuckets(days)} />
-              </Card>
-              <Card title="Collection health">
-                <p className="text-ink-soft mb-3 text-sm">
-                  Why a device has no usable evidence.
-                </p>
-                <HealthList health={summary.health} />
+          <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+            <div className="flex flex-col gap-6">
+              {selected && (
+                <Card title="Days since last start">
+                  <p className="text-ink-soft mb-4 text-sm">
+                    <strong className="text-ink font-medium">
+                      {selected.entry.name}
+                    </strong>
+                    , installed devices with a start or full coverage. Choose
+                    another app on the Apps page.
+                  </p>
+                  <Recency app={selected} buckets={recencyBuckets(days)} />
+                </Card>
+              )}
+              <Card title="Recent app starts">
+                <RecentStarts view={view} />
               </Card>
             </div>
-          )}
+            <Card title="Collection health">
+              <p className="text-ink-soft mb-3 text-sm">
+                Why a device has no usable evidence.
+              </p>
+              <HealthList health={summary.health} />
+              {summary.health.noReport > 0 && (
+                <p className="text-ink-faint mt-3 text-xs">
+                  Devices outside the collector’s assignment never report. That
+                  is expected during a pilot.
+                </p>
+              )}
+            </Card>
+          </div>
         </>
       )}
       <MeteringFootnote />
