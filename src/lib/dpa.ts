@@ -134,9 +134,11 @@ export type DpaDoc = {
 // commercial register entry in the party and signature blocks.
 // 2.1: removed the separate sign-in sub-processor. Sign-in is Microsoft Entra
 // ID only, already covered by the Microsoft row, so no sub-processor was added.
-export const DPA_VERSION = "2.1";
-const EFFECTIVE_EN = "19 September 2026";
-const EFFECTIVE_DE = "19. September 2026";
+// 2.2: added optional Windows metering metadata and permissions. Metering
+// results are read live and not stored.
+export const DPA_VERSION = "2.2";
+const EFFECTIVE_EN = "3 October 2026";
+const EFFECTIVE_DE = "3. Oktober 2026";
 
 const PROCESSOR_NAME = "Ugurlabs UG (haftungsbeschränkt)";
 const PROCESSOR_REGISTER: Record<DpaLang, string> = {
@@ -265,20 +267,20 @@ export const annexIIIHeadings = (lang: DpaLang): string[] =>
 const ANNEX_II: Record<DpaLang, string[]> = {
   en: [
     "The controller's employees and other directory users; holders of seats in connected source systems; the controller's own workspace members who sign in to the Service.",
-    "Display name; user principal name (UPN) / email address; directory object and tenant identifiers; account status and user type; account creation date; assigned license SKUs; last sign-in and per-workload last-activity timestamps; for connected source systems, seat email, status and product assignments; for workspace members, name, email, role and sign-in activity.",
-    "None. The Service is not intended for special categories of personal data (Art. 9 GDPR). Mailbox, file and message content is never accessed: the permissions the Service requests in the Microsoft 365 tenant are read-only and cover directory, license, sign-in activity and usage report data only.",
+    "Display name; user principal name (UPN) / email address; directory object and tenant identifiers; account status and user type; account creation date; assigned license SKUs; last sign-in and per-workload last-activity timestamps; for connected source systems, seat email, status and product assignments; for workspace members, name, email, role and sign-in activity; when optional Windows Software Metering is enabled, device names and identifiers, per-device install status of apps deployed through Intune, program file names, last start times, numbers of starts in the last 24 hours, coverage dates and collection health.",
+    "None. The Service is not intended for special categories of personal data (Art. 9 GDPR). Mailbox, file and message content is never accessed: the permissions the Service requests in the Microsoft 365 tenant are read-only and cover directory, license, sign-in activity and usage report data, plus optional device metadata and bounded metering aggregates.",
     "Read-only collection, storage, aggregation and analysis of license, directory and activity metadata, and the generation of reports and exports from it. Synchronization runs on a schedule (typically nightly) and on demand when a user of the controller starts it.",
     "Solely to identify unused, oversized and misaligned license assignments and their cost, and to report them to the controller. The processor does not use the personal data to monitor or evaluate the performance or behavior of individual employees of the controller, does not create profiles for such purposes, and does not provide the Service as a tool for performance or behavior monitoring. Activity metadata is processed solely to determine whether a paid license seat is used, unused or oversized.",
-    "For as long as the workspace exists. The owner can delete the workspace at any time, which deletes all synchronized data, the activity log and the stored connection credentials immediately and irreversibly.",
+    "For as long as the workspace exists. The owner can delete the workspace at any time, which deletes all synchronized data, the activity log and the stored connection credentials immediately and irreversibly. Optional Software Metering results (device names and identifiers and metering aggregates) are not stored. They are read from Intune when a user views or exports them and held only in server memory for at most five minutes. Disabling Software Metering deletes its stored settings and pending consent.",
     "The sub-processors in Annex IV host the application, store the data, provide sign-in and deliver email, each for the purpose named there and for the duration of this agreement.",
   ],
   de: [
     "Beschäftigte und sonstige Verzeichnisnutzer des Verantwortlichen; Inhaber von Lizenzplätzen in verbundenen Quellsystemen; die eigenen Arbeitsbereichs-Mitglieder des Verantwortlichen, die sich am Dienst anmelden.",
-    "Anzeigename; User Principal Name (UPN) / E-Mail-Adresse; Verzeichnis-Objekt- und Tenant-Kennungen; Kontostatus und Nutzertyp; Erstellungsdatum des Kontos; zugewiesene Lizenz-SKUs; Zeitstempel der letzten Anmeldung und der letzten Aktivität je Dienst; bei verbundenen Quellsystemen E-Mail, Status und Produktzuweisungen der Lizenzplätze; bei Arbeitsbereichs-Mitgliedern Name, E-Mail, Rolle und Anmeldeaktivität.",
-    "Keine. Der Dienst ist nicht für besondere Kategorien personenbezogener Daten (Art. 9 DSGVO) bestimmt. Auf Postfach-, Datei- und Nachrichteninhalte wird zu keinem Zeitpunkt zugegriffen: Die Berechtigungen, die der Dienst im Microsoft-365-Tenant anfordert, sind ausschließlich lesend und umfassen nur Verzeichnis-, Lizenz-, Anmeldeaktivitäts- und Nutzungsberichtsdaten.",
+    "Anzeigename; User Principal Name (UPN) / E-Mail-Adresse; Verzeichnis-Objekt- und Tenant-Kennungen; Kontostatus und Nutzertyp; Erstellungsdatum des Kontos; zugewiesene Lizenz-SKUs; Zeitstempel der letzten Anmeldung und der letzten Aktivität je Dienst; bei verbundenen Quellsystemen E-Mail, Status und Produktzuweisungen der Lizenzplätze; bei Arbeitsbereichs-Mitgliedern Name, E-Mail, Rolle und Anmeldeaktivität; bei aktiviertem optionalem Windows Software Metering Gerätenamen und Gerätekennungen, Installationsstatus über Intune bereitgestellter Apps je Gerät, Namen von Programmdateien, letzte Startzeitpunkte, Anzahl der Starts in den letzten 24 Stunden, Erfassungszeiträume und Erfassungsstatus.",
+    "Keine. Der Dienst ist nicht für besondere Kategorien personenbezogener Daten (Art. 9 DSGVO) bestimmt. Auf Postfach-, Datei- und Nachrichteninhalte wird zu keinem Zeitpunkt zugegriffen: Die Berechtigungen, die der Dienst im Microsoft-365-Tenant anfordert, sind ausschließlich lesend und umfassen Verzeichnis-, Lizenz-, Anmeldeaktivitäts- und Nutzungsberichtsdaten sowie optionale Gerätemetadaten und begrenzte Metering-Aggregate.",
     "Ausschließlich lesende Erhebung, Speicherung, Aggregation und Analyse von Lizenz-, Verzeichnis- und Aktivitätsmetadaten sowie die Erstellung von Berichten und Exporten daraus. Die Synchronisierung läuft nach Zeitplan (in der Regel nächtlich) und auf Anforderung, wenn ein Nutzer des Verantwortlichen sie startet.",
     "Ausschließlich zur Ermittlung ungenutzter, überdimensionierter und fehlerhaft zugewiesener Lizenzen und der damit verbundenen Kosten sowie zur Berichterstattung darüber an den Verantwortlichen. Der Auftragsverarbeiter verwendet die personenbezogenen Daten nicht zur Überwachung oder Bewertung der Leistung oder des Verhaltens einzelner Beschäftigter des Verantwortlichen, erstellt keine Profile zu solchen Zwecken und stellt den Dienst nicht als Instrument zur Leistungs- oder Verhaltenskontrolle bereit. Aktivitätsmetadaten werden allein verarbeitet, um festzustellen, ob ein bezahlter Lizenzplatz genutzt, ungenutzt oder überdimensioniert ist.",
-    "Solange der Arbeitsbereich besteht. Der Owner kann den Arbeitsbereich jederzeit löschen; dadurch werden alle synchronisierten Daten, das Aktivitätsprotokoll und die gespeicherten Verbindungszugangsdaten unmittelbar und unwiderruflich gelöscht.",
+    "Solange der Arbeitsbereich besteht. Der Owner kann den Arbeitsbereich jederzeit löschen; dadurch werden alle synchronisierten Daten, das Aktivitätsprotokoll und die gespeicherten Verbindungszugangsdaten unmittelbar und unwiderruflich gelöscht. Ergebnisse des optionalen Software Metering (Gerätenamen und Gerätekennungen sowie Metering-Aggregate) werden nicht gespeichert. Sie werden beim Anzeigen oder Exportieren aus Intune gelesen und höchstens fünf Minuten im Arbeitsspeicher des Servers gehalten. Das Deaktivieren von Software Metering löscht dessen gespeicherte Einstellungen und offene Zustimmungen.",
     "Die Unterauftragsverarbeiter in Anhang IV hosten die Anwendung, speichern die Daten, stellen die Anmeldung bereit und versenden E-Mails, jeweils zu dem dort genannten Zweck und für die Dauer dieser Vereinbarung.",
   ],
 };
@@ -316,7 +318,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
     1: [
       "Every request resolves the signed-in user's workspace membership on the server, and data is read and written scoped to that workspace. Identifiers sent by the browser are never trusted on their own.",
       "In the hosted database, row-level security is enabled on every table. The application connects with a dedicated role that holds data manipulation rights only and owns no tables. The database provider's public Data API roles have no policy and no grants, so they cannot read or write anything.",
-      "Access to the Microsoft 365 tenant is read-only: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All and ReportSettings.Read.All. The Service holds no write permission and cannot change anything in the tenant. Remediation scripts are generated for the controller to review and run itself; the Service never executes them.",
+      "Access to the Microsoft 365 tenant is read-only: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All and ReportSettings.Read.All. Optional Software Metering uses a separate application and consent for DeviceManagementScripts.Read.All, DeviceManagementManagedDevices.Read.All and DeviceManagementApps.Read.All. These permissions are tenant-wide; the Service reads only the selected package’s validated metering output. The Service holds no write permission and cannot change anything in the tenant. Remediation scripts are generated for the controller to review and run itself; the Service never executes them.",
       "State-changing routes check the request origin, and sensitive endpoints such as synchronization, invitations and the support form are rate limited with counters kept in the database.",
       "A content security policy, a ban on framing, MIME sniffing protection, a referrer policy and a permissions policy are sent with every response.",
       "Synchronization tolerates missing optional permissions, and only one synchronization can run per workspace at a time.",
@@ -356,7 +358,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
     ],
     // src/lib/scopes.ts
     12: [
-      "The Service requests only the permissions listed above and reads metadata only. Activity is stored as the date of the last sign-in and of the last use per workload, not as a record of what a person did.",
+      "The Service requests only the permissions listed above and reads metadata only. Activity is stored as the date of the last sign-in and of the last use per workload, not as a record of what a person did. Optional metering reads device-level app starts, install status and coverage from Intune without storing them, requests no user columns, and never processes usernames, command lines, file paths or raw event logs.",
     ],
     // src/server/sync/runSync.ts
     13: [
@@ -384,7 +386,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
     1: [
       "Jede Anfrage ermittelt auf dem Server die Arbeitsbereichs-Mitgliedschaft des angemeldeten Nutzers; Daten werden nur im Rahmen dieses Arbeitsbereichs gelesen und geschrieben. Vom Browser gesendeten Kennungen wird für sich genommen nie vertraut.",
       "In der gehosteten Datenbank ist Row-Level-Security auf jeder Tabelle aktiviert. Die Anwendung verbindet sich mit einer eigenen Rolle, die nur Rechte zur Datenbearbeitung besitzt und keine Tabellen besitzt. Die öffentlichen Data-API-Rollen des Datenbankanbieters haben weder Policy noch Rechte und können daher nichts lesen oder schreiben.",
-      "Der Zugriff auf den Microsoft-365-Tenant ist ausschließlich lesend: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All und ReportSettings.Read.All. Der Dienst besitzt keine Schreibberechtigung und kann im Tenant nichts verändern. Skripte zur Bereinigung werden erzeugt, damit der Verantwortliche sie prüft und selbst ausführt; der Dienst führt sie nie aus.",
+      "Der Zugriff auf den Microsoft-365-Tenant ist ausschließlich lesend: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All und ReportSettings.Read.All. Optionales Software Metering verwendet eine separate Anwendung und Zustimmung für DeviceManagementScripts.Read.All, DeviceManagementManagedDevices.Read.All und DeviceManagementApps.Read.All. Diese Berechtigungen gelten tenantweit; der Dienst liest nur die validierte Metering-Ausgabe des ausgewählten Pakets. Der Dienst besitzt keine Schreibberechtigung und kann im Tenant nichts verändern. Skripte zur Bereinigung werden erzeugt, damit der Verantwortliche sie prüft und selbst ausführt; der Dienst führt sie nie aus.",
       "Zustandsändernde Routen prüfen die Herkunft der Anfrage; sensible Endpunkte wie Synchronisierung, Einladungen und das Support-Formular sind ratenbegrenzt, die Zähler liegen in der Datenbank.",
       "Mit jeder Antwort werden eine Content Security Policy, ein Framing-Verbot, ein Schutz vor MIME-Sniffing, eine Referrer-Policy und eine Permissions-Policy gesendet.",
       "Die Synchronisierung kommt mit fehlenden optionalen Berechtigungen zurecht, und je Arbeitsbereich kann nur eine Synchronisierung gleichzeitig laufen.",
@@ -416,7 +418,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
       "Die Voreinstellungen sind restriktiv: Wer einem Arbeitsbereich über dessen verifizierte Unternehmensdomain beitritt, beginnt als Viewer, und Verbraucher-E-Mail-Domains treten nie dem Arbeitsbereich eines anderen Nutzers bei.",
     ],
     12: [
-      "Der Dienst fordert nur die oben genannten Berechtigungen an und liest ausschließlich Metadaten. Aktivität wird als Datum der letzten Anmeldung und der letzten Nutzung je Dienst gespeichert, nicht als Aufzeichnung dessen, was eine Person getan hat.",
+      "Der Dienst fordert nur die oben genannten Berechtigungen an und liest ausschließlich Metadaten. Aktivität wird als Datum der letzten Anmeldung und der letzten Nutzung je Dienst gespeichert, nicht als Aufzeichnung dessen, was eine Person getan hat. Optionales Metering liest App-Starts, Installationsstatus und Erfassungszeiträume je Gerät aus Intune, ohne sie zu speichern, fordert keine Benutzerspalten an und verarbeitet nie Benutzernamen, Befehlszeilen, Dateipfade oder rohe Ereignisprotokolle.",
     ],
     13: [
       "Jede Synchronisierung liest die Daten erneut aus dem Quellsystem, sodass eine Korrektur an der Quelle mit dem nächsten Lauf im Dienst ankommt.",

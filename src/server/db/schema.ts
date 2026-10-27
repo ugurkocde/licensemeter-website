@@ -273,6 +273,62 @@ export const msConnections = pgTable(
 /** A full Microsoft connection row, passed around by value. */
 export type MsConnectionRow = typeof msConnections.$inferSelect;
 
+/**
+ * Separate opt-in and consent: the base Microsoft connector never gains Intune
+ * scopes. Only settings are stored; device results are read live from Graph.
+ */
+export const meteringConnections = pgTable(
+  "metering_connections",
+  {
+    tenantId: uuid("tenant_id")
+      .primaryKey()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    id: uuid("id").notNull().defaultRandom().unique(),
+    tid: text("tid").notNull(),
+    consentedAt: timestamp("consented_at", { withTimezone: true }),
+    scriptId: text("script_id"),
+    scriptName: text("script_name"),
+    inactivityDays: integer("inactivity_days").notNull().default(60),
+    revision: integer("revision").notNull().default(0),
+    /** Catalog entry ids the admin chose not to meter. */
+    excludedApps: jsonb("excluded_apps")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /** Program files an admin entered for an app, by catalog entry id. */
+    programOverrides: jsonb("program_overrides")
+      .$type<Record<string, string[]>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    /** Program lists of the latest generated collector versions, newest first. */
+    collectors: jsonb("collectors")
+      .$type<{ id: string; programs: string[]; at: string }[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check("metering_inactivity_days", sql`${t.inactivityDays} in (30, 60, 90)`),
+  ],
+).enableRLS();
+
+export const meteringConsentStates = pgTable("metering_consent_states", {
+  state: uuid("state").primaryKey(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  connectionId: uuid("connection_id")
+    .notNull()
+    .references(() => meteringConnections.id, { onDelete: "cascade" }),
+  oid: text("oid").notNull(),
+  tid: text("tid").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+}).enableRLS();
+
 /** Who may sign in to which tenant workspace, and as what. */
 export const memberships = pgTable(
   "memberships",

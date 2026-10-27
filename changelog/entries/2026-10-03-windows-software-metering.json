@@ -1,0 +1,7 @@
+{
+  "title": "Optional Windows software metering",
+  "summary": "Pro and MSP workspaces can see, for every Windows app they deploy through Intune, how many devices have it installed and whether it was started, with starts in the last 24 hours, app search, per-device detail and CSV export. Results are read live from Intune each time you open or export the report and are not stored by LicenseMeter, and no user names are collected or shown. Metering uses separate read-only Microsoft consent and a detection script that LicenseMeter generates from your Intune app list. A sample report is available in the demo. Missing data stays unknown, and a start does not measure working time or trigger license removal.",
+  "type": "new",
+  "publishedOn": "2026-10-03",
+  "idempotencyKey": "licensemeter:windows-software-metering-v1"
+}

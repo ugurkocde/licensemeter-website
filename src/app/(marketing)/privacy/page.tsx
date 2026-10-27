@@ -28,9 +28,7 @@ export default function PrivacyPolicyPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 pt-6 pb-24">
       <h1 className="font-display text-4xl tracking-tight">Privacy Policy</h1>
-      <p className="text-ink-faint mt-3 text-xs">
-        Last updated: September 2026
-      </p>
+      <p className="text-ink-faint mt-3 text-xs">Last updated: October 2026</p>
 
       <Section title="1. Controller">
         <p>
@@ -132,6 +130,33 @@ export default function PrivacyPolicyPage() {
           used solely for the read-only sync; they are never logged or
           disclosed. A data processing agreement (DPA) is provided to each
           organization before production use.
+        </p>
+      </Section>
+
+      <Section title="4a. Optional Windows Software Metering">
+        <p>
+          When an organization enables Software Metering, a separate Microsoft
+          application requests additional read-only consent. The customer
+          deploys and controls the Windows detection script, which reports the
+          program file names of started apps deployed through its Intune, their
+          last start, the number of starts in the last 24 hours, coverage dates
+          and collection health to the organization’s own Intune tenant. Its
+          output excludes usernames, command lines, file paths and raw event
+          logs. Device-linked activity can still relate to employees and
+          requires the organization’s review before collection.
+        </p>
+        <p>
+          LicenseMeter does not store these results. It reads them, together
+          with device names and identifiers and each app’s per-device install
+          status, from Intune when a workspace member views or exports the
+          report, and keeps them in server memory for at most five minutes. It
+          requests no user names from Intune. Only the metering settings are
+          stored: that it is enabled, the selected package, the observation
+          period, the consent status, apps left out, program files entered by an
+          Admin and the program lists of generated collectors. Disabling
+          metering deletes these settings and pending consent requests. The
+          organization must separately revoke the app’s consent in Microsoft
+          Entra and unassign its collector in Intune.
         </p>
       </Section>
 
