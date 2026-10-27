@@ -1,7 +1,7 @@
 import { ConfidentialClientApplication } from "@azure/msal-node";
 import { z } from "zod";
 import { env } from "~/env";
-import { GUID, METERING_SCOPES } from "~/lib/metering";
+import { GUID, METERING_SCOPES, PROGRAM } from "~/lib/metering";
 
 const GRAPH = "https://graph.microsoft.com/beta";
 export const METERING_ERRORS: Record<string, string> = {
@@ -111,8 +111,18 @@ export interface MeteringApp {
   /** Microsoft 365 Apps products, e.g. visioProRetail. */
   products: string[];
 }
+/** A Remediations package whose detection script is the LicenseMeter collector. */
+export interface CollectorPackage {
+  id: string;
+  name: string;
+  /** Program list version the deployed script reports as "c". */
+  catalogId: string;
+  programs: string[];
+}
 export interface MeteringSource {
   packages(this: void): Promise<MeteringPackage[]>;
+  /** Packages running the collector, read from their deployed scripts. */
+  collectors(this: void): Promise<CollectorPackage[]>;
   devices(this: void): Promise<MeteringDevice[]>;
   states(this: void, scriptId: string): Promise<MeteringRunState[]>;
   apps(this: void): Promise<MeteringApp[]>;
@@ -132,6 +142,36 @@ export function checkedMeteringUrl(value: string, path: string): string {
   )
     throw new MeteringError("response");
   return url.href;
+}
+
+const COLLECTOR_MARKER = "LicenseMeter Windows usage collector, protocol 2";
+const batchSchema = z.object({
+  responses: z
+    .array(z.object({ id: z.string(), status: z.number(), body: z.unknown() }))
+    .max(20),
+});
+const scriptSchema = z.object({
+  detectionScriptContent: z.string().max(2_000_000).nullable().optional(),
+});
+
+/** Reads the program list out of a deployed collector, or null for any other script. */
+export function parseCollector(
+  base64: string,
+): { catalogId: string; programs: string[] } | null {
+  let script: string;
+  try {
+    script = Buffer.from(base64, "base64").toString("latin1");
+  } catch {
+    return null;
+  }
+  if (!script.includes(COLLECTOR_MARKER)) return null;
+  const id = /^\$CatalogId = '([0-9a-f]{8})'\r?$/m.exec(script)?.[1];
+  const list = /^\$Programs = @\(([^)\r\n]*)\)\r?$/m.exec(script)?.[1];
+  if (!id || list === undefined) return null;
+  const programs = [...list.matchAll(/'([^']*)'/g)].map((m) => m[1]!);
+  if (!programs.length || programs.some((name) => !PROGRAM.test(name)))
+    return null;
+  return { catalogId: id, programs };
 }
 
 const INSTALL_REPORT =
@@ -253,6 +293,44 @@ export class MeteringGraphClient implements MeteringSource {
       { $select: "id,displayName", $top: "100" },
       packageSchema,
     );
+  }
+  /**
+   * Finds the collector by its deployed script, so the admin never picks a
+   * package and LicenseMeter knows exactly which program list devices run.
+   * Other scripts are only checked for the marker and never kept.
+   */
+  async collectors(): Promise<CollectorPackage[]> {
+    const packages = await this.packages();
+    const url = checkedMeteringUrl(GRAPH + "/$batch", "/$batch");
+    const found: CollectorPackage[] = [];
+    for (let i = 0; i < packages.length; i += 20) {
+      const chunk = packages.slice(i, i + 20);
+      const parsed = batchSchema.safeParse(
+        await this.request(url, {
+          requests: chunk.map((pkg, index) => ({
+            id: String(index),
+            method: "GET",
+            url: `/deviceManagement/deviceHealthScripts/${pkg.id}?$select=id,detectionScriptContent`,
+          })),
+        }),
+      );
+      if (!parsed.success) throw new MeteringError("response");
+      for (const response of parsed.data.responses) {
+        const pkg = chunk[Number(response.id)];
+        const content = scriptSchema.safeParse(response.body);
+        if (!pkg || response.status !== 200 || !content.success) continue;
+        const collector = parseCollector(
+          content.data.detectionScriptContent ?? "",
+        );
+        if (collector)
+          found.push({
+            id: pkg.id.toLowerCase(),
+            name: pkg.displayName,
+            ...collector,
+          });
+      }
+    }
+    return found.sort((a, b) => a.name.localeCompare(b.name));
   }
   devices() {
     return this.list(

@@ -39,6 +39,11 @@ export type HealthKey =
   | "auditOff"
   | "stale"
   | "error";
+export interface RecentStart {
+  app: string;
+  device: string;
+  at: Date;
+}
 export interface MeteringSummary {
   apps: AppSummary[];
   devices: number;
@@ -46,7 +51,17 @@ export interface MeteringSummary {
   /** Installed device and app pairs without a start in the period. */
   notStarted: number;
   currentId: string;
+  /** Program list version of the deployed collector, or null. */
+  deployedId: string | null;
+  /** Metered apps the deployed collector does not watch yet. */
+  notWatched: CatalogEntry[];
   unresolved: number;
+  /** Devices with a fresh, healthy report. */
+  reporting: number;
+  /** Longest continuous coverage of any healthy device, in whole days. */
+  coverageDays: number;
+  /** Most recent app starts, newest first, for the first days. */
+  recentStarts: RecentStart[];
 }
 
 /** Day thresholds for the recency chart, ending with the observation period. */
@@ -54,6 +69,22 @@ export const recencyBuckets = (days: number) => [
   ...[7, 14, 30].filter((value) => value < days),
   days,
 ];
+
+/** Downloaded versions plus the one actually deployed in Intune. */
+export const knownVersions = (
+  report: MeteringReport,
+  versions: CollectorVersion[],
+): CollectorVersion[] =>
+  report.collector
+    ? [
+        {
+          id: report.collector.catalogId,
+          programs: report.collector.programs,
+          at: report.readAt.toISOString(),
+        },
+        ...versions,
+      ]
+    : versions;
 
 const watchedBy = (versions: CollectorVersion[]) => {
   const map = new Map(versions.map((v) => [v.id, v.programs]));
@@ -69,7 +100,7 @@ export function deviceApps(
   now = new Date(),
 ): DeviceApp[] {
   const installed = new Set(report.installs[entry.appId] ?? []);
-  const watched = watchedBy(versions);
+  const watched = watchedBy(knownVersions(report, versions));
   return report.rows.map((row) => ({
     row,
     installed: installed.has(row.deviceId),
@@ -136,7 +167,34 @@ export function summarize(
     stale: 0,
     error: 0,
   };
-  const known = new Set(versions.map((version) => version.id));
+  const deployedId = report.collector?.catalogId ?? null;
+  const known = new Set(
+    knownVersions(report, versions).map((version) => version.id),
+  );
+  const deployed = new Set(report.collector?.programs ?? []);
+  let coverageDays = 0;
+  const recentStarts: RecentStart[] = [];
+  const appByProgram = new Map(
+    active.flatMap((entry) => entry.programs.map((name) => [name, entry.name])),
+  );
+  for (const row of report.rows) {
+    if (row.payload?.h === "ok") {
+      const end = Date.parse(row.payload.e);
+      coverageDays = Math.max(
+        coverageDays,
+        Math.floor((end - Date.parse(row.payload.s)) / 86_400_000),
+      );
+      for (const [name, ago] of row.payload.a) {
+        const app = appByProgram.get(name);
+        if (app)
+          recentStarts.push({
+            app,
+            device: row.deviceName,
+            at: new Date(end - ago * 60_000),
+          });
+      }
+    }
+  }
   for (const row of report.rows) {
     const payload = row.payload;
     if (row.status === "no_report") health.noReport++;
@@ -147,7 +205,10 @@ export function summarize(
       METERING_STALE_DAYS * 86_400_000
     )
       health.stale++;
-    else if (payload.c !== currentId || !known.has(payload.c))
+    else if (
+      !known.has(payload.c) ||
+      (deployedId !== null && payload.c !== deployedId)
+    )
       health.outdated++;
     else if (Date.parse(payload.s) > Date.parse(payload.e) - days * 86_400_000)
       health.collecting++;
@@ -164,6 +225,19 @@ export function summarize(
     health,
     notStarted: apps.reduce((sum, app) => sum + app.notStarted, 0),
     currentId,
+    deployedId,
+    notWatched: report.collector
+      ? active.filter(
+          (entry) =>
+            entry.programs.length > 0 &&
+            entry.programs.some((name) => !deployed.has(name)),
+        )
+      : [],
     unresolved: active.filter((entry) => !entry.programs.length).length,
+    reporting: health.reporting + health.collecting,
+    coverageDays,
+    recentStarts: recentStarts
+      .sort((a, b) => b.at.getTime() - a.at.getTime())
+      .slice(0, 8),
   };
 }

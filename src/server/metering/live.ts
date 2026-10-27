@@ -2,7 +2,7 @@ import { parseMeteringOutput, type MeteringPayload } from "~/lib/metering";
 import { buildCatalog, type CatalogEntry } from "./catalog";
 import {
   meteringClient,
-  MeteringError,
+  type CollectorPackage,
   type MeteringDevice,
   type MeteringRunState,
   type MeteringSource,
@@ -16,6 +16,10 @@ export interface MeteringRow {
   payload: MeteringPayload | null;
 }
 export interface MeteringReport {
+  /** The package devices report from, or null until one is deployed. */
+  collector: CollectorPackage | null;
+  /** Every package running the collector; more than one needs a choice. */
+  collectors: CollectorPackage[];
   rows: MeteringRow[];
   catalog: CatalogEntry[];
   /** Lower-case device ids with the app installed, by Intune app id. */
@@ -26,6 +30,7 @@ export interface MeteringReadTarget {
   id: string;
   tid: string;
   revision: number;
+  /** Admin choice when several packages run the collector. */
   scriptId: string | null;
   excludedApps: string[];
   programOverrides: Record<string, string[]>;
@@ -98,27 +103,25 @@ export async function collectMetering(
   target: MeteringReadTarget,
   now = new Date(),
 ): Promise<Omit<MeteringReport, "readAt">> {
-  const scriptId = target.scriptId;
-  if (!scriptId) throw new MeteringError("missing");
-  const [devices, states, catalog] = await Promise.all([
+  const [devices, collectors, catalog] = await Promise.all([
     source.devices(),
-    source.states(scriptId),
+    source.collectors(),
     collectCatalog(source, target),
   ]);
-  // Graph can return 200 with no run states after the package is gone.
-  if (
-    !states.length &&
-    !(await source.packages()).some(
-      (pkg) => pkg.id.toLowerCase() === scriptId.toLowerCase(),
-    )
-  )
-    throw new MeteringError("missing");
+  // The deployed collector is found automatically; the setting only breaks a tie.
+  const chosen = target.scriptId?.toLowerCase();
+  const collector =
+    collectors.find((pkg) => pkg.id === chosen) ??
+    (collectors.length === 1 ? collectors[0]! : null);
+  const states = collector ? await source.states(collector.id) : [];
   const appIds = [
     ...new Set(
       catalog.filter((entry) => !entry.excluded).map((entry) => entry.appId),
     ),
   ];
   return {
+    collector,
+    collectors,
     rows: meteringRows(devices, states, now),
     catalog,
     installs: appIds.length ? await source.installs(appIds) : {},

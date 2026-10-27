@@ -29,7 +29,14 @@ const PROGRAM = /^[a-z0-9][a-z0-9 ._+()&-]{0,62}\.exe$/;
  * Every Windows app assigned in Intune is metered by default. Admins can leave
  * an app out or name its program file; both change the generated collector.
  */
-export function MeteringApps({ apps }: { apps: MeteringAppItem[] }) {
+export function MeteringApps({
+  apps,
+  onlyUnknown: startUnknown = false,
+}: {
+  apps: MeteringAppItem[];
+  /** Start with only the apps that still need a program file. */
+  onlyUnknown?: boolean;
+}) {
   const router = useRouter();
   const [excluded, setExcluded] = useState(
     () => new Set(apps.filter((app) => app.excluded).map((app) => app.id)),
@@ -38,7 +45,7 @@ export function MeteringApps({ apps }: { apps: MeteringAppItem[] }) {
     Object.fromEntries(apps.map((app) => [app.id, app.programs.join(", ")])),
   );
   const [query, setQuery] = useState("");
-  const [onlyUnknown, setOnlyUnknown] = useState(false);
+  const [onlyUnknown, setOnlyUnknown] = useState(startUnknown);
   const [page, setPage] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -95,7 +102,7 @@ export function MeteringApps({ apps }: { apps: MeteringAppItem[] }) {
       if (!res.ok)
         throw new Error(result.error ?? "Could not save the app list.");
       setMessage(
-        "App list saved. Download the collector again and replace the detection script in Intune.",
+        "Saved. Update the collector in Setup so devices watch the change.",
       );
       router.refresh();
     } catch (err) {

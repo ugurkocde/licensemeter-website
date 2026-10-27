@@ -16,11 +16,7 @@ import {
   MeteringError,
   verifyMeteringConsent,
 } from "~/server/metering/graph";
-import {
-  forgetMetering,
-  readCatalog,
-  readMetering,
-} from "~/server/metering/live";
+import { forgetMetering, readMetering } from "~/server/metering/live";
 import { rateLimitDurable } from "~/server/rateLimit";
 import { requestDeadline } from "~/server/sync/deadline";
 
@@ -42,7 +38,8 @@ const command = z.discriminatedUnion("action", [
   z.object({ action: z.literal("verify") }),
   z.object({
     action: z.literal("configure"),
-    scriptId: z.string().regex(GUID),
+    // Only needed when several packages run the collector.
+    scriptId: z.string().regex(GUID).optional(),
     inactivityDays: z.union([z.literal(30), z.literal(60), z.literal(90)]),
   }),
   z.object({
@@ -56,32 +53,6 @@ const command = z.discriminatedUnion("action", [
       .refine((value) => Object.keys(value).length <= 2000),
   }),
 ]);
-
-/** Only a consenting, opted-in workspace can even list remediation packages. */
-export async function GET() {
-  const ctx = await apiAccess("admin");
-  if (!ctx || ctx.tenant.isDemo) return fail("Not allowed", 403);
-  if (!hasFeature(ctx.entitlement, "metering")) return fail(PLAN_REQUIRED, 402);
-  const connection = await db.query.meteringConnections.findFirst({
-    where: eq(meteringConnections.tenantId, ctx.tenant.id),
-  });
-  if (
-    !connection?.consentedAt ||
-    ctx.tenant.tid?.toLowerCase() !== connection.tid.toLowerCase()
-  )
-    return fail("Enable metering and grant its permissions first.", 409);
-  if (
-    !(await rateLimitDurable(`metering-packages:${ctx.tenant.id}`, 10, 60_000))
-  )
-    return fail("Please retry shortly.", 429);
-  try {
-    return NextResponse.json({
-      packages: await (await meteringClient(connection.tid)).packages(),
-    });
-  } catch (err) {
-    return fail(meteringErrorText(err), 502);
-  }
-}
 
 export async function POST(req: Request) {
   if (!isSameOrigin(req)) return fail("Not allowed", 403);
@@ -168,16 +139,23 @@ export async function POST(req: Request) {
           stage: "consent_verified",
         });
       } else if (data.action === "configure") {
-        const packages = await (
-          await meteringClient(connection.tid)
-        ).packages();
-        const script = packages.find((entry) => entry.id === data.scriptId);
-        if (!script) return fail("Choose an available remediation package.");
+        let script: { id: string; name: string } | undefined;
+        if (data.scriptId) {
+          const collectors = await (
+            await meteringClient(connection.tid)
+          ).collectors();
+          script = collectors.find(
+            (entry) => entry.id === data.scriptId!.toLowerCase(),
+          );
+          if (!script)
+            return fail(
+              "Choose a package that runs the LicenseMeter collector.",
+            );
+        }
         const [updated] = await db
           .update(meteringConnections)
           .set({
-            scriptId: script.id,
-            scriptName: script.displayName,
+            ...(script ? { scriptId: script.id, scriptName: script.name } : {}),
             inactivityDays: data.inactivityDays,
             revision: sql`${meteringConnections.revision} + 1`,
           })
@@ -231,16 +209,10 @@ export async function POST(req: Request) {
         });
       } else {
         // A fresh live read replaces the cached one; nothing is written.
-        if (connection.scriptId)
-          await readMetering(connection, {
-            deadline: requestDeadline(),
-            fresh: true,
-          });
-        else
-          await readCatalog(connection, {
-            deadline: requestDeadline(),
-            fresh: true,
-          });
+        await readMetering(connection, {
+          deadline: requestDeadline(),
+          fresh: true,
+        });
         await audit(ctx, "sync_triggered", { provider: "windows_metering" });
       }
     } catch (err) {

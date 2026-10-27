@@ -83,6 +83,14 @@ const req = (patch: Record<string, string> = {}) =>
   );
 const source = (): MeteringSource => ({
   packages: vi.fn(async () => [{ id: scriptId, displayName: "Collector" }]),
+  collectors: vi.fn(async () => [
+    {
+      id: scriptId,
+      name: "Collector",
+      catalogId: "a1b2c3d4",
+      programs: ["acad.exe"],
+    },
+  ]),
   devices: vi.fn(async () => [
     { id: deviceId, deviceName: "Test Windows", operatingSystem: "Windows" },
   ]),
@@ -237,15 +245,39 @@ describe("live metering reads", () => {
       (await collectMetering(graph, target())).rows[0]?.payload,
     ).toBeNull();
   });
-  it("reports a missing package instead of an empty result", async () => {
+  it("finds the deployed collector without a package choice", async () => {
     const graph = source();
-    graph.packages = vi.fn(async () => [
-      { id: other, displayName: "Different collector" },
-    ]);
-    graph.states = vi.fn(async () => []);
-    await expect(collectMetering(graph, target())).rejects.toThrow(
-      "The selected remediation package is no longer available. Select a package again.",
-    );
+    const result = await collectMetering(graph, target(0, { scriptId: null }));
+    expect(result.collector).toMatchObject({
+      id: scriptId,
+      catalogId: "a1b2c3d4",
+    });
+    expect(graph.states).toHaveBeenCalledWith(scriptId);
+  });
+  it("reads no results until exactly one collector package is known", async () => {
+    const graph = source();
+    graph.collectors = vi.fn(async () => []);
+    const none = await collectMetering(graph, target(0, { scriptId: null }));
+    expect(none.collector).toBeNull();
+    expect(none.rows[0]).toMatchObject({ status: "no_report" });
+    expect(graph.states).not.toHaveBeenCalled();
+    const two = [
+      {
+        id: scriptId,
+        name: "A",
+        catalogId: "a1b2c3d4",
+        programs: ["acad.exe"],
+      },
+      { id: other, name: "B", catalogId: "a1b2c3d4", programs: ["acad.exe"] },
+    ];
+    graph.collectors = vi.fn(async () => two);
+    expect(
+      (await collectMetering(graph, target(0, { scriptId: null }))).collector,
+    ).toBeNull();
+    expect(
+      (await collectMetering(graph, target(0, { scriptId: other }))).collector
+        ?.id,
+    ).toBe(other);
   });
   it("reuses a recent read, and rereads when forced or reconfigured", async () => {
     const graph = source();

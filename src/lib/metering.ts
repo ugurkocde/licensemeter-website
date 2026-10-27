@@ -141,5 +141,5 @@ export const SIGNAL_LABELS: Record<MeteringSignal, string> = {
   collecting: "Still collecting",
   unknown: "No data",
   stale: "Report stale",
-  outdated: "Script update needed",
+  outdated: "Not watched yet",
 };

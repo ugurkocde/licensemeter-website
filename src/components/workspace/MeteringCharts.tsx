@@ -22,7 +22,7 @@ const HINTS: Record<EvidenceKey, string> = {
   started: "started at least once in the period",
   notStarted: "full coverage and no start: review the license",
   collecting: "the collector has not covered the full period yet",
-  noData: "no valid result, stale report or script update needed",
+  noData: "no valid result, stale report or app not watched yet",
 };
 
 export const EvidenceLegend = () => (
@@ -211,8 +211,8 @@ const HEALTH: {
   },
   {
     key: "outdated",
-    label: "Script update needed",
-    hint: "Runs an older app list",
+    label: "Updating collector",
+    hint: "Still runs an older collector version",
     tone: "bg-waste-soft text-waste-text",
     mark: "↻",
   },

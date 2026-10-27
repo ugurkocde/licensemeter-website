@@ -14,6 +14,8 @@ type NavItem = {
   also?: string[];
   /** Paid feature behind this item; a workspace without it sees it locked. */
   feature?: Feature;
+  /** Pages shown under the item while its section is open. */
+  children?: { href: string; label: string }[];
 };
 
 const ITEMS: NavItem[] = [
@@ -22,7 +24,16 @@ const ITEMS: NavItem[] = [
   { href: "/app/licenses", label: "Licenses & prices" },
   { href: "/app/renewals", label: "Renewals" },
   { href: "/app/ai-costs", label: "AI costs" },
-  { href: "/app/metering", label: "Software Metering", feature: "metering" },
+  {
+    href: "/app/metering",
+    label: "Software Metering",
+    feature: "metering",
+    children: [
+      { href: "/app/metering", label: "Dashboard" },
+      { href: "/app/metering/apps", label: "Apps" },
+      { href: "/app/metering/setup", label: "Setup" },
+    ],
+  },
   { href: "/app/connectors", label: "Connectors" },
   { href: "/app/billing", label: "Plan and billing" },
   { href: "/app/agreement", label: "Agreement" },
@@ -88,7 +99,11 @@ export const NavLinks = ({
               href={locked ? upgradePath(locked) : item.href}
               data-tour={tourAnchor}
               onClick={onNavigate}
-              aria-current={sectionActive ? "page" : undefined}
+              aria-current={
+                sectionActive && !(item.children && !locked)
+                  ? "page"
+                  : undefined
+              }
               className={`border-l-2 px-[18px] py-2.5 text-sm transition ${
                 sectionActive
                   ? "border-brand bg-brand-soft text-ink font-medium"
@@ -123,6 +138,31 @@ export const NavLinks = ({
                 </span>
               )}
             </Link>
+            {sectionActive && !locked && item.children && (
+              <div className="flex flex-col gap-0.5 pb-1">
+                {item.children.map((child) => {
+                  const current =
+                    child.href === item.href
+                      ? pathname === child.href
+                      : inSection(pathname, child.href);
+                  return (
+                    <Link
+                      key={child.href}
+                      href={child.href}
+                      onClick={onNavigate}
+                      aria-current={current ? "page" : undefined}
+                      className={`py-1.5 pr-[18px] pl-9 text-sm transition ${
+                        current
+                          ? "text-brand-deep font-medium"
+                          : "text-sidebar-soft hover:text-ink"
+                      }`}
+                    >
+                      {child.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })}

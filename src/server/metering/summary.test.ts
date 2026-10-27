@@ -41,6 +41,8 @@ const report = (
   rows: MeteringRow[],
   installs: Record<string, string[]>,
 ): MeteringReport => ({
+  collector: { id: "pkg", name: "Collector", catalogId: current, programs },
+  collectors: [],
   rows,
   catalog: [
     app("autocad", "AutoCAD", "acad.exe"),
@@ -103,6 +105,38 @@ describe("metering summary", () => {
     expect(
       result.apps.find((item) => item.entry.id === "autocad")!.noData,
     ).toBe(1);
+  });
+  it("names apps the deployed collector does not watch", () => {
+    const sample = report([row("d1", {})], {});
+    sample.collector = {
+      id: "pkg",
+      name: "Collector",
+      catalogId: catalogId(["acad.exe"]),
+      programs: ["acad.exe"],
+    };
+    sample.rows[0]!.payload!.c = sample.collector.catalogId;
+    const result = summarize(sample, [], 60, now);
+    expect(result.notWatched.map((entry) => entry.id)).toEqual(["visio"]);
+    expect(result.health.outdated).toBe(0);
+  });
+  it("tracks coverage days and recent starts for the first days", () => {
+    const result = summarize(
+      report(
+        [
+          row("d1", { s: "2026-09-30T12:00:00Z", a: [["acad.exe", 30, 1]] }),
+          row("d2", { s: "2026-10-02T12:00:00Z", a: [["visio.exe", 5, 1]] }),
+        ],
+        {},
+      ),
+      [],
+      60,
+      now,
+    );
+    expect(result.coverageDays).toBe(3);
+    expect(result.recentStarts.map((start) => start.app)).toEqual([
+      "Visio",
+      "AutoCAD",
+    ]);
   });
   it("adapts recency buckets to the observation period", () => {
     expect(recencyBuckets(30)).toEqual([7, 14, 30]);

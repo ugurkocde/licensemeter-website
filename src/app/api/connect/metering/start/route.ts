@@ -15,7 +15,10 @@ export async function POST(req: Request) {
   if (!ctx || ctx.tenant.isDemo)
     return new Response("Not allowed", { status: 403 });
   const back = (error: string) =>
-    NextResponse.redirect(`${appBaseUrl()}/app/metering?error=${error}`, 303);
+    NextResponse.redirect(
+      `${appBaseUrl()}/app/metering/setup?error=${error}`,
+      303,
+    );
   if (!hasFeature(ctx.entitlement, "metering")) return back("plan_required");
   if (!meteringConfigured()) return back("configuration");
   const connection = await db.query.meteringConnections.findFirst({

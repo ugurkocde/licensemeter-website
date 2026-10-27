@@ -28,7 +28,6 @@ export async function GET(req: Request) {
   });
   if (
     !connection?.consentedAt ||
-    !connection.scriptId ||
     connection.tid.toLowerCase() !== ctx.tenant.tid?.toLowerCase()
   )
     return new Response("Metering is not configured", { status: 409 });
