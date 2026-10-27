@@ -54,10 +54,10 @@ export function MeteringSetup({
       setMessage(
         action === "verify"
           ? "Metering access verified."
-          : action === "sync"
-            ? "Metering refresh complete."
+          : action === "refresh"
+            ? "Results read from Intune."
             : action === "disable"
-              ? "Metering disabled and stored observations deleted."
+              ? "Metering disabled and its settings deleted."
               : "Metering settings saved.",
       );
       setConfirmDisable(false);
@@ -142,9 +142,9 @@ export function MeteringSetup({
             <p className="text-ink-soft mt-1 text-sm">
               A Global Administrator or Privileged Role Administrator approves
               these tenant-wide application permissions for the separate
-              Software Metering application. Access includes other Intune
-              scripts; LicenseMeter imports output only from the package you
-              select.
+              Software Metering application, all read-only. Access includes
+              other Intune scripts; LicenseMeter reads output only from the
+              package you select, and app install status without user names.
             </p>
             <ul className="text-ink-soft my-3 space-y-1 text-xs">
               {METERING_SCOPES.map((scope) => (
@@ -186,17 +186,25 @@ export function MeteringSetup({
             <h3 className="font-medium">2. Deploy the Windows collector</h3>
             <p className="text-ink-soft mt-1 text-sm">
               Enable Process Creation success auditing through your approved
-              device policy. Deploy the script as a detection-only Intune
-              Remediation, running as SYSTEM in 64-bit PowerShell every day.
-              Start with a small device group.
+              device policy. The collector is generated for this workspace and
+              watches the program files of every Windows app you deploy through
+              Intune, as listed under Metered apps. Deploy it as a
+              detection-only Intune Remediation, running as SYSTEM in 64-bit
+              PowerShell every hour. Start with a small device group. When the
+              app list changes, download it again and replace the detection
+              script in the same package.
             </p>
             <div className="mt-3 flex flex-wrap gap-3">
-              <ButtonAnchor
-                href="/connectors/Collect-LicenseMeterUsage.ps1"
-                download
-              >
-                Download collector
-              </ButtonAnchor>
+              {consented ? (
+                <ButtonAnchor href="/api/metering/collector" download>
+                  Download collector
+                </ButtonAnchor>
+              ) : (
+                <p className="text-ink-soft text-sm">
+                  Approve metering access first. The collector is built from
+                  your Intune app list.
+                </p>
+              )}
               <ButtonAnchor href="https://docs.licensemeter.com/connectors/windows-metering/">
                 Setup guide
               </ButtonAnchor>
@@ -205,12 +213,13 @@ export function MeteringSetup({
           {consented && (
             <div className="border-line border-t pt-4">
               <h3 className="font-medium">
-                3. Select the package and collect results
+                3. Select the package and read results
               </h3>
               <p className="text-ink-soft mt-1 text-sm">
-                Select the package containing the LicenseMeter collector. Other
-                scripts are rejected as invalid output. Changing the package
-                clears its previous observations.
+                Select the Remediations package that runs the LicenseMeter
+                collector. Other scripts are rejected as invalid output. Results
+                are read live from Intune each time this page or the export
+                loads.
               </p>
               <div className="mt-3">
                 <Button disabled={busy} onClick={() => void loadPackages()}>
@@ -272,34 +281,23 @@ export function MeteringSetup({
                   </div>
                 </form>
               )}
-              {scriptId && (
-                <div className="mt-3">
-                  <Button
-                    disabled={busy}
-                    variant="primary"
-                    onClick={() => void request("sync")}
-                  >
-                    {busy ? "Refreshing…" : "Refresh metering"}
-                  </Button>
-                </div>
-              )}
             </div>
           )}
           <div className="border-line border-t pt-4">
             {confirmDisable ? (
               <div className="flex flex-col gap-3">
                 <p className="text-sm">
-                  Disable metering and permanently delete this workspace’s
-                  observations and history? Also remove the separate app’s
-                  consent in Microsoft Entra and unassign the collector in
-                  Intune to stop device collection.
+                  Disable metering and delete this workspace’s metering
+                  settings? LicenseMeter stops reading results. Also remove the
+                  separate app’s consent in Microsoft Entra and unassign the
+                  collector in Intune to stop device collection.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     disabled={busy}
                     onClick={() => void request("disable")}
                   >
-                    Disable and delete metering data
+                    Disable metering
                   </Button>
                   <Button
                     disabled={busy}

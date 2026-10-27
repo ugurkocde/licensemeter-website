@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 
-test("metering demo explains evidence, switches apps and fits mobile", async ({
+test("metering demo shows installed vs started, searches apps and fits mobile", async ({
   page,
 }) => {
   await page.route("https://client.crisp.chat/l.js", (route) =>
@@ -20,28 +20,41 @@ test("metering demo explains evidence, switches apps and fits mobile", async ({
   await expect(
     content.getByText("Sample metering report.", { exact: true }),
   ).toBeVisible();
+  const legend = content.getByRole("list", { name: "Legend" });
   for (const text of [
-    "Launch observed",
-    "No launch observed",
-    "Building coverage",
-    "Report stale",
-    "Coverage unknown",
+    "App started",
+    "App not started",
+    "Still collecting",
+    "No data",
   ]) {
-    await expect(content.getByText(text, { exact: true })).toBeVisible();
+    await expect(legend.getByText(text, { exact: true })).toBeVisible();
   }
+  await expect(
+    content.getByRole("heading", { name: "Installed vs started" }),
+  ).toBeVisible();
+  await expect(
+    content.getByRole("heading", { name: "Collection health" }),
+  ).toBeVisible();
   await expect(
     content.getByRole("button", { name: "Grant metering permissions" }),
   ).toHaveCount(0);
-  await expect(
-    content.getByRole("link", { name: "Export application CSV" }),
-  ).toHaveCount(0);
+  await expect(content.getByRole("link", { name: "Export CSV" })).toHaveCount(
+    0,
+  );
+
   await content
-    .getByRole("combobox", { name: "Application" })
-    .selectOption("photoshop");
-  await content.getByRole("button", { name: "Show application" }).click();
-  await expect(page).toHaveURL(/app=photoshop/);
+    .getByRole("searchbox", {
+      name: "Search apps, publishers or program files",
+    })
+    .fill("autocad");
+  await content.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page).toHaveURL(/q=autocad/);
+  const apps = content.locator("#apps table");
+  await expect(apps.getByRole("rowheader")).toHaveCount(1);
+  await apps.getByRole("link", { name: "AutoCAD 2026" }).click();
+  await expect(page).toHaveURL(/app=/);
   await expect(
-    content.getByText("Photoshop.exe", { exact: true }),
+    content.getByRole("heading", { name: "Devices · AutoCAD 2026" }),
   ).toBeVisible();
   await page.screenshot({
     path: test.info().outputPath("metering-desktop.png"),

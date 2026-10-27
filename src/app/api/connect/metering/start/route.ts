@@ -5,6 +5,7 @@ import { apiAccess } from "~/server/access";
 import { isSameOrigin } from "~/server/auth/origin";
 import { db } from "~/server/db";
 import { meteringConnections, meteringConsentStates } from "~/server/db/schema";
+import { hasFeature } from "~/server/entitlement";
 import { meteringConfigured } from "~/server/metering/graph";
 import { rateLimitDurable } from "~/server/rateLimit";
 
@@ -15,6 +16,7 @@ export async function POST(req: Request) {
     return new Response("Not allowed", { status: 403 });
   const back = (error: string) =>
     NextResponse.redirect(`${appBaseUrl()}/app/metering?error=${error}`, 303);
+  if (!hasFeature(ctx.entitlement, "metering")) return back("plan_required");
   if (!meteringConfigured()) return back("configuration");
   const connection = await db.query.meteringConnections.findFirst({
     where: eq(meteringConnections.tenantId, ctx.tenant.id),

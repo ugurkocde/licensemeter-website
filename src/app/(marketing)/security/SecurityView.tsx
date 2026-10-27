@@ -153,8 +153,8 @@ export const SecurityView = ({ lang }: { lang: DpaLang }) => {
         <p className="text-ink-faint mt-3 text-xs">{c.access.consentNote}</p>
         <p className="mt-4">
           {lang === "de"
-            ? "Optionales Windows Software Metering verwendet eine separate Anwendung mit eigener Zustimmung für DeviceManagementScripts.Read.All und DeviceManagementManagedDevices.Read.All. Diese tenantweiten Leserechte werden erst beim Einrichten des Features benötigt. Kunden aktivieren die Ereignisprotokollierung und verteilen den Erfassungsskript selbst."
-            : "Optional Windows Software Metering uses a separate application and consent for DeviceManagementScripts.Read.All and DeviceManagementManagedDevices.Read.All. These tenant-wide read permissions are requested only when setting up the feature. Customers enable event auditing and deploy the collector themselves."}
+            ? "Optionales Windows Software Metering verwendet eine separate Anwendung mit eigener Zustimmung für DeviceManagementScripts.Read.All, DeviceManagementManagedDevices.Read.All und DeviceManagementApps.Read.All. Diese tenantweiten Leserechte werden erst beim Einrichten des Features benötigt. Kunden aktivieren die Ereignisprotokollierung und verteilen das Erfassungsskript selbst. Ergebnisse werden live aus Intune gelesen und nicht gespeichert."
+            : "Optional Windows Software Metering uses a separate application and consent for DeviceManagementScripts.Read.All, DeviceManagementManagedDevices.Read.All and DeviceManagementApps.Read.All. These tenant-wide read permissions are requested only when setting up the feature. Customers enable event auditing and deploy the collector themselves. Results are read live from Intune and not stored."}
         </p>
       </Section>
 

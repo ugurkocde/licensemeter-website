@@ -136,21 +136,27 @@ export default function PrivacyPolicyPage() {
       <Section title="4a. Optional Windows Software Metering">
         <p>
           When an organization enables Software Metering, a separate Microsoft
-          application requests additional read-only consent. LicenseMeter stores
-          device names and identifiers from Intune, application catalogue keys,
-          last-launch dates, coverage dates and collection health. The customer
-          deploys and controls the Windows detection script. Its output excludes
-          usernames, command lines, document paths and raw event logs.
-          Device-linked activity can still relate to employees and requires the
-          organization’s review before collection.
+          application requests additional read-only consent. The customer
+          deploys and controls the Windows detection script, which reports the
+          program file names of started apps deployed through its Intune, their
+          last start, the number of starts in the last 24 hours, coverage dates
+          and collection health to the organization’s own Intune tenant. Its
+          output excludes usernames, command lines, file paths and raw event
+          logs. Device-linked activity can still relate to employees and
+          requires the organization’s review before collection.
         </p>
         <p>
-          Daily metering history is pruned to 120 days during successful
-          refreshes. The latest device snapshot remains until refreshed or
-          disconnected. Disabling metering deletes its stored connection,
-          pending consent requests, snapshots and history. The organization must
-          separately revoke the app’s consent in Microsoft Entra and unassign
-          its collector in Intune.
+          LicenseMeter does not store these results. It reads them, together
+          with device names and identifiers and each app’s per-device install
+          status, from Intune when a workspace member views or exports the
+          report, and keeps them in server memory for at most five minutes. It
+          requests no user names from Intune. Only the metering settings are
+          stored: that it is enabled, the selected package, the observation
+          period, the consent status, apps left out, program files entered by an
+          Admin and the program lists of generated collectors. Disabling
+          metering deletes these settings and pending consent requests. The
+          organization must separately revoke the app’s consent in Microsoft
+          Entra and unassign its collector in Intune.
         </p>
       </Section>
 

@@ -13,7 +13,6 @@ import {
 } from "vitest";
 import { NextRequest } from "next/server";
 import * as schema from "~/server/db/schema";
-import { METERED_APPS } from "~/lib/metering";
 import type { MeteringSource } from "./graph";
 import type * as MeteringGraphModule from "./graph";
 
@@ -53,7 +52,7 @@ vi.mock("~/server/metering/graph", async (original) => ({
     throw new Error("Live calls are forbidden in this test");
   },
 }));
-const { syncMetering } = await import("./sync");
+const { collectMetering, readMetering } = await import("./live");
 const { GET: callback } =
   await import("~/app/api/connect/metering/callback/route");
 const { POST: action } = await import("~/app/api/metering/route");
@@ -67,17 +66,17 @@ const deviceId = "33333333-3333-3333-3333-333333333333";
 const scriptId = "44444444-4444-4444-4444-444444444444";
 const nonce = "55555555-5555-5555-5555-555555555555";
 const other = "66666666-6666-6666-6666-666666666666";
+const appId = "88888888-8888-8888-8888-888888888888";
 const oid = "test-admin";
-const ctx = () => ({
+const ctx = (metering = true) => ({
   user: { oid },
   tenant: { id: tenantId, tid, isDemo: false },
+  entitlement: { state: metering ? "pro" : "free", features: { metering } },
 });
 const conn = () =>
   database.query.meteringConnections.findFirst({
     where: eq(schema.meteringConnections.tenantId, tenantId),
   });
-const rows = () => database.select().from(schema.meteringDevices);
-const history = () => database.select().from(schema.meteringHistory);
 const req = (patch: Record<string, string> = {}) =>
   new NextRequest(
     `https://app.test/api/connect/metering/callback?${new URLSearchParams({ state: nonce, tenant: tid, admin_consent: "True", ...patch })}`,
@@ -94,15 +93,26 @@ const source = (): MeteringSource => ({
       detectionState: "success",
       lastStateUpdateDateTime: new Date().toISOString(),
       preRemediationDetectionScriptOutput: JSON.stringify({
-        v: 1,
-        catalog: "windows-v1",
-        start: "2026-01-01T00:00:00Z",
-        end: new Date().toISOString(),
-        health: "ok",
-        apps: METERED_APPS.map((app) => [app.id, null]),
+        v: 2,
+        c: "a1b2c3d4",
+        s: "2026-01-01T00:00:00Z",
+        e: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+        h: "ok",
+        a: [["acad.exe", 30, 2]],
       }),
     },
   ]),
+  apps: vi.fn(async () => [
+    {
+      id: appId,
+      type: "win32LobApp" as const,
+      name: "AutoCAD 2026",
+      publisher: "Autodesk",
+      detected: [],
+      products: [],
+    },
+  ]),
+  installs: vi.fn(async () => ({ [appId]: [deviceId] })),
 });
 async function seedConnection(consented = true) {
   const [result] = await database
@@ -144,39 +154,55 @@ beforeEach(async () => {
   verify.mockResolvedValue(undefined);
 });
 
-describe("metering sync persistence and isolation", () => {
-  it("performs no source calls when disabled or awaiting consent", async () => {
-    const graph = source();
-    expect((await syncMetering(tenantId, { source: graph })).status).toBe(
-      "skipped",
+const target = (revision = 0, patch = {}) => ({
+  id: "77777777-7777-7777-7777-777777777777",
+  tid,
+  revision,
+  scriptId,
+  excludedApps: [],
+  programOverrides: {},
+  ...patch,
+});
+
+describe("live metering reads", () => {
+  it("defines no table that could hold device results", async () => {
+    const tables = await database.execute<{ table_name: string }>(
+      sql`select table_name from information_schema.tables where table_schema = 'public' and table_name like 'metering%' order by table_name`,
     );
-    await seedConnection(false);
-    expect((await syncMetering(tenantId, { source: graph })).status).toBe(
-      "skipped",
-    );
-    expect(graph.devices).not.toHaveBeenCalled();
-    expect(graph.packages).not.toHaveBeenCalled();
-    expect(graph.states).not.toHaveBeenCalled();
+    expect(tables.rows.map((row) => row.table_name)).toEqual([
+      "metering_connections",
+      "metering_consent_states",
+    ]);
   });
-  it("stores only normalized aggregates and deduplicates daily history", async () => {
-    await seedConnection();
-    expect((await syncMetering(tenantId, { source: source() })).status).toBe(
-      "ok",
+  it("joins collector results, the Intune app list and install status", async () => {
+    const graph = source();
+    const result = await collectMetering(graph, target());
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      deviceName: "Test Windows",
+      status: "ok",
+    });
+    expect(result.rows[0]?.payload?.a).toEqual([["acad.exe", 30, 2]]);
+    expect(result.catalog).toMatchObject([
+      { id: appId, programs: ["acad.exe"], source: "catalog" },
+    ]);
+    expect(result.installs).toEqual({ [appId]: [deviceId] });
+    expect(graph.installs).toHaveBeenCalledWith([appId]);
+  });
+  it("skips install reads for excluded apps", async () => {
+    const graph = source();
+    const result = await collectMetering(
+      graph,
+      target(0, { excludedApps: [appId] }),
     );
-    expect((await syncMetering(tenantId, { source: source() })).status).toBe(
-      "ok",
-    );
-    expect(await rows()).toHaveLength(1);
-    expect(await history()).toHaveLength(1);
-    expect((await rows())[0]?.payload?.apps).toHaveLength(6);
-    expect((await conn())?.lastError).toBeNull();
+    expect(result.catalog[0]?.excluded).toBe(true);
+    expect(graph.installs).not.toHaveBeenCalled();
   });
   it("treats empty, failed, duplicate and malformed results as unknown", async () => {
-    await seedConnection();
     const graph = source();
     graph.states = async () => [];
-    await syncMetering(tenantId, { source: graph });
-    expect((await rows())[0]).toMatchObject({
+    graph.packages = async () => [{ id: scriptId, displayName: "Collector" }];
+    expect((await collectMetering(graph, target())).rows[0]).toMatchObject({
       status: "no_report",
       payload: null,
     });
@@ -189,94 +215,71 @@ describe("metering sync persistence and isolation", () => {
         preRemediationDetectionScriptOutput: "malformed private output",
       },
     ];
-    await syncMetering(tenantId, { source: graph });
-    expect((await rows())[0]).toMatchObject({
+    expect((await collectMetering(graph, target())).rows[0]).toMatchObject({
       status: "invalid_output",
+      payload: null,
+    });
+    graph.states = async () => [
+      {
+        id: "state",
+        managedDevice: { id: deviceId },
+        detectionState: "fail",
+        preRemediationDetectionScriptError: "error text",
+      },
+    ];
+    expect((await collectMetering(graph, target())).rows[0]).toMatchObject({
+      status: "script_error",
       payload: null,
     });
     const state = (await source().states(scriptId))[0]!;
     graph.states = async () => [state, state];
-    await syncMetering(tenantId, { source: graph });
-    expect((await rows())[0]?.payload).toBeNull();
-    expect(await history()).toHaveLength(0);
+    expect(
+      (await collectMetering(graph, target())).rows[0]?.payload,
+    ).toBeNull();
   });
-  it("preserves prior data and records a sanitized failure", async () => {
-    await seedConnection();
-    await syncMetering(tenantId, { source: source() });
-    const graph = source();
-    graph.states = async () => {
-      throw new Error("secret and tenant details");
-    };
-    expect((await syncMetering(tenantId, { source: graph })).status).toBe(
-      "failed",
-    );
-    expect(await rows()).toHaveLength(1);
-    expect((await conn())?.lastError).not.toContain("secret");
-    expect((await conn())?.syncLock).toBeNull();
-  });
-  it("preserves observations when a missing package returns an empty run-state collection", async () => {
-    await seedConnection();
-    await syncMetering(tenantId, { source: source() });
-    const previousRows = await rows();
-    const previousHistory = await history();
-    const lastSyncAt = (await conn())!.lastSyncAt;
+  it("reports a missing package instead of an empty result", async () => {
     const graph = source();
     graph.packages = vi.fn(async () => [
       { id: other, displayName: "Different collector" },
     ]);
     graph.states = vi.fn(async () => []);
-
-    expect(await syncMetering(tenantId, { source: graph })).toEqual({
-      status: "failed",
-      count: 0,
-    });
-    expect(await rows()).toEqual(previousRows);
-    expect(await history()).toEqual(previousHistory);
-    expect(await conn()).toMatchObject({
-      lastSyncAt,
-      lastError:
-        "The selected remediation package is no longer available. Select a package again.",
-      syncLock: null,
-      syncStartedAt: null,
-    });
-  });
-  it("does not resurrect observations after disable and re-enable during network work", async () => {
-    await seedConnection();
-    const graph = source();
-    const states = graph.states;
-    graph.states = async () => {
-      await database.delete(schema.meteringConnections);
-      await seedConnection(false);
-      return states(scriptId);
-    };
-    expect((await syncMetering(tenantId, { source: graph })).status).toBe(
-      "failed",
+    await expect(collectMetering(graph, target())).rejects.toThrow(
+      "The selected remediation package is no longer available. Select a package again.",
     );
-    expect(await rows()).toHaveLength(0);
-    expect(await history()).toHaveLength(0);
-    expect((await conn())?.consentedAt).toBeNull();
-    expect((await conn())?.lastError).toBeNull();
   });
-  it("rejects a late result after configuration changes and respects the refresh lock", async () => {
-    await seedConnection();
+  it("reuses a recent read, and rereads when forced or reconfigured", async () => {
     const graph = source();
-    const states = graph.states;
-    graph.states = async () => {
-      expect((await syncMetering(tenantId, { source: source() })).status).toBe(
-        "skipped",
-      );
-      await database.update(schema.meteringConnections).set({
-        revision: sql`${schema.meteringConnections.revision} + 1`,
-        syncLock: null,
-      });
-      return states(scriptId);
-    };
-    expect((await syncMetering(tenantId, { source: graph })).status).toBe(
-      "failed",
-    );
-    expect(await rows()).toHaveLength(0);
+    const first = await readMetering(target(1), { source: graph });
+    expect(await readMetering(target(1), { source: graph })).toBe(first);
+    expect(graph.states).toHaveBeenCalledTimes(1);
+    await readMetering(target(1), { source: graph, fresh: true });
+    await readMetering(target(2), { source: graph });
+    expect(graph.states).toHaveBeenCalledTimes(3);
   });
-  it("keeps workspaces separate and cascades only the disabled workspace", async () => {
+  it("never reuses a failed read", async () => {
+    const graph = source();
+    graph.states = vi.fn(async () => {
+      throw new Error("secret and tenant details");
+    });
+    await expect(readMetering(target(3), { source: graph })).rejects.toThrow();
+    graph.states = source().states;
+    expect(
+      (await readMetering(target(3), { source: graph })).rows,
+    ).toHaveLength(1);
+  });
+  it("returns a sanitized error from a refresh without storing anything", async () => {
+    await seedConnection();
+    const response = await action(
+      new Request("https://app.test/api/metering", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "refresh" }),
+      }),
+    );
+    expect(response.status).toBe(502);
+    expect(JSON.stringify(await response.json())).not.toContain("forbidden");
+  });
+  it("deletes only the disabled workspace's settings", async () => {
     await seedConnection();
     await database
       .insert(schema.tenants)
@@ -287,14 +290,56 @@ describe("metering sync persistence and isolation", () => {
       consentedAt: new Date(),
       scriptId,
     });
-    await syncMetering(tenantId, { source: source() });
-    await syncMetering(other, { source: source() });
-    expect(await rows()).toHaveLength(2);
-    await database
-      .delete(schema.meteringConnections)
-      .where(eq(schema.meteringConnections.tenantId, tenantId));
-    expect((await rows()).map((row) => row.tenantId)).toEqual([other]);
-    expect((await history()).map((row) => row.tenantId)).toEqual([other]);
+    const response = await action(
+      new Request("https://app.test/api/metering", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "disable" }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(
+      (await database.select().from(schema.meteringConnections)).map(
+        (row) => row.tenantId,
+      ),
+    ).toEqual([other]);
+  });
+});
+
+describe("Pro plan boundary", () => {
+  const post = (body: object) =>
+    action(
+      new Request("https://app.test/api/metering", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+  it("refuses every metering action without the plan except disable", async () => {
+    await seedConnection(false);
+    access.mockResolvedValue(ctx(false));
+    for (const body of [
+      { action: "enable" },
+      { action: "verify" },
+      { action: "refresh" },
+      { action: "configure", scriptId, inactivityDays: 60 },
+    ])
+      expect((await post(body)).status).toBe(402);
+    expect(verify).not.toHaveBeenCalled();
+    expect(
+      (
+        await start(
+          new Request("https://app.test/api/connect/metering/start", {
+            method: "POST",
+          }),
+        )
+      ).headers.get("location"),
+    ).toContain("plan_required");
+    expect(await database.select().from(schema.meteringConsentStates)).toEqual(
+      [],
+    );
+    expect((await post({ action: "disable" })).status).toBe(200);
+    expect(await conn()).toBeUndefined();
   });
 });
 

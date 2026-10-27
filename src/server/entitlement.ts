@@ -11,6 +11,7 @@ export const FEATURES = [
   "signedDpa",
   "history24",
   "mcp",
+  "metering",
   "whiteLabel",
   "portfolioAlerts",
   "mspTeam",
@@ -19,7 +20,12 @@ export const FEATURES = [
 export type Feature = (typeof FEATURES)[number];
 
 /** The single plan-to-features map. MSP includes everything in Pro. */
-const PRO_FEATURES: readonly Feature[] = ["signedDpa", "history24", "mcp"];
+const PRO_FEATURES: readonly Feature[] = [
+  "signedDpa",
+  "history24",
+  "mcp",
+  "metering",
+];
 
 export const PLAN_FEATURES: Record<Plan, readonly Feature[]> = {
   free: [],

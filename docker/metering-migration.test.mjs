@@ -35,12 +35,7 @@ test("existing installation upgrades metering without changing base consent or p
   ).rows[0].id;
   await migrate(db, { migrationsFolder: folder });
   await migrate(db, { migrationsFolder: folder });
-  const tables = [
-    "metering_connections",
-    "metering_consent_states",
-    "metering_devices",
-    "metering_history",
-  ];
+  const tables = ["metering_connections", "metering_consent_states"];
   for (const table of tables)
     assert.equal(
       (await client.query(`SELECT count(*) AS n FROM ${table}`)).rows[0].n,
@@ -86,12 +81,7 @@ test("metering migrations enable RLS with runtime access, tenant filtering and p
     "INSERT INTO metering_connections (tenant_id, tid) VALUES ($1, 'first'), ($2, 'second')",
     [first, second],
   );
-  const tables = [
-    "metering_connections",
-    "metering_consent_states",
-    "metering_devices",
-    "metering_history",
-  ];
+  const tables = ["metering_connections", "metering_consent_states"];
   for (const table of tables) {
     assert.equal(
       (
@@ -135,7 +125,7 @@ test("metering migrations enable RLS with runtime access, tenant filtering and p
   );
   await assert.rejects(
     client.query(
-      "INSERT INTO metering_history (tenant_id, connection_id, device_id, day, payload) VALUES ($1, gen_random_uuid(), 'foreign', '2026-10-03', '{}')",
+      "INSERT INTO metering_connections (tenant_id, tid) VALUES ($1, 'foreign')",
       [second],
     ),
     /row-level security/,

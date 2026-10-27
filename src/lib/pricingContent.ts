@@ -84,6 +84,7 @@ const COMPARISON_GROUPS = [
       { id: "reports", cells: ALL },
       { id: "scripts", cells: ALL },
       { id: "mcp", cells: PAID },
+      { id: "metering", cells: PAID },
     ],
   },
   {
@@ -405,6 +406,7 @@ const en: PricingContent = {
       reports: "PDF report and CSV export",
       scripts: "Generated PowerShell scripts",
       mcp: "MCP server for AI assistants",
+      metering: "Windows software metering through Intune",
       portfolio: "Portfolio across client tenants",
       whiteLabel: "White-label PDF reports",
       tenantsCovered: "Client tenants covered",
@@ -688,6 +690,7 @@ const de: PricingContent = {
       reports: "PDF-Bericht und CSV-Export",
       scripts: "Generierte PowerShell-Skripte",
       mcp: "MCP-Server für KI-Assistenten",
+      metering: "Windows Software Metering über Intune",
       portfolio: "Portfolio über alle Kunden-Tenants",
       whiteLabel: "White-Label-PDF-Berichte",
       tenantsCovered: "Abgedeckte Kunden-Tenants",

@@ -1,5 +1,5 @@
 {
-  "id": "4cf7606f-fe86-413b-abca-4b56eee716b1",
+  "id": "4a66de95-b0eb-47e6-92a4-f67f51f8ff65",
   "prevId": "80408ece-32c8-4e64-8287-50934308c9b7",
   "version": "7",
   "dialect": "postgresql",
@@ -1960,29 +1960,26 @@
           "notNull": true,
           "default": 0
         },
-        "sync_lock": {
-          "name": "sync_lock",
-          "type": "uuid",
+        "excluded_apps": {
+          "name": "excluded_apps",
+          "type": "jsonb",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
-        "sync_started_at": {
-          "name": "sync_started_at",
-          "type": "timestamp with time zone",
+        "program_overrides": {
+          "name": "program_overrides",
+          "type": "jsonb",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
-        "last_sync_at": {
-          "name": "last_sync_at",
-          "type": "timestamp with time zone",
+        "collectors": {
+          "name": "collectors",
+          "type": "jsonb",
           "primaryKey": false,
-          "notNull": false
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "created_at": {
           "name": "created_at",
@@ -2025,7 +2022,7 @@
           "value": "\"metering_connections\".\"inactivity_days\" in (30, 60, 90)"
         }
       },
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.metering_consent_states": {
       "name": "metering_consent_states",
@@ -2102,183 +2099,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.metering_devices": {
-      "name": "metering_devices",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "device_id": {
-          "name": "device_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "device_name": {
-          "name": "device_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reported_at": {
-          "name": "reported_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "received_at": {
-          "name": "received_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "payload": {
-          "name": "payload",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "metering_devices_tenant_id_tenants_id_fk": {
-          "name": "metering_devices_tenant_id_tenants_id_fk",
-          "tableFrom": "metering_devices",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "metering_devices_connection_id_metering_connections_id_fk": {
-          "name": "metering_devices_connection_id_metering_connections_id_fk",
-          "tableFrom": "metering_devices",
-          "tableTo": "metering_connections",
-          "columnsFrom": [
-            "connection_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "metering_devices_tenant_id_device_id_pk": {
-          "name": "metering_devices_tenant_id_device_id_pk",
-          "columns": [
-            "tenant_id",
-            "device_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.metering_history": {
-      "name": "metering_history",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "device_id": {
-          "name": "device_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "day": {
-          "name": "day",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "payload": {
-          "name": "payload",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "metering_history_tenant_id_tenants_id_fk": {
-          "name": "metering_history_tenant_id_tenants_id_fk",
-          "tableFrom": "metering_history",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "metering_history_connection_id_metering_connections_id_fk": {
-          "name": "metering_history_connection_id_metering_connections_id_fk",
-          "tableFrom": "metering_history",
-          "tableTo": "metering_connections",
-          "columnsFrom": [
-            "connection_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "metering_history_tenant_id_device_id_day_pk": {
-          "name": "metering_history_tenant_id_device_id_day_pk",
-          "columns": [
-            "tenant_id",
-            "device_id",
-            "day"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.ms_connections": {
       "name": "ms_connections",

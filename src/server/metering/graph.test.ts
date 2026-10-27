@@ -117,6 +117,113 @@ describe("isolated metering Graph reads", () => {
       "preRemediationDetectionScriptOutput",
     );
   });
+  it("keeps only assigned Windows apps and program files from detection rules", async () => {
+    fetchMock.mockResolvedValue(
+      response({
+        value: [
+          {
+            "@odata.type": "#microsoft.graph.win32LobApp",
+            id: id.toUpperCase(),
+            displayName: "AutoCAD 2026",
+            publisher: "Autodesk",
+            rules: [
+              { ruleType: "detection", fileOrFolderName: "ACAD.EXE" },
+              { ruleType: "requirement", fileOrFolderName: "other.exe" },
+              { ruleType: "detection", fileOrFolderName: "readme.txt" },
+            ],
+          },
+          {
+            "@odata.type": "#microsoft.graph.macOSDmgApp",
+            id,
+            displayName: "Mac app",
+          },
+          {
+            "@odata.type": "#microsoft.graph.officeSuiteApp",
+            id,
+            displayName: "Microsoft 365 Apps",
+            productIds: ["o365ProPlusRetail", "visioProRetail"],
+          },
+        ],
+      }),
+    );
+    const apps = await new MeteringGraphClient("test").apps();
+    expect(apps).toEqual([
+      {
+        id,
+        type: "win32LobApp",
+        name: "AutoCAD 2026",
+        publisher: "Autodesk",
+        detected: ["acad.exe"],
+        products: [],
+      },
+      {
+        id,
+        type: "officeSuiteApp",
+        name: "Microsoft 365 Apps",
+        publisher: "",
+        detected: [],
+        products: ["o365ProPlusRetail", "visioProRetail"],
+      },
+    ]);
+    expect(
+      new URL(fetchMock.mock.calls[0]![0] as string).searchParams.get(
+        "$filter",
+      ),
+    ).toBe("isAssigned eq true");
+  });
+  it("asks the install report for device and state columns only", async () => {
+    const other = "33333333-3333-3333-3333-333333333333";
+    fetchMock.mockResolvedValue(
+      response({
+        TotalRowCount: 2,
+        Schema: [
+          { Column: "AppInstallState" },
+          { Column: "AppInstallState_loc" },
+          { Column: "ApplicationId" },
+          { Column: "DeviceId" },
+          { Column: "InstallState" },
+        ],
+        Values: [
+          ["S1", "Installed", id, id.toUpperCase(), 1],
+          ["S2", "Failed", other, other, 2],
+        ],
+      }),
+    );
+    expect(await new MeteringGraphClient("test").installs([id, other])).toEqual(
+      { [id]: [id], [other]: [] },
+    );
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(new URL(url as string).pathname).toBe(
+      "/beta/deviceManagement/reports/retrieveDeviceAppInstallationStatusReport",
+    );
+    expect(init?.method).toBe("POST");
+    const body = JSON.parse(init!.body as string) as {
+      select: string[];
+      filter: string;
+    };
+    expect(body.select).toEqual([
+      "ApplicationId",
+      "DeviceId",
+      "InstallState",
+      "AppInstallState",
+    ]);
+    expect(body.filter).toBe(
+      `(ApplicationId eq '${id}') or (ApplicationId eq '${other}')`,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it("fails closed when the install report returns user columns", async () => {
+    fetchMock.mockResolvedValue(
+      response({
+        TotalRowCount: 1,
+        Schema: [{ Column: "DeviceId" }, { Column: "UserPrincipalName" }],
+        Values: [[id, "person@example.test"]],
+      }),
+    );
+    await expect(
+      new MeteringGraphClient("test").installs([id]),
+    ).rejects.toMatchObject({ code: "response" });
+  });
   it("never uses the base or sign-in application for metering", () => {
     const previous = settings.METERING_CLIENT_ID;
     try {
@@ -128,7 +235,7 @@ describe("isolated metering Graph reads", () => {
       settings.METERING_CLIENT_ID = previous;
     }
   });
-  it("accepts only both metering roles in the bound tenant", async () => {
+  it("accepts exactly the metering roles in the bound tenant", async () => {
     const token = (roles: string[], tid = id) => ({
       accessToken: `header.${Buffer.from(JSON.stringify({ tid, oid: id, roles })).toString("base64url")}.signature`,
     });

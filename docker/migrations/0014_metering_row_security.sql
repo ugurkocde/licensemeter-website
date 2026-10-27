@@ -1,17 +1,12 @@
-ALTER TABLE "metering_connections" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "metering_consent_states" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "metering_devices" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "metering_history" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 -- Match the established runtime roles while keeping public/Data API roles
 -- denied. These policies are part of the migration transaction, before the
--- application can read or write metering data. No roles or secrets are created.
+-- application can read or write metering settings. No roles or secrets are created.
 DO $$
 DECLARE
   metering_table text;
 BEGIN
   FOREACH metering_table IN ARRAY ARRAY[
-    'metering_connections', 'metering_consent_states',
-    'metering_devices', 'metering_history'
+    'metering_connections', 'metering_consent_states'
   ] LOOP
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', metering_table);
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'licensemeter_app') THEN

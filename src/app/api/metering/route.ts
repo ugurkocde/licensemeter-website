@@ -2,16 +2,13 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { GUID } from "~/lib/metering";
+import { GUID, METERING_MAX_PROGRAMS, PROGRAM } from "~/lib/metering";
 import { apiAccess } from "~/server/access";
 import { audit } from "~/server/audit";
 import { isSameOrigin } from "~/server/auth/origin";
 import { db } from "~/server/db";
-import {
-  meteringConnections,
-  meteringDevices,
-  meteringHistory,
-} from "~/server/db/schema";
+import { hasFeature } from "~/server/entitlement";
+import { meteringConnections } from "~/server/db/schema";
 import {
   meteringClient,
   meteringConfigured,
@@ -19,22 +16,44 @@ import {
   MeteringError,
   verifyMeteringConsent,
 } from "~/server/metering/graph";
-import { syncMetering } from "~/server/metering/sync";
+import {
+  forgetMetering,
+  readCatalog,
+  readMetering,
+} from "~/server/metering/live";
 import { rateLimitDurable } from "~/server/rateLimit";
 import { requestDeadline } from "~/server/sync/deadline";
 
 export const maxDuration = 300;
 const fail = (error: string, status = 400) =>
   NextResponse.json({ error }, { status });
+const PLAN_REQUIRED = "Software Metering is included in the Pro plan.";
+/** An Intune app id, or a Microsoft 365 Apps product inside one. */
+const ENTRY_ID = z
+  .string()
+  .toLowerCase()
+  .regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(:visio|:project)?$/,
+  );
 const command = z.discriminatedUnion("action", [
   z.object({ action: z.literal("enable") }),
   z.object({ action: z.literal("disable") }),
-  z.object({ action: z.literal("sync") }),
+  z.object({ action: z.literal("refresh") }),
   z.object({ action: z.literal("verify") }),
   z.object({
     action: z.literal("configure"),
     scriptId: z.string().regex(GUID),
     inactivityDays: z.union([z.literal(30), z.literal(60), z.literal(90)]),
+  }),
+  z.object({
+    action: z.literal("apps"),
+    excluded: z.array(ENTRY_ID).max(2000),
+    overrides: z
+      .record(
+        ENTRY_ID,
+        z.array(z.string().trim().toLowerCase().regex(PROGRAM)).max(10),
+      )
+      .refine((value) => Object.keys(value).length <= 2000),
   }),
 ]);
 
@@ -42,6 +61,7 @@ const command = z.discriminatedUnion("action", [
 export async function GET() {
   const ctx = await apiAccess("admin");
   if (!ctx || ctx.tenant.isDemo) return fail("Not allowed", 403);
+  if (!hasFeature(ctx.entitlement, "metering")) return fail(PLAN_REQUIRED, 402);
   const connection = await db.query.meteringConnections.findFirst({
     where: eq(meteringConnections.tenantId, ctx.tenant.id),
   });
@@ -77,11 +97,18 @@ export async function POST(req: Request) {
   }
   if (!parsed.success) return fail("Check your metering settings.");
   const data = parsed.data;
+  // Disabling stays possible after a downgrade; everything else needs the plan.
+  if (data.action !== "disable" && !hasFeature(ctx.entitlement, "metering"))
+    return fail(PLAN_REQUIRED, 402);
   const where = eq(meteringConnections.tenantId, ctx.tenant.id);
   if (data.action === "disable") {
-    // Cascades include pending consent, observations and history. An in-flight
-    // sync checks this connection's generation before committing anything.
-    await db.delete(meteringConnections).where(where);
+    // Cascades include pending consent. Device results are never stored, so
+    // only the short-lived read cache remains to clear.
+    const [removed] = await db
+      .delete(meteringConnections)
+      .where(where)
+      .returning({ id: meteringConnections.id });
+    if (removed) forgetMetering(removed.id);
     await audit(ctx, "connector_disconnected", {
       provider: "windows_metering",
     });
@@ -143,56 +170,74 @@ export async function POST(req: Request) {
         ).packages();
         const script = packages.find((entry) => entry.id === data.scriptId);
         if (!script) return fail("Choose an available remediation package.");
-        await db.transaction(async (tx) => {
-          const [updated] = await tx
-            .update(meteringConnections)
-            .set({
-              scriptId: script.id,
-              scriptName: script.displayName,
-              inactivityDays: data.inactivityDays,
-              revision: sql`${meteringConnections.revision} + 1`,
-              syncLock: null,
-              syncStartedAt: null,
-              ...(script.id !== connection.scriptId
-                ? { lastSyncAt: null, lastError: null }
-                : {}),
-            })
-            .where(
-              and(
-                where,
-                eq(meteringConnections.id, connection.id),
-                eq(meteringConnections.revision, connection.revision),
-              ),
-            )
-            .returning();
-          if (!updated) throw new MeteringError("changed");
-          if (script.id !== connection.scriptId) {
-            await tx
-              .delete(meteringDevices)
-              .where(eq(meteringDevices.tenantId, ctx.tenant.id));
-            await tx
-              .delete(meteringHistory)
-              .where(eq(meteringHistory.tenantId, ctx.tenant.id));
-          }
-        });
+        const [updated] = await db
+          .update(meteringConnections)
+          .set({
+            scriptId: script.id,
+            scriptName: script.displayName,
+            inactivityDays: data.inactivityDays,
+            revision: sql`${meteringConnections.revision} + 1`,
+          })
+          .where(
+            and(
+              where,
+              eq(meteringConnections.id, connection.id),
+              eq(meteringConnections.revision, connection.revision),
+            ),
+          )
+          .returning();
+        if (!updated) throw new MeteringError("changed");
+        forgetMetering(connection.id);
         await audit(ctx, "threshold_changed", {
           provider: "windows_metering",
           days: data.inactivityDays,
         });
-      } else {
-        if (!connection.scriptId)
-          return fail("Select a remediation package first.", 409);
-        const result = await syncMetering(ctx.tenant.id, {
-          deadline: requestDeadline(),
+      } else if (data.action === "apps") {
+        const overrides = Object.fromEntries(
+          Object.entries(data.overrides)
+            .map(
+              ([id, programs]) =>
+                [id, [...new Set(programs)]] as [string, string[]],
+            )
+            .filter(([, programs]) => programs.length),
+        );
+        if (
+          new Set(Object.values(overrides).flat()).size > METERING_MAX_PROGRAMS
+        )
+          return fail("Too many program files.");
+        const [updated] = await db
+          .update(meteringConnections)
+          .set({
+            excludedApps: [...new Set(data.excluded)],
+            programOverrides: overrides,
+            revision: sql`${meteringConnections.revision} + 1`,
+          })
+          .where(
+            and(
+              where,
+              eq(meteringConnections.id, connection.id),
+              eq(meteringConnections.revision, connection.revision),
+            ),
+          )
+          .returning();
+        if (!updated) throw new MeteringError("changed");
+        forgetMetering(connection.id);
+        await audit(ctx, "metering_apps_changed", {
+          excluded: data.excluded.length,
+          overrides: Object.keys(overrides).length,
         });
-        revalidatePath("/app/metering");
-        if (result.status !== "ok")
-          return fail(
-            result.status === "skipped"
-              ? "A refresh is already running or the configuration changed. Try again shortly."
-              : "Metering could not refresh. Check the connection message on this page.",
-            result.status === "skipped" ? 409 : 502,
-          );
+      } else {
+        // A fresh live read replaces the cached one; nothing is written.
+        if (connection.scriptId)
+          await readMetering(connection, {
+            deadline: requestDeadline(),
+            fresh: true,
+          });
+        else
+          await readCatalog(connection, {
+            deadline: requestDeadline(),
+            fresh: true,
+          });
         await audit(ctx, "sync_triggered", { provider: "windows_metering" });
       }
     } catch (err) {

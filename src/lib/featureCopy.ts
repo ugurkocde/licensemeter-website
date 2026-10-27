@@ -23,6 +23,11 @@ export const FEATURE_COPY: Record<Feature, FeatureCopy> = {
     description:
       "A read-only MCP server that lets an AI assistant query your waste, findings and trends.",
   },
+  metering: {
+    label: "Windows Software Metering",
+    description:
+      "See when selected Windows applications were last launched, read live from your Intune Remediations results.",
+  },
   whiteLabel: {
     label: "White-label reports",
     description: "PDF reports carry your own logo and brand colour.",

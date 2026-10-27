@@ -519,3 +519,9 @@ body {
     font-size: 16px;
   }
 }
+
+/* Software Metering "no data": a neutral hatch instead of a fourth hue, so it
+ * reads as missing evidence rather than a category. */
+.metering-hatch {
+  background: repeating-linear-gradient(45deg, #b8c0cc 0 2px, #e6e9ee 2px 6px);
+}

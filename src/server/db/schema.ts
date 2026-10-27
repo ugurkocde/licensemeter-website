@@ -1,5 +1,4 @@
 import { sql } from "drizzle-orm";
-import type { MeteringPayload } from "~/lib/metering";
 import {
   boolean,
   check,
@@ -274,7 +273,10 @@ export const msConnections = pgTable(
 /** A full Microsoft connection row, passed around by value. */
 export type MsConnectionRow = typeof msConnections.$inferSelect;
 
-/** Separate opt-in and consent: the base Microsoft connector never gains Intune scopes. */
+/**
+ * Separate opt-in and consent: the base Microsoft connector never gains Intune
+ * scopes. Only settings are stored; device results are read live from Graph.
+ */
 export const meteringConnections = pgTable(
   "metering_connections",
   {
@@ -288,10 +290,21 @@ export const meteringConnections = pgTable(
     scriptName: text("script_name"),
     inactivityDays: integer("inactivity_days").notNull().default(60),
     revision: integer("revision").notNull().default(0),
-    syncLock: uuid("sync_lock"),
-    syncStartedAt: timestamp("sync_started_at", { withTimezone: true }),
-    lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
-    lastError: text("last_error"),
+    /** Catalog entry ids the admin chose not to meter. */
+    excludedApps: jsonb("excluded_apps")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /** Program files an admin entered for an app, by catalog entry id. */
+    programOverrides: jsonb("program_overrides")
+      .$type<Record<string, string[]>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    /** Program lists of the latest generated collector versions, newest first. */
+    collectors: jsonb("collectors")
+      .$type<{ id: string; programs: string[]; at: string }[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -315,44 +328,6 @@ export const meteringConsentStates = pgTable("metering_consent_states", {
     .notNull()
     .defaultNow(),
 }).enableRLS();
-
-export const meteringDevices = pgTable(
-  "metering_devices",
-  {
-    tenantId: uuid("tenant_id")
-      .notNull()
-      .references(() => tenants.id, { onDelete: "cascade" }),
-    connectionId: uuid("connection_id")
-      .notNull()
-      .references(() => meteringConnections.id, { onDelete: "cascade" }),
-    deviceId: text("device_id").notNull(),
-    deviceName: text("device_name").notNull(),
-    reportedAt: timestamp("reported_at", { withTimezone: true }),
-    receivedAt: timestamp("received_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    status: text("status").notNull(),
-    payload: jsonb("payload").$type<MeteringPayload>(),
-  },
-  (t) => [primaryKey({ columns: [t.tenantId, t.deviceId] })],
-).enableRLS();
-
-/** Daily observations of validated aggregates only; no raw script output or user identities. */
-export const meteringHistory = pgTable(
-  "metering_history",
-  {
-    tenantId: uuid("tenant_id")
-      .notNull()
-      .references(() => tenants.id, { onDelete: "cascade" }),
-    connectionId: uuid("connection_id")
-      .notNull()
-      .references(() => meteringConnections.id, { onDelete: "cascade" }),
-    deviceId: text("device_id").notNull(),
-    day: date("day").notNull(),
-    payload: jsonb("payload").$type<MeteringPayload>().notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.tenantId, t.deviceId, t.day] })],
-).enableRLS();
 
 /** Who may sign in to which tenant workspace, and as what. */
 export const memberships = pgTable(

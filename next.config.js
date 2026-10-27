@@ -20,6 +20,10 @@ const config = {
     "/api/export/dpa": ["./node_modules/pdfkit/**/*"],
     "/api/export/dpa-signed": ["./node_modules/pdfkit/**/*"],
     "/api/cron/report": ["./node_modules/pdfkit/**/*"],
+    // The collector is generated from this template at request time.
+    "/api/metering/collector": [
+      "./src/server/metering/Collect-LicenseMeterUsage.template.ps1",
+    ],
   },
   experimental: {
     serverActions: {

@@ -99,7 +99,7 @@ export default async function ConnectorsPage() {
           <h2 className="font-medium">Windows Software Metering</h2>
           <p className="text-ink-soft mt-1 text-sm">
             Optional application launch evidence through Intune, with separate
-            consent.
+            consent. Included in Pro.
           </p>
         </div>
         <ButtonLink href="/app/metering">Open Software Metering</ButtonLink>
