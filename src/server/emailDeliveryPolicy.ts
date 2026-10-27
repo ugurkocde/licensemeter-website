@@ -18,7 +18,7 @@ export const deliveryEvent = z.object({
   data: z.object({
     email_id: z.string().min(1),
     to: z.array(z.string()).min(1),
-    tags: z.record(z.string()).optional(),
+    tags: z.record(z.string(), z.string()).optional(),
   }),
 });
 

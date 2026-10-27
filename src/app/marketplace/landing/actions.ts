@@ -43,7 +43,7 @@ import {
 
 const input = z.object({
   token: z.string().min(1).max(4096),
-  workspaceId: z.string().uuid().optional(),
+  workspaceId: z.guid().optional(),
 });
 
 /**
