@@ -51,13 +51,15 @@ try {
     Copy-Item (Join-Path $env:SystemRoot 'System32/cmd.exe') $fakeApplication
     Start-Process -FilePath $fakeApplication -ArgumentList '/c', 'exit', '0' -Wait -WindowStyle Hidden
     1..3 | ForEach-Object { & whoami.exe | Out-Null }
+    # Let the event log write the last process creation events before reading.
+    Start-Sleep -Seconds 3
     foreach ($culture in @('fi-FI', 'ar-SA')) {
         $result = Read-Collector $first $culture
         if ($result.h -ne 'ok') { throw "Collection unhealthy: $($result.h)" }
         $visio = Find-Entry $result 'visio.exe'
-        if (-not $visio -or $visio[2] -lt 1) { throw 'Known program start was not collected.' }
+        if (-not $visio -or $visio[2] -lt 1) { throw "Known program start was not collected: $($result | ConvertTo-Json -Compress -Depth 5)" }
         $whoami = Find-Entry $result 'whoami.exe'
-        if (-not $whoami -or $whoami[2] -lt 3) { throw 'Program starts were not counted.' }
+        if (-not $whoami -or $whoami[2] -lt 3) { throw "Program starts were not counted: $($result | ConvertTo-Json -Compress -Depth 5)" }
     }
     # A new app list keeps coverage, forgets removed programs and watches new ones from now.
     $updated = Read-Collector $second 'en-US'
