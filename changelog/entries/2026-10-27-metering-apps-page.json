@@ -1,0 +1,7 @@
+{
+  "title": "Software Metering apps are easier to manage",
+  "summary": "The Apps page in Software Metering now lists each Windows app once, even when Intune assigns it several times. Filter by Metered, Needs a program file or Left out, then open an app to see its devices and change its settings in the same place. When LicenseMeter has write access to Intune, saving updates the collector right away, so there is no extra step in Setup.",
+  "type": "improved",
+  "publishedOn": "2026-10-27",
+  "idempotencyKey": "licensemeter:2026-10-27-metering-apps-page"
+}

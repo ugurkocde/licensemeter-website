@@ -53,17 +53,16 @@ test("metering demo: sidebar sections, overview charts, app search and mobile fi
 
   await nav.getByRole("link", { name: "Apps", exact: true }).click();
   await expect(page).toHaveURL(/\/app\/metering\/apps$/);
-  await content
-    .getByRole("searchbox", {
-      name: "Search apps, publishers or program files",
-    })
-    .fill("autocad");
-  await content.getByRole("button", { name: "Search", exact: true }).click();
-  await expect(page).toHaveURL(/q=autocad/);
-  const apps = content.locator("#apps table");
-  await expect(apps.getByRole("rowheader")).toHaveCount(1);
+  await content.getByRole("searchbox", { name: "Search apps" }).fill("autocad");
+  const apps = content.getByRole("region", { name: "Apps" }).getByRole("link");
+  await expect(apps).toHaveCount(1);
+  await apps.click();
+  await expect(page).toHaveURL(/app=/);
   await expect(
-    content.getByRole("heading", { name: "Devices · AutoCAD 2026" }),
+    content.getByRole("heading", { name: "AutoCAD 2026", level: 2 }),
+  ).toBeVisible();
+  await expect(
+    content.getByRole("button", { name: "Left out", exact: false }),
   ).toBeVisible();
 
   await nav.getByRole("link", { name: "Setup", exact: true }).click();

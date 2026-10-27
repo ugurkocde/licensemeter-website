@@ -122,7 +122,9 @@ export async function collectMetering(
   const states = collector ? await source.states(collector.id) : [];
   const appIds = [
     ...new Set(
-      catalog.filter((entry) => !entry.excluded).map((entry) => entry.appId),
+      catalog
+        .filter((entry) => !entry.excluded)
+        .flatMap((entry) => entry.appIds),
     ),
   ];
   return {

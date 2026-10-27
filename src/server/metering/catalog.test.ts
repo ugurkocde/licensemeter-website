@@ -44,6 +44,39 @@ describe("metering app catalog", () => {
       buildCatalog([app({ name: "Contoso Tracker" })], none)[0],
     ).toMatchObject({ programs: [], source: "none" });
   });
+  it("combines the same app assigned several times into one entry", () => {
+    const entries = buildCatalog(
+      [
+        app({
+          id: "22222222-2222-2222-2222-222222222222",
+          name: "PowerToys",
+          publisher: "Microsoft",
+        }),
+        app({
+          id: "11111111-1111-1111-1111-111111111111",
+          name: "PowerToys",
+          publisher: "Microsoft",
+          detected: ["PowerToys.exe"],
+        }),
+        app({
+          id: "33333333-3333-3333-3333-333333333333",
+          name: "PowerToys",
+          publisher: "Other",
+        }),
+      ],
+      none,
+    );
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      id: "11111111-1111-1111-1111-111111111111",
+      appIds: [
+        "11111111-1111-1111-1111-111111111111",
+        "22222222-2222-2222-2222-222222222222",
+      ],
+      programs: ["powertoys.exe"],
+      source: "detection",
+    });
+  });
   it("matches Acrobat Reader before Acrobat", () => {
     expect(
       buildCatalog([app({ name: "Adobe Acrobat Reader (64-bit)" })], none)[0]!
@@ -61,7 +94,7 @@ describe("metering app catalog", () => {
     });
     const entries = buildCatalog([suite], none);
     expect(
-      entries.map((entry) => [entry.id, entry.appId === suite.id]),
+      entries.map((entry) => [entry.id, entry.appIds[0] === suite.id]),
     ).toEqual([
       [suite.id, true],
       [`${suite.id}:visio`, true],
