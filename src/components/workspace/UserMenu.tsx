@@ -217,6 +217,8 @@ export const UserMenu = ({
             )}
             <Link
               href="https://docs.licensemeter.com/"
+              target="_blank"
+              rel="noreferrer"
               role="menuitem"
               onClick={() => setOpen(false)}
               className={itemClass}
@@ -227,9 +229,10 @@ export const UserMenu = ({
                 strokeWidth={1.75}
               />
               Documentation
+              <span className="sr-only">, opens in a new tab</span>
             </Link>
             <Link
-              href="/support"
+              href="/app/support"
               role="menuitem"
               onClick={() => setOpen(false)}
               className={itemClass}

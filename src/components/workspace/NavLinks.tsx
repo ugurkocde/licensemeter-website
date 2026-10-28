@@ -118,7 +118,7 @@ const GROUPS: NavGroup[] = [
         icon: BookOpen,
         external: true,
       },
-      { href: "/support", label: "Support", icon: LifeBuoy },
+      { href: "/app/support", label: "Support", icon: LifeBuoy },
     ],
   },
 ];
@@ -268,6 +268,9 @@ export const NavLinks = ({
                 <div key={item.href} className="flex flex-col gap-0.5">
                   <Link
                     href={locked ? upgradePath(locked) : item.href}
+                    {...(item.external
+                      ? { target: "_blank", rel: "noreferrer" }
+                      : {})}
                     data-tour={tourAnchor}
                     onClick={onNavigate}
                     onMouseEnter={showTooltip(item.label)}
@@ -295,6 +298,9 @@ export const NavLinks = ({
                       }
                     >
                       {item.label}
+                      {item.external && (
+                        <span className="sr-only">, opens in a new tab</span>
+                      )}
                     </span>
                     {item.feature ? (
                       collapsed ? (

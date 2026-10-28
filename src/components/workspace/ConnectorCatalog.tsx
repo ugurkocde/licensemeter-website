@@ -268,7 +268,7 @@ export function ConnectorCatalog({
       <p className="text-ink-faint mt-8 text-center text-xs leading-6">
         Missing a tool from your stack?{" "}
         <Link
-          href="/support"
+          href="/app/support"
           className="text-brand-text font-medium underline underline-offset-4"
         >
           Suggest a connector

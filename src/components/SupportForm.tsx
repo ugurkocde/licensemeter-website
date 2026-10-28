@@ -16,10 +16,20 @@ export function SupportForm({
   siteKey,
   nonce,
   supportEmail = SUPPORT_EMAIL,
+  initialName = "",
+  initialEmail = "",
+  successHref = "/",
+  successLabel = "Back to home",
+  privacyInNewTab = false,
 }: {
   siteKey?: string;
   nonce?: string;
   supportEmail?: string;
+  initialName?: string;
+  initialEmail?: string;
+  successHref?: string;
+  successLabel?: string;
+  privacyInNewTab?: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const widget = useRef<string | null>(null);
@@ -114,10 +124,10 @@ export function SupportForm({
           provided.
         </p>
         <Link
-          href="/"
+          href={successHref}
           className="text-brand-deep mt-6 inline-flex min-h-11 items-center font-semibold underline underline-offset-4"
         >
-          Back to home
+          {successLabel}
         </Link>
       </div>
     );
@@ -152,6 +162,7 @@ export function SupportForm({
                 autoComplete="name"
                 required
                 maxLength={100}
+                defaultValue={initialName}
                 className={inputClass}
               />
             </label>
@@ -167,6 +178,7 @@ export function SupportForm({
                 autoComplete="email"
                 required
                 maxLength={254}
+                defaultValue={initialEmail}
                 className={inputClass}
               />
             </label>
@@ -226,9 +238,15 @@ export function SupportForm({
           We use your details to respond to your request. Read our{" "}
           <Link
             href="/privacy"
+            {...(privacyInNewTab
+              ? { target: "_blank", rel: "noreferrer" }
+              : {})}
             className="text-brand-deep underline underline-offset-4"
           >
             privacy policy
+            {privacyInNewTab && (
+              <span className="sr-only">, opens in a new tab</span>
+            )}
           </Link>
           .
         </p>

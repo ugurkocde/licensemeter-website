@@ -135,6 +135,88 @@ test("connectors are discoverable from the sidebar with branded cards and mobile
   ).toHaveAttribute("aria-expanded", "false");
 });
 
+test("support stays inside the workspace and docs open in a new tab", async ({
+  page,
+}) => {
+  await openDemo(page);
+  const skipTour = page.getByRole("button", { name: "Skip tour" });
+  await skipTour
+    .waitFor({ state: "visible", timeout: 3_000 })
+    .then(() => skipTour.click())
+    .catch(() => undefined);
+
+  const nav = page.getByRole("navigation", {
+    name: "Workspace navigation",
+    exact: true,
+  });
+  const docs = nav.getByRole("link", { name: /Docs/ });
+  await expect(docs).toHaveAttribute("href", "https://docs.licensemeter.com/");
+  await expect(docs).toHaveAttribute("target", "_blank");
+  await expect(docs).toHaveAttribute("rel", "noreferrer");
+  await page.route("https://docs.licensemeter.com/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<title>LicenseMeter docs test page</title>",
+    }),
+  );
+  const popupPromise = page.waitForEvent("popup");
+  await docs.click();
+  const docsPage = await popupPromise;
+  expect(docsPage.url()).toBe("https://docs.licensemeter.com/");
+  await docsPage.close();
+
+  await nav.getByRole("link", { name: "Support", exact: true }).click();
+  await expect(page).toHaveURL(/\/app\/support$/);
+  await expect(
+    nav.getByRole("link", { name: "Support", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("heading", { name: "Support", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Your workspace" }),
+  ).toBeVisible();
+
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
+    "Demo Admin",
+  );
+  await expect(page.getByLabel("Email address", { exact: true })).toHaveValue(
+    "demo.admin@meridian.example",
+  );
+  await page.getByLabel("Name", { exact: true }).fill("Test Admin");
+  await page
+    .getByLabel("Email address", { exact: true })
+    .fill("admin@example.com");
+  await page
+    .getByLabel("Subject", { exact: true })
+    .fill("Question from the workspace");
+  await page
+    .getByLabel("Message", { exact: true })
+    .fill("I need help with a connector.");
+  await page.route("**/api/support", async (route) => {
+    expect(route.request().postDataJSON()).toMatchObject({
+      name: "Test Admin",
+      email: "admin@example.com",
+      subject: "Question from the workspace",
+    });
+    await route.fulfill({ json: { success: true } });
+  });
+  await page
+    .getByRole("button", { name: "Send support request", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Support request sent");
+  await expect(
+    page.getByRole("link", { name: "Back to Overview" }),
+  ).toHaveAttribute("href", "/app");
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - innerWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+});
+
 test("old connector bookmarks retain query parameters and settings no longer contains the directory", async ({
   page,
 }) => {
