@@ -16,10 +16,11 @@ import {
 } from "~/server/report/brandStyle";
 
 /**
- * White-label report branding of an MSP account. The marks live on the account
- * and reach the PDF of every client workspace attached to it, as long as that
- * workspace has the whiteLabel feature. Nothing here touches a workspace or
- * its data: clearing the branding only brings the LicenseMeter report back.
+ * White-label report branding, included in Pro and MSP. A workspace attached
+ * to an MSP account takes the account's marks, so one brand reaches the PDF of
+ * every covered client workspace. A standalone workspace carries its own marks
+ * on its tenants row. Either way the workspace needs the whiteLabel feature,
+ * and clearing the branding only brings the LicenseMeter report back.
  */
 
 // --- validation ----------------------------------------------------------------
@@ -128,25 +129,28 @@ const toBranding = (row: BrandColumns): ReportBranding | null =>
     ? { name: row.brandName, color: row.brandColor, logo: row.brandLogo }
     : null;
 
-/** The account a workspace may take its branding from, or null when it may not. */
-const brandingAccountId = (
-  tenant: Pick<TenantRow, "mspAccountId">,
-  entitlement: Entitlement,
-): string | null =>
-  hasFeature(entitlement, "whiteLabel") ? tenant.mspAccountId : null;
+/** The brand columns a workspace itself carries, whichever table stores them. */
+type BrandingTenant = Pick<
+  TenantRow,
+  "mspAccountId" | "brandName" | "brandColor" | "brandLogo"
+>;
 
 /**
- * The branding a workspace's report carries: the marks of its MSP account, only
- * while the workspace has the whiteLabel feature, is attached to an account and
- * that account has a brand name or a logo. Null means the LicenseMeter report.
- * Never queries for a workspace that cannot be branded.
+ * The branding a workspace's report carries, only while the workspace has the
+ * whiteLabel feature: the marks of its MSP account when it is attached to one,
+ * otherwise the marks stored on the workspace itself. An attached workspace
+ * never falls back to its own marks, so attaching it hands its reports to the
+ * account's brand (or back to LicenseMeter when the account has none). Null
+ * means the LicenseMeter report. Never queries for a workspace that cannot be
+ * branded, and a standalone workspace is answered from its own row.
  */
 export async function getBranding(
-  tenant: Pick<TenantRow, "mspAccountId">,
+  tenant: BrandingTenant,
   entitlement: Entitlement,
 ): Promise<ReportBranding | null> {
-  const accountId = brandingAccountId(tenant, entitlement);
-  if (!accountId) return null;
+  if (!hasFeature(entitlement, "whiteLabel")) return null;
+  const accountId = tenant.mspAccountId;
+  if (!accountId) return toBranding(tenant);
   const [row] = await db
     .select(brandColumns)
     .from(mspAccounts)
@@ -160,9 +164,10 @@ export async function getBranding(
 export type BrandingRefusal =
   | "featureRequired"
   | "demoUser"
-  /** The active workspace is not attached to an MSP account. */
-  | "noAccount"
-  /** Only the owner of the MSP account may change its branding. */
+  /**
+   * Only the owner of the MSP account may change its branding, and only a
+   * workspace owner or admin may change a standalone workspace's branding.
+   */
   | "notOwner"
   | "invalid";
 
@@ -178,10 +183,15 @@ const isAccountOwner = (
   account: Pick<typeof mspAccounts.$inferSelect, "ownerOid">,
 ) => !ctx.user.isDemo && account.ownerOid === ctx.user.oid;
 
+/** Owners and admins manage a standalone workspace; viewers never do. */
+const editsWorkspace = (ctx: AccessContext) =>
+  !ctx.user.isDemo && ctx.membership.role !== "viewer";
+
 /**
- * Writes the brand columns of the account the active workspace is attached to.
- * The owner check is part of the update itself, so it holds against the stored
- * row and never against anything the client sent.
+ * Writes the brand columns behind the active workspace: the MSP account it is
+ * attached to, or the workspace itself when it stands alone. The account owner
+ * check is part of the update itself, so it holds against the stored row and
+ * never against anything the client sent.
  */
 const writeBranding = async (
   ctx: AccessContext,
@@ -190,10 +200,27 @@ const writeBranding = async (
   if (!hasFeature(ctx.entitlement, "whiteLabel")) {
     return { ok: false, reason: "featureRequired" };
   }
-  // The demo sign-in is shared by every visitor, so it never owns an account.
+  // The demo sign-in is shared by every visitor, so it never owns branding.
   if (ctx.user.isDemo) return { ok: false, reason: "demoUser" };
   const accountId = ctx.tenant.mspAccountId;
-  if (!accountId) return { ok: false, reason: "noAccount" };
+
+  if (!accountId) {
+    if (!editsWorkspace(ctx)) {
+      return {
+        ok: false,
+        reason: "notOwner",
+        message: "Only a workspace owner or admin can change its branding.",
+      };
+    }
+    const updated = await db
+      .update(tenants)
+      .set(values)
+      .where(eq(tenants.id, ctx.tenant.id))
+      .returning({ id: tenants.id });
+    return updated.length > 0
+      ? { ok: true }
+      : { ok: false, reason: "notOwner" };
+  }
 
   const updated = await db
     .update(mspAccounts)
@@ -203,7 +230,7 @@ const writeBranding = async (
   return updated.length > 0 ? { ok: true } : { ok: false, reason: "notOwner" };
 };
 
-/** Saves the branding of the MSP account behind the active workspace. */
+/** Saves the branding behind the active workspace. */
 export async function saveBranding(
   ctx: AccessContext,
   input: unknown,
@@ -228,7 +255,7 @@ export async function saveBranding(
   });
 }
 
-/** Back to the LicenseMeter report for every workspace of the account. */
+/** Back to the LicenseMeter report for every workspace the branding reached. */
 export async function clearBranding(
   ctx: AccessContext,
 ): Promise<BrandingResult> {
@@ -246,11 +273,19 @@ export type BrandingSettings = {
   account: { id: string; name: string | null } | null;
   /** The signed-in user owns that account and may change its branding. */
   isOwner: boolean;
+  /** Where the branding lives: the MSP account, or this workspace itself. */
+  scope: "account" | "workspace";
+  /**
+   * The signed-in user may change the branding: the account owner for an
+   * attached workspace, a workspace owner or admin for a standalone one.
+   */
+  canEdit: boolean;
   /** What is stored, whether or not it is complete enough to be applied. */
   branding: ReportBranding;
   /**
-   * The workspaces the branding applies to. Listed for the account owner only:
-   * a member of one client workspace must not learn the MSP's other clients.
+   * The workspaces the branding applies to. For an account, listed for its
+   * owner only: a member of one client workspace must not learn the MSP's
+   * other clients. For a standalone workspace, just itself, for its editors.
    */
   workspaces: { id: string; name: string }[];
 };
@@ -259,21 +294,41 @@ export type BrandingSettings = {
 export async function getBrandingSettings(
   ctx: AccessContext,
 ): Promise<BrandingSettings> {
-  const none: BrandingSettings = {
-    account: null,
-    isOwner: false,
-    branding: { name: null, color: null, logo: null },
-    workspaces: [],
-  };
   const accountId = ctx.tenant.mspAccountId;
-  if (!accountId) return none;
+  if (!accountId) {
+    const canEdit = editsWorkspace(ctx);
+    return {
+      account: null,
+      isOwner: false,
+      scope: "workspace",
+      canEdit,
+      branding: {
+        name: ctx.tenant.brandName,
+        color: ctx.tenant.brandColor,
+        logo: ctx.tenant.brandLogo,
+      },
+      workspaces: canEdit
+        ? [{ id: ctx.tenant.id, name: workspaceLabel(ctx.tenant) }]
+        : [],
+    };
+  }
 
   const [account] = await db
     .select()
     .from(mspAccounts)
     .where(eq(mspAccounts.id, accountId))
     .limit(1);
-  if (!account) return none;
+  if (!account) {
+    // Attached to an account that no longer exists: nothing is branded.
+    return {
+      account: null,
+      isOwner: false,
+      scope: "account",
+      canEdit: false,
+      branding: { name: null, color: null, logo: null },
+      workspaces: [],
+    };
+  }
 
   const isOwner = isAccountOwner(ctx, account);
   const attached = isOwner
@@ -287,6 +342,8 @@ export async function getBrandingSettings(
   return {
     account: { id: account.id, name: account.name },
     isOwner,
+    scope: "account",
+    canEdit: isOwner,
     branding: {
       name: account.brandName,
       color: account.brandColor,

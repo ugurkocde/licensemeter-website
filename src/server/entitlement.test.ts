@@ -69,6 +69,14 @@ describe("plan map", () => {
       expect(plan).toBe(PLAN_FEATURES.pro.includes(feature) ? "pro" : "msp");
     },
   );
+
+  it("includes white-label reports in Pro, so Pro is its cheapest plan", () => {
+    expect(PLAN_FEATURES.pro).toContain("whiteLabel");
+    expect(PLAN_FEATURES.msp).toContain("whiteLabel");
+    expect(planFor("whiteLabel")).toBe("pro");
+    expect(resolve({ record: record() }).features.whiteLabel).toBe(true);
+    expect(resolve().features.whiteLabel).toBe(false);
+  });
 });
 
 describe("self-hosted and demo", () => {

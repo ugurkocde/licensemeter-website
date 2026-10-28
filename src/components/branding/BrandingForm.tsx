@@ -37,7 +37,7 @@ const readAsDataUrl = (file: File): Promise<string> =>
   });
 
 /**
- * Branding editor for the owner of the MSP account. The file is checked here
+ * Branding editor for whoever may change the branding. The file is checked here
  * for type and size before it is sent; the server checks it again, including
  * the image bytes, and is the one that decides.
  */

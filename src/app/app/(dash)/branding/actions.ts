@@ -18,7 +18,6 @@ const MESSAGES: Record<
 > = {
   featureRequired: "White-label reports are not part of this workspace's plan.",
   demoUser: "Branding cannot be changed in the demo workspace.",
-  noAccount: "This workspace is not attached to an MSP account.",
   notOwner: "Only the owner of the MSP account can change its branding.",
   invalid: "Check the brand name, colour and logo.",
 };

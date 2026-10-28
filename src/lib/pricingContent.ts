@@ -84,6 +84,7 @@ const COMPARISON_GROUPS = [
     id: "act",
     rows: [
       { id: "reports", cells: ALL },
+      { id: "whiteLabel", cells: PAID },
       { id: "scripts", cells: ALL },
       { id: "mcp", cells: PAID },
       { id: "metering", cells: PAID, isNew: true },
@@ -93,7 +94,6 @@ const COMPARISON_GROUPS = [
     id: "msp",
     rows: [
       { id: "portfolio", cells: ALL },
-      { id: "whiteLabel", cells: MSP_ONLY },
       {
         id: "tenantsCovered",
         cells: ["no", { text: "oneTenant" }, { text: "tenTenantsPlus" }],
@@ -258,7 +258,7 @@ const msp = PLAN_PRICES.msp;
 const en: PricingContent = {
   meta: {
     title: "Pricing",
-    description: `LicenseMeter pricing: the Free plan finds and prices Microsoft 365 license waste at no cost. Pro (${formatEuro(pro.month, "en")} per month) adds Windows Software Metering through Intune, support by email, a 99.9% uptime target, a signed DPA (AVV), an MCP server and 24 months of history. MSP (${formatEuro(msp.month, "en")} per month) covers ${MSP_INCLUDED_TENANTS} client tenants and adds white-label reports.`,
+    description: `LicenseMeter pricing: the Free plan finds and prices Microsoft 365 license waste at no cost. Pro (${formatEuro(pro.month, "en")} per month) adds Windows Software Metering through Intune, support by email, a 99.9% uptime target, a signed DPA (AVV), an MCP server, white-label PDF reports and 24 months of history. MSP (${formatEuro(msp.month, "en")} per month) covers ${MSP_INCLUDED_TENANTS} client tenants with everything in Pro.`,
   },
   breadcrumb: { home: "Home", page: "Pricing" },
   toggleLabel: "Language",
@@ -333,7 +333,7 @@ const en: PricingContent = {
         "24 months of waste history",
       ],
       pitch:
-        "Everything in Free for one tenant, with support, Software Metering for your Windows apps, a signed data processing agreement and an MCP server for your AI assistant.",
+        "Everything in Free for one tenant, with support, Software Metering for your Windows apps, PDF reports under your own brand, a signed data processing agreement and an MCP server for your AI assistant.",
       note: {
         month: "Excluding VAT. Cancel any time.",
         year: "Excluding VAT. Twelve months for the price of ten.",
@@ -361,6 +361,10 @@ const en: PricingContent = {
           detail:
             "Query waste, findings and trends from Claude, Copilot or any MCP client",
         },
+        {
+          text: "White-label PDF reports",
+          detail: "Your logo, name and colour on every report",
+        },
         { text: "24 months of waste history" },
         { text: "Buy on your Microsoft invoice" },
         { text: "Covers one tenant" },
@@ -371,7 +375,7 @@ const en: PricingContent = {
       highlights: [
         "Everything in Pro",
         `${MSP_INCLUDED_TENANTS} client tenants included`,
-        "White-label PDF reports",
+        "One brand on every client report",
         "Client DPA and onboarding call",
       ],
       pitch:
@@ -391,7 +395,6 @@ const en: PricingContent = {
           text: "DPA that covers your client tenants",
           detail: "LicenseMeter signs as your sub-processor",
         },
-        { text: "White-label PDF reports" },
         { text: "Onboarding call" },
       ],
       soon: ["Portfolio alerts", "One team across all client tenants"],
@@ -555,7 +558,7 @@ const en: PricingContent = {
       },
       {
         q: "I run an MSP. Which plan do I need?",
-        a: `You can connect as many client tenants as you like on Free. Pro covers a single tenant. MSP covers ${MSP_INCLUDED_TENANTS} client tenants with support and the signed agreement, plus white-label PDF reports and an onboarding call. Further tenants cost ${formatEuro(MSP_EXTRA_TENANT_PRICE.month, "en")} each per month.`,
+        a: `You can connect as many client tenants as you like on Free. Pro covers a single tenant, with white-label PDF reports under your own brand. MSP covers ${MSP_INCLUDED_TENANTS} client tenants with everything in Pro, one brand across every client report, plus an onboarding call. Further tenants cost ${formatEuro(MSP_EXTRA_TENANT_PRICE.month, "en")} each per month.`,
       },
       {
         q: "Do I need a plan if I self-host?",
@@ -576,7 +579,7 @@ const en: PricingContent = {
 const de: PricingContent = {
   meta: {
     title: "Preise",
-    description: `Preise von LicenseMeter: Der Free-Tarif findet und beziffert Lizenzverschwendung in Microsoft 365 kostenlos. Pro (${formatEuro(pro.month, "de")} pro Monat) ergänzt Windows Software Metering über Intune, Support per E-Mail, ein Verfügbarkeitsziel von 99,9 %, einen unterzeichneten Auftragsverarbeitungsvertrag (AVV), einen MCP-Server und 24 Monate Verlauf. MSP (${formatEuro(msp.month, "de")} pro Monat) deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants ab und ergänzt White-Label-Berichte.`,
+    description: `Preise von LicenseMeter: Der Free-Tarif findet und beziffert Lizenzverschwendung in Microsoft 365 kostenlos. Pro (${formatEuro(pro.month, "de")} pro Monat) ergänzt Windows Software Metering über Intune, Support per E-Mail, ein Verfügbarkeitsziel von 99,9 %, einen unterzeichneten Auftragsverarbeitungsvertrag (AVV), einen MCP-Server, White-Label-PDF-Berichte und 24 Monate Verlauf. MSP (${formatEuro(msp.month, "de")} pro Monat) deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants mit allem aus Pro ab.`,
   },
   breadcrumb: { home: "Startseite", page: "Preise" },
   toggleLabel: "Sprache",
@@ -657,7 +660,7 @@ const de: PricingContent = {
         "24 Monate Verlaufsdaten",
       ],
       pitch:
-        "Alles aus Free für einen Tenant, dazu Support, Software Metering für Ihre Windows-Apps, ein unterzeichneter Auftragsverarbeitungsvertrag und ein MCP-Server für Ihren KI-Assistenten.",
+        "Alles aus Free für einen Tenant, dazu Support, Software Metering für Ihre Windows-Apps, PDF-Berichte unter Ihrer eigenen Marke, ein unterzeichneter Auftragsverarbeitungsvertrag und ein MCP-Server für Ihren KI-Assistenten.",
       note: {
         month: "Zzgl. USt. Jederzeit kündbar.",
         year: "Zzgl. USt. Zwölf Monate zum Preis von zehn.",
@@ -685,6 +688,10 @@ const de: PricingContent = {
           detail:
             "Verschwendung, Ergebnisse und Trends aus Claude, Copilot oder jedem MCP-Client abfragen",
         },
+        {
+          text: "White-Label-PDF-Berichte",
+          detail: "Ihr Logo, Name und Ihre Farbe auf jedem Bericht",
+        },
         { text: "24 Monate Verlaufsdaten" },
         { text: "Kauf über Ihre Microsoft-Rechnung" },
         { text: "Gilt für einen Tenant" },
@@ -695,7 +702,7 @@ const de: PricingContent = {
       highlights: [
         "Alles aus Pro",
         `${MSP_INCLUDED_TENANTS} Kunden-Tenants inklusive`,
-        "White-Label-PDF-Berichte",
+        "Eine Marke auf jedem Kundenbericht",
         "Kunden-AVV und Onboarding-Gespräch",
       ],
       pitch:
@@ -715,7 +722,6 @@ const de: PricingContent = {
           text: "AVV, der Ihre Kunden-Tenants abdeckt",
           detail: "LicenseMeter wird Ihr Unterauftragsverarbeiter",
         },
-        { text: "White-Label-PDF-Berichte" },
         { text: "Onboarding-Gespräch" },
       ],
       soon: [
@@ -887,7 +893,7 @@ const de: PricingContent = {
       },
       {
         q: "Ich betreibe einen MSP. Welchen Tarif brauche ich?",
-        a: `Im Free-Tarif können Sie beliebig viele Kunden-Tenants verbinden. Pro deckt einen einzelnen Tenant ab. MSP deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants mit Support und unterzeichnetem AVV ab, dazu kommen White-Label-PDF-Berichte und ein Onboarding-Gespräch. Jeder weitere Tenant kostet ${formatEuro(MSP_EXTRA_TENANT_PRICE.month, "de")} pro Monat.`,
+        a: `Im Free-Tarif können Sie beliebig viele Kunden-Tenants verbinden. Pro deckt einen einzelnen Tenant ab, mit White-Label-PDF-Berichten unter Ihrer eigenen Marke. MSP deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants mit allem aus Pro ab, mit einer Marke auf jedem Kundenbericht und einem Onboarding-Gespräch. Jeder weitere Tenant kostet ${formatEuro(MSP_EXTRA_TENANT_PRICE.month, "de")} pro Monat.`,
       },
       {
         q: "Brauche ich einen Tarif, wenn ich selbst hoste?",
