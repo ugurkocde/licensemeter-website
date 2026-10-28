@@ -119,6 +119,8 @@ export default async function MeteringAppsPage({
               a.row.deviceName.localeCompare(b.row.deviceName),
           )
       : [];
+  // Until devices count per day, the column would only say "Not counted".
+  const perDay = devices.some((item) => item.daily);
   const devicePages = Math.max(1, Math.ceil(devices.length / DEVICE_PAGE));
   const devicePage = Math.min(
     devicePages,
@@ -227,7 +229,7 @@ export default async function MeteringAppsPage({
                                 {[
                                   "Device",
                                   "Last start",
-                                  "Last 30 days",
+                                  ...(perDay ? ["Last 30 days"] : []),
                                   "Evidence",
                                 ].map((title) => (
                                   <th
@@ -277,12 +279,14 @@ export default async function MeteringAppsPage({
                                         </span>
                                       )}
                                     </td>
-                                    <td className="py-2.5 pr-3">
-                                      <StartsStrip bars={item.daily} />
-                                      <span className="text-ink-faint block text-xs whitespace-nowrap">
-                                        {startsLabel(item.daily)}
-                                      </span>
-                                    </td>
+                                    {perDay && (
+                                      <td className="py-2.5 pr-3">
+                                        <StartsStrip bars={item.daily} />
+                                        <span className="text-ink-faint block text-xs whitespace-nowrap">
+                                          {startsLabel(item.daily)}
+                                        </span>
+                                      </td>
+                                    )}
                                     <td className="py-2.5">
                                       <Pill tone={SIGNAL_TONE[item.signal]}>
                                         {SIGNAL_LABELS[item.signal]}

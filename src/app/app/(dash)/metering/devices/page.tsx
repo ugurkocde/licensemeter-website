@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Pill } from "~/components/ui";
 import { HEALTH } from "~/components/workspace/MeteringCharts";
+import { DeviceHealthNotice } from "~/components/workspace/MeteringHealth";
 import {
   MeteringDeviceList,
   type MeteringDeviceRow,
@@ -100,6 +101,9 @@ export default async function MeteringDevicesPage({
   const apps =
     report && device ? appsOnDevice(report, device.row, versions, days) : [];
   const payload = device?.row.payload;
+  // Until the device counts per day, the column would only say "Not counted".
+  const perDay = apps.some((item) => item.daily);
+  const packageName = report?.collector?.name ?? null;
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 pb-8">
@@ -133,7 +137,6 @@ export default async function MeteringDevicesPage({
                   >
                     {device.row.deviceName}
                   </h2>
-                  <p className="text-ink-faint text-sm">{state.hint}</p>
                 </div>
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${state.tone}`}
@@ -143,6 +146,12 @@ export default async function MeteringDevicesPage({
               </div>
 
               <div className="flex flex-col gap-6 px-5 py-4">
+                <DeviceHealthNotice
+                  device={device}
+                  days={days}
+                  packageName={packageName}
+                  tone={state.tone}
+                />
                 <dl className="grid grid-cols-2 gap-2">
                   <Stat
                     label="Last report"
@@ -160,29 +169,35 @@ export default async function MeteringDevicesPage({
                     label={`Apps started in ${days} days`}
                     value={String(device.appsStarted)}
                   />
-                  <Stat
-                    label="Starts, 30 days"
-                    value={String(totalStarts(device.daily) ?? "-")}
-                  />
+                  {device.daily ? (
+                    <Stat
+                      label="Starts, 30 days"
+                      value={String(totalStarts(device.daily) ?? 0)}
+                    />
+                  ) : (
+                    <Stat
+                      label="Starts, 24 hours"
+                      value={payload ? String(device.startsDay) : "-"}
+                    />
+                  )}
                 </dl>
 
                 <div>
                   <h3 className="mb-2 text-sm font-medium">
                     App starts per day
                   </h3>
-                  {device.daily ? (
-                    <DailyStarts
-                      bars={device.daily}
-                      title={device.row.deviceName}
-                      unit="none"
-                    />
-                  ) : (
-                    <p className="text-ink-soft text-sm">
-                      {device.health === "noReport"
-                        ? "This device has not reported. Check that the collector is assigned to it in Intune."
-                        : "No starts per day from this device yet. They appear once it runs the current collector."}
-                    </p>
-                  )}
+                  <DailyStarts
+                    bars={device.daily}
+                    title={device.row.deviceName}
+                    unit="none"
+                    empty={
+                      device.health === "noReport"
+                        ? "This device has not reported yet."
+                        : !device.countsDays
+                          ? `This device still runs the older collector. Starts per day begin with its next hourly run${view.summary?.olderRelease ? " after you update the collector in Setup" : ""}.`
+                          : "This device reported no countable day yet."
+                    }
+                  />
                 </div>
 
                 <div>
@@ -203,7 +218,7 @@ export default async function MeteringDevicesPage({
                             {[
                               "App",
                               "Last start",
-                              "Last 30 days",
+                              ...(perDay ? ["Last 30 days"] : []),
                               "Evidence",
                             ].map((title) => (
                               <th
@@ -246,12 +261,14 @@ export default async function MeteringDevicesPage({
                                   </span>
                                 )}
                               </td>
-                              <td className="py-2.5 pr-3">
-                                <StartsStrip bars={item.daily} />
-                                <span className="text-ink-faint block text-xs whitespace-nowrap">
-                                  {startsLabel(item.daily)}
-                                </span>
-                              </td>
+                              {perDay && (
+                                <td className="py-2.5 pr-3">
+                                  <StartsStrip bars={item.daily} />
+                                  <span className="text-ink-faint block text-xs whitespace-nowrap">
+                                    {startsLabel(item.daily)}
+                                  </span>
+                                </td>
+                              )}
                               <td className="py-2.5">
                                 <Pill tone={SIGNAL_TONE[item.signal]}>
                                   {SIGNAL_LABELS[item.signal]}

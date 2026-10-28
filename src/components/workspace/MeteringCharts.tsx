@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { AppSummary, HealthKey } from "~/server/metering/summary";
+import { HEALTH_DOCS } from "./MeteringHealth";
 
 /**
  * Evidence colours, validated as a categorical set (light surface, adjacent
@@ -253,9 +254,16 @@ export const HEALTH: {
     mark: "⏱",
   },
   {
+    key: "gap",
+    label: "Coverage restarted",
+    hint: "Starts count; the period starts again",
+    tone: "bg-waste-soft text-waste-text",
+    mark: "↺",
+  },
+  {
     key: "error",
     label: "Collection error",
-    hint: "Gap, reset or invalid output",
+    hint: "Failed run or unreadable result",
     tone: "bg-danger-soft text-danger-text",
     mark: "!",
   },
@@ -281,7 +289,12 @@ export const HealthList = ({
           {item.mark}
         </span>
         <span>
-          <span className="block font-medium">{item.label}</span>
+          <a
+            className="block font-medium hover:underline"
+            href={HEALTH_DOCS[item.key]}
+          >
+            {item.label}
+          </a>
           <span className="text-ink-faint block text-xs">{item.hint}</span>
         </span>
         <span className="font-semibold tabular-nums">{health[item.key]}</span>

@@ -1,0 +1,7 @@
+{
+  "title": "Software Metering explains each device's collection health and how to fix it",
+  "summary": "Each device on the Software Metering Devices page now says what its collector reported, the usual cause and what to do, with a link to a new Collection health section in the docs. A restart of coverage is no longer shown as a collection error: its starts still count and it shows as Coverage restarted. Collection errors now say whether the script failed, returned an unreadable result or stopped. Charts waiting for their first daily counts show their frame and the reason, and empty per-day columns are hidden until devices report them.",
+  "type": "improved",
+  "publishedOn": "2026-10-28",
+  "idempotencyKey": "licensemeter:2026-10-28-metering-health-explained"
+}

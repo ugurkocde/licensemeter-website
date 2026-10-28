@@ -16,6 +16,7 @@ import {
   MeteringNotices,
   RecentStarts,
 } from "~/components/workspace/MeteringParts";
+import { HEALTH_DOCS_INDEX } from "~/components/workspace/MeteringHealth";
 import { FleetChart } from "~/components/workspace/MeteringTimeline";
 import { fmtDateTime } from "~/lib/format";
 import { requireAccess } from "~/server/access";
@@ -103,7 +104,15 @@ export default async function MeteringPage() {
               Every metered app start across your Windows devices, per day. Open
               an app or a device for its own chart.
             </p>
-            <FleetChart fleet={summary.fleet} hrefFor={appHref} />
+            <FleetChart
+              fleet={summary.fleet}
+              hrefFor={appHref}
+              empty={
+                summary.olderRelease
+                  ? "Starts per day need the updated collector. Update it in Setup; each device counts from its next hourly run."
+                  : undefined
+              }
+            />
           </Card>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -161,6 +170,17 @@ export default async function MeteringPage() {
                 Why a device has no usable evidence.
               </p>
               <HealthList health={summary.health} />
+              <p className="text-ink-faint mt-3 text-xs">
+                Open a device on the{" "}
+                <Link className="underline" href="/app/metering/devices">
+                  Devices
+                </Link>{" "}
+                page for its cause and fix, or read{" "}
+                <a className="underline" href={HEALTH_DOCS_INDEX}>
+                  what each state means
+                </a>
+                .
+              </p>
               {summary.health.noReport > 0 && (
                 <p className="text-ink-faint mt-3 text-xs">
                   Devices outside the collector’s assignment never report. That
