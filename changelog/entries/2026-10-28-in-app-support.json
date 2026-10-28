@@ -1,0 +1,7 @@
+{
+  "title": "Support is now inside your workspace",
+  "summary": "You can now contact support without leaving LicenseMeter. The new Support page in the workspace sidebar keeps the existing support form inside the app, fills in your name and email address, and shows your workspace context and support coverage. Documentation now opens in a new tab so your place in the workspace is preserved.",
+  "type": "new",
+  "publishedOn": "2026-10-28",
+  "idempotencyKey": "licensemeter:in-app-support-2026-10-28"
+}

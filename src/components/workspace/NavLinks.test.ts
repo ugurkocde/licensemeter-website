@@ -32,6 +32,13 @@ const entitlement = (plan: "free" | "pro" | "msp"): Entitlement =>
     now: NOW,
   });
 
+/** The opening tag of the anchor carrying this href, attributes included. */
+const anchorOf = (html: string, href: string): string => {
+  const at = html.indexOf(`href="${href}"`);
+  expect(at).toBeGreaterThanOrEqual(0);
+  return html.slice(html.lastIndexOf("<a", at), html.indexOf(">", at));
+};
+
 /** The markup of the Report branding sidebar item, link included. */
 const brandingItem = (html: string): string => {
   const start = html.indexOf("/app/branding");
@@ -115,12 +122,6 @@ describe("Grouped sidebar navigation", () => {
 
   it("marks the metering section current in the rail, its child page when expanded", () => {
     nav.pathname = "/app/metering/apps";
-    /* The opening tag of the anchor carrying this href, attributes included. */
-    const anchorOf = (html: string, href: string): string => {
-      const at = html.indexOf(`href="${href}"`);
-      expect(at).toBeGreaterThanOrEqual(0);
-      return html.slice(html.lastIndexOf("<a", at), html.indexOf(">", at));
-    };
     const collapsed = renderToStaticMarkup(
       createElement(NavLinks, { collapsed: true }),
     );
@@ -133,6 +134,17 @@ describe("Grouped sidebar navigation", () => {
     expect(anchorOf(expanded, "/app/metering/apps")).toContain(
       'aria-current="page"',
     );
+  });
+
+  it("opens docs in a new tab and keeps support inside the app", () => {
+    nav.pathname = "/app/support";
+    const html = renderToStaticMarkup(createElement(NavLinks));
+    const docs = anchorOf(html, "https://docs.licensemeter.com/");
+    expect(docs).toContain('target="_blank"');
+    expect(docs).toContain('rel="noreferrer"');
+    expect(html).toContain(", opens in a new tab");
+    expect(anchorOf(html, "/app/support")).toContain('aria-current="page"');
+    expect(html).not.toContain('href="/support"');
   });
 
   it("maps number shortcuts to the main pages", () => {
