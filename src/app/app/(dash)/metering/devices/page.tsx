@@ -20,7 +20,7 @@ import {
   StartsStrip,
   totalStarts,
 } from "~/components/workspace/MeteringTimeline";
-import { fmtDateTime } from "~/lib/format";
+import { fmtDate, fmtDateTime } from "~/lib/format";
 import { SIGNAL_LABELS, type MeteringSignal } from "~/lib/metering";
 import { requireAccess } from "~/server/access";
 import {
@@ -92,6 +92,7 @@ export default async function MeteringDevicesPage({
           : "attention",
     appsStarted: device.appsStarted,
     starts: totalStarts(device.daily),
+    since: device.countingSince ? fmtDate(device.countingSince) : null,
   }));
   const device =
     devices.find((item) => item.row.deviceId === wanted) ?? devices[0];
@@ -169,7 +170,11 @@ export default async function MeteringDevicesPage({
                   />
                   {device.daily ? (
                     <Stat
-                      label="Starts, 30 days"
+                      label={
+                        device.countingSince
+                          ? `Starts since ${fmtDate(device.countingSince)}`
+                          : "Starts, 30 days"
+                      }
                       value={String(totalStarts(device.daily) ?? 0)}
                     />
                   ) : (
@@ -188,6 +193,7 @@ export default async function MeteringDevicesPage({
                     bars={device.daily}
                     title={device.row.deviceName}
                     unit="none"
+                    since={device.countingSince}
                     empty={
                       device.health === "noReport"
                         ? "This device has not reported yet."
@@ -263,7 +269,10 @@ export default async function MeteringDevicesPage({
                                 <td className="py-2.5 pr-3">
                                   <StartsStrip bars={item.daily} />
                                   <span className="text-ink-faint block text-xs whitespace-nowrap">
-                                    {startsLabel(item.daily)}
+                                    {startsLabel(
+                                      item.daily,
+                                      device.countingSince,
+                                    )}
                                   </span>
                                 </td>
                               )}

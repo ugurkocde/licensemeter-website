@@ -21,7 +21,7 @@ import {
 import { fmtDateTime } from "~/lib/format";
 import { SIGNAL_LABELS, type MeteringSignal } from "~/lib/metering";
 import { requireAccess } from "~/server/access";
-import { deviceApps } from "~/server/metering/summary";
+import { countingSince, deviceApps } from "~/server/metering/summary";
 import { loadMetering } from "~/server/metering/view";
 
 export const metadata = { title: "Software Metering apps" };
@@ -210,7 +210,11 @@ export default async function MeteringAppsPage({
                       <h3 className="mb-2 text-sm font-medium">
                         Starts per day
                       </h3>
-                      <DailyStarts bars={app?.daily ?? []} title={entry.name} />
+                      <DailyStarts
+                        bars={app?.daily ?? []}
+                        title={entry.name}
+                        since={app?.countingSince}
+                      />
                     </div>
                     <div id="devices" className="scroll-mt-6">
                       <h3 className="mb-2 text-sm font-medium">Devices</h3>
@@ -283,7 +287,14 @@ export default async function MeteringAppsPage({
                                       <td className="py-2.5 pr-3">
                                         <StartsStrip bars={item.daily} />
                                         <span className="text-ink-faint block text-xs whitespace-nowrap">
-                                          {startsLabel(item.daily)}
+                                          {startsLabel(
+                                            item.daily,
+                                            item.row.payload
+                                              ? countingSince([
+                                                  item.row.payload,
+                                                ])
+                                              : null,
+                                          )}
                                         </span>
                                       </td>
                                     )}

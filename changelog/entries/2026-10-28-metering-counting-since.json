@@ -1,0 +1,7 @@
+{
+  "title": "Software Metering charts say when counting per day began",
+  "summary": "A device that switched to the updated collector recently showed an empty chart and 0 starts in 30 days, even though its apps had started that day before the update. The Software Metering charts and counts now say when the device began counting starts per day, for example 0 starts since 28 Oct, and an empty chart explains that no metered app has started since then and that new starts show after the next hourly report.",
+  "type": "improved",
+  "publishedOn": "2026-10-28",
+  "idempotencyKey": "licensemeter:2026-10-28-metering-counting-since"
+}

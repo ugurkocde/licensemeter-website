@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { fmtDateTime } from "~/lib/format";
 import { METERING_DAILY_DAYS, utcDay } from "~/lib/metering";
 import type { DayBar, FleetDaily } from "~/server/metering/summary";
 import { Tip } from "./MeteringCharts";
@@ -98,6 +99,10 @@ function NotCountedYet({
   );
 }
 
+/** Counted days so far had no start: say when counting began, not "0 in 30 days". */
+const quietSince = (since: Date, who: string) =>
+  `Counting per day began ${fmtDateTime(since)}. No metered app has started ${who} since then; new starts show after the next hourly report.`;
+
 const NoCount = () => (
   <span className="metering-hatch block h-full w-full rounded-t-[4px] opacity-40" />
 );
@@ -116,7 +121,19 @@ export function FleetChart({
   /** Why no day is counted yet, shown inside the empty chart. */
   empty?: React.ReactNode;
 }) {
-  const { days, apps, other } = fleet;
+  const { days, apps, other, countingSince } = fleet;
+  if (
+    countingSince &&
+    days.every((bar) => !bar.starts) &&
+    days.some((bar) => bar.starts === 0)
+  )
+    return (
+      <NotCountedYet
+        days={days.map((bar) => bar.day)}
+        height="h-44"
+        message={quietSince(countingSince, "on a reporting device")}
+      />
+    );
   if (days.every((bar) => bar.starts === null))
     return (
       <NotCountedYet
@@ -373,6 +390,7 @@ export function DailyStarts({
   title,
   unit = "device",
   empty,
+  since,
 }: {
   bars: DayBar[] | null;
   /** Names the series in tips and the accessible label. */
@@ -381,7 +399,24 @@ export function DailyStarts({
   unit?: "device" | "none";
   /** Why no day is counted yet, shown inside the empty chart. */
   empty?: React.ReactNode;
+  /** Counting per day began within the chart's days. */
+  since?: Date | null;
 }) {
+  if (
+    since &&
+    bars?.every((bar) => !bar.starts) &&
+    bars.some((bar) => bar.starts === 0)
+  )
+    return (
+      <NotCountedYet
+        days={bars.map((bar) => bar.day)}
+        height="h-28"
+        message={quietSince(
+          since,
+          unit === "none" ? "on this device" : "on a reporting device",
+        )}
+      />
+    );
   if (!bars || bars.every((bar) => bar.starts === null))
     return (
       <NotCountedYet
@@ -399,7 +434,8 @@ export function DailyStarts({
     <div>
       <p className="text-ink-soft mb-2 text-xs">
         <span className="text-ink font-semibold tabular-nums">{total}</span>{" "}
-        {total === 1 ? "start" : "starts"} in {bars.length} days
+        {total === 1 ? "start" : "starts"}{" "}
+        {since ? `since ${fmtDateTime(since)}` : `in ${bars.length} days`}
       </p>
       <div
         className="border-line grid h-28 items-end gap-[2px] border-b"
@@ -497,7 +533,10 @@ export const totalStarts = (bars: DayBar[] | null) =>
     : null;
 
 /** "Not counted", "1 start" or "12 starts", for table cells. */
-export const startsLabel = (bars: DayBar[] | null) => {
+export const startsLabel = (bars: DayBar[] | null, since?: Date | null) => {
   const total = totalStarts(bars);
-  return total === null ? "Not counted" : plural(total, "start");
+  if (total === null) return "Not counted";
+  return since
+    ? `${plural(total, "start")} since ${fmtDay(utcDay(since.getTime()))}`
+    : plural(total, "start");
 };

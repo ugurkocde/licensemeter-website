@@ -3,7 +3,12 @@ import type { MeteringPayload } from "~/lib/metering";
 import { catalogId } from "./catalog";
 import { meteringDemo } from "./demo";
 import type { MeteringReport, MeteringRow } from "./live";
-import { deviceApps, recencyBuckets, summarize } from "./summary";
+import {
+  countingSince,
+  deviceApps,
+  recencyBuckets,
+  summarize,
+} from "./summary";
 
 const now = new Date("2026-10-03T12:00:00Z");
 const programs = ["acad.exe", "visio.exe"];
@@ -61,6 +66,35 @@ const report = (
 const versions = [{ id: current, programs, at: now.toISOString() }];
 
 describe("metering summary", () => {
+  it("says when counting per day began, only if it began within the chart", () => {
+    const recent = row("d1", {
+      d: "2026-10-03T09:09:00Z",
+      a: [["acad.exe", 120, 1, "0"]],
+    }).payload!;
+    const earlier = row("d2", { d: "2026-10-01T08:00:00Z" }).payload!;
+    const old = row("d3", { d: "2026-08-01T00:00:00Z" }).payload!;
+    expect(countingSince([recent], now)).toEqual(
+      new Date("2026-10-03T09:09:00Z"),
+    );
+    // The first device to count sets the start for a group of devices.
+    expect(countingSince([recent, earlier], now)).toEqual(
+      new Date("2026-10-01T08:00:00Z"),
+    );
+    // Counting from before the chart's first day leaves no uncounted days.
+    expect(countingSince([recent, old], now)).toBeNull();
+    expect(countingSince([row("d4", {}).payload!], now)).toBeNull();
+    const result = summarize(
+      report([row("d1", { d: recent.d, a: recent.a })], { autocad: ["d1"] }),
+      versions,
+      60,
+      now,
+    );
+    expect(result.fleet.countingSince).toEqual(new Date(recent.d!));
+    expect(result.fleet.days.at(-1)).toMatchObject({ starts: 0, counted: 1 });
+    expect(
+      result.apps.find((item) => item.entry.id === "autocad")!.countingSince,
+    ).toEqual(new Date(recent.d!));
+  });
   it("charts starts per day for the fleet and for each device", () => {
     const counting = { d: "2026-09-01T00:00:00Z" };
     const result = summarize(

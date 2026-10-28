@@ -37,6 +37,8 @@ export interface FleetDaily {
   apps: { id: string; name: string; total: number; starts: number[] }[];
   /** Starts of every other metered app, per day. */
   other: number[];
+  /** Counting per day began within the chart's days, so earlier days are empty. */
+  countingSince: Date | null;
 }
 /** Apps the fleet chart shows on their own; the rest is "Other". */
 export const FLEET_APPS = 5;
@@ -64,6 +66,8 @@ export interface AppSummary {
   recency: number[];
   /** Starts per day across devices, oldest first. */
   daily: DayBar[];
+  /** Counting per day began within the chart's days, so earlier days are empty. */
+  countingSince: Date | null;
 }
 export type HealthKey =
   | "reporting"
@@ -187,6 +191,22 @@ export function sumDays(series: (DayBar[] | null)[], now = new Date()) {
   return days;
 }
 
+/**
+ * When the first of these devices began counting per day, if that falls
+ * within the chart's days; earlier days are then not counted, not quiet.
+ */
+export function countingSince(
+  payloads: MeteringPayload[],
+  now = new Date(),
+): Date | null {
+  const starts = payloads
+    .map((payload) => (payload.d ? Date.parse(payload.d) : NaN))
+    .filter(Number.isFinite);
+  if (!starts.length) return null;
+  const first = Math.min(...starts);
+  return utcDay(first) > chartDays(now)[0]! ? new Date(first) : null;
+}
+
 /** Results Intune holds for a device whose starts are real, even across a gap. */
 const usable = (row: MeteringRow) =>
   Boolean(
@@ -249,6 +269,8 @@ export interface DeviceSummary {
   startsDay: number;
   /** The device runs a collector that counts starts per day. */
   countsDays: boolean;
+  /** Counting per day began within the chart's days, so earlier days are empty. */
+  countingSince: Date | null;
 }
 
 /** Every Windows device with its collector state, for the Devices page. */
@@ -284,6 +306,7 @@ export function deviceSummaries(
         : null,
       startsDay: payload ? startsLastDay(payload, names) : 0,
       countsDays: Boolean(row.payload?.d),
+      countingSince: payload ? countingSince([payload], now) : null,
     };
   });
 }
@@ -369,10 +392,17 @@ export function summarize(
       starts: 0,
       recency: buckets.map(() => 0).concat(0),
       daily: [],
+      countingSince: null,
     };
     const items = deviceApps(report, entry, versions, days, now);
     summary.daily = sumDays(
       items.map((item) => item.daily),
+      now,
+    );
+    summary.countingSince = countingSince(
+      items.flatMap((item) =>
+        item.daily && item.row.payload ? [item.row.payload] : [],
+      ),
       now,
     );
     for (const item of items) {
@@ -475,6 +505,12 @@ export function summarize(
   );
   const top = ranked.slice(0, FLEET_APPS);
   const fleet: FleetDaily = {
+    countingSince: countingSince(
+      report.rows.flatMap((row) =>
+        row.payload && usable(row) ? [row.payload] : [],
+      ),
+      now,
+    ),
     days: fleetDays,
     apps: top,
     other: fleetDays.map(

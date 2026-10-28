@@ -13,6 +13,8 @@ export interface MeteringDeviceRow {
   appsStarted: number;
   /** Starts of metered apps in the last 30 days, or null if not counted. */
   starts: number | null;
+  /** Counting per day began within the last 30 days, formatted. */
+  since: string | null;
 }
 
 const FILTERS = [
@@ -117,7 +119,7 @@ export function MeteringDeviceList({
                         ? `${row.appsStarted} ${row.appsStarted === 1 ? "app" : "apps"} started${
                             row.starts === null
                               ? ""
-                              : ` · ${row.starts} ${row.starts === 1 ? "start" : "starts"} in 30 days`
+                              : ` · ${row.starts} ${row.starts === 1 ? "start" : "starts"} ${row.since ? `since ${row.since}` : "in 30 days"}`
                           }`
                         : "No app starts reported"}
                     </span>
