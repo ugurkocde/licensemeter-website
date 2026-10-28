@@ -94,17 +94,23 @@ describe("metering output, protocol 2", () => {
 describe("metering evidence", () => {
   it("requires a fresh, healthy report from a known collector version", () => {
     expect(signal(null)).toBe("unknown");
-    for (const h of [
-      "audit_disabled",
-      "log_gap",
-      "log_reset",
-      "collector_error",
-    ] as const)
+    for (const h of ["audit_disabled", "collector_error"] as const)
       expect(signal(payload({ h }))).toBe("unknown");
     expect(signal(payload({ e: "2026-09-20T12:00:00Z" }))).toBe("stale");
     expect(signal(payload(), ["photoshop.exe"], null)).toBe("outdated");
     expect(signal(payload(), ["sldworks.exe"])).toBe("outdated");
     expect(signal(payload(), [])).toBe("unknown");
+  });
+  it("keeps starts across a log gap but never claims not started", () => {
+    for (const h of ["log_gap", "log_reset"] as const) {
+      expect(
+        signal(payload({ h, a: [["photoshop.exe", 60 * 24 * 10, 0]] })),
+      ).toBe("started");
+      expect(signal(payload({ h }))).toBe("collecting");
+      expect(
+        signal(payload({ h, a: [["photoshop.exe", 60 * 24 * 70, 0]] })),
+      ).toBe("collecting");
+    }
   });
   it("separates started, not started and still collecting", () => {
     expect(signal(payload({ a: [["photoshop.exe", 60 * 24 * 10, 0]] }))).toBe(

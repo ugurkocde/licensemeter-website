@@ -180,7 +180,8 @@ export function summarize(
     active.flatMap((entry) => entry.programs.map((name) => [name, entry.name])),
   );
   for (const row of report.rows) {
-    if (row.payload?.h === "ok") {
+    // Starts seen across a log gap are real; coverage restarts with it.
+    if (row.payload && ["ok", "log_gap", "log_reset"].includes(row.payload.h)) {
       const end = Date.parse(row.payload.e);
       coverageDays = Math.max(
         coverageDays,

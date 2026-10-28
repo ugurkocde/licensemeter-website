@@ -139,6 +139,20 @@ describe("metering summary", () => {
       "AutoCAD",
     ]);
   });
+  it("lists starts from a report with a log gap but flags the device", () => {
+    const gap = row("d1", { h: "log_gap", a: [["acad.exe", 30, 1]] });
+    const result = summarize(
+      report([gap], { autocad: ["d1"] }),
+      versions,
+      60,
+      now,
+    );
+    expect(result.recentStarts.map((start) => start.app)).toEqual(["AutoCAD"]);
+    expect(result.health.error).toBe(1);
+    expect(
+      result.apps.find((item) => item.entry.id === "autocad")!.started,
+    ).toBe(1);
+  });
   it("adapts recency buckets to the observation period", () => {
     expect(recencyBuckets(30)).toEqual([7, 14, 30]);
     expect(recencyBuckets(90)).toEqual([7, 14, 30, 90]);
