@@ -44,19 +44,28 @@ export function meteringRows(
   states: MeteringRunState[],
   now = new Date(),
 ): MeteringRow[] {
-  // Conflicting duplicate results are ambiguous, never pick one by page order.
-  const byDevice = new Map<string, MeteringRunState | null>();
+  // Intune keeps one run state per device and signed-in user, but the
+  // collector runs as SYSTEM with one checkpoint, so the newest run is the
+  // device's current result. A tie is ambiguous; never pick by page order.
+  const byDevice = new Map<
+    string,
+    { state: MeteringRunState | null; at: number }
+  >();
   for (const state of states) {
     if (!state.managedDevice) continue;
     const id = state.managedDevice.id.toLowerCase();
-    byDevice.set(id, byDevice.has(id) ? null : state);
+    const parsed = Date.parse(state.lastStateUpdateDateTime ?? "");
+    const at = Number.isFinite(parsed) ? parsed : -Infinity;
+    const seen = byDevice.get(id);
+    if (!seen || at > seen.at) byDevice.set(id, { state, at });
+    else if (at === seen.at) byDevice.set(id, { state: null, at });
   }
   const uniqueDevices = new Map(
     devices.map((device) => [device.id.toLowerCase(), device]),
   );
   return [...uniqueDevices.values()]
     .map((device) => {
-      const state = byDevice.get(device.id.toLowerCase());
+      const state = byDevice.get(device.id.toLowerCase())?.state;
       const date = state?.lastStateUpdateDateTime
         ? new Date(state.lastStateUpdateDateTime)
         : null;

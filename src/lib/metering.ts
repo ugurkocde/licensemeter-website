@@ -141,7 +141,11 @@ export function meteringSignal(
   days: number,
   now = new Date(),
 ): MeteringSignal {
-  if (payload?.h !== "ok" || !programs.length) return "unknown";
+  // After a log gap or reset the collector restarts its coverage: the starts
+  // it saw are still real, but an absence proves nothing yet.
+  const gap = payload?.h === "log_gap" || payload?.h === "log_reset";
+  if (!payload || (payload.h !== "ok" && !gap) || !programs.length)
+    return "unknown";
   const end = Date.parse(payload.e);
   if (now.getTime() - end > METERING_STALE_DAYS * 86_400_000) return "stale";
   if (!watched || programs.some((name) => !watched.includes(name)))
@@ -149,6 +153,7 @@ export function meteringSignal(
   const cutoff = end - days * 86_400_000;
   const last = lastStart(payload, programs);
   if (last && last.getTime() >= cutoff) return "started";
+  if (gap) return "collecting";
   if (payload.t) return "unknown";
   const since = Math.max(
     Date.parse(payload.s),

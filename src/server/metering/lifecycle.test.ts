@@ -258,6 +258,25 @@ describe("live metering reads", () => {
       (await collectMetering(graph, target())).rows[0]?.payload,
     ).toBeNull();
   });
+  it("uses the newest run when Intune keeps one state per signed-in user", async () => {
+    const graph = source();
+    const current = (await source().states(scriptId))[0]!;
+    const older = {
+      ...current,
+      id: "state-user",
+      lastStateUpdateDateTime: new Date(
+        Date.now() - 3 * 3_600_000,
+      ).toISOString(),
+      preRemediationDetectionScriptOutput: "stale output from an earlier run",
+    };
+    graph.states = async () => [older, current];
+    expect((await collectMetering(graph, target())).rows[0]).toMatchObject({
+      status: "ok",
+      payload: { h: "ok" },
+    });
+    graph.states = async () => [current, older];
+    expect((await collectMetering(graph, target())).rows[0]?.status).toBe("ok");
+  });
   it("finds the deployed collector without a package choice", async () => {
     const graph = source();
     const result = await collectMetering(graph, target(0, { scriptId: null }));

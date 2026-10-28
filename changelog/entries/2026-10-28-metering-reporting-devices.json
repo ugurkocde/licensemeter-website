@@ -1,0 +1,7 @@
+{
+  "title": "Software Metering shows devices and app starts it used to hide",
+  "summary": "A device could disappear from the Software Metering dashboard when Intune kept a separate collector result for a signed-in user. LicenseMeter now uses the device's newest result. App starts also show when the collector had to restart its coverage after a gap in the Windows event log: those starts are still real, while “App not started” waits for an uninterrupted period as before, and the device stays flagged under collection health.",
+  "type": "fixed",
+  "publishedOn": "2026-10-28",
+  "idempotencyKey": "licensemeter:2026-10-28-metering-reporting-devices"
+}

@@ -220,7 +220,8 @@ export const coverageLabel = (days: number, period: number) =>
 export function CollectingNotice({ view }: { view: MeteringView }) {
   const summary = view.summary;
   if (!summary || summary.health.reporting > 0) return null;
-  const waiting = summary.reporting === 0;
+  // Any result counts, even one with a log gap: the device is reporting.
+  const waiting = summary.health.noReport === summary.devices;
   // A stale or outdated device can cover more than the period.
   const covered = Math.min(summary.coverageDays, view.days);
   const progress = covered / view.days;
@@ -280,7 +281,7 @@ export function RecentStarts({ view }: { view: MeteringView }) {
     </ul>
   ) : (
     <p className="text-ink-soft text-sm">
-      {summary.reporting > 0
+      {summary.health.noReport < summary.devices
         ? "None of the metered apps has been started on a reporting device yet."
         : "App starts appear here once the first device reports."}
     </p>
