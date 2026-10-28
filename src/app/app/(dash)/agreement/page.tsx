@@ -7,7 +7,10 @@ import { AcceptanceRecord } from "~/components/agreement/AcceptanceRecord";
 import { SignedAgreementForm } from "~/components/agreement/SignedAgreementForm";
 import { SignedAgreementRecord } from "~/components/agreement/SignedAgreementRecord";
 import { ButtonAnchor, Card } from "~/components/ui";
-import { FeatureLockPanel } from "~/components/workspace/FeatureLock";
+import {
+  FeatureLockPanel,
+  PlanBadge,
+} from "~/components/workspace/FeatureLock";
 import { buildDpa, DPA_VERSION } from "~/lib/dpa";
 import { hasRole, requireAccess } from "~/server/access";
 import {
@@ -134,7 +137,10 @@ export default async function AgreementPage({
           </Card>
 
           {signedDpa ? (
-            <Card title="Signed with your company">
+            <Card
+              title="Signed with your company"
+              badge={<PlanBadge feature="signedDpa" />}
+            >
               <div className="flex flex-col gap-6">
                 {signed.map((row) => (
                   <SignedAgreementRecord key={row.id} record={row} />
