@@ -217,26 +217,36 @@ export default async function MeteringSetupPage({
         id="deploy"
         number={2}
         title="Deploy the collector in Intune"
-        done={Boolean(collector) && !summary?.notWatched.length}
+        done={Boolean(collector) && !summary?.updateCollector}
       >
         {!connected ? (
           <p className="text-ink-faint">Available after step 1.</p>
         ) : (
           <>
             {collector ? (
-              summary?.notWatched.length ? (
+              summary?.updateCollector ? (
                 <p className="bg-waste-soft rounded-lg p-3">
-                  <strong>
-                    {summary.notWatched.length === 1
-                      ? "1 new app is not watched yet"
-                      : `${summary.notWatched.length} new apps are not watched yet`}
-                    :
-                  </strong>{" "}
-                  {summary.notWatched
-                    .slice(0, 6)
-                    .map((entry) => entry.name)
-                    .join(", ")}
-                  {summary.notWatched.length > 6 ? ", …" : ""}.{" "}
+                  {summary.notWatched.length > 0 ? (
+                    <>
+                      <strong>
+                        {summary.notWatched.length === 1
+                          ? "1 new app is not watched yet"
+                          : `${summary.notWatched.length} new apps are not watched yet`}
+                        :
+                      </strong>{" "}
+                      {summary.notWatched
+                        .slice(0, 6)
+                        .map((entry) => entry.name)
+                        .join(", ")}
+                      {summary.notWatched.length > 6 ? ", …" : ""}.{" "}
+                    </>
+                  ) : (
+                    <>
+                      <strong>A newer collector is available.</strong> It counts
+                      app starts per day and keeps coverage when Intune
+                      re-applies the audit policy.{" "}
+                    </>
+                  )}
                   {canWrite
                     ? `Update the collector in “${collector.name}”.`
                     : `Download the collector again and replace the detection script in “${collector.name}”.`}{" "}
@@ -265,7 +275,7 @@ export default async function MeteringSetupPage({
                   : "LicenseMeter has not found the collector in Intune yet. It looks for it automatically, so you never select a package."}
               </p>
             )}
-            {canWrite && collector && summary?.notWatched.length ? (
+            {canWrite && collector && summary?.updateCollector ? (
               <MeteringIntuneAction
                 mode="update"
                 packageName={collector.name}
@@ -274,7 +284,7 @@ export default async function MeteringSetupPage({
             {canWrite && !collector && !several && step !== "unavailable" && (
               <MeteringIntuneAction mode="create" />
             )}
-            {collector && !summary?.notWatched.length ? (
+            {collector && !summary?.updateCollector ? (
               <div className="flex flex-col gap-3">
                 <p className="text-ink-faint text-xs">
                   {step === "waiting"

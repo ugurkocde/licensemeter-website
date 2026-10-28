@@ -188,6 +188,9 @@ export function catalogId(programs: string[]): string {
     .slice(0, 8);
 }
 
+/** The collector release in the template; deployed copies below it are offered an update. */
+export const COLLECTOR_RELEASE = 2;
+
 const TEMPLATE = path.join(
   process.cwd(),
   "src/server/metering/Collect-LicenseMeterUsage.template.ps1",

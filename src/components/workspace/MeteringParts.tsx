@@ -81,6 +81,23 @@ export function MeteringNotices({ view }: { view: MeteringView }) {
           so none can be shown until the next successful read.
         </p>
       )}
+      {view.summary &&
+        view.summary.olderRelease &&
+        !view.summary.notWatched.length && (
+          <p className="bg-waste-soft text-ink rounded-xl p-4 text-sm">
+            <strong>A newer collector is available.</strong> It counts app
+            starts per day for the charts and keeps coverage when Intune
+            re-applies the audit policy.{" "}
+            {view.admin ? (
+              <Link className="underline" href="/app/metering/setup#deploy">
+                Update the collector
+              </Link>
+            ) : (
+              "A workspace Admin can update the collector"
+            )}
+            .
+          </p>
+        )}
       {view.summary && view.summary.notWatched.length > 0 && (
         <p className="bg-waste-soft text-ink rounded-xl p-4 text-sm">
           <strong>
@@ -181,7 +198,7 @@ export function FinishSetup({ view }: { view: MeteringView }) {
     waiting:
       "The collector is deployed. The first device results can take a few hours to appear in Intune.",
   };
-  // While waiting for the first report, the dashboard shows a collecting strip.
+  // While waiting for the first report, the dashboard says so above the charts.
   if (
     view.step === "done" ||
     view.step === "unavailable" ||
@@ -209,56 +226,29 @@ export function FinishSetup({ view }: { view: MeteringView }) {
   );
 }
 
-/** "First day of 60", then "Day 3 of 60". */
-export const coverageLabel = (days: number, period: number) =>
-  days < 1 ? `First day of ${period}` : `Day ${days} of ${period}`;
-
-/**
- * A slim strip above the dashboard while no device has covered the whole
- * period yet. The charts below fill in as results arrive.
- */
-export function CollectingNotice({ view }: { view: MeteringView }) {
+/** Until the first device reports, the empty charts below need a reason. */
+export function FirstReportNotice({ view }: { view: MeteringView }) {
   const summary = view.summary;
-  if (!summary || summary.health.reporting > 0) return null;
-  // Any result counts, even one with a log gap: the device is reporting.
-  const waiting = summary.health.noReport === summary.devices;
-  // A stale or outdated device can cover more than the period.
-  const covered = Math.min(summary.coverageDays, view.days);
-  const progress = covered / view.days;
+  if (!summary || summary.health.noReport < summary.devices) return null;
   return (
-    <div className="border-line bg-card flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border px-4 py-3 text-sm">
-      <div className="flex min-w-48 flex-1 items-center gap-3">
-        <span className="font-medium whitespace-nowrap">
-          {waiting
-            ? "Waiting for the first device report"
-            : coverageLabel(covered, view.days)}
-        </span>
-        {!waiting && (
-          <div
-            className="bg-subtle h-1.5 max-w-40 flex-1 overflow-hidden rounded-full"
-            role="progressbar"
-            aria-label="Coverage of the observation period"
-            aria-valuemin={0}
-            aria-valuemax={view.days}
-            aria-valuenow={covered}
-          >
-            <div
-              className="bg-brand h-full rounded-full"
-              style={{ width: `${Math.max(3, progress * 100)}%` }}
-            />
-          </div>
-        )}
-      </div>
-      <p className="text-ink-soft basis-full text-xs sm:basis-auto sm:text-sm">
-        {waiting
-          ? "The collector is deployed. First results can take a few hours to appear in Intune."
-          : `Starts show as they arrive. “App not started” needs ${view.days} days without a start.`}
-      </p>
-    </div>
+    <p className="border-line bg-card rounded-xl border px-4 py-3 text-sm">
+      <strong className="font-medium">
+        Waiting for the first device report.
+      </strong>{" "}
+      <span className="text-ink-soft">
+        The collector is deployed. First results can take a few hours to appear
+        in Intune.
+      </span>
+    </p>
   );
 }
 
-/** Newest app starts across devices, so first results are visible at once. */
+export const appHref = (id: string) =>
+  `/app/metering/apps?app=${encodeURIComponent(id)}#app`;
+export const deviceHref = (id: string) =>
+  `/app/metering/devices?device=${encodeURIComponent(id)}#device`;
+
+/** Newest app starts across devices; each opens its app or device. */
 export function RecentStarts({ view }: { view: MeteringView }) {
   const summary = view.summary;
   if (!summary) return null;
@@ -266,14 +256,25 @@ export function RecentStarts({ view }: { view: MeteringView }) {
     <ul className="flex flex-col">
       {summary.recentStarts.map((start, index) => (
         <li
-          key={`${start.device}-${start.app}-${index}`}
-          className="border-line flex justify-between gap-3 border-b py-2 text-sm last:border-b-0"
+          key={`${start.deviceId}-${start.appId}-${index}`}
+          className="border-line flex items-baseline justify-between gap-3 border-b py-2 text-sm last:border-b-0"
         >
           <span className="min-w-0 truncate">
-            <span className="font-medium">{start.app}</span>
-            <span className="text-ink-faint"> · {start.device}</span>
+            <Link
+              className="font-medium hover:underline"
+              href={appHref(start.appId)}
+            >
+              {start.app}
+            </Link>
+            <span className="text-ink-faint"> · </span>
+            <Link
+              className="text-ink-soft hover:underline"
+              href={deviceHref(start.deviceId)}
+            >
+              {start.device}
+            </Link>
           </span>
-          <span className="text-ink-soft whitespace-nowrap">
+          <span className="text-ink-soft text-xs whitespace-nowrap tabular-nums">
             {fmtDateTime(start.at)}
           </span>
         </li>

@@ -122,6 +122,8 @@ export interface CollectorPackage {
   /** Program list version the deployed script reports as "c". */
   catalogId: string;
   programs: string[];
+  /** Collector release of the deployed script; 1 before releases were numbered. */
+  release: number;
 }
 export interface MeteringSource {
   /** Whether consent includes write on scripts (create and update the collector). */
@@ -163,7 +165,7 @@ const scriptSchema = z.object({
 /** Reads the program list out of a deployed collector, or null for any other script. */
 export function parseCollector(
   base64: string,
-): { catalogId: string; programs: string[] } | null {
+): { catalogId: string; programs: string[]; release: number } | null {
   let script: string;
   try {
     script = Buffer.from(base64, "base64").toString("latin1");
@@ -178,7 +180,8 @@ export function parseCollector(
   const programs = [...list.matchAll(/'([^']*)'/g)].map((m) => m[1]!);
   if (!programs.length || programs.some((name) => !PROGRAM.test(name)))
     return null;
-  return { catalogId: id, programs };
+  const release = Number(/^\$Release = (\d{1,4})\r?$/m.exec(script)?.[1] ?? 1);
+  return { catalogId: id, programs, release };
 }
 
 const INSTALL_REPORT =

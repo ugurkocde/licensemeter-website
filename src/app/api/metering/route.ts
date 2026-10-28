@@ -16,6 +16,7 @@ import {
   MeteringError,
   verifyMeteringConsent,
 } from "~/server/metering/graph";
+import { COLLECTOR_RELEASE } from "~/server/metering/catalog";
 import { generateCollector } from "~/server/metering/collector";
 import { forgetMetering, readMetering } from "~/server/metering/live";
 import { rateLimitDurable } from "~/server/rateLimit";
@@ -67,7 +68,7 @@ type MeteringConnection = typeof meteringConnections.$inferSelect;
 
 /**
  * After an app setting is saved: writes the new program list to the collector
- * in Intune, or leaves it alone when the list did not change.
+ * in Intune, or leaves it alone when neither the list nor the collector changed.
  */
 async function updateAfterSave(
   ctx: NonNullable<Awaited<ReturnType<typeof apiAccess>>>,
@@ -85,7 +86,8 @@ async function updateAfterSave(
       409,
     );
   const generated = await generateCollector(connection, requestDeadline());
-  const changed = generated.id !== chosen.catalogId;
+  const changed =
+    generated.id !== chosen.catalogId || chosen.release < COLLECTOR_RELEASE;
   if (changed) {
     await client.updateCollector(chosen.id, generated.script);
     await audit(ctx, "metering_collector_updated", {

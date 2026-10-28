@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ButtonAnchor, ButtonLink, Pill } from "~/components/ui";
 import {
   MeteringAppList,
@@ -5,12 +6,18 @@ import {
 } from "~/components/workspace/MeteringAppList";
 import { MeteringAppSettings } from "~/components/workspace/MeteringAppSettings";
 import {
+  deviceHref,
   FinishSetup,
   MeteringFootnote,
   MeteringHeader,
   MeteringLocked,
   MeteringNotices,
 } from "~/components/workspace/MeteringParts";
+import {
+  DailyStarts,
+  startsLabel,
+  StartsStrip,
+} from "~/components/workspace/MeteringTimeline";
 import { fmtDateTime } from "~/lib/format";
 import { SIGNAL_LABELS, type MeteringSignal } from "~/lib/metering";
 import { requireAccess } from "~/server/access";
@@ -103,9 +110,14 @@ export default async function MeteringAppsPage({
   const app = entry ? stats.get(entry.id) : undefined;
   const devices =
     report && entry && !entry.excluded && entry.programs.length
-      ? deviceApps(report, entry, versions, days).filter(
-          (item) => item.installed || item.signal === "started",
-        )
+      ? deviceApps(report, entry, versions, days)
+          .filter((item) => item.installed || item.signal === "started")
+          // Devices that run it first, most recent start first.
+          .sort(
+            (a, b) =>
+              (b.last?.getTime() ?? 0) - (a.last?.getTime() ?? 0) ||
+              a.row.deviceName.localeCompare(b.row.deviceName),
+          )
       : [];
   const devicePages = Math.max(1, Math.ceil(devices.length / DEVICE_PAGE));
   const devicePage = Math.min(
@@ -192,6 +204,12 @@ export default async function MeteringAppsPage({
                       />
                       <Stat label="Starts, 24 h" value={app?.starts ?? 0} />
                     </dl>
+                    <div id="starts" className="scroll-mt-6">
+                      <h3 className="mb-2 text-sm font-medium">
+                        Starts per day
+                      </h3>
+                      <DailyStarts bars={app?.daily ?? []} title={entry.name} />
+                    </div>
                     <div id="devices" className="scroll-mt-6">
                       <h3 className="mb-2 text-sm font-medium">Devices</h3>
                       {devices.length === 0 ? (
@@ -206,17 +224,20 @@ export default async function MeteringAppsPage({
                             </caption>
                             <thead className="border-line text-ink-faint border-b text-xs">
                               <tr>
-                                {["Device", "Last start", "Evidence"].map(
-                                  (title) => (
-                                    <th
-                                      key={title}
-                                      scope="col"
-                                      className="py-2 pr-3 font-medium"
-                                    >
-                                      {title}
-                                    </th>
-                                  ),
-                                )}
+                                {[
+                                  "Device",
+                                  "Last start",
+                                  "Last 30 days",
+                                  "Evidence",
+                                ].map((title) => (
+                                  <th
+                                    key={title}
+                                    scope="col"
+                                    className="py-2 pr-3 font-medium"
+                                  >
+                                    {title}
+                                  </th>
+                                ))}
                               </tr>
                             </thead>
                             <tbody>
@@ -234,7 +255,12 @@ export default async function MeteringAppsPage({
                                       scope="row"
                                       className="py-2.5 pr-3 font-medium"
                                     >
-                                      {item.row.deviceName}
+                                      <Link
+                                        className="hover:underline"
+                                        href={deviceHref(item.row.deviceId)}
+                                      >
+                                        {item.row.deviceName}
+                                      </Link>
                                       {!item.installed && (
                                         <span className="text-ink-faint block text-xs font-normal">
                                           Not reported installed
@@ -250,6 +276,12 @@ export default async function MeteringAppsPage({
                                           {item.starts} in the last 24 h
                                         </span>
                                       )}
+                                    </td>
+                                    <td className="py-2.5 pr-3">
+                                      <StartsStrip bars={item.daily} />
+                                      <span className="text-ink-faint block text-xs whitespace-nowrap">
+                                        {startsLabel(item.daily)}
+                                      </span>
                                     </td>
                                     <td className="py-2.5">
                                       <Pill tone={SIGNAL_TONE[item.signal]}>

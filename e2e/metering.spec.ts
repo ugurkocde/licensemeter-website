@@ -23,12 +23,22 @@ test("metering demo: sidebar sections, overview charts, app search and mobile fi
 
   // The section's pages appear under its sidebar item while it is open.
   const nav = page.getByRole("navigation", { name: "Workspace navigation" });
-  for (const name of ["Dashboard", "Apps", "Setup"])
+  for (const name of ["Dashboard", "Apps", "Devices", "Setup"])
     await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
   await expect(
     nav.getByRole("link", { name: "Dashboard", exact: true }),
   ).toHaveAttribute("aria-current", "page");
 
+  // The fleet chart leads; its apps open their own page.
+  await expect(
+    content.getByRole("heading", { name: "App starts, last 30 days" }),
+  ).toBeVisible();
+  await expect(
+    content
+      .getByRole("list", { name: "Apps in the chart" })
+      .getByRole("link")
+      .first(),
+  ).toBeVisible();
   const legend = content.getByRole("list", { name: "Legend" });
   for (const text of [
     "App started",
@@ -67,6 +77,35 @@ test("metering demo: sidebar sections, overview charts, app search and mobile fi
   await expect(
     content.getByRole("button", { name: "Left out", exact: false }),
   ).toBeVisible();
+  await expect(
+    content.getByRole("heading", { name: "Starts per day", level: 3 }),
+  ).toBeVisible();
+
+  // A device opens from the app's device list and shows its own apps.
+  await content
+    .getByRole("table", { name: "AutoCAD 2026 by device" })
+    .getByRole("link")
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/app\/metering\/devices\?device=/);
+  await expect(
+    content.getByRole("heading", { name: "App starts per day", level: 3 }),
+  ).toBeVisible();
+  await expect(
+    content
+      .getByRole("table", { name: /^Metered apps on / })
+      .getByRole("link", {
+        name: "AutoCAD 2026",
+      }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: test.info().outputPath("metering-device.png"),
+    fullPage: true,
+  });
+  await content.getByRole("searchbox", { name: "Search devices" }).fill("fin");
+  await expect(
+    content.getByRole("region", { name: "Devices" }).getByRole("link").first(),
+  ).toContainText("FIN");
 
   await nav.getByRole("link", { name: "Setup", exact: true }).click();
   await expect(
@@ -75,6 +114,10 @@ test("metering demo: sidebar sections, overview charts, app search and mobile fi
 
   await page.goto("/app/metering");
   await page.setViewportSize({ width: 375, height: 812 });
+  // Measure the rendered dashboard, not its loading skeleton.
+  await expect(
+    content.getByRole("heading", { name: "App starts, last 30 days" }),
+  ).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth - innerWidth,

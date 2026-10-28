@@ -89,6 +89,7 @@ const source = (): MeteringSource => ({
       name: "Collector",
       catalogId: "a1b2c3d4",
       programs: ["acad.exe"],
+      release: 2,
     },
   ]),
   devices: vi.fn(async () => [
@@ -299,8 +300,15 @@ describe("live metering reads", () => {
         name: "A",
         catalogId: "a1b2c3d4",
         programs: ["acad.exe"],
+        release: 2,
       },
-      { id: other, name: "B", catalogId: "a1b2c3d4", programs: ["acad.exe"] },
+      {
+        id: other,
+        name: "B",
+        catalogId: "a1b2c3d4",
+        programs: ["acad.exe"],
+        release: 2,
+      },
     ];
     graph.collectors = vi.fn(async () => two);
     expect(

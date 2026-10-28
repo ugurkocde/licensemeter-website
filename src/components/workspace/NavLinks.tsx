@@ -31,6 +31,7 @@ const ITEMS: NavItem[] = [
     children: [
       { href: "/app/metering", label: "Dashboard" },
       { href: "/app/metering/apps", label: "Apps" },
+      { href: "/app/metering/devices", label: "Devices" },
       { href: "/app/metering/setup", label: "Setup" },
     ],
   },
