@@ -334,20 +334,28 @@ export const meteringConnections = pgTable(
   ],
 ).enableRLS();
 
-export const meteringConsentStates = pgTable("metering_consent_states", {
-  state: uuid("state").primaryKey(),
-  tenantId: uuid("tenant_id")
-    .notNull()
-    .references(() => tenants.id, { onDelete: "cascade" }),
-  connectionId: uuid("connection_id")
-    .notNull()
-    .references(() => meteringConnections.id, { onDelete: "cascade" }),
-  oid: text("oid").notNull(),
-  tid: text("tid").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-}).enableRLS();
+export const meteringConsentStates = pgTable(
+  "metering_consent_states",
+  {
+    state: uuid("state").primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    connectionId: uuid("connection_id")
+      .notNull()
+      .references(() => meteringConnections.id, { onDelete: "cascade" }),
+    oid: text("oid").notNull(),
+    tid: text("tid").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // Cover both cascade foreign keys, as db-audit-posture.sql requires.
+    index("metering_consent_states_tenant_idx").on(t.tenantId),
+    index("metering_consent_states_connection_idx").on(t.connectionId),
+  ],
+).enableRLS();
 
 /** Who may sign in to which tenant workspace, and as what. */
 export const memberships = pgTable(
@@ -426,6 +434,8 @@ export const joinRequests = pgTable(
       .where(sql`${t.oid} is not null`),
     index("join_requests_tenant_status_idx").on(t.tenantId, t.status),
     index("join_requests_oid_idx").on(t.oid),
+    // Covers the decided-by foreign key, as db-audit-posture.sql requires.
+    index("join_requests_decided_by_idx").on(t.decidedByMembershipId),
     check(
       "join_requests_status_check",
       sql`${t.status} in ('pending', 'approved', 'declined')`,
@@ -438,23 +448,30 @@ export const joinRequests = pgTable(
  * user (Entra object id) and the workspace the consent was started from. The
  * callback only accepts the browser session of that same user.
  */
-export const consentStates = pgTable("consent_states", {
-  state: text("state").primaryKey(),
-  /** Entra object id of the initiator. */
-  oid: text("oid"),
-  /** Initiator's Entra home tenant; not read on callback. */
-  tid: text("tid"),
-  /** Workspace the consent was started from; checked on callback. */
-  tenantId: uuid("tenant_id").references(() => tenants.id, {
-    onDelete: "cascade",
-  }),
-  email: text("email").notNull(),
-  name: text("name"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  usedAt: timestamp("used_at", { withTimezone: true }),
-});
+export const consentStates = pgTable(
+  "consent_states",
+  {
+    state: text("state").primaryKey(),
+    /** Entra object id of the initiator. */
+    oid: text("oid"),
+    /** Initiator's Entra home tenant; not read on callback. */
+    tid: text("tid"),
+    /** Workspace the consent was started from; checked on callback. */
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
+      onDelete: "cascade",
+    }),
+    email: text("email").notNull(),
+    name: text("name"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [
+    // Covers the cascade foreign key, as db-audit-posture.sql requires.
+    index("consent_states_tenant_idx").on(t.tenantId),
+  ],
+);
 
 /** Latest subscribedSkus snapshot per tenant. */
 export const tenantSkus = pgTable(
