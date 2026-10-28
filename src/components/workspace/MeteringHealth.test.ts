@@ -34,6 +34,7 @@ const device = (
     daily: null,
     startsDay: 0,
     countsDays: Boolean(value?.d),
+    countingSince: null,
   };
 };
 

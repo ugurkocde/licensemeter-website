@@ -21,7 +21,7 @@ import {
 import { fmtDateTime } from "~/lib/format";
 import { SIGNAL_LABELS, type MeteringSignal } from "~/lib/metering";
 import { requireAccess } from "~/server/access";
-import { deviceApps } from "~/server/metering/summary";
+import { countingSince, deviceApps } from "~/server/metering/summary";
 import { loadMetering } from "~/server/metering/view";
 
 export const metadata = { title: "Software Metering apps" };
@@ -69,7 +69,9 @@ export default async function MeteringAppsPage({
   const ctx = await requireAccess("viewer");
   const sp = await searchParams;
   const param = (key: string) => (typeof sp[key] === "string" ? sp[key] : "");
-  const view = await loadMetering(ctx);
+  // One reference time, so every count on the page uses the same UTC days.
+  const now = new Date();
+  const view = await loadMetering(ctx, now);
   if (!view.allowed)
     return (
       <MeteringLocked
@@ -110,7 +112,7 @@ export default async function MeteringAppsPage({
   const app = entry ? stats.get(entry.id) : undefined;
   const devices =
     report && entry && !entry.excluded && entry.programs.length
-      ? deviceApps(report, entry, versions, days)
+      ? deviceApps(report, entry, versions, days, now)
           .filter((item) => item.installed || item.signal === "started")
           // Devices that run it first, most recent start first.
           .sort(
@@ -210,7 +212,11 @@ export default async function MeteringAppsPage({
                       <h3 className="mb-2 text-sm font-medium">
                         Starts per day
                       </h3>
-                      <DailyStarts bars={app?.daily ?? []} title={entry.name} />
+                      <DailyStarts
+                        bars={app?.daily ?? []}
+                        title={entry.name}
+                        since={app?.countingSince}
+                      />
                     </div>
                     <div id="devices" className="scroll-mt-6">
                       <h3 className="mb-2 text-sm font-medium">Devices</h3>
@@ -283,7 +289,15 @@ export default async function MeteringAppsPage({
                                       <td className="py-2.5 pr-3">
                                         <StartsStrip bars={item.daily} />
                                         <span className="text-ink-faint block text-xs whitespace-nowrap">
-                                          {startsLabel(item.daily)}
+                                          {startsLabel(
+                                            item.daily,
+                                            item.row.payload
+                                              ? countingSince(
+                                                  [item.row.payload],
+                                                  now,
+                                                )
+                                              : null,
+                                          )}
                                         </span>
                                       </td>
                                     )}

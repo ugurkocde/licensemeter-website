@@ -156,13 +156,22 @@ export function dailyStarts(
 ): number[] | null {
   if (!payload.d) return null;
   const end = Date.parse(payload.e);
+  const inWindow = (ago: number) =>
+    utcDay(end) - utcDay(end - ago * 60_000) < METERING_DAILY_DAYS;
+  // A truncated report drops the oldest starts first. A program it no longer
+  // lists may have started inside the window if the oldest listed one did.
+  if (
+    payload.t &&
+    programs.some((name) => !payload.a.some(([listed]) => listed === name)) &&
+    inWindow(payload.a.reduce((oldest, [, ago]) => Math.max(oldest, ago), 0))
+  )
+    return null;
   const days = new Array<number>(METERING_DAILY_DAYS).fill(0);
   for (const [name, ago, , series] of payload.a) {
     if (!programs.includes(name)) continue;
     if (series === undefined) {
       // A start older than the window has nothing to count.
-      if (utcDay(end) - utcDay(end - ago * 60_000) < METERING_DAILY_DAYS)
-        return null;
+      if (inWindow(ago)) return null;
       continue;
     }
     for (let index = 0; index < series.length; index++)

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { fmtDateTime } from "~/lib/format";
 import { METERING_DAILY_DAYS, utcDay } from "~/lib/metering";
 import type { DayBar, FleetDaily } from "~/server/metering/summary";
 import { Tip } from "./MeteringCharts";
@@ -20,6 +21,9 @@ export const fmtDay = (day: number) =>
     month: "short",
     timeZone: "UTC",
   }).format(new Date(day * 86_400_000));
+
+/** The UTC day a counting start falls on, as "28 Oct", like the chart's days. */
+export const sinceDay = (at: Date) => fmtDay(utcDay(at.getTime()));
 
 const plural = (count: number, word: string) =>
   `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -59,10 +63,13 @@ function NotCountedYet({
   days,
   height,
   message,
+  counted,
 }: {
   days: number[];
   height: string;
   message: React.ReactNode;
+  /** Days that were counted (with no start) stay unhatched. */
+  counted?: boolean[];
 }) {
   const list = days.length
     ? days
@@ -80,12 +87,16 @@ function NotCountedYet({
             gridTemplateColumns: `repeat(${list.length}, minmax(0, 1fr))`,
           }}
         >
-          {list.map((day) => (
-            <span
-              key={day}
-              className="metering-hatch h-full rounded-t-[4px] opacity-25"
-            />
-          ))}
+          {list.map((day, index) =>
+            counted?.[index] ? (
+              <span key={day} />
+            ) : (
+              <span
+                key={day}
+                className="metering-hatch h-full rounded-t-[4px] opacity-25"
+              />
+            ),
+          )}
         </div>
         <div className="absolute inset-0 grid place-items-center p-3">
           <p className="bg-card border-line text-ink-soft max-w-sm rounded-lg border px-3 py-2 text-center text-sm shadow-sm">
@@ -97,6 +108,10 @@ function NotCountedYet({
     </div>
   );
 }
+
+/** Counted days so far had no start: say when counting began, not "0 in 30 days". */
+const quietSince = (since: Date, who: string) =>
+  `Counting per day began ${fmtDateTime(since)}. No metered app has started ${who} since then; new starts show after the next hourly report.`;
 
 const NoCount = () => (
   <span className="metering-hatch block h-full w-full rounded-t-[4px] opacity-40" />
@@ -116,7 +131,20 @@ export function FleetChart({
   /** Why no day is counted yet, shown inside the empty chart. */
   empty?: React.ReactNode;
 }) {
-  const { days, apps, other } = fleet;
+  const { days, apps, other, countingSince } = fleet;
+  if (
+    countingSince &&
+    days.every((bar) => !bar.starts) &&
+    days.some((bar) => bar.starts === 0)
+  )
+    return (
+      <NotCountedYet
+        days={days.map((bar) => bar.day)}
+        counted={days.map((bar) => bar.starts !== null)}
+        height="h-44"
+        message={quietSince(countingSince, "on a reporting device")}
+      />
+    );
   if (days.every((bar) => bar.starts === null))
     return (
       <NotCountedYet
@@ -373,6 +401,7 @@ export function DailyStarts({
   title,
   unit = "device",
   empty,
+  since,
 }: {
   bars: DayBar[] | null;
   /** Names the series in tips and the accessible label. */
@@ -381,7 +410,25 @@ export function DailyStarts({
   unit?: "device" | "none";
   /** Why no day is counted yet, shown inside the empty chart. */
   empty?: React.ReactNode;
+  /** Counting per day began within the chart's days. */
+  since?: Date | null;
 }) {
+  if (
+    since &&
+    bars?.every((bar) => !bar.starts) &&
+    bars.some((bar) => bar.starts === 0)
+  )
+    return (
+      <NotCountedYet
+        days={bars.map((bar) => bar.day)}
+        counted={bars.map((bar) => bar.starts !== null)}
+        height="h-28"
+        message={quietSince(
+          since,
+          unit === "none" ? "on this device" : "on a reporting device",
+        )}
+      />
+    );
   if (!bars || bars.every((bar) => bar.starts === null))
     return (
       <NotCountedYet
@@ -399,7 +446,8 @@ export function DailyStarts({
     <div>
       <p className="text-ink-soft mb-2 text-xs">
         <span className="text-ink font-semibold tabular-nums">{total}</span>{" "}
-        {total === 1 ? "start" : "starts"} in {bars.length} days
+        {total === 1 ? "start" : "starts"}{" "}
+        {since ? `since ${fmtDateTime(since)}` : `in ${bars.length} days`}
       </p>
       <div
         className="border-line grid h-28 items-end gap-[2px] border-b"
@@ -497,7 +545,10 @@ export const totalStarts = (bars: DayBar[] | null) =>
     : null;
 
 /** "Not counted", "1 start" or "12 starts", for table cells. */
-export const startsLabel = (bars: DayBar[] | null) => {
+export const startsLabel = (bars: DayBar[] | null, since?: Date | null) => {
   const total = totalStarts(bars);
-  return total === null ? "Not counted" : plural(total, "start");
+  if (total === null) return "Not counted";
+  return since
+    ? `${plural(total, "start")} since ${sinceDay(since)}`
+    : plural(total, "start");
 };

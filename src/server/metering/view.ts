@@ -25,7 +25,7 @@ export type SetupStep =
   | "unavailable";
 
 /** Everything the three metering pages need, from one cached live read. */
-export async function loadMetering(ctx: AccessContext) {
+export async function loadMetering(ctx: AccessContext, now = new Date()) {
   const connection =
     (await db.query.meteringConnections.findFirst({
       where: eq(meteringConnections.tenantId, ctx.tenant.id),
@@ -53,7 +53,7 @@ export async function loadMetering(ctx: AccessContext) {
     }
   const days = connection?.inactivityDays ?? 60;
   const summary: MeteringSummary | null = report
-    ? summarize(report, versions, days)
+    ? summarize(report, versions, days, now)
     : null;
   const step: SetupStep = demo
     ? "done"

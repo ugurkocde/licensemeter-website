@@ -16,6 +16,7 @@ import {
 } from "~/components/workspace/MeteringParts";
 import {
   DailyStarts,
+  sinceDay,
   startsLabel,
   StartsStrip,
   totalStarts,
@@ -61,7 +62,9 @@ export default async function MeteringDevicesPage({
   const ctx = await requireAccess("viewer");
   const sp = await searchParams;
   const wanted = typeof sp.device === "string" ? sp.device.toLowerCase() : "";
-  const view = await loadMetering(ctx);
+  // One reference time, so every count on the page uses the same UTC days.
+  const now = new Date();
+  const view = await loadMetering(ctx, now);
   if (!view.allowed)
     return (
       <MeteringLocked
@@ -71,7 +74,7 @@ export default async function MeteringDevicesPage({
     );
   const { report, summary, versions, days } = view;
   const health = new Map(HEALTH.map((item) => [item.key, item]));
-  const devices = report ? deviceSummaries(report, versions, days) : [];
+  const devices = report ? deviceSummaries(report, versions, days, now) : [];
   // Devices reporting starts first, the most recent first; then by name.
   devices.sort(
     (a, b) =>
@@ -92,12 +95,15 @@ export default async function MeteringDevicesPage({
           : "attention",
     appsStarted: device.appsStarted,
     starts: totalStarts(device.daily),
+    since: device.countingSince ? sinceDay(device.countingSince) : null,
   }));
   const device =
     devices.find((item) => item.row.deviceId === wanted) ?? devices[0];
   const state = device ? health.get(device.health)! : null;
   const apps =
-    report && device ? appsOnDevice(report, device.row, versions, days) : [];
+    report && device
+      ? appsOnDevice(report, device.row, versions, days, now)
+      : [];
   const payload = device?.row.payload;
   // Until the device counts per day, the column would only say "Not counted".
   const perDay = apps.some((item) => item.daily);
@@ -169,7 +175,11 @@ export default async function MeteringDevicesPage({
                   />
                   {device.daily ? (
                     <Stat
-                      label="Starts, 30 days"
+                      label={
+                        device.countingSince
+                          ? `Starts since ${sinceDay(device.countingSince)}`
+                          : "Starts, 30 days"
+                      }
                       value={String(totalStarts(device.daily) ?? 0)}
                     />
                   ) : (
@@ -188,6 +198,7 @@ export default async function MeteringDevicesPage({
                     bars={device.daily}
                     title={device.row.deviceName}
                     unit="none"
+                    since={device.countingSince}
                     empty={
                       device.health === "noReport"
                         ? "This device has not reported yet."
@@ -263,7 +274,10 @@ export default async function MeteringDevicesPage({
                                 <td className="py-2.5 pr-3">
                                   <StartsStrip bars={item.daily} />
                                   <span className="text-ink-faint block text-xs whitespace-nowrap">
-                                    {startsLabel(item.daily)}
+                                    {startsLabel(
+                                      item.daily,
+                                      device.countingSince,
+                                    )}
                                   </span>
                                 </td>
                               )}
