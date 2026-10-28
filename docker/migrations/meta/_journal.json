@@ -113,6 +113,13 @@
       "when": 1793140338253,
       "tag": "0015_workspace_branding",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793178412483,
+      "tag": "0016_foreign_key_indexes",
+      "breakpoints": true
     }
   ]
 }
