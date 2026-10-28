@@ -23,7 +23,9 @@ const itemClass =
 
 /**
  * Bottom-of-sidebar user card. Opens a menu with account, billing and help
- * links plus sign out; in the collapsed rail it is the avatar alone.
+ * links plus sign out; in the collapsed rail it is the avatar alone. Opening
+ * the menu moves focus to its first item; arrows, Home and End move within
+ * it, Escape closes it and returns focus to the trigger.
  */
 export const UserMenu = ({
   userName,
@@ -42,6 +44,7 @@ export const UserMenu = ({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -63,11 +66,59 @@ export const UserMenu = ({
     };
   }, [open]);
 
+  const menuItems = () =>
+    Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+    );
+
+  const toggle = () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+    /* The menu renders after this state change; focus its first item so
+       keyboard users land inside instead of tabbing past it. */
+    requestAnimationFrame(() => menuItems()[0]?.focus());
+  };
+
   const badge = entitlement ? planBadge(entitlement) : null;
   const showUpgrade = badge !== null && entitlement?.plan === "free";
 
   return (
     <div ref={rootRef} className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Account menu for ${userName}`}
+        onClick={toggle}
+        className={`hover:bg-canvas flex w-full cursor-pointer items-center gap-2.5 rounded-xl p-1.5 transition-colors ${
+          collapsed ? "justify-center" : ""
+        }`}
+      >
+        <InitialsAvatar name={userName} />
+        {!collapsed && (
+          <>
+            <span className="min-w-0 flex-1 text-left">
+              <span className="text-ink block truncate text-sm font-semibold">
+                {userName}
+              </span>
+              {userDetail && (
+                <span className="text-sidebar-soft block truncate text-xs">
+                  {userDetail}
+                </span>
+              )}
+            </span>
+            <ChevronsUpDown
+              aria-hidden="true"
+              className="text-sidebar-soft size-4 shrink-0"
+            />
+          </>
+        )}
+      </button>
+
       {open && (
         <div
           className={`sidebar-pop border-line bg-card shadow-float z-50 w-72 max-w-[calc(100vw-2rem)] rounded-xl border p-1.5 ${
@@ -90,9 +141,31 @@ export const UserMenu = ({
             </span>
           </div>
           <div
+            ref={menuRef}
             className="flex flex-col gap-0.5 pt-1.5"
             role="menu"
             aria-label="Account menu"
+            onKeyDown={(e) => {
+              const items = menuItems();
+              if (items.length === 0) return;
+              const index = Math.max(
+                0,
+                items.indexOf(document.activeElement as HTMLElement),
+              );
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                items[
+                  (index + (e.key === "ArrowDown" ? 1 : -1) + items.length) %
+                    items.length
+                ]?.focus();
+              } else if (e.key === "Home") {
+                e.preventDefault();
+                items[0]?.focus();
+              } else if (e.key === "End") {
+                e.preventDefault();
+                items.at(-1)?.focus();
+              }
+            }}
           >
             {accountEnabled && (
               <Link
@@ -168,18 +241,22 @@ export const UserMenu = ({
               />
               Support
             </Link>
-          </div>
-          <div className="border-sidebar-line mt-1.5 border-t pt-1.5">
-            <form action={signOutAction}>
-              <button type="submit" className={`${itemClass} cursor-pointer`}>
-                <LogOut
-                  aria-hidden="true"
-                  className="text-sidebar-soft size-[18px] shrink-0"
-                  strokeWidth={1.75}
-                />
-                Sign out
-              </button>
-            </form>
+            <div className="border-sidebar-line mt-1.5 border-t pt-1.5">
+              <form action={signOutAction}>
+                <button
+                  type="submit"
+                  role="menuitem"
+                  className={`${itemClass} cursor-pointer`}
+                >
+                  <LogOut
+                    aria-hidden="true"
+                    className="text-sidebar-soft size-[18px] shrink-0"
+                    strokeWidth={1.75}
+                  />
+                  Sign out
+                </button>
+              </form>
+            </div>
           </div>
           <div className="text-sidebar-soft px-2.5 pt-2 pb-1.5 text-xs">
             <Link
@@ -192,38 +269,6 @@ export const UserMenu = ({
           </div>
         </div>
       )}
-
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={`Account menu for ${userName}`}
-        onClick={() => setOpen((v) => !v)}
-        className={`hover:bg-canvas flex w-full cursor-pointer items-center gap-2.5 rounded-xl p-1.5 transition-colors ${
-          collapsed ? "justify-center" : ""
-        }`}
-      >
-        <InitialsAvatar name={userName} />
-        {!collapsed && (
-          <>
-            <span className="min-w-0 flex-1 text-left">
-              <span className="text-ink block truncate text-sm font-semibold">
-                {userName}
-              </span>
-              {userDetail && (
-                <span className="text-sidebar-soft block truncate text-xs">
-                  {userDetail}
-                </span>
-              )}
-            </span>
-            <ChevronsUpDown
-              aria-hidden="true"
-              className="text-sidebar-soft size-4 shrink-0"
-            />
-          </>
-        )}
-      </button>
     </div>
   );
 };

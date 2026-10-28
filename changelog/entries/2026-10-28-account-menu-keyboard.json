@@ -1,0 +1,7 @@
+{
+  "title": "Full keyboard navigation for the account menu",
+  "summary": "The account menu at the bottom of the sidebar is now fully keyboard friendly. Opening it moves focus to its first entry, the arrow keys move between entries, Home and End jump to the first and last entry, and Escape closes the menu and returns focus to the button that opened it. Sign out is reachable the same way.",
+  "type": "improved",
+  "publishedOn": "2026-10-28",
+  "idempotencyKey": "licensemeter:account-menu-keyboard-2026-10-28"
+}
