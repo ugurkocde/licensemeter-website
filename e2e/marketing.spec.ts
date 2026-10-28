@@ -335,7 +335,8 @@ test("light mode persists under a dark system preference across public and dashb
     .first()
     .click();
   await expect(page).toHaveURL(/\/app$/);
-  await expect(page.locator("aside").first()).toHaveCSS(
+  // The sidebar is a floating white card inside the transparent aside rail.
+  await expect(page.locator("aside").first().locator("> div")).toHaveCSS(
     "background-color",
     "rgb(255, 255, 255)",
   );
