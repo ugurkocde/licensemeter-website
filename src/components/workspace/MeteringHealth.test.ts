@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MeteringPayload } from "~/lib/metering";
 import type { MeteringRow } from "~/server/metering/live";
 import type { DeviceSummary, HealthKey } from "~/server/metering/summary";
+import { fmtDate } from "~/lib/format";
 import { HEALTH_DOCS, healthDetail } from "./MeteringHealth";
 
 const payload = (patch: Partial<MeteringPayload> = {}): MeteringPayload => ({
@@ -52,7 +53,10 @@ describe("collection health detail", () => {
       "Pkg",
     );
     expect(detail.summary).toContain("show right away");
-    expect(detail.cause).toContain("27 Nov 2026");
+    // fmtDate formats in the process time zone, so derive the expected day.
+    expect(detail.cause).toContain(
+      fmtDate(new Date(Date.parse("2026-10-28T09:00:00Z") + 30 * 86_400_000)),
+    );
   });
   it("explains a restart from the older collector and says it fixes itself", () => {
     const detail = healthDetail(device("gap", "log_gap", payload()), 30, "Pkg");

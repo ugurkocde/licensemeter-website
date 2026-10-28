@@ -119,7 +119,7 @@ export default async function MeteringPage() {
             <Tile
               label="Windows devices in Intune"
               value={summary.devices}
-              note={`${summary.withStarts} reporting`}
+              note={`${summary.reporting} reporting`}
               href="/app/metering/devices"
             />
             <Tile
@@ -128,7 +128,7 @@ export default async function MeteringPage() {
                 <>
                   {summary.health.reporting}{" "}
                   <span className="text-ink-faint text-base">
-                    of {summary.withStarts} reporting
+                    of {summary.reporting} reporting
                   </span>
                 </>
               }

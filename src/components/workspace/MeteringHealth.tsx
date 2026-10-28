@@ -37,7 +37,7 @@ export function healthDetail(
   switch (device.health) {
     case "reporting":
       return {
-        summary: `Reporting. This device has been watched for more than the ${days}-day observation period, so apps it never started show as “App not started”.`,
+        summary: `Reporting. This device has been watched for more than the ${days}-day observation period, so apps it never started show as “App not started”. An app added to the collector later shows “No start yet” until it, too, was watched for the whole period.`,
       };
     case "collecting": {
       const ready = payload
@@ -45,7 +45,7 @@ export function healthDetail(
         : null;
       return {
         summary: `Reporting since ${start}. Its app starts show right away.`,
-        cause: `“App not started” needs ${days} days of watching without a start${ready ? `, so it can appear for this device from ${fmtDate(ready)}` : ""}. Until then, apps without a start show “No start yet”.`,
+        cause: `“App not started” needs ${days} days of watching without a start${ready ? `, so it can appear for this device from ${fmtDate(ready)} at the earliest; apps added to the collector later follow later` : ""}. Until then, apps without a start show “No start yet”.`,
       };
     }
     case "gap":
