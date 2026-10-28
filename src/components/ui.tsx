@@ -47,18 +47,24 @@ export const ButtonAnchor = ({
   <a className={buttonClass(variant, className)} {...props} />
 );
 
-/** Bordered card with the uppercase ledger header, used on dashboard pages. */
+/**
+ * Bordered card with the uppercase ledger header, used on dashboard pages.
+ * `badge` sits beside the title, e.g. the plan badge of a paid section.
+ */
 export const Card = ({
   title,
+  badge,
   children,
 }: {
   title: string;
+  badge?: React.ReactNode;
   children: React.ReactNode;
 }) => (
   <section className="border-line bg-card shadow-card overflow-hidden rounded-2xl border">
     <div className="border-line border-b px-5 py-3">
-      <h2 className="text-ink-faint text-xs font-medium tracking-[0.14em] uppercase">
+      <h2 className="text-ink-faint flex items-center gap-2 text-xs font-medium tracking-[0.14em] uppercase">
         {title}
+        {badge}
       </h2>
     </div>
     <div className="px-5 py-4">{children}</div>
