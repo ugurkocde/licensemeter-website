@@ -151,6 +151,22 @@ describe.skipIf(BillingPage === null)("billing page", () => {
     expect(html).not.toContain("Manage subscription");
   });
 
+  it("offers Microsoft billing and an invoice by email next to the plans", async () => {
+    const html = await render();
+
+    expect(html).toContain("Prefer to pay through Microsoft?");
+    expect(html).toContain("instead of using a credit card");
+    expect(html).toContain("Need an invoice?");
+    expect(html).toContain("mailto:support@licensemeter.com");
+    expect(html).toContain("merchant of record");
+
+    // Without the listing there is no Microsoft line, the invoice line stays.
+    offerUrl = undefined;
+    const withoutListing = await render();
+    expect(withoutListing).not.toContain("Prefer to pay through Microsoft?");
+    expect(withoutListing).toContain("Need an invoice?");
+  });
+
   it("switches every price with the yearly choice", async () => {
     const html = await render({ interval: "year" });
 
@@ -170,6 +186,8 @@ describe.skipIf(BillingPage === null)("billing page", () => {
         /Pay by card|Buy on Microsoft Marketplace|Manage subscription|<button/,
       );
       expect(html).toContain("Only a workspace owner can change the plan.");
+      expect(html).toContain("Need an invoice?");
+      expect(html).not.toContain("Prefer to pay through Microsoft?");
     }
     expect(listCoverage).not.toHaveBeenCalled();
   });
@@ -290,7 +308,9 @@ describe.skipIf(BillingPage === null)("billing page", () => {
     const html = await render();
 
     expect(html).toContain("The demo workspace shows every feature");
-    expect(html).not.toMatch(/Pay by card|Buy on Microsoft Marketplace/);
+    expect(html).not.toMatch(
+      /Pay by card|Buy on Microsoft Marketplace|Need an invoice/,
+    );
     expect(listCoverage).not.toHaveBeenCalled();
   });
 });

@@ -1,0 +1,7 @@
+{
+  "title": "Plan and billing shows how to pay through Microsoft or by invoice",
+  "summary": "The Plan and billing page now explains that you can buy LicenseMeter on Microsoft Marketplace instead of using a credit card. The plan is billed to your organization's Microsoft billing account and appears on your Microsoft invoice, so you can use your existing Microsoft budget or credits where your agreement allows. If you need an invoice for your plan, the page links straight to our support mailbox so you can request one.",
+  "type": "improved",
+  "publishedOn": "2026-10-28",
+  "idempotencyKey": "licensemeter:2026-10-28-billing-microsoft-and-invoice"
+}
