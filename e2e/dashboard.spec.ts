@@ -153,7 +153,7 @@ test("support stays inside the workspace and docs open in a new tab", async ({
   await expect(docs).toHaveAttribute("href", "https://docs.licensemeter.com/");
   await expect(docs).toHaveAttribute("target", "_blank");
   await expect(docs).toHaveAttribute("rel", "noreferrer");
-  await page.route("https://docs.licensemeter.com/**", (route) =>
+  await page.context().route("https://docs.licensemeter.com/**", (route) =>
     route.fulfill({
       contentType: "text/html",
       body: "<title>LicenseMeter docs test page</title>",
@@ -163,6 +163,7 @@ test("support stays inside the workspace and docs open in a new tab", async ({
   await docs.click();
   const docsPage = await popupPromise;
   expect(docsPage.url()).toBe("https://docs.licensemeter.com/");
+  await expect(docsPage).toHaveTitle("LicenseMeter docs test page");
   await docsPage.close();
 
   await nav.getByRole("link", { name: "Support", exact: true }).click();
