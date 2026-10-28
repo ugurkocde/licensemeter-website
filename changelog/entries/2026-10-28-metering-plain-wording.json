@@ -1,0 +1,7 @@
+{
+  "title": "Software Metering says plainly when a device reports and when “App not started” can appear",
+  "summary": "Software Metering no longer uses “Full coverage” and “Still collecting”, which read as if apps could not be shown yet. Devices that report now simply show as Reporting, because their app starts appear right away. Apps without a start so far show No start yet, and each device says from which date “App not started” can appear, once it was watched for the whole observation period. A restart of watching shows as Watching restarted, and the docs explain the observation period in the same words.",
+  "type": "improved",
+  "publishedOn": "2026-10-28",
+  "idempotencyKey": "licensemeter:2026-10-28-metering-plain-wording"
+}

@@ -1,13 +1,13 @@
-import { fmtDateTime } from "~/lib/format";
+import { fmtDate, fmtDateTime } from "~/lib/format";
 import type { DeviceSummary, HealthKey } from "~/server/metering/summary";
 
 const DOCS = "https://docs.licensemeter.com/connectors/windows-metering/";
 
 /** Docs section for each collection health state. */
 export const HEALTH_DOCS: Record<HealthKey, string> = {
-  reporting: `${DOCS}#full-coverage`,
-  collecting: `${DOCS}#still-collecting`,
-  gap: `${DOCS}#coverage-restarted`,
+  reporting: `${DOCS}#reporting`,
+  collecting: `${DOCS}#reporting`,
+  gap: `${DOCS}#watching-restarted`,
   outdated: `${DOCS}#updating-collector`,
   noReport: `${DOCS}#no-collector-result`,
   auditOff: `${DOCS}#process-auditing-off`,
@@ -37,28 +37,26 @@ export function healthDetail(
   switch (device.health) {
     case "reporting":
       return {
-        summary: `Reported continuously for the whole ${days}-day period, so “App not started” is reliable here.`,
+        summary: `Reporting. This device has been watched for more than the ${days}-day observation period, so apps it never started show as “App not started”. An app added to the collector later shows “No start yet” until it, too, was watched for the whole period.`,
       };
     case "collecting": {
-      const covered = payload
-        ? Math.floor(
-            (Date.parse(payload.e) - Date.parse(payload.s)) / 86_400_000,
-          )
-        : 0;
+      const ready = payload
+        ? new Date(Date.parse(payload.s) + days * 86_400_000)
+        : null;
       return {
-        summary: `Covered without a gap since ${start}, day ${covered + 1} of ${days}.`,
-        cause: `Starts count right away. “App not started” needs the full ${days} days.`,
+        summary: `Reporting since ${start}. Its app starts show right away.`,
+        cause: `“App not started” needs ${days} days of watching without a start${ready ? `, so it can appear for this device from ${fmtDate(ready)} at the earliest; apps added to the collector later follow later` : ""}. Until then, apps without a start show “No start yet”.`,
       };
     }
     case "gap":
       return {
-        summary: `Coverage restarted at ${start}. The starts this device reported still count, but its ${days}-day period starts again.`,
+        summary: `Watching restarted at ${start}. The starts this device reported still count, but its ${days}-day observation period starts over, so “App not started” waits longer.`,
         cause:
           payload?.h === "log_reset"
             ? "The Security log was cleared, or the collector’s bookmark no longer matched it, for example after a reinstall or a restored image."
             : device.countsDays
               ? "Security log events may be missing since the last run: the log rolled over before the hourly run, Process Creation auditing was switched off, or the scan hit its time limit."
-              : "This device still runs the older collector, which restarted coverage whenever Intune re-applied the audit policy, every few hours. It switches to the updated collector on its next hourly run.",
+              : "This device still runs the older collector, which restarted watching whenever Intune re-applied the audit policy, every few hours. It switches to the updated collector on its next hourly run.",
         fix: device.countsDays
           ? "Once in a while needs no action. If it repeats on every run, keep the hourly schedule, raise the Security log maximum size to 100 to 200 MB, and check that no other policy switches Process Creation auditing off."
           : undefined,

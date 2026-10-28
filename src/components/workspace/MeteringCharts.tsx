@@ -4,14 +4,14 @@ import { HEALTH_DOCS } from "./MeteringHealth";
 
 /**
  * Evidence colours, validated as a categorical set (light surface, adjacent
- * and all pairs): started = brand teal, not started = waste amber, still
- * collecting = blue. "No data" is the neutral hatch, never a fourth hue.
+ * and all pairs): started = brand teal, not started = waste amber, no start
+ * yet = blue. "No data" is the neutral hatch, never a fourth hue.
  */
 export const EVIDENCE = {
   started: { label: "App started", fill: "bg-brand", text: "text-white" },
   notStarted: { label: "App not started", fill: "bg-waste", text: "text-ink" },
   collecting: {
-    label: "Still collecting",
+    label: "No start yet",
     fill: "bg-[#2a78d6]",
     text: "text-white",
   },
@@ -21,8 +21,9 @@ type EvidenceKey = keyof typeof EVIDENCE;
 const ORDER: EvidenceKey[] = ["started", "notStarted", "collecting", "noData"];
 const HINTS: Record<EvidenceKey, string> = {
   started: "started at least once in the period",
-  notStarted: "full coverage and no start: review the license",
-  collecting: "the collector has not covered the full period yet",
+  notStarted:
+    "watched for the whole period without a start: review the license",
+  collecting: "no start so far, but watched for less than the whole period",
   noData: "no valid result, stale report or app not watched yet",
 };
 
@@ -191,7 +192,7 @@ export function Recency({
               title={app.entry.name}
               body={
                 last
-                  ? `${count} installed devices with full coverage and no start.`
+                  ? `${count} installed devices watched for the whole period without a start.`
                   : index === 0
                     ? `${count} installed devices last started it in the last ${buckets[0]} days.`
                     : `${count} installed devices last started it ${labels[index]} days ago.`
@@ -213,17 +214,19 @@ export const HEALTH: {
 }[] = [
   {
     key: "reporting",
-    label: "Full coverage",
-    hint: "Reported for the whole period",
+    label: "Reporting",
+    hint: "Watched for the whole period",
     tone: "bg-good-soft text-good-text",
     mark: "✓",
   },
   {
+    // Shown as "Reporting" too: its starts count just the same; only
+    // "App not started" waits for the whole period.
     key: "collecting",
-    label: "Still collecting",
-    hint: "Less than the full period so far",
-    tone: "bg-[#e5effb] text-[#1c5cab]",
-    mark: "…",
+    label: "Reporting",
+    hint: "Watched for part of the period so far",
+    tone: "bg-good-soft text-good-text",
+    mark: "✓",
   },
   {
     key: "outdated",
@@ -255,8 +258,8 @@ export const HEALTH: {
   },
   {
     key: "gap",
-    label: "Coverage restarted",
-    hint: "Starts count; the period starts again",
+    label: "Watching restarted",
+    hint: "Starts count; the period starts over",
     tone: "bg-waste-soft text-waste-text",
     mark: "↺",
   },
@@ -269,6 +272,10 @@ export const HEALTH: {
   },
 ];
 
+/**
+ * Devices per state. Devices watched for part of the period report like any
+ * other, so they share one "Reporting" row with those watched for all of it.
+ */
 export const HealthList = ({
   health,
 }: {
@@ -276,7 +283,9 @@ export const HealthList = ({
 }) => (
   <ul className="flex flex-col gap-2">
     {HEALTH.filter(
-      (item) => item.key === "reporting" || health[item.key] > 0,
+      (item) =>
+        item.key === "reporting" ||
+        (item.key !== "collecting" && health[item.key] > 0),
     ).map((item) => (
       <li
         key={item.key}
@@ -295,9 +304,17 @@ export const HealthList = ({
           >
             {item.label}
           </a>
-          <span className="text-ink-faint block text-xs">{item.hint}</span>
+          <span className="text-ink-faint block text-xs">
+            {item.key === "reporting"
+              ? `${health.reporting} watched for the whole period`
+              : item.hint}
+          </span>
         </span>
-        <span className="font-semibold tabular-nums">{health[item.key]}</span>
+        <span className="font-semibold tabular-nums">
+          {item.key === "reporting"
+            ? health.reporting + health.collecting
+            : health[item.key]}
+        </span>
       </li>
     ))}
   </ul>

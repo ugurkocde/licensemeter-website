@@ -44,7 +44,7 @@ const SIGNAL_TONE: Record<
   stale: "slate",
   outdated: "slate",
 };
-const ATTENTION: HealthKey[] = ["auditOff", "error", "stale", "outdated"];
+const REPORTING: HealthKey[] = ["reporting", "collecting"];
 
 const Stat = ({ label, value }: { label: string; value: string }) => (
   <div className="bg-subtle rounded-lg px-3 py-2">
@@ -83,15 +83,13 @@ export default async function MeteringDevicesPage({
     name: device.row.deviceName,
     health: health.get(device.health)!.label,
     tone: health.get(device.health)!.tone,
+    // The filters follow the health shown on each row.
     group:
       device.health === "noReport"
         ? "noReport"
-        : device.row.payload &&
-            ["ok", "log_gap", "log_reset"].includes(device.row.payload.h)
+        : REPORTING.includes(device.health)
           ? "starts"
-          : ATTENTION.includes(device.health)
-            ? "attention"
-            : "starts",
+          : "attention",
     appsStarted: device.appsStarted,
     starts: totalStarts(device.daily),
   }));
@@ -162,7 +160,7 @@ export default async function MeteringDevicesPage({
                     }
                   />
                   <Stat
-                    label="Covered since"
+                    label="Watching since"
                     value={payload ? fmtDateTime(payload.s) : "-"}
                   />
                   <Stat

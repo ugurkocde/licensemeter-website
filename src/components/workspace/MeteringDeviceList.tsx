@@ -17,7 +17,7 @@ export interface MeteringDeviceRow {
 
 const FILTERS = [
   ["all", "All"],
-  ["starts", "Reporting starts"],
+  ["starts", "Reporting"],
   ["attention", "Needs attention"],
   ["noReport", "No collector result"],
 ] as const;
@@ -113,7 +113,7 @@ export function MeteringDeviceList({
                       {row.name}
                     </span>
                     <span className="text-ink-faint block truncate text-xs">
-                      {row.group === "starts"
+                      {row.appsStarted > 0 || row.starts
                         ? `${row.appsStarted} ${row.appsStarted === 1 ? "app" : "apps"} started${
                             row.starts === null
                               ? ""
