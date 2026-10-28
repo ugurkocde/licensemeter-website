@@ -80,6 +80,11 @@ describe("metering summary", () => {
     expect(countingSince([recent, earlier], now)).toEqual(
       new Date("2026-10-01T08:00:00Z"),
     );
+    // A start on the chart's first day is inside it.
+    const first = row("d7", { d: "2026-09-04T18:00:00Z" }).payload!;
+    expect(countingSince([first], now)).toEqual(
+      new Date("2026-09-04T18:00:00Z"),
+    );
     // Counting from before the chart's first day leaves no uncounted days.
     expect(countingSince([recent, old], now)).toBeNull();
     expect(countingSince([row("d4", {}).payload!], now)).toBeNull();

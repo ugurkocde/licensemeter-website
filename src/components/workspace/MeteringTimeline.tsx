@@ -22,6 +22,9 @@ export const fmtDay = (day: number) =>
     timeZone: "UTC",
   }).format(new Date(day * 86_400_000));
 
+/** The UTC day a counting start falls on, as "28 Oct", like the chart's days. */
+export const sinceDay = (at: Date) => fmtDay(utcDay(at.getTime()));
+
 const plural = (count: number, word: string) =>
   `${count} ${word}${count === 1 ? "" : "s"}`;
 
@@ -546,6 +549,6 @@ export const startsLabel = (bars: DayBar[] | null, since?: Date | null) => {
   const total = totalStarts(bars);
   if (total === null) return "Not counted";
   return since
-    ? `${plural(total, "start")} since ${fmtDay(utcDay(since.getTime()))}`
+    ? `${plural(total, "start")} since ${sinceDay(since)}`
     : plural(total, "start");
 };

@@ -116,6 +116,22 @@ describe("starts per day", () => {
     expect(days).toHaveLength(30);
     expect(dailyStarts(daily, ["acad.exe"])).toEqual(new Array(30).fill(0));
   });
+  it("is unknown for a program a truncated report dropped inside the window", () => {
+    const cut = { ...daily, t: 1 as const };
+    // acad.exe is listed but its last start is older than the window.
+    expect(dailyStarts(cut, ["acrobat.exe"])).not.toBeNull();
+    expect(dailyStarts(cut, ["visio.exe"])).not.toBeNull();
+    const recent = payload({
+      d: "2026-09-20T08:00:00Z",
+      t: 1,
+      a: [["acrobat.exe", 30, 2, "2"]],
+    });
+    expect(dailyStarts(recent, ["acrobat.exe"])).toEqual([
+      2,
+      ...new Array<number>(29).fill(0),
+    ]);
+    expect(dailyStarts(recent, ["visio.exe"])).toBeNull();
+  });
   it("is unknown without a counting start, or when a recent start lost its days", () => {
     expect(
       dailyStarts(payload({ a: [["acad.exe", 30, 1]] }), ["acad.exe"]),

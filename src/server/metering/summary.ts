@@ -207,7 +207,7 @@ export function countingSince(
     .filter(Number.isFinite);
   if (!starts.length) return null;
   const first = Math.min(...starts);
-  return utcDay(first) > firstDay ? new Date(first) : null;
+  return utcDay(first) >= firstDay ? new Date(first) : null;
 }
 
 /** Results Intune holds for a device whose starts are real, even across a gap. */

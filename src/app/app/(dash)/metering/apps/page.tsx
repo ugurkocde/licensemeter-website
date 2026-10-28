@@ -69,7 +69,9 @@ export default async function MeteringAppsPage({
   const ctx = await requireAccess("viewer");
   const sp = await searchParams;
   const param = (key: string) => (typeof sp[key] === "string" ? sp[key] : "");
-  const view = await loadMetering(ctx);
+  // One reference time, so every count on the page uses the same UTC days.
+  const now = new Date();
+  const view = await loadMetering(ctx, now);
   if (!view.allowed)
     return (
       <MeteringLocked
@@ -110,7 +112,7 @@ export default async function MeteringAppsPage({
   const app = entry ? stats.get(entry.id) : undefined;
   const devices =
     report && entry && !entry.excluded && entry.programs.length
-      ? deviceApps(report, entry, versions, days)
+      ? deviceApps(report, entry, versions, days, now)
           .filter((item) => item.installed || item.signal === "started")
           // Devices that run it first, most recent start first.
           .sort(
@@ -290,9 +292,10 @@ export default async function MeteringAppsPage({
                                           {startsLabel(
                                             item.daily,
                                             item.row.payload
-                                              ? countingSince([
-                                                  item.row.payload,
-                                                ])
+                                              ? countingSince(
+                                                  [item.row.payload],
+                                                  now,
+                                                )
                                               : null,
                                           )}
                                         </span>
