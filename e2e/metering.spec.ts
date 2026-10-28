@@ -45,6 +45,11 @@ test("metering demo: sidebar sections, overview charts, app search and mobile fi
   await expect(
     nav.getByRole("link", { name: "Dashboard", exact: true }),
   ).toHaveAttribute("aria-current", "page");
+  // The product tour points its Software Metering step at this anchor.
+  await expect(nav.locator('a[href="/app/metering"]').first()).toHaveAttribute(
+    "data-tour",
+    "nav-metering",
+  );
 
   const legend = content.getByRole("list", { name: "Legend" });
   for (const text of [
