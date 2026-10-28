@@ -155,6 +155,37 @@ body {
   animation: tour-step-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
+@keyframes sidebar-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Sidebar popovers and the collapsed-rail tooltip. The tooltip also carries
+   a translate utility, so its keyframe end state must not fight it: the
+   animation is short and ends at the utility transform. */
+.sidebar-pop {
+  animation: sidebar-pop-in 0.16s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Quiet scrollbar for the sidebar navigation area. */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 999px;
+}
+
 .meter-bar {
   width: var(--bar);
   transform-origin: left;
@@ -252,7 +283,8 @@ body {
   .meter-bar,
   .tour-highlight,
   .tour-card,
-  .tour-step {
+  .tour-step,
+  .sidebar-pop {
     animation: none;
   }
   .tour-highlight {

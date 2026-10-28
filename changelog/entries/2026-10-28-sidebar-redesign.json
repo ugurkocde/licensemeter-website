@@ -1,0 +1,7 @@
+{
+  "title": "A redesigned sidebar with search, shortcuts and an icon rail",
+  "summary": "The workspace sidebar is now a floating card with grouped navigation and icons for every page. A search field at the top filters the pages as you type (press Command+K or Ctrl+K to jump to it), and Command+1 to Command+5 switch between Overview, Findings, Licenses & prices, Renewals and AI costs. Workspaces switch from a popover that lists each workspace with your role. Your account, billing and sign out live in a user menu at the bottom. The whole sidebar can collapse to an icon rail with tooltips when you want more room for the data. The mobile menu uses the same grouped layout.",
+  "type": "improved",
+  "publishedOn": "2026-10-28",
+  "idempotencyKey": "licensemeter:sidebar-redesign-2026-10-28"
+}

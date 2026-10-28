@@ -5,9 +5,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { BrandMark } from "~/components/BrandMark";
 import { ChangelogBell } from "~/components/changelog/ChangelogBell";
+import { InitialsAvatar } from "./InitialsAvatar";
 import { NavLinks } from "./NavLinks";
 import { PlanBadge } from "./PlanBadge";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { planBadge } from "~/lib/planLabel";
 import type { WorkspaceSummary } from "~/server/access";
 import type { Entitlement } from "~/server/entitlement";
 import { signOutAction } from "~/app/auth/actions";
@@ -20,6 +22,7 @@ export const MobileNav = ({
   tenantName,
   isDemo,
   userName,
+  userDetail,
   role,
   accountEnabled = false,
   showPortfolio = false,
@@ -31,6 +34,7 @@ export const MobileNav = ({
   tenantName: string;
   isDemo: boolean;
   userName: string;
+  userDetail?: string;
   role: string;
   accountEnabled?: boolean;
   showPortfolio?: boolean;
@@ -144,22 +148,29 @@ export const MobileNav = ({
         inert={!open}
         className="border-sidebar-line focus-visible:ring-brand flex max-h-[calc(100dvh-3.75rem)] flex-col overflow-y-auto overscroll-contain border-t pb-4 focus-visible:ring-2 focus-visible:ring-inset"
       >
-        <div className="px-4 py-3">
-          {workspaces.length > 1 ? (
-            <WorkspaceSwitcher workspaces={workspaces} activeId={activeId} />
-          ) : (
-            <div className="text-ink truncate text-sm font-medium">
-              {tenantName}
-            </div>
-          )}
-          <div className="text-sidebar-soft mt-0.5 text-[11px] tracking-wider uppercase">
-            {isDemo ? "Demo workspace" : "Workspace"}
-          </div>
+        <div className="px-3 pt-3 pb-1">
+          <WorkspaceSwitcher
+            workspaces={
+              workspaces.length > 0
+                ? workspaces
+                : [{ id: activeId, name: tenantName, role: "viewer", isDemo }]
+            }
+            activeId={activeId}
+            subtitle={
+              isDemo
+                ? "Demo workspace"
+                : planBadge(entitlement)
+                  ? `${planBadge(entitlement)!.label} plan`
+                  : "Workspace"
+            }
+            inFlow
+            onNavigate={() => setOpen(false)}
+          />
           {/* In the drawer, not the top bar: the bar has no room at 320px. */}
           <PlanBadge
             entitlement={entitlement}
             onNavigate={() => setOpen(false)}
-            className="mt-2"
+            className="mt-1 ml-1.5"
           />
         </div>
         <NavLinks
@@ -169,30 +180,35 @@ export const MobileNav = ({
           pendingAccessRequests={pendingAccessRequests}
           navLabel="Mobile workspace navigation"
         />
-        <div className="border-sidebar-line mt-3 flex items-center justify-between border-t px-4 pt-3">
-          <div className="min-w-0">
-            {accountEnabled ? (
-              <Link
-                href="/app/account"
-                onClick={() => setOpen(false)}
-                className="group block"
-                aria-label="Account settings"
-              >
-                <div className="text-ink truncate text-sm underline-offset-4 group-hover:underline">
-                  {userName}
-                </div>
-                <div className="text-sidebar-soft text-[11px] tracking-wider uppercase">
-                  {role} · Account
-                </div>
-              </Link>
-            ) : (
-              <>
-                <div className="text-ink truncate text-sm">{userName}</div>
-                <div className="text-sidebar-soft text-[11px] tracking-wider uppercase">
-                  {role}
-                </div>
-              </>
-            )}
+        <div className="border-sidebar-line mt-3 flex items-center justify-between gap-3 border-t px-4 pt-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <InitialsAvatar name={userName} />
+            <div className="min-w-0">
+              {accountEnabled ? (
+                <Link
+                  href="/app/account"
+                  onClick={() => setOpen(false)}
+                  className="group block"
+                  aria-label="Account settings"
+                >
+                  <div className="text-ink truncate text-sm font-semibold underline-offset-4 group-hover:underline">
+                    {userName}
+                  </div>
+                  <div className="text-sidebar-soft truncate text-xs">
+                    {userDetail ?? `${role} · Account`}
+                  </div>
+                </Link>
+              ) : (
+                <>
+                  <div className="text-ink truncate text-sm font-semibold">
+                    {userName}
+                  </div>
+                  <div className="text-sidebar-soft truncate text-xs">
+                    {userDetail ?? role}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
           <form action={signOutAction}>
             <button className="text-sidebar-soft hover:text-ink inline-flex min-h-11 items-center text-xs underline-offset-4 transition hover:underline">

@@ -1,12 +1,13 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+const nav = vi.hoisted(() => ({ pathname: "/app" }));
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/app",
+  usePathname: () => nav.pathname,
 }));
 
-import { NavLinks } from "./NavLinks";
+import { NAV_SHORTCUTS, NavLinks } from "./NavLinks";
 import { entitlementOf, type Entitlement } from "~/server/entitlement";
 
 const NOW = new Date("2026-09-18T12:00:00Z");
@@ -68,5 +69,79 @@ describe("Report branding sidebar badge", () => {
       expect(item).toContain('href="/app/branding"');
       expect(item).not.toContain("requires");
     }
+  });
+});
+
+describe("Grouped sidebar navigation", () => {
+  afterEach(() => {
+    nav.pathname = "/app";
+  });
+  it("renders the section labels and all main destinations", () => {
+    const html = renderToStaticMarkup(createElement(NavLinks));
+    for (const text of ["Workspace", "Tools", "Manage"])
+      expect(html).toContain(text);
+    for (const href of [
+      "/app/findings",
+      "/app/licenses",
+      "/app/connectors",
+      "/app/settings",
+    ])
+      expect(html).toContain(`href="${href}"`);
+  });
+
+  it("filters by the search query and keeps matching child pages", () => {
+    const html = renderToStaticMarkup(
+      createElement(NavLinks, { query: "device" }),
+    );
+    expect(html).toContain("Software Metering");
+    expect(html).toContain("Devices");
+    expect(html).not.toContain("Plan and billing");
+
+    const empty = renderToStaticMarkup(
+      createElement(NavLinks, { query: "zzz" }),
+    );
+    expect(empty).toContain("No pages match");
+  });
+
+  it("keeps accessible names in the collapsed icon rail", () => {
+    const html = renderToStaticMarkup(
+      createElement(NavLinks, { collapsed: true }),
+    );
+    expect(html).toContain("Overview");
+    expect(html).toContain("Connectors");
+    /* Shortcut hints are visual only outside the expanded rail. */
+    expect(html).not.toContain("⌘1");
+  });
+
+  it("marks the metering section current in the rail, its child page when expanded", () => {
+    nav.pathname = "/app/metering/apps";
+    /* The opening tag of the anchor carrying this href, attributes included. */
+    const anchorOf = (html: string, href: string): string => {
+      const at = html.indexOf(`href="${href}"`);
+      expect(at).toBeGreaterThanOrEqual(0);
+      return html.slice(html.lastIndexOf("<a", at), html.indexOf(">", at));
+    };
+    const collapsed = renderToStaticMarkup(
+      createElement(NavLinks, { collapsed: true }),
+    );
+    expect(anchorOf(collapsed, "/app/metering")).toContain(
+      'aria-current="page"',
+    );
+
+    const expanded = renderToStaticMarkup(createElement(NavLinks));
+    expect(anchorOf(expanded, "/app/metering")).not.toContain("aria-current");
+    expect(anchorOf(expanded, "/app/metering/apps")).toContain(
+      'aria-current="page"',
+    );
+  });
+
+  it("maps number shortcuts to the main pages", () => {
+    expect(NAV_SHORTCUTS).toEqual({
+      "1": "/app",
+      "2": "/app/findings",
+      "3": "/app/licenses",
+      "4": "/app/renewals",
+      "5": "/app/ai-costs",
+    });
   });
 });
