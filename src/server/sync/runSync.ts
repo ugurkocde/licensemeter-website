@@ -51,6 +51,7 @@ import { pickLeakFindings } from "~/server/leakAlerts";
 import { notifyOps } from "~/server/ops";
 import { workspaceAdminEmails } from "~/server/workspaceEmail";
 import { aiSpendSinceDay } from "~/server/sync/aiSpendWindow";
+import { errText } from "~/server/sync/errText";
 import { mergeAdobeUsers, mergeSaasSeats } from "~/server/sync/mergeByEmail";
 import {
   entraIdentitiesOf,
@@ -68,27 +69,6 @@ const chunk = <T>(arr: T[], size: number): T[][] => {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
-};
-
-/**
- * Error text persisted to sync_runs (and therefore visible to workspace
- * members): length-bounded, no stack traces. Full errors go to server logs.
- */
-const errText = (err: unknown): string => {
-  // Drizzle wraps database errors as "Failed query: <sql>" and keeps the
-  // Postgres message on `cause`; the SQL alone tells an admin nothing.
-  const cause =
-    err instanceof Error && err.cause instanceof Error ? err.cause : null;
-  const message =
-    err instanceof Error
-      ? err.message.startsWith("Failed query:") && cause
-        ? `Database error: ${cause.message}`
-        : err.message
-      : String(err);
-  // Log only the message: MSAL/Graph error objects can carry request context
-  // (token request bodies, credentials) that must never reach the logs.
-  console.error("[sync]", message);
-  return message.slice(0, 300);
 };
 
 /** Steps that need a Graph credential; skipped when Microsoft is not connected. */
