@@ -103,6 +103,7 @@ describe("planCardLines", () => {
     expect(lines.filter((l) => l.comingSoon)).toEqual([]);
     expect(lines.length).toBe(3 + PLAN_FEATURES.pro.length);
     expect(lines.map((l) => l.text)).toContain("Support by email");
+    expect(lines.map((l) => l.text)).toContain("White-label reports");
   });
 
   it("marks the unbuilt MSP features as coming soon", () => {
@@ -111,7 +112,8 @@ describe("planCardLines", () => {
       "Portfolio alerts",
       "MSP team",
     ]);
-    expect(lines.map((l) => l.text)).toContain("White-label reports");
+    // White-label comes with Pro, so the MSP card covers it via this line.
+    expect(lines.map((l) => l.text)).toContain("Everything in Pro");
   });
 
   it("prices further tenants in the chosen interval", () => {

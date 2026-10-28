@@ -25,12 +25,13 @@ const PRO_FEATURES: readonly Feature[] = [
   "history24",
   "mcp",
   "metering",
+  "whiteLabel",
 ];
 
 export const PLAN_FEATURES: Record<Plan, readonly Feature[]> = {
   free: [],
   pro: PRO_FEATURES,
-  msp: [...PRO_FEATURES, "whiteLabel", "portfolioAlerts", "mspTeam"],
+  msp: [...PRO_FEATURES, "portfolioAlerts", "mspTeam"],
 };
 
 /** The cheapest plan that includes a feature, for upgrade prompts. */

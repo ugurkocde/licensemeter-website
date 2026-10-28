@@ -162,7 +162,7 @@ export const WasteReport = ({
   branding = null,
 }: {
   data: ReportData;
-  /** White-label marks of the MSP account; null renders the LicenseMeter report. */
+  /** White-label marks; null renders the LicenseMeter report. */
   branding?: ReportBranding | null;
 }) => (
   <Document

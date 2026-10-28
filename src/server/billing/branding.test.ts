@@ -213,6 +213,18 @@ const storedBrand = async () => {
   return row!;
 };
 
+const storedTenantBrand = async (id: string) => {
+  const [row] = await currentDb
+    .select({
+      brandName: schema.tenants.brandName,
+      brandColor: schema.tenants.brandColor,
+      brandLogo: schema.tenants.brandLogo,
+    })
+    .from(schema.tenants)
+    .where(eq(schema.tenants.id, id));
+  return row!;
+};
+
 beforeEach(async () => {
   const client = new PGlite();
   for (const stmt of await schemaDdl()) await client.exec(stmt);
@@ -338,28 +350,73 @@ describe("getBranding", () => {
     expect(dbQueries).toBe(0);
   });
 
-  it("returns null for a Pro workspace", async () => {
+  it("returns the account branding for an attached Pro workspace", async () => {
     await seedMspAccount(ALICE, BRANDED);
     const tenant = await seedTenant(1, { mspAccountId: MSP_ID });
     await seedEntitlement({ tenantId: tenant.id, plan: "pro" });
     const entitlement = await loadEntitlement(tenant, NOW);
 
     expect(entitlement.plan).toBe("pro");
-    expect(await getBranding(tenant, entitlement)).toBeNull();
+    expect(await getBranding(tenant, entitlement)).toEqual({
+      name: "Northwind IT",
+      color: "#ffe600",
+      logo: PNG_LOGO,
+    });
   });
 
-  it("returns null for a workspace with the feature that is not attached to an account", async () => {
-    // Only a self-hosted install has the feature without an MSP plan: the
-    // database refuses an MSP row that belongs to a single workspace.
-    await seedMspAccount(ALICE, BRANDED);
-    const tenant = await seedTenant(1);
+  it("returns the workspace's own branding for a standalone Pro workspace", async () => {
+    const tenant = await seedTenant(1, BRANDED);
+    await seedEntitlement({ tenantId: tenant.id, plan: "pro" });
+    const entitlement = await loadEntitlement(tenant, NOW);
+    dbQueries = 0;
+
+    expect(entitlement.plan).toBe("pro");
+    expect(await getBranding(tenant, entitlement)).toEqual({
+      name: "Northwind IT",
+      color: "#ffe600",
+      logo: PNG_LOGO,
+    });
+    expect(dbQueries).toBe(0);
+  });
+
+  it("keeps a standalone Free workspace's stored marks off its reports", async () => {
+    const tenant = await seedTenant(1, BRANDED);
+    const entitlement = await loadEntitlement(tenant, NOW);
+    dbQueries = 0;
+
+    expect(entitlement.plan).toBe("free");
+    expect(await getBranding(tenant, entitlement)).toBeNull();
+    expect(dbQueries).toBe(0);
+  });
+
+  it("returns the workspace's own branding for a self-hosted standalone workspace", async () => {
+    await seedMspAccount(ALICE, {
+      brandName: "Unrelated MSP",
+      brandColor: "#ffe600",
+      brandLogo: PNG_LOGO,
+    });
+    const tenant = await seedTenant(1, BRANDED);
     billing = false;
     const entitlement = await loadEntitlement(tenant, NOW);
     dbQueries = 0;
 
     expect(entitlement.features.whiteLabel).toBe(true);
-    expect(await getBranding(tenant, entitlement)).toBeNull();
+    expect(await getBranding(tenant, entitlement)).toEqual({
+      name: "Northwind IT",
+      color: "#ffe600",
+      logo: PNG_LOGO,
+    });
     expect(dbQueries).toBe(0);
+  });
+
+  it("never falls back to its own marks while attached to an unbranded account", async () => {
+    await seedMspAccount(ALICE);
+    const tenant = await seedTenant(1, { mspAccountId: MSP_ID, ...BRANDED });
+    await seedEntitlement({ mspAccountId: MSP_ID, plan: "msp", quantity: 10 });
+
+    expect(
+      await getBranding(tenant, await loadEntitlement(tenant, NOW)),
+    ).toBeNull();
   });
 
   it("returns null for a workspace beyond the covered quantity", async () => {
@@ -514,16 +571,48 @@ describe("saveBranding", () => {
     });
   });
 
-  it("answers noAccount for a workspace with the feature that is not attached", async () => {
+  it("lets a standalone Pro owner save to the workspace itself, normalised", async () => {
+    const tenant = await seedTenant(1);
+    await seedEntitlement({ tenantId: tenant.id, plan: "pro" });
+    const ctx = await ctxFor(ALICE, tenant);
+
+    expect(ctx.entitlement.plan).toBe("pro");
+    expect(await saveBranding(ctx, BRAND)).toEqual({ ok: true });
+    expect(await storedTenantBrand(tenant.id)).toEqual(BRANDED);
+
+    expect(await clearBranding(ctx)).toEqual({ ok: true });
+    expect(await storedTenantBrand(tenant.id)).toEqual({
+      brandName: null,
+      brandColor: null,
+      brandLogo: null,
+    });
+  });
+
+  it("lets a standalone workspace admin save, and refuses a viewer", async () => {
+    const tenant = await seedTenant(1);
+    await seedEntitlement({ tenantId: tenant.id, plan: "pro" });
+
+    const viewer = await ctxFor(BOB, tenant, "viewer");
+    expect(await saveBranding(viewer, BRAND)).toEqual({
+      ok: false,
+      reason: "notOwner",
+      message: "Only a workspace owner or admin can change its branding.",
+    });
+    expect((await storedTenantBrand(tenant.id)).brandName).toBeNull();
+
+    const admin = await ctxFor(ALICE, tenant, "admin");
+    expect(await saveBranding(admin, BRAND)).toEqual({ ok: true });
+    expect((await storedTenantBrand(tenant.id)).brandName).toBe("Northwind IT");
+  });
+
+  it("saves a self-hosted standalone workspace to itself, never to an unrelated account", async () => {
     await seedMspAccount(ALICE);
     const tenant = await seedTenant(1);
     billing = false;
     const ctx = await ctxFor(ALICE, tenant);
 
-    expect(await saveBranding(ctx, BRAND)).toEqual({
-      ok: false,
-      reason: "noAccount",
-    });
+    expect(await saveBranding(ctx, BRAND)).toEqual({ ok: true });
+    expect((await storedTenantBrand(tenant.id)).brandName).toBe("Northwind IT");
     expect((await storedBrand()).brandName).toBeNull();
   });
 
@@ -606,14 +695,38 @@ describe("getBrandingSettings", () => {
     expect(settings.workspaces).toEqual([]);
   });
 
-  it("reports no account for a workspace that is not attached", async () => {
+  it("reports workspace scope for a workspace that is not attached", async () => {
     await seedMspAccount(ALICE, BRANDED);
-    const solo = await seedTenant(1);
+    const solo = await seedTenant(1, {
+      brandName: "Solo Brand",
+      brandColor: null,
+      brandLogo: null,
+    });
 
     const settings = await getBrandingSettings(await ctxFor(ALICE, solo));
 
     expect(settings.account).toBeNull();
     expect(settings.isOwner).toBe(false);
-    expect(settings.branding).toEqual({ name: null, color: null, logo: null });
+    expect(settings.scope).toBe("workspace");
+    expect(settings.canEdit).toBe(true);
+    expect(settings.branding).toEqual({
+      name: "Solo Brand",
+      color: null,
+      logo: null,
+    });
+    expect(settings.workspaces.map((w) => w.name)).toEqual(["Workspace 1"]);
+  });
+
+  it("shows a standalone viewer the branding without edit rights", async () => {
+    const solo = await seedTenant(1, BRANDED);
+
+    const settings = await getBrandingSettings(
+      await ctxFor(BOB, solo, "viewer"),
+    );
+
+    expect(settings.scope).toBe("workspace");
+    expect(settings.canEdit).toBe(false);
+    expect(settings.branding.name).toBe("Northwind IT");
+    expect(settings.workspaces).toEqual([]);
   });
 });

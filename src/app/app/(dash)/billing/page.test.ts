@@ -220,7 +220,7 @@ describe.skipIf(BillingPage === null)("billing page", () => {
   it("explains a locked feature only while the workspace lacks it", async () => {
     const locked = await render({ feature: "whiteLabel" });
     expect(locked).toContain("White-label reports");
-    expect(locked).toContain("Included in MSP");
+    expect(locked).toContain("Included in Pro");
 
     expect(await render({ feature: "nonsense" })).not.toContain("Included in");
 

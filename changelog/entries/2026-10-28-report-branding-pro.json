@@ -1,0 +1,7 @@
+{
+  "title": "Report branding is now included in Pro",
+  "summary": "White-label PDF reports are no longer MSP only. On the Pro plan, your workspace owner or admin can open Report branding, add your logo, name and colour, and every waste report of that workspace carries your brand, including the monthly report by email. MSP workspaces keep working as before, with one brand across every client report. The pricing page and the sidebar badge now show report branding on both paid plans.",
+  "type": "improved",
+  "publishedOn": "2026-10-28",
+  "idempotencyKey": "licensemeter:2026-10-28-report-branding-pro"
+}

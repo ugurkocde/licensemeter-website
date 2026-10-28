@@ -92,6 +92,26 @@ describe("pricing content", () => {
     }
   });
 
+  it("puts white-label reports on both paid plans and nowhere in Free", () => {
+    for (const lang of PRICING_LANGS) {
+      const { plans } = PRICING_CONTENT[lang];
+      expect(
+        plans.pro.items.some((item) => /white-label/i.test(item.text)),
+      ).toBe(true);
+      expect(
+        plans.free.items.some((item) => /white-label/i.test(item.text)),
+      ).toBe(false);
+      // The MSP card lists what it adds over Pro, so no duplicate line.
+      expect(
+        plans.msp.items.some((item) => /white-label/i.test(item.text)),
+      ).toBe(false);
+      const row = comparisonGroups(lang, ALL_CHANNELS)
+        .flatMap((g) => g.rows)
+        .find((r) => r.id === "whiteLabel")!;
+      expect(row.cells.map((cell) => cell.kind)).toEqual(["no", "yes", "yes"]);
+    }
+  });
+
   it("follows the writing rules in every string", () => {
     const banned: [string, RegExp][] = [
       ["em-dash", /\u2014/],
@@ -159,6 +179,7 @@ describe("pricing content", () => {
         .find((r) => r.id === id)!
         .cells.map((cell) => (cell.kind === "text" ? cell.text : cell.kind));
     expect(row("history")).toEqual(["12 months", "24 months", "24 months"]);
+    expect(row("whiteLabel")).toEqual(["no", "yes", "yes"]);
     expect(row("support")).toEqual(["No support", "Email", "Email"]);
     expect(row("standardDpa")).toEqual(["yes", "yes", "yes"]);
     expect(row("signedDpa")).toEqual(["no", "yes", "yes"]);

@@ -444,11 +444,15 @@ const reportForTenant = async (
   if (audience.recipients.length === 0) return;
 
   const build = async (): Promise<Message> => {
-    // White-label branding of the MSP account, for a covered client workspace
-    // only. Workspaces outside an MSP account never pay for the lookups, and
-    // the plan decides: an expired or over-quantity workspace gets the
-    // LicenseMeter report.
-    const branding = tenant.mspAccountId
+    // White-label branding of the workspace or its MSP account. The plan
+    // decides: an expired or over-quantity workspace gets the LicenseMeter
+    // report, so the entitlement is loaded here even though a standalone
+    // workspace's marks sit on its own row. A workspace with no marks of its
+    // own and no account cannot be branded and never pays for the lookup.
+    const mayBeBranded = Boolean(
+      tenant.mspAccountId ?? tenant.brandName ?? tenant.brandLogo,
+    );
+    const branding = mayBeBranded
       ? await getBranding(tenant, await loadEntitlement(tenant))
       : null;
     const pdf = await renderWasteReportPdf(tenant.id, branding);
