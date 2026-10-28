@@ -24,6 +24,8 @@ const shots = [
   ["licenses-prices", "/app/licenses"],
   ["renewals", "/app/renewals"],
   ["ai-costs", "/app/ai-costs"],
+  ["metering", "/app/metering"],
+  ["metering-apps", "/app/metering/apps"],
   ["connectors", "/app/connectors"],
   ["settings", "/app/settings"],
   ...[

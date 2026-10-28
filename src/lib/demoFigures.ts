@@ -30,6 +30,37 @@ export const DEMO_FIGURES = {
     shelfware: 89210,
     guests: 11010,
   },
+  /**
+   * The sample Software Metering report at the default 60-day period:
+   * fictional Windows devices, summarized from the same generator the demo
+   * workspace renders (meteringDemo + summarize, recomputed in the test).
+   * Metering evidence is not priced, so none of this is in monthlyWasteCents.
+   */
+  metering: {
+    devices: 42,
+    /** Devices whose collector coverage spans the whole 60 days. */
+    fullCoverageDevices: 30,
+    /** Installed device and app pairs with no start in 60 days. */
+    notStartedPairs: 45,
+    /** Metered apps (a program file is known), most installed first. */
+    apps: [
+      { name: "Zoom Workplace", installed: 40, started: 20, notStarted: 11 },
+      { name: "Adobe Acrobat Pro", installed: 29, started: 16, notStarted: 7 },
+      {
+        name: "Adobe Illustrator",
+        installed: 16,
+        started: 8,
+        notStarted: 5,
+      },
+      { name: "Microsoft Visio", installed: 14, started: 6, notStarted: 7 },
+      { name: "Adobe Photoshop", installed: 13, started: 4, notStarted: 7 },
+      { name: "AutoCAD 2026", installed: 9, started: 4, notStarted: 4 },
+      { name: "Microsoft Project", installed: 7, started: 2, notStarted: 2 },
+      { name: "SOLIDWORKS 2025", installed: 5, started: 2, notStarted: 2 },
+    ],
+    /** Installed app with no known program file; not metered until one is set. */
+    unmeteredApp: "Contoso Time Tracker",
+  },
 } as const;
 
 /** "2.844,86": the German number convention used across the marketing copy. */

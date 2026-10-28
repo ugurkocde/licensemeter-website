@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { PlanBadge } from "./FeatureLock";
+import { NAV_TOUR_ANCHORS } from "./tourSteps";
 import { upgradePath } from "~/lib/upgrade";
 import type { Entitlement, Feature } from "~/server/entitlement";
 
@@ -81,10 +82,12 @@ export const NavLinks = ({
         const tourAnchor =
           navLabel === "Workspace navigation"
             ? item.href === "/app/findings"
-              ? "nav-findings"
-              : item.href === "/app/connectors"
-                ? "nav-connectors"
-                : undefined
+              ? NAV_TOUR_ANCHORS.findings
+              : item.href === "/app/metering"
+                ? NAV_TOUR_ANCHORS.metering
+                : item.href === "/app/connectors"
+                  ? NAV_TOUR_ANCHORS.connectors
+                  : undefined
             : undefined;
         /* A locked item stays a real link: it leads to the upgrade page
            instead of a dead end. */

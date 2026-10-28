@@ -5,6 +5,13 @@ export type TourStep = {
   placement?: "top" | "bottom" | "left" | "right";
 };
 
+/** Sidebar anchors the tour can point at; NavLinks renders the same values. */
+export const NAV_TOUR_ANCHORS = {
+  findings: "nav-findings",
+  metering: "nav-metering",
+  connectors: "nav-connectors",
+} as const;
+
 export const welcomeTourSteps: TourStep[] = [
   {
     anchor: "connect-cta",
@@ -28,13 +35,19 @@ export const dataTourSteps: TourStep[] = [
     placement: "top",
   },
   {
-    anchor: "nav-findings",
+    anchor: NAV_TOUR_ANCHORS.findings,
     title: "Findings are concrete savings",
     body: "Each finding is one actionable saving: an inactive user, a duplicate license, an unused seat.",
     placement: "right",
   },
   {
-    anchor: "nav-connectors",
+    anchor: NAV_TOUR_ANCHORS.metering,
+    title: "Installed is not the same as used",
+    body: "Software Metering shows which Windows apps you deploy through Intune are installed on devices, and whether they were started. An app installed everywhere but started nowhere is the desktop twin of an unused seat.",
+    placement: "right",
+  },
+  {
+    anchor: NAV_TOUR_ANCHORS.connectors,
     title: "Cover your whole stack",
     body: "Open Connectors to connect Adobe, Zoom, Atlassian, Salesforce and the rest of your stack.",
     placement: "right",

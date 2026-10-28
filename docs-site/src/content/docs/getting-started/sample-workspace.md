@@ -10,7 +10,8 @@ Open [LicenseMeter](https://www.licensemeter.com/) and select **Open the sample 
 3. Open **Findings**, choose a finding and inspect its evidence and user context. Workflow controls may display a preview.
 4. Open **Licenses & prices** to see the price basis. Demo changes are not saved.
 5. Browse **Connectors** to learn what each provider supplies. Sample connection status does not represent access to any real provider.
-6. Select **PDF report** to inspect a demonstration export. Keep its sample-data context when sharing it.
+6. Open **Software Metering** to read the sample metering report: fictional Windows devices, the apps installed on them, and whether each app was started in the last 60 days. **Dashboard** shows the charts, **Apps** lists every app with its devices, and **Setup** shows the three setup steps as done. No Microsoft permissions or Windows devices are connected. See [Windows software metering](/connectors/windows-metering/) for how the real report works.
+7. Select **PDF report** to inspect a demonstration export. Keep its sample-data context when sharing it.
 
 <figure>
 
