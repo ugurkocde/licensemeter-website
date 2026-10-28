@@ -40,9 +40,23 @@ export const METERING_STALE_DAYS = 8; // Intune can report unchanged results wee
 /** The collector forgets starts older than this. */
 export const METERING_RETENTION_DAYS = 120;
 export const METERING_MAX_PROGRAMS = 400;
+/** The collector reports starts per UTC day for this many days. */
+export const METERING_DAILY_DAYS = 30;
+const DAY_MS = 86_400_000;
+/** Whole UTC days since the epoch, so days from different reports line up. */
+export const utcDay = (at: number) => Math.floor(at / DAY_MS);
 
 const timestamp = z.string().datetime({ offset: true });
 const program = z.string().regex(PROGRAM);
+const minutesAgo = z
+  .number()
+  .int()
+  .min(0)
+  .max(METERING_RETENTION_DAYS * 1440 + 1440);
+const startsDay = z.number().int().min(0).max(100_000);
+const perDay = z
+  .string()
+  .regex(new RegExp(`^[0-9a-z]{1,${METERING_DAILY_DAYS}}$`));
 const payloadSchema = z
   .object({
     v: z.literal(2),
@@ -56,21 +70,21 @@ const payloadSchema = z
       "log_reset",
       "collector_error",
     ]),
-    // [program, minutes before e, starts in the last 24 hours]
+    // [program, minutes before e, starts in the last 24 hours, starts per UTC
+    // day]. The last element is one base-36 digit per day, newest first from
+    // the UTC day of e, capped at 35, trailing zero days left out.
     a: z
       .array(
-        z.tuple([
-          program,
-          z
-            .number()
-            .int()
-            .min(0)
-            .max(METERING_RETENTION_DAYS * 1440 + 1440),
-          z.number().int().min(0).max(100_000),
+        z.union([
+          z.tuple([program, minutesAgo, startsDay]),
+          z.tuple([program, minutesAgo, startsDay, perDay]),
         ]),
       )
       .max(METERING_MAX_PROGRAMS),
     w: z.record(program, timestamp).optional(),
+    // When this device began counting starts per day. Collectors without
+    // daily counts leave it out.
+    d: timestamp.optional(),
     t: z.literal(1).optional(),
   })
   .strict();
@@ -103,6 +117,7 @@ export function parseMeteringOutput(
       const at = Date.parse(since);
       if (at < start || at > end) return null;
     }
+    if (payload.d && Date.parse(payload.d) > end) return null;
     return payload;
   } catch {
     return null;
@@ -128,6 +143,32 @@ export function startsLastDay(
   return payload.a
     .filter(([name]) => programs.includes(name))
     .reduce((sum, [, , count]) => sum + count, 0);
+}
+
+/**
+ * Starts of any of the programs per UTC day, newest first from the day of the
+ * report end, METERING_DAILY_DAYS long. Null when the collector does not count
+ * per day, or dropped a recent program's days to fit the output limit.
+ */
+export function dailyStarts(
+  payload: MeteringPayload,
+  programs: readonly string[],
+): number[] | null {
+  if (!payload.d) return null;
+  const end = Date.parse(payload.e);
+  const days = new Array<number>(METERING_DAILY_DAYS).fill(0);
+  for (const [name, ago, , series] of payload.a) {
+    if (!programs.includes(name)) continue;
+    if (series === undefined) {
+      // A start older than the window has nothing to count.
+      if (utcDay(end) - utcDay(end - ago * 60_000) < METERING_DAILY_DAYS)
+        return null;
+      continue;
+    }
+    for (let index = 0; index < series.length; index++)
+      days[index]! += Number.parseInt(series[index]!, 36);
+  }
+  return days;
 }
 
 /**

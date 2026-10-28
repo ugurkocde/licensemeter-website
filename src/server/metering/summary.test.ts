@@ -3,7 +3,7 @@ import type { MeteringPayload } from "~/lib/metering";
 import { catalogId } from "./catalog";
 import { meteringDemo } from "./demo";
 import type { MeteringReport, MeteringRow } from "./live";
-import { recencyBuckets, summarize } from "./summary";
+import { deviceApps, recencyBuckets, summarize } from "./summary";
 
 const now = new Date("2026-10-03T12:00:00Z");
 const programs = ["acad.exe", "visio.exe"];
@@ -42,7 +42,13 @@ const report = (
   installs: Record<string, string[]>,
 ): MeteringReport => ({
   canWrite: false,
-  collector: { id: "pkg", name: "Collector", catalogId: current, programs },
+  collector: {
+    id: "pkg",
+    name: "Collector",
+    catalogId: current,
+    programs,
+    release: 2,
+  },
   collectors: [],
   rows,
   catalog: [
@@ -55,6 +61,73 @@ const report = (
 const versions = [{ id: current, programs, at: now.toISOString() }];
 
 describe("metering summary", () => {
+  it("charts starts per day for the fleet and for each device", () => {
+    const counting = { d: "2026-09-01T00:00:00Z" };
+    const result = summarize(
+      report(
+        [
+          row("d1", {
+            ...counting,
+            a: [
+              ["acad.exe", 60, 2, "201"],
+              ["visio.exe", 1500, 0, "01"],
+            ],
+          }),
+          // Coverage restarted yesterday; earlier days stay counted.
+          row("d2", {
+            ...counting,
+            h: "log_gap",
+            s: "2026-10-02T09:00:00Z",
+            a: [["acad.exe", 30, 1, "1"]],
+          }),
+          // An older collector does not count per day.
+          row("d3", { a: [["acad.exe", 30, 1]] }),
+        ],
+        { autocad: ["d1", "d2", "d3"], visio: ["d1"] },
+      ),
+      versions,
+      60,
+      now,
+    );
+    const { days, apps, other } = result.fleet;
+    expect(days).toHaveLength(30);
+    expect(days.at(-1)).toMatchObject({ starts: 3, devices: 2, counted: 2 });
+    expect(days.at(-2)).toMatchObject({ starts: 1, devices: 1, counted: 2 });
+    expect(days.at(-3)).toMatchObject({ starts: 1, devices: 1 });
+    expect(apps.map((item) => [item.name, item.total])).toEqual([
+      ["AutoCAD", 4],
+      ["Visio", 1],
+    ]);
+    expect(other.every((value) => value === 0)).toBe(true);
+    const autocad = result.apps.find((item) => item.entry.id === "autocad")!;
+    expect(autocad.daily.at(-1)).toMatchObject({ starts: 3, counted: 2 });
+
+    const entry = report([], {}).catalog[0]!;
+    const items = deviceApps(
+      report(
+        [
+          row("d2", {
+            ...counting,
+            h: "log_gap",
+            s: "2026-10-02T09:00:00Z",
+            a: [["acad.exe", 30, 1, "1"]],
+          }),
+          row("d3", { a: [["acad.exe", 30, 1]] }),
+        ],
+        {},
+      ),
+      entry,
+      versions,
+      60,
+      now,
+    );
+    const gap = items[0]!.daily!;
+    // Today is fully covered; the restart day and earlier days may miss starts.
+    expect(gap.at(-1)).toMatchObject({ starts: 1, partial: false });
+    expect(gap.at(-2)).toMatchObject({ starts: 0, partial: true });
+    expect(gap.at(-3)).toMatchObject({ starts: 0, partial: true });
+    expect(items[1]!.daily).toBeNull();
+  });
   it("splits installed devices into started, not started, collecting and no data", () => {
     const result = summarize(
       report(
@@ -114,6 +187,7 @@ describe("metering summary", () => {
       name: "Collector",
       catalogId: catalogId(["acad.exe"]),
       programs: ["acad.exe"],
+      release: 2,
     };
     sample.rows[0]!.payload!.c = sample.collector.catalogId;
     const result = summarize(sample, [], 60, now);

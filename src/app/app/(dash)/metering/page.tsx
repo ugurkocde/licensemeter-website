@@ -7,14 +7,16 @@ import {
   Recency,
 } from "~/components/workspace/MeteringCharts";
 import {
-  CollectingNotice,
+  appHref,
   FinishSetup,
+  FirstReportNotice,
   MeteringFootnote,
   MeteringHeader,
   MeteringLocked,
   MeteringNotices,
   RecentStarts,
 } from "~/components/workspace/MeteringParts";
+import { FleetChart } from "~/components/workspace/MeteringTimeline";
 import { fmtDateTime } from "~/lib/format";
 import { requireAccess } from "~/server/access";
 import { recencyBuckets } from "~/server/metering/summary";
@@ -29,18 +31,35 @@ const Tile = ({
   value,
   note,
   tone = "",
+  href,
 }: {
   label: string;
   value: React.ReactNode;
   note: string;
   tone?: string;
-}) => (
-  <div className="border-line bg-card shadow-card rounded-2xl border p-5">
-    <p className="text-ink-faint text-xs">{label}</p>
-    <p className={`font-display mt-2 text-2xl tabular-nums ${tone}`}>{value}</p>
-    <p className="text-ink-soft mt-1 text-xs">{note}</p>
-  </div>
-);
+  href?: string;
+}) => {
+  const body = (
+    <>
+      <p className="text-ink-faint text-xs">{label}</p>
+      <p className={`font-display mt-2 text-2xl tabular-nums ${tone}`}>
+        {value}
+      </p>
+      <p className="text-ink-soft mt-1 text-xs">{note}</p>
+    </>
+  );
+  const box = "border-line bg-card shadow-card rounded-2xl border p-5";
+  return href ? (
+    <Link
+      href={href}
+      className={`${box} hover:border-line-strong block transition`}
+    >
+      {body}
+    </Link>
+  ) : (
+    <div className={box}>{body}</div>
+  );
+};
 
 export default async function MeteringPage() {
   const ctx = await requireAccess("viewer");
@@ -78,15 +97,24 @@ export default async function MeteringPage() {
       <FinishSetup view={view} />
       {summary && report && live && (
         <>
-          <CollectingNotice view={view} />
+          <FirstReportNotice view={view} />
+          <Card title="App starts, last 30 days">
+            <p className="text-ink-soft mb-4 max-w-2xl text-sm">
+              Every metered app start across your Windows devices, per day. Open
+              an app or a device for its own chart.
+            </p>
+            <FleetChart fleet={summary.fleet} hrefFor={appHref} />
+          </Card>
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Tile
               label="Windows devices in Intune"
               value={summary.devices}
-              note={`${summary.devices - summary.health.noReport} with a collector result`}
+              note={`${summary.withStarts} reporting app starts`}
+              href="/app/metering/devices"
             />
             <Tile
-              label="Reporting with full coverage"
+              label="Full coverage"
               value={
                 <>
                   {summary.health.reporting}{" "}
@@ -95,13 +123,17 @@ export default async function MeteringPage() {
                   </span>
                 </>
               }
-              note={`${summary.health.collecting} still collecting`}
+              note={`Devices that reported for all ${days} days`}
             />
             <Tile
               label="Installed, not started"
               value={summary.notStarted}
               tone="text-waste-text"
-              note={`Device and app pairs, ${days} days`}
+              note={
+                summary.health.reporting
+                  ? `Device and app pairs, ${days} days`
+                  : `Counted after ${days} days of full coverage`
+              }
             />
             <Tile
               label="Read from Intune"
@@ -112,6 +144,30 @@ export default async function MeteringPage() {
               }
               note={`Observation period ${days} days`}
             />
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+            <Card title="Recent app starts">
+              <RecentStarts view={view} />
+              <p className="text-ink-faint mt-3 text-xs">
+                Open an app or a device for its starts per day.{" "}
+                <Link className="underline" href="/app/metering/devices">
+                  All devices
+                </Link>
+              </p>
+            </Card>
+            <Card title="Collection health">
+              <p className="text-ink-soft mb-3 text-sm">
+                Why a device has no usable evidence.
+              </p>
+              <HealthList health={summary.health} />
+              {summary.health.noReport > 0 && (
+                <p className="text-ink-faint mt-3 text-xs">
+                  Devices outside the collector’s assignment never report. That
+                  is expected during a pilot.
+                </p>
+              )}
+            </Card>
           </div>
 
           <Card title="Installed vs started">
@@ -146,37 +202,18 @@ export default async function MeteringPage() {
             )}
           </Card>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <div className="flex flex-col gap-6">
-              {selected && (
-                <Card title="Days since last start">
-                  <p className="text-ink-soft mb-4 text-sm">
-                    <strong className="text-ink font-medium">
-                      {selected.entry.name}
-                    </strong>
-                    , installed devices with a start or full coverage. Choose
-                    another app on the Apps page.
-                  </p>
-                  <Recency app={selected} buckets={recencyBuckets(days)} />
-                </Card>
-              )}
-              <Card title="Recent app starts">
-                <RecentStarts view={view} />
-              </Card>
-            </div>
-            <Card title="Collection health">
-              <p className="text-ink-soft mb-3 text-sm">
-                Why a device has no usable evidence.
+          {selected && (
+            <Card title="Days since last start">
+              <p className="text-ink-soft mb-4 text-sm">
+                <strong className="text-ink font-medium">
+                  {selected.entry.name}
+                </strong>
+                , installed devices with a start or full coverage. Choose
+                another app on the Apps page.
               </p>
-              <HealthList health={summary.health} />
-              {summary.health.noReport > 0 && (
-                <p className="text-ink-faint mt-3 text-xs">
-                  Devices outside the collector’s assignment never report. That
-                  is expected during a pilot.
-                </p>
-              )}
+              <Recency app={selected} buckets={recencyBuckets(days)} />
             </Card>
-          </div>
+          )}
         </>
       )}
       <MeteringFootnote />

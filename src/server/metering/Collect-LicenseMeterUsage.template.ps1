@@ -15,17 +15,24 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $CatalogId = 'LM_CATALOG_ID'
 $Programs = @('LM_PROGRAMS')
+# Raised when the collector itself changes, so LicenseMeter offers an update.
+$Release = 2
 $inv = [Globalization.CultureInfo]::InvariantCulture
 function Format-Utc([DateTime]$Value) { $Value.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', $inv) }
 function Read-Utc([string]$Value) { [DateTime]::Parse($Value, $inv, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime() }
 function Hour-Key([DateTime]$Value) { $Value.ToUniversalTime().ToString('yyyyMMddHH', $inv) }
+function Day-Key([DateTime]$Value) { $Value.ToUniversalTime().ToString('yyyyMMdd', $inv) }
+$DailyDays = 30
 
 $now = [DateTime]::UtcNow
 $watch = @{}
 foreach ($program in $Programs) { if ($program) { $watch[$program.ToLowerInvariant()] = $true } }
-# Per program: last start, when watching began, and starts per UTC hour (24 h).
+# Per program: last start, when watching began, and starts per UTC hour (24 h)
+# and per UTC day ($DailyDays days).
 $apps = @{}
 $coverage = $now
+# When this device began counting starts per day.
+$daysSince = $null
 $health = 'collector_error'
 $mutex = $null
 $held = $false
@@ -100,16 +107,23 @@ public static class LicenseMeterAuditPolicy {
             $priorEnd = Read-Utc $previous.end
             if ($priorStart -gt $priorEnd -or $priorEnd -gt $now) { throw 'Coverage gap' }
             $coverage = $priorStart
+            if ($previous.daysSince) {
+                $daysSince = Read-Utc $previous.daysSince
+                if ($daysSince -gt $now) { throw 'Invalid daily start' }
+            }
             if ($previous.apps) {
                 foreach ($property in $previous.apps.PSObject.Properties) {
                     $exe = $property.Name.ToLowerInvariant()
                     # Programs removed from the list are forgotten.
                     if (-not $watch.ContainsKey($exe)) { continue }
-                    $entry = @{ last = $null; since = (Read-Utc $property.Value.since); hours = @{} }
+                    $entry = @{ last = $null; since = (Read-Utc $property.Value.since); hours = @{}; days = @{} }
                     if ($property.Value.last) { $entry.last = Read-Utc $property.Value.last }
                     if ($entry.since -gt $now -or ($entry.last -and $entry.last -gt $now)) { throw 'Invalid entry' }
                     if ($property.Value.hours) {
                         foreach ($hour in $property.Value.hours.PSObject.Properties) { $entry.hours[$hour.Name] = [int]$hour.Value }
+                    }
+                    if ($property.Value.days) {
+                        foreach ($day in $property.Value.days.PSObject.Properties) { $entry.days[$day.Name] = [int]$day.Value }
                     }
                     $apps[$exe] = $entry
                 }
@@ -118,6 +132,7 @@ public static class LicenseMeterAuditPolicy {
             $previous = $null
             $apps = @{}
             $coverage = $now
+            $daysSince = $null
             $health = 'log_gap'
         }
     }
@@ -131,9 +146,11 @@ public static class LicenseMeterAuditPolicy {
         # during initialization could be skipped while their bookmark advances.
         $now = [DateTime]::UtcNow
         if (-not $previous) { $coverage = $now }
+        # Older checkpoints did not count per day; counting starts now.
+        if (-not $daysSince) { $daysSince = $now }
         # Programs added to the list are watched from now on.
         foreach ($exe in $watch.Keys) {
-            if (-not $apps.ContainsKey($exe)) { $apps[$exe] = @{ last = $null; since = $now; hours = @{} } }
+            if (-not $apps.ContainsKey($exe)) { $apps[$exe] = @{ last = $null; since = $now; hours = @{}; days = @{} } }
         }
         $upper = [long]$newest.RecordId
         $lower = $upper # First run establishes coverage now, never backdates it.
@@ -150,6 +167,7 @@ public static class LicenseMeterAuditPolicy {
             $query = New-Object Diagnostics.Eventing.Reader.EventLogQuery('Security', [Diagnostics.Eventing.Reader.PathType]::LogName, $xpath)
             $reader = New-Object Diagnostics.Eventing.Reader.EventLogReader($query)
             $processed = 0
+            $auditOff = $null
             try {
                 while ($null -ne ($event = $reader.ReadEvent())) {
                     try {
@@ -163,8 +181,20 @@ public static class LicenseMeterAuditPolicy {
                         $fields = @{}
                         foreach ($field in $xml.Event.EventData.Data) { $fields[$field.Name] = [string]$field.'#text' }
                         if ($event.Id -eq 4719 -and $fields['SubcategoryGuid'] -eq '{0CCE922B-69AE-11D9-BED3-505054503030}') {
-                            $coverage = $now
-                            $health = 'log_gap'
+                            # Intune re-applies audit policy by removing Success
+                            # auditing (%%8448) and adding it back (%%8449) within
+                            # milliseconds. Only a real pause can lose starts.
+                            $changes = [string]$fields['AuditPolicyChanges']
+                            $changed = $event.TimeCreated.ToUniversalTime()
+                            if ($changes -match '%%8448') {
+                                if ($null -eq $auditOff) { $auditOff = $changed }
+                            } elseif ($changes -match '%%8449') {
+                                if ($null -ne $auditOff -and ($changed - $auditOff).TotalSeconds -gt 5) { $coverage = $now; $health = 'log_gap' }
+                                $auditOff = $null
+                            } elseif ($changes -notmatch '^[\s,]*(%%845[01][\s,]*)+$') {
+                                # Failure-only changes do not matter; anything unknown does.
+                                $coverage = $now; $health = 'log_gap'
+                            }
                         }
                         if ($event.Id -eq 4688) {
                             $exe = [IO.Path]::GetFileName($fields['NewProcessName']).ToLowerInvariant()
@@ -178,6 +208,8 @@ public static class LicenseMeterAuditPolicy {
                                     if ($parent -ne $exe) {
                                         $key = Hour-Key $started
                                         if ($entry.hours.ContainsKey($key)) { $entry.hours[$key]++ } else { $entry.hours[$key] = 1 }
+                                        $key = Day-Key $started
+                                        if ($entry.days.ContainsKey($key)) { $entry.days[$key]++ } else { $entry.days[$key] = 1 }
                                     }
                                 }
                             }
@@ -185,6 +217,8 @@ public static class LicenseMeterAuditPolicy {
                     } finally { $event.Dispose() }
                 }
             } finally { $reader.Dispose() }
+            # Still off at the end of the scan: starts may be missing.
+            if ($null -ne $auditOff) { $coverage = $now; $health = 'log_gap' }
             # Detect rollover during collection as well as between runs.
             $oldest = Get-WinEvent -LogName Security -Oldest -MaxEvents 1
             if ([long]$oldest.RecordId -gt ($lower + 1)) { $coverage = $now; $health = 'log_gap' }
@@ -192,6 +226,7 @@ public static class LicenseMeterAuditPolicy {
         # A coverage restart applies to every program; old starts stay known.
         $retention = $now.AddDays(-120)
         $firstHour = Hour-Key $now.AddHours(-23)
+        $firstDay = Day-Key $now.AddDays(1 - $DailyDays)
         $saved = @{}
         foreach ($exe in $apps.Keys) {
             $entry = $apps[$exe]
@@ -200,9 +235,12 @@ public static class LicenseMeterAuditPolicy {
             $hours = @{}
             foreach ($key in $entry.hours.Keys) { if ($key -ge $firstHour) { $hours[$key] = $entry.hours[$key] } }
             $entry.hours = $hours
-            $saved[$exe] = @{ last = $(if ($entry.last) { Format-Utc $entry.last } else { $null }); since = (Format-Utc $entry.since); hours = $hours }
+            $days = @{}
+            foreach ($key in $entry.days.Keys) { if ($key -ge $firstDay) { $days[$key] = $entry.days[$key] } }
+            $entry.days = $days
+            $saved[$exe] = @{ last = $(if ($entry.last) { Format-Utc $entry.last } else { $null }); since = (Format-Utc $entry.since); hours = $hours; days = $days }
         }
-        $checkpointState = @{ version = 2; catalog = $CatalogId; start = (Format-Utc $coverage); end = (Format-Utc $now); record = $upper; recordTime = $newest.TimeCreated.ToUniversalTime().Ticks.ToString(); apps = $saved }
+        $checkpointState = @{ version = 2; catalog = $CatalogId; start = (Format-Utc $coverage); end = (Format-Utc $now); record = $upper; recordTime = $newest.TimeCreated.ToUniversalTime().Ticks.ToString(); daysSince = (Format-Utc $daysSince); apps = $saved }
         $temp = Join-Path $folder ('usage-' + [Guid]::NewGuid().ToString() + '.tmp')
         try {
             [IO.File]::WriteAllText($temp, ($checkpointState | ConvertTo-Json -Depth 6 -Compress), (New-Object Text.UTF8Encoding($false)))
@@ -220,8 +258,12 @@ public static class LicenseMeterAuditPolicy {
 }
 
 # Only started programs are listed, most recent first: [program, minutes before
-# the report end, starts in the last 24 hours]. Later watch starts go in "w".
+# the report end, starts in the last 24 hours, starts per UTC day]. The days are
+# one base-36 digit each (capped at 35), newest first from today, without
+# trailing zero days; left out when the last start is older than the window.
+# Later watch starts go in "w".
 $firstHour = Hour-Key $now.AddHours(-23)
+$digits = '0123456789abcdefghijklmnopqrstuvwxyz'
 $later = @{}
 $rows = @(foreach ($exe in $apps.Keys) {
     $entry = $apps[$exe]
@@ -229,19 +271,35 @@ $rows = @(foreach ($exe in $apps.Keys) {
     if (-not $entry.last) { continue }
     $count = 0
     foreach ($key in $entry.hours.Keys) { if ($key -ge $firstHour) { $count += $entry.hours[$key] } }
-    [pscustomobject]@{ x = $exe; m = [int][Math]::Floor(($now - $entry.last).TotalMinutes); n = [int]$count }
+    $series = ''
+    for ($day = 0; $day -lt $DailyDays; $day++) {
+        $key = Day-Key $now.AddDays(-$day)
+        $value = 0
+        if ($entry.days -and $entry.days.ContainsKey($key)) { $value = [Math]::Min(35, [int]$entry.days[$key]) }
+        $series += $digits[$value]
+    }
+    $series = $series.TrimEnd('0')
+    if (-not $series -and ($now.Date - $entry.last.Date).Days -lt $DailyDays) { $series = '0' }
+    [pscustomobject]@{ x = $exe; m = [int][Math]::Floor(($now - $entry.last).TotalMinutes); n = [int]$count; d = $series }
 }) | Sort-Object m
 $entries = New-Object Collections.ArrayList
-foreach ($row in $rows) { [void]$entries.Add(@($row.x, $row.m, $row.n)) }
+foreach ($row in $rows) {
+    if ($row.d) { [void]$entries.Add(@($row.x, $row.m, $row.n, $row.d)) } else { [void]$entries.Add(@($row.x, $row.m, $row.n)) }
+}
 $truncated = $false
+$strip = $entries.Count - 1
 while ($true) {
     $report = [ordered]@{ v = 2; c = $CatalogId; s = (Format-Utc $coverage); e = (Format-Utc $now); h = $health; a = $entries }
     if ($later.Count) { $report.w = $later }
+    if ($daysSince) { $report.d = Format-Utc $daysSince }
     if ($truncated) { $report.t = 1 }
     $output = $report | ConvertTo-Json -Depth 5 -Compress
     if ($output.Length -le 2048) { break }
-    # Never emit cut-off JSON. Drop the oldest starts and say so.
-    if ($entries.Count -gt 0) { $entries.RemoveAt($entries.Count - 1); $truncated = $true }
+    # Never emit cut-off JSON. Drop the per-day counts of the oldest starts
+    # first, then the oldest starts themselves and say so.
+    while ($strip -ge 0 -and $entries[$strip].Count -lt 4) { $strip-- }
+    if ($strip -ge 0) { $entries[$strip] = @($entries[$strip][0], $entries[$strip][1], $entries[$strip][2]); $strip-- }
+    elseif ($entries.Count -gt 0) { $entries.RemoveAt($entries.Count - 1); $truncated = $true }
     elseif ($later.Count) { $later = @{}; $truncated = $true }
     else { $output = '{"v":2,"error":"output_too_large"}'; break }
 }

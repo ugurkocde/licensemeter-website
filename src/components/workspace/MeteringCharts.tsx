@@ -42,11 +42,26 @@ export const EvidenceLegend = () => (
   </ul>
 );
 
+const TIP_ALIGN = {
+  start: "left-0",
+  center: "left-1/2 -translate-x-1/2",
+  end: "right-0",
+} as const;
+
 /** Hover/focus detail for a mark; the same text is the accessible name. */
-const Tip = ({ title, body }: { title: string; body: string }) => (
+export const Tip = ({
+  title,
+  body,
+  align = "center",
+}: {
+  title: string;
+  body: React.ReactNode;
+  /** Marks near the chart's edges open their tip inwards. */
+  align?: keyof typeof TIP_ALIGN;
+}) => (
   <span
     role="tooltip"
-    className="bg-ink shadow-float pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden w-max max-w-60 -translate-x-1/2 rounded-lg px-2.5 py-1.5 text-left text-xs font-normal text-white group-hover:block group-focus-visible:block"
+    className={`bg-ink shadow-float pointer-events-none absolute bottom-full z-10 mb-2 hidden w-max max-w-60 rounded-lg px-2.5 py-1.5 text-left text-xs font-normal text-white group-hover:block group-focus-visible:block ${TIP_ALIGN[align]}`}
   >
     <strong className="block font-medium">{title}</strong>
     {body}
@@ -188,7 +203,7 @@ export function Recency({
   );
 }
 
-const HEALTH: {
+export const HEALTH: {
   key: HealthKey;
   label: string;
   hint: string;

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { METERING_SCOPES } from "~/lib/metering";
-import { collectorScript } from "./catalog";
+import { COLLECTOR_RELEASE, collectorScript } from "./catalog";
 
 const { acquire, settings } = vi.hoisted(() => ({
   acquire: vi.fn(),
@@ -263,11 +263,20 @@ describe("isolated metering Graph reads", () => {
         name: "LicenseMeter pilot",
         catalogId: expect.stringMatching(/^[0-9a-f]{8}$/) as string,
         programs: ["acad.exe", "photoshop.exe"],
+        release: COLLECTOR_RELEASE,
       },
     ]);
     const [url, init] = fetchMock.mock.calls[1]!;
     expect(new URL(url as string).pathname).toBe("/beta/$batch");
     expect(init?.method).toBe("POST");
+  });
+  it("reads the collector release; copies from before releases are release 1", async () => {
+    const script = await collectorScript(["acad.exe"]);
+    const encode = (text: string) => Buffer.from(text).toString("base64");
+    expect(parseCollector(encode(script))?.release).toBe(COLLECTOR_RELEASE);
+    expect(
+      parseCollector(encode(script.replace(/^\$Release = .*$/m, "")))?.release,
+    ).toBe(1);
   });
   it("reads program names with brackets", async () => {
     const script = Buffer.from(

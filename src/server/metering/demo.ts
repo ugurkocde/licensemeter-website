@@ -1,5 +1,14 @@
-import type { MeteringPayload } from "~/lib/metering";
-import { catalogId, catalogPrograms, type CatalogEntry } from "./catalog";
+import {
+  METERING_DAILY_DAYS,
+  utcDay,
+  type MeteringPayload,
+} from "~/lib/metering";
+import {
+  catalogId,
+  catalogPrograms,
+  COLLECTOR_RELEASE,
+  type CatalogEntry,
+} from "./catalog";
 import type { MeteringReport, MeteringRow } from "./live";
 import type { CollectorVersion } from "./summary";
 
@@ -86,6 +95,28 @@ function random(seed: number) {
   };
 }
 
+/** Newest-first base-36 day counts that end with the app's last start. */
+function demoDays(
+  seed: number,
+  end: Date,
+  minutes: number,
+  today: number,
+  used: number,
+): string | null {
+  const last = utcDay(end.getTime()) - utcDay(end.getTime() - minutes * 60_000);
+  if (last >= METERING_DAILY_DAYS) return null;
+  // Its own stream, so the rest of the sample stays as it was.
+  const next = random(seed);
+  const days = new Array<number>(METERING_DAILY_DAYS).fill(0);
+  days[last] = Math.max(1, today);
+  for (let index = last + 1; index < METERING_DAILY_DAYS; index++)
+    if (next() < used * 0.6) days[index] = 1 + Math.floor(next() * 4);
+  return days
+    .map((count) => count.toString(36))
+    .join("")
+    .replace(/0+$/, "");
+}
+
 /** Fictional devices and apps for the sample workspace. Never persisted or sent to Graph. */
 export function meteringDemo(now = new Date()): {
   report: MeteringReport;
@@ -131,11 +162,20 @@ export function meteringDemo(now = new Date()): {
       (installs[catalog[appIndex]!.appIds[0]!] ??= []).push(deviceId);
       if (!app.programs.length || next() >= app.used) return;
       const days = next() < 0.8 ? next() * 30 : 30 + next() * 85;
-      started.push([
-        app.programs[0]!,
-        Math.floor(days * 1440),
-        days < 1 ? 1 + Math.floor(next() * 6) : 0,
-      ]);
+      const minutes = Math.floor(days * 1440);
+      const today = days < 1 ? 1 + Math.floor(next() * 6) : 0;
+      const perDay = demoDays(
+        1000 + index * 97 + appIndex,
+        end,
+        minutes,
+        today,
+        app.used,
+      );
+      started.push(
+        perDay
+          ? [app.programs[0]!, minutes, today, perDay]
+          : [app.programs[0]!, minutes, today],
+      );
     });
     const payload: MeteringPayload | null =
       kind === "no_report"
@@ -146,6 +186,7 @@ export function meteringDemo(now = new Date()): {
             s: iso(start),
             e: iso(end),
             h: kind === "audit_disabled" ? "audit_disabled" : "ok",
+            d: kind === "collecting" ? iso(start) : iso(ago(45)),
             a:
               kind === "audit_disabled"
                 ? []
@@ -164,6 +205,7 @@ export function meteringDemo(now = new Date()): {
     name: "LicenseMeter collector",
     catalogId: id,
     programs,
+    release: COLLECTOR_RELEASE,
   };
   return {
     report: {

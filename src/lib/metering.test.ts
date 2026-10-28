@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  dailyStarts,
   lastStart,
   meteringSignal,
   meteringAccess,
@@ -88,6 +89,40 @@ describe("metering output, protocol 2", () => {
     );
     expect(startsLastDay(value, ["ms-teams.exe", "teams.exe"])).toBe(7);
     expect(lastStart(value, ["acad.exe"])).toBeNull();
+  });
+});
+
+describe("starts per day", () => {
+  const daily = payload({
+    e: "2026-10-03T12:00:00Z",
+    d: "2026-09-20T08:00:00Z",
+    a: [
+      ["acrobat.exe", 30, 2, "2013"],
+      ["acrord32.exe", 1500, 0, "01"],
+      ["acad.exe", 40 * 1440, 0],
+    ],
+  });
+  it("accepts newest-first base-36 day counts and a counting start", () => {
+    expect(parse(daily)).toEqual(daily);
+    expect(parse(payload({ a: [["acad.exe", 1, 1, "A"]] }))).toBeNull();
+    expect(
+      parse(payload({ a: [["acad.exe", 1, 1, "1".repeat(31)]] })),
+    ).toBeNull();
+    expect(parse(payload({ d: "2026-10-04T00:00:00Z" }))).toBeNull();
+  });
+  it("adds an app's programs per day; starts older than the window count nothing", () => {
+    const days = dailyStarts(daily, ["acrobat.exe", "acrord32.exe"])!;
+    expect(days.slice(0, 5)).toEqual([2, 1, 1, 3, 0]);
+    expect(days).toHaveLength(30);
+    expect(dailyStarts(daily, ["acad.exe"])).toEqual(new Array(30).fill(0));
+  });
+  it("is unknown without a counting start, or when a recent start lost its days", () => {
+    expect(
+      dailyStarts(payload({ a: [["acad.exe", 30, 1]] }), ["acad.exe"]),
+    ).toBeNull();
+    expect(
+      dailyStarts({ ...daily, a: [["acad.exe", 30, 1]] }, ["acad.exe"]),
+    ).toBeNull();
   });
 });
 

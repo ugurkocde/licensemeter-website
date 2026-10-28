@@ -1,0 +1,7 @@
+{
+  "title": "Software Metering charts app starts per day for your fleet, each app and each device",
+  "summary": "The Software Metering dashboard now opens with app starts per day over the last 30 days across all Windows devices, split by the most started apps, with devices that started an app below it. Each app now shows its own starts per day and the devices that run it, most recent first. A new Devices page lists every Windows device with its collector status, and opening one shows the metered apps started on it and its own chart. Recent app starts link straight to the app or device, and the coverage strip above the charts is gone. The updated collector counts starts per day on each device, and LicenseMeter still stores no results. It also keeps coverage when Intune re-applies the audit policy, which used to restart coverage every few hours. Setup offers the update.",
+  "type": "new",
+  "publishedOn": "2026-10-28",
+  "idempotencyKey": "licensemeter:2026-10-28-metering-starts-per-day"
+}
