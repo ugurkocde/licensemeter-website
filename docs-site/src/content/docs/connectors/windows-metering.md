@@ -7,6 +7,18 @@ Software Metering shows, for every Windows app you deploy through Intune, the de
 
 This feature requires installation setup and a Windows pilot. Your existing Microsoft 365 connection continues to use its original permissions. Workspace users who do not enable metering are not asked for metering permissions.
 
+## See it in the sample workspace first
+
+Before any setup, read a complete metering report with fictional data: select **Open the sample tenant** on [LicenseMeter](https://www.licensemeter.com/), then open **Software Metering** in the sidebar. The sample shows 42 fictional Windows devices with installed apps, starts, devices that are still collecting, and one app that is not metered until a program file is entered. No Microsoft permissions or Windows devices are connected, and Setup shows as done. [Explore the sample workspace](/getting-started/sample-workspace/) describes the rest of the tour.
+
+<figure>
+
+![Software Metering dashboard in the LicenseMeter sample workspace](../../../assets/metering.webp)
+
+<figcaption><p>LicenseMeter sample workspace. All device names, apps and counts shown are demonstration data.</p></figcaption>
+
+</figure>
+
 ## What the report means
 
 LicenseMeter meters every Windows app that is assigned in your Intune: Win32, Microsoft Store, WinGet and line-of-business apps, and Microsoft 365 Apps. Visio and Project inside Microsoft 365 Apps are listed as their own apps. Apps installed outside Intune are not listed.
@@ -20,6 +32,14 @@ The collector watches program file names, such as `acad.exe` for AutoCAD. Intune
 Apps without a program file show **Needs a program file** and are not metered until an Admin adds one. Open the app under **Software Metering › Apps** and enter its program file in the app's settings. Admins can also leave apps out there, for example tools that need no license review. The same app assigned several times in Intune appears once.
 
 For each app, the report shows how many Windows devices have it installed, how many of those started it in the observation period, and the number of starts in the last 24 hours. A program that starts copies of itself, such as a browser, counts once per start. Software Metering has four pages in the sidebar: **Dashboard**, which opens with app starts per day across all devices, followed by the evidence charts; **Apps**, to search apps and see each app's devices and starts per day; **Devices**, to see each device's collector status and the metered apps started on it; and **Setup**. Starts per day cover the last 30 days, counted in UTC days on each device.
+
+<figure>
+
+![Software Metering Apps page in the LicenseMeter sample workspace](../../../assets/metering-apps.webp)
+
+<figcaption><p>LicenseMeter sample workspace. All device names, apps and counts shown are demonstration data.</p></figcaption>
+
+</figure>
 
 A start is evidence that a program file was launched. It does not measure foreground time, productive work, license ownership, or activity on another device or platform. Background starts and other programs with the same file name can affect results. Check the license assignment before taking action. LicenseMeter does not reclaim licenses from this report.
 

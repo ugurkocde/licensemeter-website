@@ -11,7 +11,7 @@ import {
 
 export const metadata: Metadata = {
   title: "Sample license waste report - synthetic demo tenant",
-  description: `A walkthrough of a LicenseMeter license waste report, computed from the synthetic ${DEMO_FIGURES.users}-user demo tenant: per-rule findings with euro figures, the weekly digest, the monthly PDF report and the PowerShell remediation. Not a customer story.`,
+  description: `A walkthrough of a LicenseMeter license waste report, computed from the synthetic ${DEMO_FIGURES.users}-user demo tenant: per-rule findings with euro figures, the sample Software Metering report, the weekly digest, the monthly PDF report and the PowerShell remediation. Not a customer story.`,
   alternates: { canonical: "/sample-report" },
 };
 
@@ -220,6 +220,104 @@ export default function SampleReportPage() {
 
       <section className="mt-14">
         <h2 className="font-display text-2xl tracking-tight">
+          What Software Metering adds
+        </h2>
+        <p className="text-ink-soft mt-3 max-w-3xl text-sm leading-relaxed">
+          Seat data cannot tell whether a Windows app on a device is ever
+          opened. Software Metering can: it reads from Intune which apps are
+          installed on each Windows device, and whether each app was started in
+          the last 60 days. The demo workspace runs it on{" "}
+          {DEMO_FIGURES.metering.devices} fictional devices,{" "}
+          {DEMO_FIGURES.metering.fullCoverageDevices} of them with coverage for
+          the full period, and finds{" "}
+          <span className="tnum text-waste-text font-mono">
+            {DEMO_FIGURES.metering.notStartedPairs}
+          </span>{" "}
+          installed app and device pairs with no start in 60 days.
+        </p>
+        <div className="border-line mt-8 overflow-x-auto border">
+          <table className="w-full min-w-[640px] border-collapse text-sm">
+            <thead>
+              <tr className="border-line bg-card border-b text-left">
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
+                >
+                  App
+                </th>
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-right text-xs font-medium tracking-[0.18em] uppercase"
+                >
+                  Installed devices
+                </th>
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-right text-xs font-medium tracking-[0.18em] uppercase"
+                >
+                  Started
+                </th>
+                <th
+                  scope="col"
+                  className="text-ink-faint px-4 py-3 text-right text-xs font-medium tracking-[0.18em] uppercase"
+                >
+                  Not started, 60 days
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {DEMO_FIGURES.metering.apps.map((app) => (
+                <tr
+                  key={app.name}
+                  className="border-line border-b last:border-b-0"
+                >
+                  <th
+                    scope="row"
+                    className="text-ink px-4 py-4 text-left align-top font-medium"
+                  >
+                    {app.name}
+                  </th>
+                  <td className="tnum px-4 py-4 text-right align-top font-mono whitespace-nowrap">
+                    {app.installed}
+                  </td>
+                  <td className="tnum px-4 py-4 text-right align-top font-mono whitespace-nowrap">
+                    {app.started}
+                  </td>
+                  <td className="tnum px-4 py-4 text-right align-top font-mono whitespace-nowrap">
+                    {app.notStarted}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-ink-soft mt-6 max-w-3xl text-sm leading-relaxed">
+          Read Visio as the example: installed on{" "}
+          {
+            DEMO_FIGURES.metering.apps.find(
+              (app) => app.name === "Microsoft Visio",
+            )?.installed
+          }{" "}
+          devices, started on{" "}
+          {
+            DEMO_FIGURES.metering.apps.find(
+              (app) => app.name === "Microsoft Visio",
+            )?.started
+          }
+          . That is the evidence behind a smaller Visio assignment at the next
+          renewal, and no admin console shows it. Devices that are still
+          collecting or have no usable report never count as not started, and
+          one sample app, {DEMO_FIGURES.metering.unmeteredApp}, is left out
+          entirely because no program file is known for it yet. Metering counts
+          are evidence, not priced findings, so they are not part of the euro
+          total above. In the demo workspace, open{" "}
+          <strong className="text-ink font-medium">Software Metering</strong> in
+          the sidebar to read the full report, device by device.
+        </p>
+      </section>
+
+      <section className="mt-14">
+        <h2 className="font-display text-2xl tracking-tight">
           What arrives without logging in
         </h2>
         <div className="mt-6 grid gap-8 md:grid-cols-2">
@@ -293,8 +391,9 @@ export default function SampleReportPage() {
         </h2>
         <p className="text-ink-soft mt-3 max-w-xl leading-relaxed">
           The sample tenant behind this page is browsable without an account:
-          every finding, the price book, the exports. When you have seen enough,
-          a free read-only scan replaces the synthetic figures with yours - the{" "}
+          every finding, the price book, the Software Metering report, the
+          exports. When you have seen enough, a free read-only scan replaces the
+          synthetic figures with yours - the{" "}
           <Link
             href="/security"
             className="text-ink hover:text-brand-text font-medium underline underline-offset-4"

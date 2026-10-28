@@ -1,0 +1,7 @@
+{
+  "title": "Software Metering is now part of the sample tenant tour",
+  "summary": "The sample tenant now presents Software Metering where you would look for it: the product tour points it out in the sidebar, the public sample report walks through its installed versus started figures for the fictional devices, and the documentation shows the sample report with screenshots. Open the sample tenant and choose Software Metering to read the full report, with no Microsoft permissions or Windows devices connected.",
+  "type": "improved",
+  "publishedOn": "2026-10-28",
+  "idempotencyKey": "licensemeter:2026-10-28-sample-tenant-metering"
+}

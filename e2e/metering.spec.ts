@@ -1,5 +1,22 @@
 import { expect, test } from "./fixtures";
 
+test("sample report walks through the sample metering report", async ({
+  page,
+}) => {
+  await page.goto("/sample-report");
+  await expect(
+    page.getByRole("heading", { name: "What Software Metering adds" }),
+  ).toBeVisible();
+  // Figures come from DEMO_FIGURES.metering, recomputed from the sample
+  // metering generator in demoFigures.test.ts.
+  await expect(page.getByText(/42 fictional devices/)).toBeVisible();
+  const visio = page.getByRole("row", { name: /Microsoft Visio/ });
+  await expect(visio).toContainText("14");
+  await expect(visio).toContainText("6");
+  await expect(visio).toContainText("7");
+  await expect(page.getByText(/Contoso Time Tracker/)).toBeVisible();
+});
+
 test("metering demo: sidebar sections, overview charts, app search and mobile fit", async ({
   page,
 }) => {
@@ -28,6 +45,11 @@ test("metering demo: sidebar sections, overview charts, app search and mobile fi
   await expect(
     nav.getByRole("link", { name: "Dashboard", exact: true }),
   ).toHaveAttribute("aria-current", "page");
+  // The product tour points its Software Metering step at this anchor.
+  await expect(nav.locator('a[href="/app/metering"]').first()).toHaveAttribute(
+    "data-tour",
+    "nav-metering",
+  );
 
   // The fleet chart leads; its apps open their own page.
   await expect(

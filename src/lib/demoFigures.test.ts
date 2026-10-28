@@ -10,6 +10,8 @@ import {
   demoSaasClient,
   SAAS_PROVIDERS,
 } from "~/server/saas/registry";
+import { meteringDemo } from "~/server/metering/demo";
+import { summarize } from "~/server/metering/summary";
 import { joinSignals } from "~/server/sync/join";
 import { analyzeWaste, type WasteFinding } from "~/server/waste/engine";
 import type { WasteRuleId } from "~/server/types";
@@ -167,5 +169,32 @@ describe("DEMO_FIGURES matches the recomputed demo tenant analysis", () => {
     expect(Object.values(byCategory).reduce((a, b) => a + b, 0)).toBe(
       DEMO_FIGURES.monthlyWasteCents,
     );
+  });
+
+  it("sample Software Metering report at the default 60-day period", () => {
+    // Same generator and summary the demo workspace renders, at the period
+    // loadMetering falls back to when no metering connection exists.
+    const now = new Date("2026-10-27T12:00:00Z");
+    const { report, collectors } = meteringDemo(now);
+    const summary = summarize(report, collectors, 60, now);
+    const metering = DEMO_FIGURES.metering;
+    expect(summary.devices).toBe(metering.devices);
+    expect(summary.health.reporting).toBe(metering.fullCoverageDevices);
+    expect(summary.notStarted).toBe(metering.notStartedPairs);
+    expect(
+      summary.apps
+        .filter((app) => app.entry.programs.length > 0)
+        .map((app) => ({
+          name: app.entry.name,
+          installed: app.installed,
+          started: app.started,
+          notStarted: app.notStarted,
+        })),
+    ).toEqual(metering.apps);
+    expect(
+      summary.apps
+        .filter((app) => app.entry.programs.length === 0)
+        .map((app) => app.entry.name),
+    ).toEqual([metering.unmeteredApp]);
   });
 });
