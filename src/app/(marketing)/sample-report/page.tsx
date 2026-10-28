@@ -228,8 +228,8 @@ export default function SampleReportPage() {
           installed on each Windows device, and whether each app was started in
           the last 60 days. The demo workspace runs it on{" "}
           {DEMO_FIGURES.metering.devices} fictional devices,{" "}
-          {DEMO_FIGURES.metering.fullCoverageDevices} of them with coverage for
-          the full period, and finds{" "}
+          {DEMO_FIGURES.metering.fullCoverageDevices} of them watched for the
+          full 60 days, and finds{" "}
           <span className="tnum text-waste-text font-mono">
             {DEMO_FIGURES.metering.notStartedPairs}
           </span>{" "}

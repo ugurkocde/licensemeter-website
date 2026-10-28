@@ -17,7 +17,7 @@ export interface MeteringDeviceRow {
 
 const FILTERS = [
   ["all", "All"],
-  ["starts", "Reporting starts"],
+  ["starts", "Reporting"],
   ["attention", "Needs attention"],
   ["noReport", "No collector result"],
 ] as const;

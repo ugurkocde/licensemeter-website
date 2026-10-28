@@ -65,7 +65,7 @@ test("metering demo: sidebar sections, overview charts, app search and mobile fi
   for (const text of [
     "App started",
     "App not started",
-    "Still collecting",
+    "No start yet",
     "No data",
   ])
     await expect(legend.getByText(text, { exact: true })).toBeVisible();

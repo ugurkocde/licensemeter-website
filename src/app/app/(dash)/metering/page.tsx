@@ -119,20 +119,20 @@ export default async function MeteringPage() {
             <Tile
               label="Windows devices in Intune"
               value={summary.devices}
-              note={`${summary.withStarts} reporting app starts`}
+              note={`${summary.withStarts} reporting`}
               href="/app/metering/devices"
             />
             <Tile
-              label="Full coverage"
+              label={`Watched ${days} days`}
               value={
                 <>
                   {summary.health.reporting}{" "}
                   <span className="text-ink-faint text-base">
-                    of {summary.devices}
+                    of {summary.withStarts} reporting
                   </span>
                 </>
               }
-              note={`Devices that reported for all ${days} days`}
+              note="Needed before “App not started” shows"
             />
             <Tile
               label="Installed, not started"
@@ -141,7 +141,7 @@ export default async function MeteringPage() {
               note={
                 summary.health.reporting
                   ? `Device and app pairs, ${days} days`
-                  : `Counted after ${days} days of full coverage`
+                  : `Shown once a device was watched ${days} days`
               }
             />
             <Tile
@@ -167,7 +167,7 @@ export default async function MeteringPage() {
             </Card>
             <Card title="Collection health">
               <p className="text-ink-soft mb-3 text-sm">
-                Why a device has no usable evidence.
+                What each device’s collector reports.
               </p>
               <HealthList health={summary.health} />
               <p className="text-ink-faint mt-3 text-xs">
@@ -228,8 +228,8 @@ export default async function MeteringPage() {
                 <strong className="text-ink font-medium">
                   {selected.entry.name}
                 </strong>
-                , installed devices with a start or full coverage. Choose
-                another app on the Apps page.
+                , installed devices with a start, or watched for the whole
+                period without one. Choose another app on the Apps page.
               </p>
               <Recency app={selected} buckets={recencyBuckets(days)} />
             </Card>

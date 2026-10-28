@@ -37,6 +37,23 @@ const device = (
 };
 
 describe("collection health detail", () => {
+  it("says from when a reporting device can show apps as not started", () => {
+    const detail = healthDetail(
+      device(
+        "collecting",
+        "ok",
+        payload({
+          h: "ok",
+          s: "2026-10-28T09:00:00Z",
+          e: "2026-10-28T10:00:00Z",
+        }),
+      ),
+      30,
+      "Pkg",
+    );
+    expect(detail.summary).toContain("show right away");
+    expect(detail.cause).toContain("27 Nov 2026");
+  });
   it("explains a restart from the older collector and says it fixes itself", () => {
     const detail = healthDetail(device("gap", "log_gap", payload()), 30, "Pkg");
     expect(detail.summary).toContain("still count");
@@ -72,7 +89,9 @@ describe("collection health detail", () => {
       healthDetail(device("noReport", "no_report", null), 30, "Pkg").summary,
     ).toContain("“Pkg”");
   });
-  it("links every state to its own docs section", () => {
-    expect(new Set(Object.values(HEALTH_DOCS)).size).toBe(8);
+  it("links every state to its docs section", () => {
+    // Watched for all or part of the period, a device is simply reporting.
+    expect(HEALTH_DOCS.collecting).toBe(HEALTH_DOCS.reporting);
+    expect(new Set(Object.values(HEALTH_DOCS)).size).toBe(7);
   });
 });

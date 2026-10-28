@@ -162,7 +162,7 @@ export default async function MeteringDevicesPage({
                     }
                   />
                   <Stat
-                    label="Covered since"
+                    label="Watching since"
                     value={payload ? fmtDateTime(payload.s) : "-"}
                   />
                   <Stat

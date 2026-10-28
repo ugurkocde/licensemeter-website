@@ -9,7 +9,7 @@ This feature requires installation setup and a Windows pilot. Your existing Micr
 
 ## See it in the sample workspace first
 
-Before any setup, read a complete metering report with fictional data: select **Open the sample tenant** on [LicenseMeter](https://www.licensemeter.com/), then open **Software Metering** in the sidebar. The sample shows 42 fictional Windows devices with installed apps, starts, devices that are still collecting, and one app that is not metered until a program file is entered. No Microsoft permissions or Windows devices are connected, and Setup shows as done. [Explore the sample workspace](/getting-started/sample-workspace/) describes the rest of the tour.
+Before any setup, read a complete metering report with fictional data: select **Open the sample tenant** on [LicenseMeter](https://www.licensemeter.com/), then open **Software Metering** in the sidebar. The sample shows 42 fictional Windows devices with installed apps, starts, devices still within their first observation period, and one app that is not metered until a program file is entered. No Microsoft permissions or Windows devices are connected, and Setup shows as done. [Explore the sample workspace](/getting-started/sample-workspace/) describes the rest of the tour.
 
 <figure>
 
@@ -46,13 +46,15 @@ A start is evidence that a program file was launched. It does not measure foregr
 | Evidence | Meaning |
 | --- | --- |
 | App started | A start falls within the selected period ending on the report date. |
-| App not started | The collector reports continuous coverage for the selected 30, 60 or 90 days, with no start in that period. |
-| Still collecting | The collector has not yet covered the selected period on this device, or started watching this app later. |
+| App not started | The device was watched without a gap for the whole selected period of 30, 60 or 90 days, with no start in that period. |
+| No start yet | No start so far, but the device has been watched for less than the selected period, or started watching this app later. |
 | Not watched yet | The deployed collector does not watch this app yet, for example because it was added to Intune after the collector was generated. |
 | No data | No valid output, disabled auditing, collection errors or gaps. |
 | Report stale | The report is more than eight days old. |
 
-Missing results never establish that an app is unused. The default observation period is 60 days. Devices outside the collector assignment show no data.
+Starts show as soon as a device reports; nothing waits for the observation period except **App not started**. A few days without a start prove nothing about a license, so an app counts as not started on a device only after that device was watched for the whole observation period without a gap. Until then it shows **No start yet**. The default observation period is 60 days.
+
+Missing results never establish that an app is unused. Devices outside the collector assignment show no data.
 
 ## Prerequisites
 
@@ -100,7 +102,7 @@ Through your approved Intune settings catalogue or Group Policy, enable **Advanc
 
 Command-line collection is not required. Do not enable it solely for this feature. Process auditing increases local Security log volume. Size and retain that log so the collector can read all events between scheduled runs.
 
-The Windows default maximum Security log size is 20 MB, and the oldest events are overwritten first. With hourly runs this is usually enough. On very busy devices, 20 MB can cover about an hour or less, so a delayed or missed run loses events and coverage restarts. If pilot devices keep reporting coverage gaps, increase the maximum size through **Administrative Templates > Windows Components > Event Log Service > Security > Specify the maximum log file size (KB)** in the Intune settings catalogue, or the equivalent Group Policy. 100 to 200 MB is a reasonable starting point. The Event Log service applies a new maximum size after the device restarts. Confirm it with `wevtutil gl Security`.
+The Windows default maximum Security log size is 20 MB, and the oldest events are overwritten first. With hourly runs this is usually enough. On very busy devices, 20 MB can cover about an hour or less, so a delayed or missed run loses events and watching restarts. If pilot devices keep showing **Watching restarted**, increase the maximum size through **Administrative Templates > Windows Components > Event Log Service > Security > Specify the maximum log file size (KB)** in the Intune settings catalogue, or the equivalent Group Policy. 100 to 200 MB is a reasonable starting point. The Event Log service applies a new maximum size after the device restarts. Confirm it with `wevtutil gl Security`.
 
 Use the locale-independent subcategory ID to inspect the effective policy on the pilot device:
 
@@ -130,40 +132,36 @@ The first run establishes coverage from that moment. It does not reconstruct pas
 
 LicenseMeter finds the Remediations package that runs the collector by itself, by reading the deployed script. You never select a package. Step 2 of Setup confirms the package it found. If several packages run the collector, choose one under **Settings** on the Setup page, where you can also change the observation period (60 days by default).
 
-Step 3 shows when the first device reports. The **Dashboard** shows its full charts right away and fills them in as devices report. App starts appear as soon as they arrive; until a device has covered the whole observation period, its apps show as still collecting. Starts per day count from the device's first run of the current collector. The report reads the latest results from Intune whenever you open it or export the CSV. A read is reused for up to five minutes; select **Read latest results** to read again immediately.
+Step 3 shows when the first device reports. The **Dashboard** shows its full charts right away and fills them in as devices report. App starts appear as soon as they arrive; until a device has been watched for the whole observation period, apps it has not started show **No start yet**. Starts per day count from the device's first run of the current collector. The report reads the latest results from Intune whenever you open it or export the CSV. A read is reused for up to five minutes; select **Read latest results** to read again immediately.
 
-Verify a known app start, the device identity, the report date, and coverage health. Then expand the assignment. Intune controls when device results become available; LicenseMeter does not remotely run scripts. The first result for a newly assigned device can take several hours to appear in Intune reporting, even after the device has run the script.
+Verify a known app start, the device identity, the report date, and the collection health state. Then expand the assignment. Intune controls when device results become available; LicenseMeter does not remotely run scripts. The first result for a newly assigned device can take several hours to appear in Intune reporting, even after the device has run the script.
 
 Reads are capped at 50,000 returned rows and 500 pages per resource, with bounded request time. Large estates take longer to load because every read queries Intune. Larger estates require an operator-supported strategy before rollout.
 
 ### 5. Keep the app list current
 
-When apps are added to Intune or you change program files, devices keep running the collector you deployed. LicenseMeter reads the deployed script, so it knows exactly which apps it watches. Apps it does not watch yet show **Not watched yet**, and Setup lists them. When LicenseMeter can write to Intune, saving an app's settings under **Apps** updates the collector right away (**Save and update Intune**). Otherwise select **Update in Intune** in Setup to replace the detection script in the same package, or download the collector again and replace it yourself. The assignment stays, and devices switch on their next run. Coverage for apps already watched continues; newly added apps start collecting from that run.
+When apps are added to Intune or you change program files, devices keep running the collector you deployed. LicenseMeter reads the deployed script, so it knows exactly which apps it watches. Apps it does not watch yet show **Not watched yet**, and Setup lists them. When LicenseMeter can write to Intune, saving an app's settings under **Apps** updates the collector right away (**Save and update Intune**). Otherwise select **Update in Intune** in Setup to replace the detection script in the same package, or download the collector again and replace it yourself. The assignment stays, and devices switch on their next run. Watching continues for apps already watched; newly added apps start collecting from that run.
 
-When LicenseMeter improves the collector itself, the Dashboard and Setup show that a newer collector is available. Update it the same way. Coverage and last starts carry over.
+When LicenseMeter improves the collector itself, the Dashboard and Setup show that a newer collector is available. Update it the same way. The observation period and last starts carry over.
 
 ## Collection health
 
-Every Windows device has one collection health state. The **Dashboard** counts devices per state, and each device on the **Devices** page explains its own state: what it reported, the usual cause and what to do. Starts a device reported always count, whatever its state; the state decides whether "App not started" can be trusted for that device.
+Every Windows device has one collection health state. The **Dashboard** counts devices per state, and each device on the **Devices** page explains its own state: what it reported, the usual cause and what to do. Starts a device reported always count, whatever its state; the state decides whether "App not started" can be shown for that device.
 
-### Full coverage
+### Reporting
 
-The device reported continuously for the whole observation period. "App not started" is reliable for it. Nothing to do.
+The device reports and its app starts show right away. Once it has been watched for the whole observation period without a gap, apps it never started show as **App not started**; until then they show **No start yet**, and the device page says from which date "App not started" can appear. Nothing to do; keep the collector assigned.
 
-### Still collecting
+### Watching restarted
 
-The device has reported without a gap, but for less than the observation period so far, for example because the collector was deployed recently. Starts count right away; "App not started" appears once the full period is covered. Keep the collector assigned.
-
-### Coverage restarted
-
-The device's starts still count, but the collector restarted its coverage, so its observation period starts again. The collector restarts coverage when Security log events might be missing since its last run:
+The device's starts still count, but the collector restarted watching, so its observation period starts over and "App not started" waits longer. The collector restarts watching when Security log events might be missing since its last run:
 
 - The Security log rolled over before the hourly run read it. Raise the log's maximum size to 100 to 200 MB, as described in [Enable process auditing](#2-enable-process-auditing).
-- Process Creation auditing was switched off for more than a few seconds, for example by a conflicting policy. Intune re-applying the same audit policy switches it off and on within milliseconds; current collectors keep coverage through that. Collectors from before 28 October 2026 did not, and restarted coverage every few hours on managed devices. Update the collector in Setup.
+- Process Creation auditing was switched off for more than a few seconds, for example by a conflicting policy. Intune re-applying the same audit policy switches it off and on within milliseconds; current collectors keep watching through that. Collectors from before 28 October 2026 did not, and restarted watching every few hours on managed devices. Update the collector in Setup.
 - The scan of new events hit its 100,000-event or 90-second limit, which is rare with hourly runs.
 - The Security log was cleared, or the collector's bookmark no longer matched it, for example after a reinstall or a restored image.
 
-A restart once in a while needs no action. If a device restarts on every run, check the three causes above in that order.
+A restart once in a while needs no action. If a device restarts on every run, check the causes above in that order.
 
 ### Updating collector
 
@@ -198,7 +196,7 @@ The device's result could not be used at all. The Devices page says which of the
 | Collector not found in Setup | Create the Remediations package with the downloaded collector as its detection script, in the connected tenant, then select **Read latest results**. |
 | No collector result | Device assignment, connectivity, Intune reporting and SYSTEM execution. |
 | Enable process auditing | Effective Process Creation Success policy on the device. |
-| Coverage restarted | See [Coverage restarted](#coverage-restarted) for the causes in the order to check them. |
+| Watching restarted | See [Watching restarted](#watching-restarted) for the causes in the order to check them. |
 | No starts per day | The device runs an older collector. Update it from Setup; days count from its next run. |
 | Collection error | The Devices page says whether the script failed, returned an unreadable result or stopped with an error. See [Collection error](#collection-error). |
 | Program file unknown | Open the app under **Apps**, enter its program file and select **Save and update Intune**. Without write access, update the collector from Setup afterwards. |

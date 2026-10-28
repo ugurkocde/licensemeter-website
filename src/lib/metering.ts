@@ -208,7 +208,7 @@ export function meteringSignal(
 export const SIGNAL_LABELS: Record<MeteringSignal, string> = {
   started: "App started",
   not_started: "App not started",
-  collecting: "Still collecting",
+  collecting: "No start yet",
   unknown: "No data",
   stale: "Report stale",
   outdated: "Not watched yet",

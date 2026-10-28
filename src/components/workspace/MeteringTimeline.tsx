@@ -365,7 +365,7 @@ export function FleetChart({
 
 /**
  * Starts per day for one app or one device, a single series. Hatched days
- * were not counted, or fall before coverage restarted, so starts may be
+ * were not counted, or fall before watching restarted, so starts may be
  * missing there.
  */
 export function DailyStarts({
@@ -412,7 +412,7 @@ export function DailyStarts({
           const text =
             bar.starts === null
               ? "Not counted."
-              : `${plural(bar.starts, "start")}${unit === "device" ? ` on ${plural(bar.devices, "device")}` : ""}.${bar.partial ? " Coverage restarted, so starts may be missing." : ""}`;
+              : `${plural(bar.starts, "start")}${unit === "device" ? ` on ${plural(bar.devices, "device")}` : ""}.${bar.partial ? " Watching restarted that day or later, so starts may be missing." : ""}`;
           return (
             <div
               key={bar.day}
@@ -454,7 +454,8 @@ export function DailyStarts({
             aria-hidden="true"
             className="metering-hatch size-2.5 rounded-[3px]"
           />
-          Hatched days were not counted or had a coverage restart. Days are UTC.
+          Hatched days were not counted, or fall before watching restarted. Days
+          are UTC.
         </p>
       )}
     </div>
