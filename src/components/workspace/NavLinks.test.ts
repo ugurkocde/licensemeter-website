@@ -1,9 +1,10 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+const nav = vi.hoisted(() => ({ pathname: "/app" }));
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/app",
+  usePathname: () => nav.pathname,
 }));
 
 import { NAV_SHORTCUTS, NavLinks } from "./NavLinks";
@@ -72,6 +73,9 @@ describe("Report branding sidebar badge", () => {
 });
 
 describe("Grouped sidebar navigation", () => {
+  afterEach(() => {
+    nav.pathname = "/app";
+  });
   it("renders the section labels and all main destinations", () => {
     const html = renderToStaticMarkup(createElement(NavLinks));
     for (const text of ["Workspace", "Tools", "Manage"])
@@ -107,6 +111,28 @@ describe("Grouped sidebar navigation", () => {
     expect(html).toContain("Connectors");
     /* Shortcut hints are visual only outside the expanded rail. */
     expect(html).not.toContain("⌘1");
+  });
+
+  it("marks the metering section current in the rail, its child page when expanded", () => {
+    nav.pathname = "/app/metering/apps";
+    /* The opening tag of the anchor carrying this href, attributes included. */
+    const anchorOf = (html: string, href: string): string => {
+      const at = html.indexOf(`href="${href}"`);
+      expect(at).toBeGreaterThanOrEqual(0);
+      return html.slice(html.lastIndexOf("<a", at), html.indexOf(">", at));
+    };
+    const collapsed = renderToStaticMarkup(
+      createElement(NavLinks, { collapsed: true }),
+    );
+    expect(anchorOf(collapsed, "/app/metering")).toContain(
+      'aria-current="page"',
+    );
+
+    const expanded = renderToStaticMarkup(createElement(NavLinks));
+    expect(anchorOf(expanded, "/app/metering")).not.toContain("aria-current");
+    expect(anchorOf(expanded, "/app/metering/apps")).toContain(
+      'aria-current="page"',
+    );
   });
 
   it("maps number shortcuts to the main pages", () => {

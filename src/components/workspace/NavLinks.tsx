@@ -275,7 +275,7 @@ export const NavLinks = ({
                     onFocus={showTooltip(item.label)}
                     onBlur={() => setTooltip(null)}
                     aria-current={
-                      sectionActive && !(item.children && !locked)
+                      sectionActive && !(item.children && !locked && !collapsed)
                         ? "page"
                         : undefined
                     }

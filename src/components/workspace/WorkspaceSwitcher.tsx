@@ -80,6 +80,9 @@ export const WorkspaceSwitcher = ({
 
   const select = (next: string) => {
     setOpen(false);
+    /* The focused option unmounts with the popover; hand focus back to the
+       trigger. In the mobile drawer, closing it already restores focus. */
+    if (!inFlow) buttonRef.current?.focus();
     onNavigate?.();
     /* One mutation at a time, and none when re-selecting the active workspace. */
     if (inFlight.current || next === current) return;
@@ -135,10 +138,13 @@ export const WorkspaceSwitcher = ({
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-busy={pending || undefined}
-          disabled={pending}
+          aria-disabled={pending || undefined}
           aria-label={`Active workspace: ${active.name}. Switch workspace`}
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            if (!pending) setOpen((v) => !v);
+          }}
           onKeyDown={(e) => {
+            if (pending) return;
             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
               e.preventDefault();
               setOpen(true);
