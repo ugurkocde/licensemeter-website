@@ -83,6 +83,23 @@ describe("metering summary", () => {
     // Counting from before the chart's first day leaves no uncounted days.
     expect(countingSince([recent, old], now)).toBeNull();
     expect(countingSince([row("d4", {}).payload!], now)).toBeNull();
+    // A device whose last report ended before the chart counts none of it.
+    const gone = row("d5", {
+      d: "2026-06-01T00:00:00Z",
+      e: "2026-08-01T00:00:00Z",
+    }).payload!;
+    expect(countingSince([recent, gone], now)).toEqual(
+      new Date("2026-10-03T09:09:00Z"),
+    );
+    // A report without any started app still counts its days as quiet.
+    const quiet = summarize(
+      report([row("d6", { d: recent.d, a: [] })], {}),
+      versions,
+      60,
+      now,
+    );
+    expect(quiet.fleet.days.at(-1)).toMatchObject({ starts: 0, counted: 1 });
+    expect(quiet.fleet.days.at(-3)).toMatchObject({ starts: null });
     const result = summarize(
       report([row("d1", { d: recent.d, a: recent.a })], { autocad: ["d1"] }),
       versions,

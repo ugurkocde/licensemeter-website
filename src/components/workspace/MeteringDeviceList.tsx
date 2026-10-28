@@ -121,7 +121,9 @@ export function MeteringDeviceList({
                               ? ""
                               : ` · ${row.starts} ${row.starts === 1 ? "start" : "starts"} ${row.since ? `since ${row.since}` : "in 30 days"}`
                           }`
-                        : "No app starts reported"}
+                        : row.since
+                          ? `No starts since ${row.since}`
+                          : "No app starts reported"}
                     </span>
                   </span>
                   <span

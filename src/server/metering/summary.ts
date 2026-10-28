@@ -199,12 +199,15 @@ export function countingSince(
   payloads: MeteringPayload[],
   now = new Date(),
 ): Date | null {
+  const firstDay = chartDays(now)[0]!;
   const starts = payloads
+    // A report that ended before the chart counts none of its days.
+    .filter((payload) => utcDay(Date.parse(payload.e)) >= firstDay)
     .map((payload) => (payload.d ? Date.parse(payload.d) : NaN))
     .filter(Number.isFinite);
   if (!starts.length) return null;
   const first = Math.min(...starts);
-  return utcDay(first) > chartDays(now)[0]! ? new Date(first) : null;
+  return utcDay(first) > firstDay ? new Date(first) : null;
 }
 
 /** Results Intune holds for a device whose starts are real, even across a gap. */
@@ -499,6 +502,8 @@ export function summarize(
   const fleetDays = sumDays([...byApp.values()].flat(), now).map(
     (bar, index) => ({
       ...bar,
+      // A device can count a day without starting any app at all.
+      starts: bar.starts ?? (devicesPerDay[index]!.counted > 0 ? 0 : null),
       devices: devicesPerDay[index]!.devices,
       counted: devicesPerDay[index]!.counted,
     }),

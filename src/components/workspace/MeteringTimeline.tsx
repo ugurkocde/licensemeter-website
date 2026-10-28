@@ -60,10 +60,13 @@ function NotCountedYet({
   days,
   height,
   message,
+  counted,
 }: {
   days: number[];
   height: string;
   message: React.ReactNode;
+  /** Days that were counted (with no start) stay unhatched. */
+  counted?: boolean[];
 }) {
   const list = days.length
     ? days
@@ -81,12 +84,16 @@ function NotCountedYet({
             gridTemplateColumns: `repeat(${list.length}, minmax(0, 1fr))`,
           }}
         >
-          {list.map((day) => (
-            <span
-              key={day}
-              className="metering-hatch h-full rounded-t-[4px] opacity-25"
-            />
-          ))}
+          {list.map((day, index) =>
+            counted?.[index] ? (
+              <span key={day} />
+            ) : (
+              <span
+                key={day}
+                className="metering-hatch h-full rounded-t-[4px] opacity-25"
+              />
+            ),
+          )}
         </div>
         <div className="absolute inset-0 grid place-items-center p-3">
           <p className="bg-card border-line text-ink-soft max-w-sm rounded-lg border px-3 py-2 text-center text-sm shadow-sm">
@@ -130,6 +137,7 @@ export function FleetChart({
     return (
       <NotCountedYet
         days={days.map((bar) => bar.day)}
+        counted={days.map((bar) => bar.starts !== null)}
         height="h-44"
         message={quietSince(countingSince, "on a reporting device")}
       />
@@ -410,6 +418,7 @@ export function DailyStarts({
     return (
       <NotCountedYet
         days={bars.map((bar) => bar.day)}
+        counted={bars.map((bar) => bar.starts !== null)}
         height="h-28"
         message={quietSince(
           since,
