@@ -20,6 +20,7 @@ import { Card, Pill } from "~/components/ui";
 import { billingEnabled, env, polarEnabled } from "~/env";
 import { planBadge, planName } from "~/lib/planLabel";
 import { TRIAL_DAYS, type PricedPlan } from "~/lib/pricing";
+import { BILLING_EMAIL, INVOICE_MAILTO } from "~/lib/support";
 import { hasRole, requireAccess } from "~/server/access";
 import { listCoverage } from "~/server/billing/mspAccount";
 import { hasFeature } from "~/server/entitlement";
@@ -246,12 +247,47 @@ export default async function BillingPage({
             ))}
           </div>
 
-          {canAct && marketplaceUrl && (
-            <p className="text-ink-faint text-xs">
-              Microsoft Marketplace puts the plan on your Microsoft invoice.
-              {cardCheckout &&
-                " Card payments are handled by Polar, who is the merchant of record."}
-            </p>
+          {!isDemo && (
+            <div className="border-line bg-card text-ink-soft flex flex-col gap-2 rounded-xl border px-4 py-3 text-sm">
+              {canAct && marketplaceUrl && (
+                <p>
+                  <span className="text-ink font-medium">
+                    Prefer to pay through Microsoft?
+                  </span>{" "}
+                  Buy on{" "}
+                  <a
+                    href={marketplaceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-ink underline underline-offset-2"
+                  >
+                    Microsoft Marketplace
+                    <span className="sr-only">, opens in a new tab</span>
+                  </a>{" "}
+                  instead of using a credit card. The plan is billed to your
+                  organization&apos;s Microsoft billing account and appears on
+                  your Microsoft invoice, so you can use your existing Microsoft
+                  budget or credits where your agreement allows.
+                </p>
+              )}
+              <p>
+                <span className="text-ink font-medium">Need an invoice?</span>{" "}
+                Email{" "}
+                <a
+                  href={INVOICE_MAILTO}
+                  className="text-ink underline underline-offset-2"
+                >
+                  {BILLING_EMAIL}
+                </a>{" "}
+                and we will send you one.
+              </p>
+              {canAct && marketplaceUrl && cardCheckout && (
+                <p className="text-ink-faint text-xs">
+                  Card payments are handled by Polar, who is the merchant of
+                  record.
+                </p>
+              )}
+            </div>
           )}
         </section>
 
