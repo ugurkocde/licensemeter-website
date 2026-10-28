@@ -62,8 +62,10 @@ export const mspAccounts = pgTable(
     /** event.created of the last applied webhook; gates stale out-of-order writes. */
     lastEventAt: timestamp("last_event_at", { withTimezone: true }),
     /**
-     * White-label report branding (MSP plan). Applied to the PDF report of every
-     * client workspace attached to this account. Logo is a PNG or JPEG data URL.
+     * White-label report branding of the MSP account. Applied to the PDF report
+     * of every client workspace attached to this account. Logo is a PNG or JPEG
+     * data URL. A workspace outside an MSP account carries its own marks on the
+     * tenants row instead.
      */
     brandName: text("brand_name"),
     brandColor: text("brand_color"),
@@ -182,6 +184,15 @@ export const tenants = pgTable(
     mspAccountId: uuid("msp_account_id").references(() => mspAccounts.id, {
       onDelete: "set null",
     }),
+    /**
+     * White-label report branding of a standalone workspace (Pro plan, or a
+     * self-hosted install). Applied to this workspace's PDF reports while it is
+     * not attached to an MSP account; attached workspaces take the account's
+     * marks instead. Logo is a PNG or JPEG data URL.
+     */
+    brandName: text("brand_name"),
+    brandColor: text("brand_color"),
+    brandLogo: text("brand_logo"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -208,6 +219,15 @@ export const tenants = pgTable(
     check(
       "tenants_domain_join_mode_check",
       sql`${t.domainJoinMode} in ('off', 'approval', 'auto')`,
+    ),
+    check(
+      "tenants_brand_color_hex",
+      sql`${t.brandColor} is null or ${t.brandColor} ~ '^#[0-9a-fA-F]{6}$'`,
+    ),
+    // Keeps an uploaded logo small enough to inline into every PDF render.
+    check(
+      "tenants_brand_logo_size",
+      sql`${t.brandLogo} is null or length(${t.brandLogo}) <= 400000`,
     ),
   ],
 );

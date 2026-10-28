@@ -53,7 +53,7 @@ const PLANS: TeaserPlan[] = [
     points: [
       "Everything in Free, plus email support",
       "Signed DPA (AVV) and a 99.9% uptime target",
-      "MCP server and 24 months of history",
+      "MCP server, white-label PDF reports and 24 months of history",
     ],
     featured: true,
   },
@@ -67,7 +67,7 @@ const PLANS: TeaserPlan[] = [
     points: [
       "Everything in Pro, across your client tenants",
       `${MSP_INCLUDED_TENANTS} client tenants included, then ${formatEuro(MSP_EXTRA_TENANT_PRICE.month, "en")} each`,
-      "White-label PDF reports and an onboarding call",
+      "One brand on every client report, sub-processor DPA and an onboarding call",
     ],
     featured: false,
   },

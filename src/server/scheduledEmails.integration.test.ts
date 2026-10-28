@@ -32,7 +32,7 @@ const sendEmailMock = vi.fn((_args: SendArgs) => receipt());
 const notifyOpsMock = vi.fn((_text: string, _opts?: unknown) =>
   Promise.resolve(),
 );
-const renderPdfMock = vi.fn((_tenantId: string) =>
+const renderPdfMock = vi.fn((_tenantId: string, _branding?: unknown) =>
   Promise.resolve({
     filename: "report.pdf",
     buffer: Buffer.from("pdf"),
@@ -45,6 +45,7 @@ const renderPdfMock = vi.fn((_tenantId: string) =>
 vi.mock("~/env", () => ({
   env: { NODE_ENV: "test", AUTH_SECRET: "test-secret-test-secret-test-secret" },
   siteUrl: () => "https://licensemeter.test",
+  billingEnabled: () => true,
 }));
 
 vi.mock("~/server/db", () => {
@@ -69,7 +70,8 @@ vi.mock("~/server/ops", () => ({
 }));
 
 vi.mock("~/server/report/renderReport", () => ({
-  renderWasteReportPdf: (tenantId: string) => renderPdfMock(tenantId),
+  renderWasteReportPdf: (tenantId: string, branding?: unknown) =>
+    renderPdfMock(tenantId, branding),
 }));
 
 const { runDigestJob, runReportJob } = await import("~/server/scheduledEmails");
@@ -521,6 +523,45 @@ describe("the shared notification address", () => {
       sent: 0,
       skippedAlreadySent: 2,
     });
+  });
+
+  it("brands the monthly report of a standalone Pro workspace", async () => {
+    await seedMember("anna@contoso.test");
+    await seedFinding();
+    await currentDb
+      .update(schema.tenants)
+      .set({ brandName: "Acme Consulting", brandColor: "#123456" })
+      .where(eq(schema.tenants.id, TENANT_ID));
+    await currentDb.insert(schema.entitlements).values({
+      tenantId: TENANT_ID,
+      plan: "pro",
+      source: "polar",
+      status: "active",
+      currentPeriodEnd: new Date("2026-11-01T00:00:00Z"),
+    });
+
+    expect(
+      await runReportJob({ now: new Date("2026-10-01T07:00:00Z") }),
+    ).toMatchObject({ sent: 1 });
+    expect(renderPdfMock).toHaveBeenCalledWith(TENANT_ID, {
+      name: "Acme Consulting",
+      color: "#123456",
+      logo: null,
+    });
+  });
+
+  it("sends the LicenseMeter report when a branded workspace is back on Free", async () => {
+    await seedMember("anna@contoso.test");
+    await seedFinding();
+    await currentDb
+      .update(schema.tenants)
+      .set({ brandName: "Acme Consulting", brandColor: "#123456" })
+      .where(eq(schema.tenants.id, TENANT_ID));
+
+    expect(
+      await runReportJob({ now: new Date("2026-10-01T07:00:00Z") }),
+    ).toMatchObject({ sent: 1 });
+    expect(renderPdfMock).toHaveBeenCalledWith(TENANT_ID, null);
   });
 
   it("is left out of the report when only that switch is off", async () => {
