@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { METERING_DAILY_DAYS, utcDay } from "~/lib/metering";
 import type { DayBar, FleetDaily } from "~/server/metering/summary";
 import { Tip } from "./MeteringCharts";
 
@@ -50,6 +51,53 @@ function DayAxis({ days }: { days: number[] }) {
   );
 }
 
+/**
+ * The chart's frame before any day was counted: hatched days, the axis and
+ * the reason, so the chart reads as waiting rather than empty or broken.
+ */
+function NotCountedYet({
+  days,
+  height,
+  message,
+}: {
+  days: number[];
+  height: string;
+  message: React.ReactNode;
+}) {
+  const list = days.length
+    ? days
+    : Array.from(
+        { length: METERING_DAILY_DAYS },
+        (_, index) => utcDay(Date.now()) - METERING_DAILY_DAYS + 1 + index,
+      );
+  return (
+    <div>
+      <div className={`relative ${height}`}>
+        <div
+          aria-hidden="true"
+          className="border-line grid h-full items-end gap-[2px] border-b"
+          style={{
+            gridTemplateColumns: `repeat(${list.length}, minmax(0, 1fr))`,
+          }}
+        >
+          {list.map((day) => (
+            <span
+              key={day}
+              className="metering-hatch h-full rounded-t-[4px] opacity-25"
+            />
+          ))}
+        </div>
+        <div className="absolute inset-0 grid place-items-center p-3">
+          <p className="bg-card border-line text-ink-soft max-w-sm rounded-lg border px-3 py-2 text-center text-sm shadow-sm">
+            {message}
+          </p>
+        </div>
+      </div>
+      <DayAxis days={list} />
+    </div>
+  );
+}
+
 const NoCount = () => (
   <span className="metering-hatch block h-full w-full rounded-t-[4px] opacity-40" />
 );
@@ -61,17 +109,24 @@ const NoCount = () => (
 export function FleetChart({
   fleet,
   hrefFor,
+  empty,
 }: {
   fleet: FleetDaily;
   hrefFor: (id: string) => string;
+  /** Why no day is counted yet, shown inside the empty chart. */
+  empty?: React.ReactNode;
 }) {
   const { days, apps, other } = fleet;
   if (days.every((bar) => bar.starts === null))
     return (
-      <p className="text-ink-soft py-6 text-sm">
-        Starts per day appear once devices run the current collector. They count
-        from the first report after the update.
-      </p>
+      <NotCountedYet
+        days={days.map((bar) => bar.day)}
+        height="h-44"
+        message={
+          empty ??
+          "Starts per day appear once devices run the current collector. Each device counts from its first run after the update."
+        }
+      />
     );
   const max = Math.max(1, ...days.map((bar) => bar.starts ?? 0));
   const maxDevices = Math.max(1, ...days.map((bar) => bar.devices));
@@ -317,19 +372,26 @@ export function DailyStarts({
   bars,
   title,
   unit = "device",
+  empty,
 }: {
-  bars: DayBar[];
+  bars: DayBar[] | null;
   /** Names the series in tips and the accessible label. */
   title: string;
   /** What "devices" counts: devices for an app, or none for one device. */
   unit?: "device" | "none";
+  /** Why no day is counted yet, shown inside the empty chart. */
+  empty?: React.ReactNode;
 }) {
-  if (bars.every((bar) => bar.starts === null))
+  if (!bars || bars.every((bar) => bar.starts === null))
     return (
-      <p className="text-ink-soft text-sm">
-        No starts per day yet. They appear once devices run the current
-        collector.
-      </p>
+      <NotCountedYet
+        days={bars?.map((bar) => bar.day) ?? []}
+        height="h-28"
+        message={
+          empty ??
+          "No starts per day yet. They appear once devices run the current collector."
+        }
+      />
     );
   const max = Math.max(1, ...bars.map((bar) => bar.starts ?? 0));
   const total = bars.reduce((sum, bar) => sum + (bar.starts ?? 0), 0);

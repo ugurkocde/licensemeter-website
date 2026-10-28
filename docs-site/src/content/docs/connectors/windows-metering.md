@@ -142,6 +142,53 @@ When apps are added to Intune or you change program files, devices keep running 
 
 When LicenseMeter improves the collector itself, the Dashboard and Setup show that a newer collector is available. Update it the same way. Coverage and last starts carry over.
 
+## Collection health
+
+Every Windows device has one collection health state. The **Dashboard** counts devices per state, and each device on the **Devices** page explains its own state: what it reported, the usual cause and what to do. Starts a device reported always count, whatever its state; the state decides whether "App not started" can be trusted for that device.
+
+### Full coverage
+
+The device reported continuously for the whole observation period. "App not started" is reliable for it. Nothing to do.
+
+### Still collecting
+
+The device has reported without a gap, but for less than the observation period so far, for example because the collector was deployed recently. Starts count right away; "App not started" appears once the full period is covered. Keep the collector assigned.
+
+### Coverage restarted
+
+The device's starts still count, but the collector restarted its coverage, so its observation period starts again. The collector restarts coverage when Security log events might be missing since its last run:
+
+- The Security log rolled over before the hourly run read it. Raise the log's maximum size to 100 to 200 MB, as described in [Enable process auditing](#2-enable-process-auditing).
+- Process Creation auditing was switched off for more than a few seconds, for example by a conflicting policy. Intune re-applying the same audit policy switches it off and on within milliseconds; current collectors keep coverage through that. Collectors from before 28 October 2026 did not, and restarted coverage every few hours on managed devices. Update the collector in Setup.
+- The scan of new events hit its 100,000-event or 90-second limit, which is rare with hourly runs.
+- The Security log was cleared, or the collector's bookmark no longer matched it, for example after a reinstall or a restored image.
+
+A restart once in a while needs no action. If a device restarts on every run, check the three causes above in that order.
+
+### Updating collector
+
+The device still reports from an older app list, so apps added since then show **Not watched yet** on it. Devices switch on their next hourly run after the collector in Intune is updated. If Setup lists apps that are not watched yet, update the collector there.
+
+### No collector result
+
+Intune has no result from the device for the collector package. The package is not assigned to the device or its groups, or the device has not run it yet. Assign the package and let the device sync. The first result for a newly assigned device can take several hours to appear in Intune.
+
+### Process auditing off
+
+Audit Process Creation (Success) is off on the device, so it cannot see app starts and reports none. Turn it on through your audit policy and check the effective setting on the device, as described in [Enable process auditing](#2-enable-process-auditing).
+
+### Report stale
+
+The device's last report is more than eight days old. It is switched off, offline or no longer checks in with Intune. Bring it online, or remove it from Intune if it is retired.
+
+### Collection error
+
+The device's result could not be used at all. The Devices page says which of these applies:
+
+- **The collector script failed.** Intune reports the detection script as failed. The package must run as SYSTEM in 64-bit PowerShell, and with signature enforcement on, the script must be signed. Open the device's Remediations status in Intune and compare the package settings with Setup.
+- **Unreadable result.** The output is not a valid collector report, usually because the detection script was edited or replaced. Replace it with the current collector from Setup.
+- **The collector stopped with an error.** It could not read the Security log or write its checkpoint. This often clears on the next run. If it repeats, check that security software allows the script and that SYSTEM can write to `%ProgramData%\LicenseMeter`.
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -151,9 +198,9 @@ When LicenseMeter improves the collector itself, the Dashboard and Setup show th
 | Collector not found in Setup | Create the Remediations package with the downloaded collector as its detection script, in the connected tenant, then select **Read latest results**. |
 | No collector result | Device assignment, connectivity, Intune reporting and SYSTEM execution. |
 | Enable process auditing | Effective Process Creation Success policy on the device. |
-| Still collecting after a gap | Device missed scheduled runs, Security log rolled over before collection (increase its maximum size), Process Creation auditing was switched off, or local state was reset. |
+| Coverage restarted | See [Coverage restarted](#coverage-restarted) for the causes in the order to check them. |
 | No starts per day | The device runs an older collector. Update it from Setup; days count from its next run. |
-| Collection error | Review the collector's health value in Intune. Wrong scripts, malformed output and output over 2,048 characters are rejected. |
+| Collection error | The Devices page says whether the script failed, returned an unreadable result or stopped with an error. See [Collection error](#collection-error). |
 | Program file unknown | Open the app under **Apps**, enter its program file and select **Save and update Intune**. Without write access, update the collector from Setup afterwards. |
 | Not watched yet | Download the collector again from Setup and replace the detection script in Intune. |
 | Report stale | Device has not supplied a recent valid report. Intune may report unchanged results on a weekly cycle. |

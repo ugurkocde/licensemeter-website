@@ -213,7 +213,7 @@ describe("metering summary", () => {
       "AutoCAD",
     ]);
   });
-  it("lists starts from a report with a log gap but flags the device", () => {
+  it("lists starts from a report with a log gap and flags its restarted coverage", () => {
     const gap = row("d1", { h: "log_gap", a: [["acad.exe", 30, 1]] });
     const result = summarize(
       report([gap], { autocad: ["d1"] }),
@@ -222,7 +222,9 @@ describe("metering summary", () => {
       now,
     );
     expect(result.recentStarts.map((start) => start.app)).toEqual(["AutoCAD"]);
-    expect(result.health.error).toBe(1);
+    // A restart is not an error: the starts are real, only coverage restarts.
+    expect(result.health.gap).toBe(1);
+    expect(result.health.error).toBe(0);
     expect(
       result.apps.find((item) => item.entry.id === "autocad")!.started,
     ).toBe(1);

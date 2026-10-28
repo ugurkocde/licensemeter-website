@@ -72,6 +72,8 @@ export type HealthKey =
   | "noReport"
   | "auditOff"
   | "stale"
+  /** Coverage restarted after a log gap or reset; starts are still real. */
+  | "gap"
   | "error";
 export interface RecentStart {
   appId: string;
@@ -243,6 +245,10 @@ export interface DeviceSummary {
   last: Date | null;
   /** Starts of all metered apps per day, oldest first, or null if not counted. */
   daily: DayBar[] | null;
+  /** Starts of all metered apps in the last 24 hours. */
+  startsDay: number;
+  /** The device runs a collector that counts starts per day. */
+  countsDays: boolean;
 }
 
 /** Every Windows device with its collector state, for the Devices page. */
@@ -276,6 +282,8 @@ export function deviceSummaries(
       daily: payload
         ? deviceDays(payload, dailyStarts(payload, names), now)
         : null,
+      startsDay: payload ? startsLastDay(payload, names) : 0,
+      countsDays: Boolean(row.payload?.d),
     };
   });
 }
@@ -321,9 +329,10 @@ export function deviceHealth(
   const payload = row.payload;
   if (row.status === "no_report") return "noReport";
   if (row.status === "audit_disabled") return "auditOff";
-  if (payload?.h !== "ok") return "error";
+  if (!payload || !usable(row)) return "error";
   if (now.getTime() - Date.parse(payload.e) > METERING_STALE_DAYS * 86_400_000)
     return "stale";
+  if (payload.h !== "ok") return "gap";
   if (
     !known.has(payload.c) ||
     (deployedId !== null && payload.c !== deployedId)
@@ -394,6 +403,7 @@ export function summarize(
     noReport: 0,
     auditOff: 0,
     stale: 0,
+    gap: 0,
     error: 0,
   };
   const deployedId = report.collector?.catalogId ?? null;

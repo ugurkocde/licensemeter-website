@@ -113,6 +113,10 @@ test("metering demo: sidebar sections, overview charts, app search and mobile fi
   await expect(
     content.getByRole("heading", { name: "App starts per day", level: 3 }),
   ).toBeVisible();
+  // The device explains its health state and links to the matching docs.
+  await expect(
+    content.getByRole("link", { name: "About this state" }),
+  ).toHaveAttribute("href", /windows-metering\/#/);
   await expect(
     content
       .getByRole("table", { name: /^Metered apps on / })
