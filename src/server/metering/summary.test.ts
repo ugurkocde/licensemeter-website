@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MeteringPayload } from "~/lib/metering";
-import { catalogId } from "./catalog";
+import { catalogId, COLLECTOR_RELEASE } from "./catalog";
 import { meteringDemo } from "./demo";
 import type { MeteringReport, MeteringRow } from "./live";
 import {
@@ -52,7 +52,7 @@ const report = (
     name: "Collector",
     catalogId: current,
     programs,
-    release: 2,
+    release: COLLECTOR_RELEASE,
   },
   collectors: [],
   rows,
@@ -243,7 +243,7 @@ describe("metering summary", () => {
       name: "Collector",
       catalogId: catalogId(["acad.exe"]),
       programs: ["acad.exe"],
-      release: 2,
+      release: COLLECTOR_RELEASE,
     };
     sample.rows[0]!.payload!.c = sample.collector.catalogId;
     const result = summarize(sample, [], 60, now);

@@ -189,7 +189,7 @@ export function catalogId(programs: string[]): string {
 }
 
 /** The collector release in the template; deployed copies below it are offered an update. */
-export const COLLECTOR_RELEASE = 2;
+export const COLLECTOR_RELEASE = 3;
 
 const TEMPLATE = path.join(
   process.cwd(),
