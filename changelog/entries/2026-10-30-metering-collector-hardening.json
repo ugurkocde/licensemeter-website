@@ -1,0 +1,7 @@
+{
+  "title": "Updated metering collector protects its checkpoint and counts new apps from the moment they are added",
+  "summary": "Setup now offers an updated Windows usage collector. When your Intune app list grows and you update the collector, starts of a newly added app from before the update no longer count toward its usage. The collector also takes ownership of its local checkpoint folder when it finds one created by someone else and discards the checkpoint inside, so a standard user on the device cannot alter its results. Setup offers the update.",
+  "type": "improved",
+  "publishedOn": "2026-10-30",
+  "idempotencyKey": "licensemeter:2026-10-30-metering-collector-hardening"
+}

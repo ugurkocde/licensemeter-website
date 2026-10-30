@@ -53,6 +53,7 @@ vi.mock("~/server/metering/graph", async (original) => ({
   },
 }));
 const { collectMetering, readMetering } = await import("./live");
+const { COLLECTOR_RELEASE } = await import("./catalog");
 const { GET: callback } =
   await import("~/app/api/connect/metering/callback/route");
 const { POST: action } = await import("~/app/api/metering/route");
@@ -89,7 +90,7 @@ const source = (): MeteringSource => ({
       name: "Collector",
       catalogId: "a1b2c3d4",
       programs: ["acad.exe"],
-      release: 2,
+      release: COLLECTOR_RELEASE,
     },
   ]),
   devices: vi.fn(async () => [
@@ -300,14 +301,14 @@ describe("live metering reads", () => {
         name: "A",
         catalogId: "a1b2c3d4",
         programs: ["acad.exe"],
-        release: 2,
+        release: COLLECTOR_RELEASE,
       },
       {
         id: other,
         name: "B",
         catalogId: "a1b2c3d4",
         programs: ["acad.exe"],
-        release: 2,
+        release: COLLECTOR_RELEASE,
       },
     ];
     graph.collectors = vi.fn(async () => two);

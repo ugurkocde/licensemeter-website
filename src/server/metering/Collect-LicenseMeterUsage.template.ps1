@@ -16,7 +16,7 @@ $ProgressPreference = 'SilentlyContinue'
 $CatalogId = 'LM_CATALOG_ID'
 $Programs = @('LM_PROGRAMS')
 # Raised when the collector itself changes, so LicenseMeter offers an update.
-$Release = 2
+$Release = 3
 $inv = [Globalization.CultureInfo]::InvariantCulture
 function Format-Utc([DateTime]$Value) { $Value.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', $inv) }
 function Read-Utc([string]$Value) { [DateTime]::Parse($Value, $inv, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime() }
@@ -79,10 +79,17 @@ public static class LicenseMeterAuditPolicy {
     }
     $root = Join-Path $env:ProgramData 'LicenseMeter'
     $folder = Join-Path $root 'Metering'
+    $foreignOwner = $false
     foreach ($path in @($root, $folder)) {
         Assert-NoReparsePoint $path
         [void][IO.Directory]::CreateDirectory($path)
+        # A standard user may have created the folder first. As its owner they
+        # could grant themselves access again, so take ownership and do not
+        # trust a checkpoint that was already inside.
+        $owner = (Get-Acl -LiteralPath $path).GetOwner([Security.Principal.SecurityIdentifier]).Value
+        if ($owner -notin @('S-1-5-18', 'S-1-5-32-544')) { $foreignOwner = $true }
         $acl = New-Object Security.AccessControl.DirectorySecurity
+        $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
         $acl.SetAccessRuleProtection($true, $false)
         foreach ($sid in @('S-1-5-18', 'S-1-5-32-544')) {
             $account = New-Object Security.Principal.SecurityIdentifier($sid)
@@ -96,6 +103,7 @@ public static class LicenseMeterAuditPolicy {
     if (Test-Path -LiteralPath $legacy) { Remove-Item -LiteralPath $legacy -Force }
     $stateFile = Join-Path $folder 'usage-v2.json'
     Assert-NoReparsePoint $stateFile
+    if ($foreignOwner -and (Test-Path -LiteralPath $stateFile)) { Remove-Item -LiteralPath $stateFile -Force }
     $health = 'ok'
     $previous = $null
     if (Test-Path -LiteralPath $stateFile) {
@@ -148,9 +156,11 @@ public static class LicenseMeterAuditPolicy {
         if (-not $previous) { $coverage = $now }
         # Older checkpoints did not count per day; counting starts now.
         if (-not $daysSince) { $daysSince = $now }
-        # Programs added to the list are watched from now on.
+        # Programs added to the list are watched from now on. Everything this
+        # run scans happened before that, so it does not count for them.
+        $added = @{}
         foreach ($exe in $watch.Keys) {
-            if (-not $apps.ContainsKey($exe)) { $apps[$exe] = @{ last = $null; since = $now; hours = @{}; days = @{} } }
+            if (-not $apps.ContainsKey($exe)) { $apps[$exe] = @{ last = $null; since = $now; hours = @{}; days = @{} }; $added[$exe] = $true }
         }
         $upper = [long]$newest.RecordId
         $lower = $upper # First run establishes coverage now, never backdates it.
@@ -198,7 +208,7 @@ public static class LicenseMeterAuditPolicy {
                         }
                         if ($event.Id -eq 4688) {
                             $exe = [IO.Path]::GetFileName($fields['NewProcessName']).ToLowerInvariant()
-                            if ($watch.ContainsKey($exe)) {
+                            if ($watch.ContainsKey($exe) -and -not $added.ContainsKey($exe)) {
                                 $started = $event.TimeCreated.ToUniversalTime()
                                 if ($started -le $now) {
                                     $entry = $apps[$exe]

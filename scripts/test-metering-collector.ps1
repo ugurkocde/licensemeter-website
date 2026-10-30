@@ -74,10 +74,18 @@ try {
         if (-not $whoami -or $whoami[2] -lt 3 -or (Today-Starts $whoami) -lt 3) { throw "Program starts were not counted: $($result | ConvertTo-Json -Compress -Depth 5)" }
     }
     # A new app list keeps coverage, forgets removed programs and watches new ones from now.
+    & hostname.exe | Out-Null
+    Start-Sleep -Seconds 3
     $updated = Read-Collector $second 'en-US'
     if ($updated.c -ne 'a0000002' -or $updated.s -ne $result.s) { throw 'App list update lost coverage.' }
     if (Find-Entry $updated 'visio.exe') { throw 'A removed program was still reported.' }
     if (-not $updated.w -or -not $updated.w.'hostname.exe') { throw 'A new program has no watch start.' }
+    if (Find-Entry $updated 'hostname.exe') { throw 'A start from before the program was watched was counted.' }
+    & hostname.exe | Out-Null
+    Start-Sleep -Seconds 3
+    $watched = Read-Collector $second 'en-US'
+    $hostname = Find-Entry $watched 'hostname.exe'
+    if (-not $hostname -or $hostname[2] -ne 1) { throw "A start after the program was added was not counted once: $($watched | ConvertTo-Json -Compress -Depth 5)" }
     # Two overlapping runs, as Intune can start on demand and on schedule: both succeed.
     $jobs = 1..2 | ForEach-Object { Start-Job -ScriptBlock { param($Path, $Data) $env:ProgramData = $Data; (& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Path | Out-String).Trim() } -ArgumentList $second, $folder }
     foreach ($output in @($jobs | Wait-Job | Receive-Job)) {
@@ -103,11 +111,19 @@ try {
     $paused = Read-Collector $second 'en-US'
     if ($paused.h -ne 'log_gap' -or $paused.s -ne $paused.e) { throw "Paused auditing kept coverage: $($paused | ConvertTo-Json -Compress -Depth 5)" }
     if (-not (Find-Entry $paused 'whoami.exe')) { throw 'A coverage restart lost earlier starts.' }
+    # A checkpoint folder owned by a standard user may hold a forged checkpoint:
+    # the collector takes ownership and starts over.
+    $meteringFolder = Join-Path $folder 'LicenseMeter/Metering'
+    & icacls.exe $meteringFolder /setowner '*S-1-5-32-545' | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot hand the checkpoint folder to Users.' }
+    $reclaimed = Read-Collector $second 'en-US'
+    if ($reclaimed.h -ne 'ok' -or (Find-Entry $reclaimed 'whoami.exe')) { throw "A checkpoint from a foreign-owned folder was trusted: $($reclaimed | ConvertTo-Json -Compress -Depth 5)" }
+    if ((Get-Acl $meteringFolder).GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544') { throw 'The collector did not take ownership of its folder.' }
     Set-ProcessAudit 'disable'
     $disabled = Read-Collector $second 'en-US'
     if ($disabled.h -ne 'audit_disabled' -or @($disabled.a).Count -ne 0) { throw 'Disabled auditing was not reported.' }
     if (Test-Path $stateFile) { throw 'Disabled audit checkpoint was retained.' }
-    Write-Output 'Windows PowerShell 5.1 collector: syntax, start evidence and counts, starts per day, locale, app list update, continuity, audit policy re-apply, paused and disabled-audit checks passed.'
+    Write-Output 'Windows PowerShell 5.1 collector: syntax, start evidence and counts, starts per day, locale, app list update, starts before a program was watched, continuity, audit policy re-apply, paused, foreign folder owner and disabled-audit checks passed.'
 } finally {
     $env:ProgramData = $previousData
     & auditpol.exe /restore "/file:$backup" | Out-Null
