@@ -479,6 +479,30 @@ describe("live metering reads", () => {
     expect(response.status).toBe(502);
     expect((await conn())?.revision).toBe(connection.revision);
   });
+  it("moves the generation when Intune creates the collector but cannot assign it", async () => {
+    const connection = await seedConnection();
+    await database
+      .update(schema.meteringConnections)
+      .set({ programOverrides: { [appId]: ["acad.exe"] } })
+      .where(eq(schema.meteringConnections.tenantId, tenantId));
+    liveClient = {
+      ...source(),
+      canWrite: true,
+      collectors: vi.fn(async () => []),
+      createCollector: vi.fn(async () => {
+        throw new Error("Created, but the assignment failed");
+      }),
+    };
+    const response = await action(
+      new Request("https://app.test/api/metering", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "deploy", assign: "all" }),
+      }),
+    );
+    expect(response.status).toBe(502);
+    expect((await conn())?.revision).toBe(connection.revision + 1);
+  });
   it("expires cached reads after five minutes without another read", async () => {
     vi.useFakeTimers();
     try {

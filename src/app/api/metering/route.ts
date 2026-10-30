@@ -256,18 +256,26 @@ export async function POST(req: Request) {
           requestDeadline(),
         );
         if (data.action === "deploy") {
-          await client.createCollector(generated.script, data.assign === "all");
+          try {
+            await client.createCollector(
+              generated.script,
+              data.assign === "all",
+            );
+          } finally {
+            // The package can exist in Intune even when its assignment failed.
+            await collectorWritten(connection);
+          }
           await audit(ctx, "metering_collector_created", {
             assigned: data.assign,
             programs: generated.programs.length,
           });
         } else {
           await client.updateCollector(chosen!.id, generated.script);
+          await collectorWritten(connection);
           await audit(ctx, "metering_collector_updated", {
             programs: generated.programs.length,
           });
         }
-        await collectorWritten(connection);
       } else if (data.action === "app") {
         const overrides = { ...connection.programOverrides };
         if (data.programs !== undefined) {
