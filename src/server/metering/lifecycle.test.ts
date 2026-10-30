@@ -20,6 +20,7 @@ let database: ReturnType<typeof makeDb>;
 const client = new PGlite();
 const access = vi.fn();
 const verify = vi.fn();
+let liveClient: unknown = null;
 vi.mock("~/env", () => ({
   env: { METERING_CLIENT_ID: "metering-client" },
   appBaseUrl: () => "https://app.test",
@@ -49,6 +50,7 @@ vi.mock("~/server/metering/graph", async (original) => ({
   meteringConfigured: () => true,
   verifyMeteringConsent: verify,
   meteringClient: () => {
+    if (liveClient) return liveClient;
     throw new Error("Live calls are forbidden in this test");
   },
 }));
@@ -160,6 +162,7 @@ beforeEach(async () => {
     .insert(schema.tenants)
     .values({ id: tenantId, name: "Test", tid, consentedAt: new Date() });
   vi.clearAllMocks();
+  liveClient = null;
   access.mockResolvedValue(ctx());
   verify.mockResolvedValue(undefined);
 });
@@ -416,6 +419,65 @@ describe("live metering reads", () => {
     expect((await conn())?.excludedApps).toEqual([
       "00000000-0000-4000-8000-000000000001",
     ]);
+  });
+  it("moves every cached read to a new generation after writing the collector", async () => {
+    const connection = await seedConnection();
+    await database
+      .update(schema.meteringConnections)
+      .set({ programOverrides: { [appId]: ["acad.exe"] } })
+      .where(eq(schema.meteringConnections.tenantId, tenantId));
+    const graph = {
+      ...source(),
+      canWrite: true,
+      collectors: vi.fn(async () => [
+        {
+          id: scriptId,
+          name: "Collector",
+          catalogId: "a1b2c3d4",
+          programs: ["acad.exe"],
+          release: COLLECTOR_RELEASE - 1,
+        },
+      ]),
+      updateCollector: vi.fn(async () => undefined),
+    };
+    liveClient = graph;
+    // A page in another process still holds the read from before the update.
+    await readMetering(connection, { source: graph });
+    const response = await action(
+      new Request("https://app.test/api/metering", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update" }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(graph.updateCollector).toHaveBeenCalledOnce();
+    const after = await conn();
+    expect(after?.revision).toBe(connection.revision + 1);
+    expect(after?.collectors).toHaveLength(1);
+  });
+  it("keeps the generation when Intune rejects the collector update", async () => {
+    const connection = await seedConnection();
+    await database
+      .update(schema.meteringConnections)
+      .set({ programOverrides: { [appId]: ["acad.exe"] } })
+      .where(eq(schema.meteringConnections.tenantId, tenantId));
+    liveClient = {
+      ...source(),
+      canWrite: true,
+      updateCollector: vi.fn(async () => {
+        throw new Error("Intune rejected the script");
+      }),
+    };
+    const response = await action(
+      new Request("https://app.test/api/metering", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update" }),
+      }),
+    );
+    expect(response.status).toBe(502);
+    expect((await conn())?.revision).toBe(connection.revision);
   });
   it("expires cached reads after five minutes without another read", async () => {
     vi.useFakeTimers();

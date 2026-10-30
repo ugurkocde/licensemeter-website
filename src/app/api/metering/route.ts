@@ -67,6 +67,24 @@ const command = z.discriminatedUnion("action", [
 type MeteringConnection = typeof meteringConnections.$inferSelect;
 
 /**
+ * After LicenseMeter writes the collector to Intune. forgetMetering only
+ * clears this process, and the page can render in another one that still
+ * holds the previous read, so a new revision moves every cache to a new key.
+ */
+async function collectorWritten(connection: MeteringConnection) {
+  await db
+    .update(meteringConnections)
+    .set({ revision: sql`${meteringConnections.revision} + 1` })
+    .where(
+      and(
+        eq(meteringConnections.tenantId, connection.tenantId),
+        eq(meteringConnections.id, connection.id),
+      ),
+    );
+  forgetMetering(connection.id);
+}
+
+/**
  * After an app setting is saved: writes the new program list to the collector
  * in Intune, or leaves it alone when neither the list nor the collector changed.
  */
@@ -90,11 +108,11 @@ async function updateAfterSave(
     generated.id !== chosen.catalogId || chosen.release < COLLECTOR_RELEASE;
   if (changed) {
     await client.updateCollector(chosen.id, generated.script);
+    await collectorWritten(connection);
     await audit(ctx, "metering_collector_updated", {
       programs: generated.programs.length,
     });
-  }
-  forgetMetering(connection.id);
+  } else forgetMetering(connection.id);
   revalidatePath("/app/metering", "layout");
   return NextResponse.json({
     ok: true,
@@ -249,7 +267,7 @@ export async function POST(req: Request) {
             programs: generated.programs.length,
           });
         }
-        forgetMetering(connection.id);
+        await collectorWritten(connection);
       } else if (data.action === "app") {
         const overrides = { ...connection.programOverrides };
         if (data.programs !== undefined) {
