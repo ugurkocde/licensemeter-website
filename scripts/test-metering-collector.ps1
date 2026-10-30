@@ -112,18 +112,31 @@ try {
     if ($paused.h -ne 'log_gap' -or $paused.s -ne $paused.e) { throw "Paused auditing kept coverage: $($paused | ConvertTo-Json -Compress -Depth 5)" }
     if (-not (Find-Entry $paused 'whoami.exe')) { throw 'A coverage restart lost earlier starts.' }
     # A checkpoint folder owned by a standard user may hold a forged checkpoint:
-    # the collector takes ownership and starts over.
+    # the collector takes ownership and starts over. While a handle keeps the
+    # checkpoint from being deleted, it is not read on any later run either.
     $meteringFolder = Join-Path $folder 'LicenseMeter/Metering'
     & icacls.exe $meteringFolder /setowner '*S-1-5-32-545' | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Cannot hand the checkpoint folder to Users.' }
+    $held = [IO.File]::Open($stateFile, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try { $blocked = (& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $second | Out-String).Trim() | ConvertFrom-Json }
+    finally { $held.Dispose() }
+    if ($blocked.h -ne 'collector_error') { throw "A held checkpoint did not stop the reset: $($blocked | ConvertTo-Json -Compress -Depth 5)" }
     $reclaimed = Read-Collector $second 'en-US'
     if ($reclaimed.h -ne 'ok' -or (Find-Entry $reclaimed 'whoami.exe')) { throw "A checkpoint from a foreign-owned folder was trusted: $($reclaimed | ConvertTo-Json -Compress -Depth 5)" }
     if ((Get-Acl $meteringFolder).GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544') { throw 'The collector did not take ownership of its folder.' }
+    # A folder that shuts SYSTEM and Administrators out is taken back as well.
+    & icacls.exe $meteringFolder /setowner '*S-1-5-32-545' | Out-Null
+    & icacls.exe $meteringFolder /inheritance:r /grant:r '*S-1-5-32-545:(OI)(CI)F' | Out-Null
+    & icacls.exe $meteringFolder /remove:g '*S-1-5-18' '*S-1-5-32-544' | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot shut Administrators out of the checkpoint folder.' }
+    $recovered = Read-Collector $second 'en-US'
+    if ($recovered.h -ne 'ok') { throw "A folder that shut out Administrators was not recovered: $($recovered | ConvertTo-Json -Compress -Depth 5)" }
+    if ((Get-Acl $meteringFolder).GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544') { throw 'The collector did not take back a folder that shut it out.' }
     Set-ProcessAudit 'disable'
     $disabled = Read-Collector $second 'en-US'
     if ($disabled.h -ne 'audit_disabled' -or @($disabled.a).Count -ne 0) { throw 'Disabled auditing was not reported.' }
     if (Test-Path $stateFile) { throw 'Disabled audit checkpoint was retained.' }
-    Write-Output 'Windows PowerShell 5.1 collector: syntax, start evidence and counts, starts per day, locale, app list update, starts before a program was watched, continuity, audit policy re-apply, paused, foreign folder owner and disabled-audit checks passed.'
+    Write-Output 'Windows PowerShell 5.1 collector: syntax, start evidence and counts, starts per day, locale, app list update, starts before a program was watched, continuity, audit policy re-apply, paused, foreign folder owner, held checkpoint, locked-out folder and disabled-audit checks passed.'
 } finally {
     $env:ProgramData = $previousData
     & auditpol.exe /restore "/file:$backup" | Out-Null

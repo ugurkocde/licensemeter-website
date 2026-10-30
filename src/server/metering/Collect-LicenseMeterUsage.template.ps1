@@ -86,7 +86,14 @@ public static class LicenseMeterAuditPolicy {
         # A standard user may have created the folder first. As its owner they
         # could grant themselves access again, so take ownership and do not
         # trust a checkpoint that was already inside.
-        $owner = (Get-Acl -LiteralPath $path).GetOwner([Security.Principal.SecurityIdentifier]).Value
+        try { $owner = (Get-Acl -LiteralPath $path -ErrorAction Stop).GetOwner([Security.Principal.SecurityIdentifier]).Value }
+        catch {
+            # The folder shuts SYSTEM out. Taking ownership restores the right
+            # to replace its permissions below.
+            & takeown.exe /F $path /A | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot take ownership of the checkpoint folder.' }
+            $owner = $null
+        }
         if ($owner -notin @('S-1-5-18', 'S-1-5-32-544')) { $foreignOwner = $true }
         $acl = New-Object Security.AccessControl.DirectorySecurity
         $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
@@ -103,7 +110,15 @@ public static class LicenseMeterAuditPolicy {
     if (Test-Path -LiteralPath $legacy) { Remove-Item -LiteralPath $legacy -Force }
     $stateFile = Join-Path $folder 'usage-v2.json'
     Assert-NoReparsePoint $stateFile
-    if ($foreignOwner -and (Test-Path -LiteralPath $stateFile)) { Remove-Item -LiteralPath $stateFile -Force }
+    # A checkpoint from a foreign-owned folder is never read, even when an open
+    # handle keeps this run from deleting it: the marker stays until it is gone.
+    # CreateNew never writes through a file or link planted under that name.
+    $reset = Join-Path $folder 'reset'
+    if ($foreignOwner -and -not (Test-Path -LiteralPath $reset)) { [IO.File]::Open($reset, [IO.FileMode]::CreateNew).Dispose() }
+    if (Test-Path -LiteralPath $reset) {
+        if (Test-Path -LiteralPath $stateFile) { Remove-Item -LiteralPath $stateFile -Force }
+        Remove-Item -LiteralPath $reset -Force
+    }
     $health = 'ok'
     $previous = $null
     if (Test-Path -LiteralPath $stateFile) {
