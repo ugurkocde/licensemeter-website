@@ -121,9 +121,11 @@ try {
     try { $blocked = (& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $second | Out-String).Trim() | ConvertFrom-Json }
     finally { $held.Dispose() }
     if ($blocked.h -ne 'collector_error') { throw "A held checkpoint did not stop the reset: $($blocked | ConvertTo-Json -Compress -Depth 5)" }
+    if (-not (Test-Path 'HKLM:\SOFTWARE\LicenseMeterMeteringReset')) { throw 'A failed reset was not kept pending in the registry.' }
     $reclaimed = Read-Collector $second 'en-US'
     if ($reclaimed.h -ne 'ok' -or (Find-Entry $reclaimed 'whoami.exe')) { throw "A checkpoint from a foreign-owned folder was trusted: $($reclaimed | ConvertTo-Json -Compress -Depth 5)" }
     if ((Get-Acl $meteringFolder).GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544') { throw 'The collector did not take ownership of its folder.' }
+    if (Test-Path 'HKLM:\SOFTWARE\LicenseMeterMeteringReset') { throw 'A completed reset stayed pending.' }
     # A folder that shuts SYSTEM and Administrators out is taken back as well.
     & icacls.exe $meteringFolder /setowner '*S-1-5-32-545' | Out-Null
     & icacls.exe $meteringFolder /inheritance:r /grant:r '*S-1-5-32-545:(OI)(CI)F' | Out-Null

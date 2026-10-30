@@ -7,7 +7,8 @@ copy when LicenseMeter reports that the app list changed.
 Deploy as an Intune Remediations DETECTION-only script, SYSTEM, 64-bit, hourly.
 Enable Audit Process Creation (Success) separately through approved policy.
 Does not configure auditing, contact a network endpoint, or collect user names,
-command lines, paths or raw events. Writes only its own local checkpoint.
+command lines, paths or raw events. Writes only its own local checkpoint, and a
+registry key while it resets a checkpoint from a folder someone else created.
 Output describes program starts, not foreground use, installation or licensing.
 See https://docs.licensemeter.com/connectors/windows-metering/
 #>
@@ -79,22 +80,26 @@ public static class LicenseMeterAuditPolicy {
     }
     $root = Join-Path $env:ProgramData 'LicenseMeter'
     $folder = Join-Path $root 'Metering'
-    $foreignOwner = $false
+    $resetKey = 'HKLM:\SOFTWARE\LicenseMeterMeteringReset'
     foreach ($path in @($root, $folder)) {
         Assert-NoReparsePoint $path
         [void][IO.Directory]::CreateDirectory($path)
         # A standard user may have created the folder first. As its owner they
         # could grant themselves access again, so take ownership and do not
         # trust a checkpoint that was already inside.
-        try { $owner = (Get-Acl -LiteralPath $path -ErrorAction Stop).GetOwner([Security.Principal.SecurityIdentifier]).Value }
-        catch {
-            # The folder shuts SYSTEM out. Taking ownership restores the right
-            # to replace its permissions below.
-            & takeown.exe /F $path /A | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw 'Cannot take ownership of the checkpoint folder.' }
-            $owner = $null
+        # A folder that shuts SYSTEM out cannot be read; it is foreign too.
+        try { $owner = (Get-Acl -LiteralPath $path -ErrorAction Stop).GetOwner([Security.Principal.SecurityIdentifier]).Value } catch { $owner = $null }
+        if ($owner -notin @('S-1-5-18', 'S-1-5-32-544')) {
+            # Record the reset where standard users cannot write, before the
+            # folder is touched, so neither a failed run nor anything planted
+            # in the folder can skip it.
+            if (-not (Test-Path -LiteralPath $resetKey)) { [void](New-Item -Path $resetKey -Force) }
+            if ($null -eq $owner) {
+                # Taking ownership restores the right to replace its permissions.
+                & takeown.exe /F $path /A | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw 'Cannot take ownership of the checkpoint folder.' }
+            }
         }
-        if ($owner -notin @('S-1-5-18', 'S-1-5-32-544')) { $foreignOwner = $true }
         $acl = New-Object Security.AccessControl.DirectorySecurity
         $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
         $acl.SetAccessRuleProtection($true, $false)
@@ -111,13 +116,10 @@ public static class LicenseMeterAuditPolicy {
     $stateFile = Join-Path $folder 'usage-v2.json'
     Assert-NoReparsePoint $stateFile
     # A checkpoint from a foreign-owned folder is never read, even when an open
-    # handle keeps this run from deleting it: the marker stays until it is gone.
-    # CreateNew never writes through a file or link planted under that name.
-    $reset = Join-Path $folder 'reset'
-    if ($foreignOwner -and -not (Test-Path -LiteralPath $reset)) { [IO.File]::Open($reset, [IO.FileMode]::CreateNew).Dispose() }
-    if (Test-Path -LiteralPath $reset) {
+    # handle keeps this run from deleting it: the reset stays pending until then.
+    if (Test-Path -LiteralPath $resetKey) {
         if (Test-Path -LiteralPath $stateFile) { Remove-Item -LiteralPath $stateFile -Force }
-        Remove-Item -LiteralPath $reset -Force
+        Remove-Item -LiteralPath $resetKey -Force
     }
     $health = 'ok'
     $previous = $null
