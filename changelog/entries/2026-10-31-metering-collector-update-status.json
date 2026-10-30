@@ -1,0 +1,7 @@
+{
+  "title": "Setup shows the updated collector right after you update it in Intune",
+  "summary": "After you update or create the Software Metering collector from Setup, the page now shows the new collector straight away. Before, it could keep offering the update for a few minutes until the page was reloaded, even though Intune already had the new version.",
+  "type": "fixed",
+  "publishedOn": "2026-10-31",
+  "idempotencyKey": "licensemeter:2026-10-31-metering-collector-update-status"
+}
