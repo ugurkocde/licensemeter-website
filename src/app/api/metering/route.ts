@@ -67,12 +67,15 @@ const command = z.discriminatedUnion("action", [
 type MeteringConnection = typeof meteringConnections.$inferSelect;
 
 /**
- * After LicenseMeter writes the collector to Intune. forgetMetering only
- * clears this process, and the page can render in another one that still
- * holds the previous read, so a new revision moves every cache to a new key.
+ * After LicenseMeter writes the collector to Intune or an Admin asks for the
+ * latest results. forgetMetering only clears this process, and the page can
+ * render in another one that still holds the previous read, so a new revision
+ * moves every cache to a new key.
  */
-async function collectorWritten(connection: MeteringConnection) {
-  await db
+async function newReadGeneration(
+  connection: MeteringConnection,
+): Promise<MeteringConnection> {
+  const [next] = await db
     .update(meteringConnections)
     .set({ revision: sql`${meteringConnections.revision} + 1` })
     .where(
@@ -80,8 +83,10 @@ async function collectorWritten(connection: MeteringConnection) {
         eq(meteringConnections.tenantId, connection.tenantId),
         eq(meteringConnections.id, connection.id),
       ),
-    );
+    )
+    .returning();
   forgetMetering(connection.id);
+  return next ?? connection;
 }
 
 /**
@@ -108,7 +113,7 @@ async function updateAfterSave(
     generated.id !== chosen.catalogId || chosen.release < COLLECTOR_RELEASE;
   if (changed) {
     await client.updateCollector(chosen.id, generated.script);
-    await collectorWritten(connection);
+    await newReadGeneration(connection);
     await audit(ctx, "metering_collector_updated", {
       programs: generated.programs.length,
     });
@@ -263,7 +268,7 @@ export async function POST(req: Request) {
             );
           } finally {
             // The package can exist in Intune even when its assignment failed.
-            await collectorWritten(connection);
+            await newReadGeneration(connection);
           }
           await audit(ctx, "metering_collector_created", {
             assigned: data.assign,
@@ -271,7 +276,7 @@ export async function POST(req: Request) {
           });
         } else {
           await client.updateCollector(chosen!.id, generated.script);
-          await collectorWritten(connection);
+          await newReadGeneration(connection);
           await audit(ctx, "metering_collector_updated", {
             programs: generated.programs.length,
           });
@@ -319,8 +324,8 @@ export async function POST(req: Request) {
           }
         }
       } else {
-        // A fresh live read replaces the cached one; nothing is written.
-        await readMetering(connection, {
+        // A fresh live read under a new generation; nothing is written to Intune.
+        await readMetering(await newReadGeneration(connection), {
           deadline: requestDeadline(),
           fresh: true,
         });
