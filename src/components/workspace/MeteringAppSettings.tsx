@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "~/components/ui";
 
@@ -31,8 +31,13 @@ export function MeteringAppSettings({
   updateIntune: boolean;
 }) {
   const router = useRouter();
-  const [input, setInput] = useState(programs.join(", "));
-  const [metered, setMetered] = useState(!excluded);
+  // Unsaved edits only; otherwise the form shows the saved settings, so a
+  // refresh of the Intune results never discards what the admin is typing.
+  const [draft, setDraft] = useState<string | null>(null);
+  const [meteredDraft, setMeteredDraft] = useState<boolean | null>(null);
+  const [, startTransition] = useTransition();
+  const input = draft ?? programs.join(", ");
+  const metered = meteredDraft ?? !excluded;
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState(false);
@@ -69,7 +74,13 @@ export function MeteringAppSettings({
             ? "Saved and updated in Intune. Devices use it from their next hourly run."
             : "Saved. The collector in Intune already matches.",
       );
-      router.refresh();
+      // Drop the drafts together with the refresh, so the form shows the saved
+      // settings as soon as they arrive.
+      startTransition(() => {
+        router.refresh();
+        setDraft(null);
+        setMeteredDraft(null);
+      });
     } catch (err) {
       setError(true);
       setMessage(err instanceof Error ? err.message : "Could not save.");
@@ -90,7 +101,7 @@ export function MeteringAppSettings({
         <input
           type="checkbox"
           checked={metered}
-          onChange={(event) => setMetered(event.target.checked)}
+          onChange={(event) => setMeteredDraft(event.target.checked)}
         />
         Meter this app
       </label>
@@ -100,7 +111,7 @@ export function MeteringAppSettings({
           value={input}
           disabled={!metered}
           placeholder="example.exe"
-          onChange={(event) => setInput(event.target.value)}
+          onChange={(event) => setDraft(event.target.value)}
           className="border-line-input bg-card mt-1 block min-h-11 w-full rounded-lg border px-3 font-mono text-sm disabled:opacity-50"
         />
         <span className="text-ink-faint mt-1 block text-xs">
