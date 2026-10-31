@@ -349,8 +349,10 @@ export default async function MeteringAppsPage({
                 {editable && (
                   <div className="border-line border-t pt-4">
                     <h3 className="mb-3 text-sm font-medium">Settings</h3>
+                    {/* Keyed by the saved settings: a save resets the form, a
+                        refresh of the Intune results keeps an unsaved edit. */}
                     <MeteringAppSettings
-                      key={`${entry.id}:${connection?.revision}`}
+                      key={`${entry.id}:${entry.excluded}:${entry.source}:${entry.programs.join(",")}`}
                       id={entry.id}
                       programs={entry.programs}
                       source={entry.source}
