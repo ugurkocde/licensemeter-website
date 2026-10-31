@@ -350,7 +350,7 @@ export default async function MeteringAppsPage({
                   <div className="border-line border-t pt-4">
                     <h3 className="mb-3 text-sm font-medium">Settings</h3>
                     <MeteringAppSettings
-                      key={`${entry.id}:${connection?.revision}`}
+                      key={entry.id}
                       id={entry.id}
                       programs={entry.programs}
                       source={entry.source}

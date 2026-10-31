@@ -1,0 +1,7 @@
+{
+  "title": "Read latest results always shows the newest Intune data",
+  "summary": "Selecting Read latest results in Software Metering now always shows what Intune reports at that moment. Before, the page could occasionally keep showing results from a few minutes earlier until it was reloaded.",
+  "type": "fixed",
+  "publishedOn": "2026-10-31",
+  "idempotencyKey": "licensemeter:2026-10-31-metering-read-latest-results"
+}

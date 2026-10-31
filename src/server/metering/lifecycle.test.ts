@@ -355,6 +355,24 @@ describe("live metering reads", () => {
     expect(response.status).toBe(502);
     expect(JSON.stringify(await response.json())).not.toContain("forbidden");
   });
+  it("reads the latest results under a new generation every process sees", async () => {
+    const connection = await seedConnection();
+    liveClient = source();
+    const response = await action(
+      new Request("https://app.test/api/metering", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "refresh" }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const after = await conn();
+    expect(after?.revision).toBe(connection.revision + 1);
+    // The page in this process reuses the read the refresh just made.
+    const graph = source();
+    await readMetering(after!, { source: graph });
+    expect(graph.states).not.toHaveBeenCalled();
+  });
   const saveApp = (body: object) =>
     action(
       new Request("https://app.test/api/metering", {
