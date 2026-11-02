@@ -565,49 +565,51 @@ export const runSync = async (
     const joined = joinSignals({ graphUsers, usageRows, copilotRows, hasP1 });
 
     // --- Persist phase (upsert + prune; no destructive window) -------------
-    if (skus.length > 0) {
-      for (const batch of chunk(skus, 250)) {
-        await db
-          .insert(tenantSkus)
-          .values(
-            batch.map((s) => ({
-              tenantId,
-              skuId: s.skuId,
-              skuPartNumber: s.skuPartNumber,
-              displayName: skuDisplayName(s.skuId, s.skuPartNumber),
-              prepaidEnabled: s.prepaidUnits.enabled,
-              prepaidSuspended: s.prepaidUnits.suspended,
-              prepaidWarning: s.prepaidUnits.warning,
-              consumedUnits: s.consumedUnits,
-              updatedAt: now,
-            })),
-          )
-          .onConflictDoUpdate({
-            target: [tenantSkus.tenantId, tenantSkus.skuId],
-            set: {
-              skuPartNumber: sql`excluded.sku_part_number`,
-              displayName: sql`excluded.display_name`,
-              prepaidEnabled: sql`excluded.prepaid_enabled`,
-              prepaidSuspended: sql`excluded.prepaid_suspended`,
-              prepaidWarning: sql`excluded.prepaid_warning`,
-              consumedUnits: sql`excluded.consumed_units`,
-              updatedAt: sql`excluded.updated_at`,
-            },
-          });
+    await db.transaction(async (tx) => {
+      if (skus.length > 0) {
+        for (const batch of chunk(skus, 250)) {
+          await tx
+            .insert(tenantSkus)
+            .values(
+              batch.map((s) => ({
+                tenantId,
+                skuId: s.skuId,
+                skuPartNumber: s.skuPartNumber,
+                displayName: skuDisplayName(s.skuId, s.skuPartNumber),
+                prepaidEnabled: s.prepaidUnits.enabled,
+                prepaidSuspended: s.prepaidUnits.suspended,
+                prepaidWarning: s.prepaidUnits.warning,
+                consumedUnits: s.consumedUnits,
+                updatedAt: now,
+              })),
+            )
+            .onConflictDoUpdate({
+              target: [tenantSkus.tenantId, tenantSkus.skuId],
+              set: {
+                skuPartNumber: sql`excluded.sku_part_number`,
+                displayName: sql`excluded.display_name`,
+                prepaidEnabled: sql`excluded.prepaid_enabled`,
+                prepaidSuspended: sql`excluded.prepaid_suspended`,
+                prepaidWarning: sql`excluded.prepaid_warning`,
+                consumedUnits: sql`excluded.consumed_units`,
+                updatedAt: sql`excluded.updated_at`,
+              },
+            });
+        }
       }
-    }
-    // Prune only when Graph returned data; an empty result keeps the last
-    // known inventory instead of wiping it (defensive against odd responses).
-    if (skus.length > 0) {
-      await db
-        .delete(tenantSkus)
-        .where(
-          and(
-            eq(tenantSkus.tenantId, tenantId),
-            notInArray(tenantSkus.skuId, textSet(skus.map((s) => s.skuId))),
-          ),
-        );
-    }
+      // Prune only when Graph returned data; an empty result keeps the last
+      // known inventory instead of wiping it (defensive against odd responses).
+      if (skus.length > 0) {
+        await tx
+          .delete(tenantSkus)
+          .where(
+            and(
+              eq(tenantSkus.tenantId, tenantId),
+              notInArray(tenantSkus.skuId, textSet(skus.map((s) => s.skuId))),
+            ),
+          );
+      }
+    });
 
     for (const batch of chunk(joined.users, 250)) {
       await db
@@ -662,102 +664,106 @@ export const runSync = async (
 
     // Persist Adobe users (upsert + prune) when the connector is active.
     if (adobeActive) {
-      if (adobeRows.length > 0) {
-        for (const batch of chunk(adobeRows, 250)) {
-          await db
-            .insert(adobeUsersTable)
-            .values(
-              batch.map((u) => ({
-                tenantId,
-                email: u.email.toLowerCase(),
-                status: u.status,
-                products: u.products,
-                syncedAt: now,
-              })),
-            )
-            .onConflictDoUpdate({
-              target: [adobeUsersTable.tenantId, adobeUsersTable.email],
-              set: {
-                status: sql`excluded.status`,
-                products: sql`excluded.products`,
-                syncedAt: sql`excluded.synced_at`,
-              },
-            });
-        }
-        await db
-          .delete(adobeUsersTable)
-          .where(
-            and(
-              eq(adobeUsersTable.tenantId, tenantId),
-              notInArray(
-                adobeUsersTable.email,
-                textSet(adobeRows.map((u) => u.email.toLowerCase())),
+      await db.transaction(async (tx) => {
+        if (adobeRows.length > 0) {
+          for (const batch of chunk(adobeRows, 250)) {
+            await tx
+              .insert(adobeUsersTable)
+              .values(
+                batch.map((u) => ({
+                  tenantId,
+                  email: u.email.toLowerCase(),
+                  status: u.status,
+                  products: u.products,
+                  syncedAt: now,
+                })),
+              )
+              .onConflictDoUpdate({
+                target: [adobeUsersTable.tenantId, adobeUsersTable.email],
+                set: {
+                  status: sql`excluded.status`,
+                  products: sql`excluded.products`,
+                  syncedAt: sql`excluded.synced_at`,
+                },
+              });
+          }
+          await tx
+            .delete(adobeUsersTable)
+            .where(
+              and(
+                eq(adobeUsersTable.tenantId, tenantId),
+                notInArray(
+                  adobeUsersTable.email,
+                  textSet(adobeRows.map((u) => u.email.toLowerCase())),
+                ),
               ),
-            ),
-          );
-      } else {
-        await db
-          .delete(adobeUsersTable)
-          .where(eq(adobeUsersTable.tenantId, tenantId));
-      }
+            );
+        } else {
+          await tx
+            .delete(adobeUsersTable)
+            .where(eq(adobeUsersTable.tenantId, tenantId));
+        }
+      });
     }
 
     // Persist SaaS seats (upsert + prune) for providers that fetched cleanly.
     for (const provider of saasPersist) {
       const seats = saasRows.get(provider) ?? [];
-      if (seats.length > 0) {
-        for (const batch of chunk(seats, 250)) {
-          await db
-            .insert(saasSeatsTable)
-            .values(
-              batch.map((s) => ({
-                tenantId,
-                provider,
-                email: s.email.toLowerCase(),
-                displayName: s.displayName,
-                status: s.status,
-                products: s.products,
-                lastActiveAt: s.lastActiveAt,
-                syncedAt: now,
-              })),
-            )
-            .onConflictDoUpdate({
-              target: [
-                saasSeatsTable.tenantId,
-                saasSeatsTable.provider,
-                saasSeatsTable.email,
-              ],
-              set: {
-                displayName: sql`excluded.display_name`,
-                status: sql`excluded.status`,
-                products: sql`excluded.products`,
-                lastActiveAt: sql`excluded.last_active_at`,
-                syncedAt: sql`excluded.synced_at`,
-              },
-            });
-        }
-        await db
-          .delete(saasSeatsTable)
-          .where(
-            and(
-              eq(saasSeatsTable.tenantId, tenantId),
-              eq(saasSeatsTable.provider, provider),
-              notInArray(
-                saasSeatsTable.email,
-                textSet(seats.map((s) => s.email.toLowerCase())),
+      await db.transaction(async (tx) => {
+        if (seats.length > 0) {
+          for (const batch of chunk(seats, 250)) {
+            await tx
+              .insert(saasSeatsTable)
+              .values(
+                batch.map((s) => ({
+                  tenantId,
+                  provider,
+                  email: s.email.toLowerCase(),
+                  displayName: s.displayName,
+                  status: s.status,
+                  products: s.products,
+                  lastActiveAt: s.lastActiveAt,
+                  syncedAt: now,
+                })),
+              )
+              .onConflictDoUpdate({
+                target: [
+                  saasSeatsTable.tenantId,
+                  saasSeatsTable.provider,
+                  saasSeatsTable.email,
+                ],
+                set: {
+                  displayName: sql`excluded.display_name`,
+                  status: sql`excluded.status`,
+                  products: sql`excluded.products`,
+                  lastActiveAt: sql`excluded.last_active_at`,
+                  syncedAt: sql`excluded.synced_at`,
+                },
+              });
+          }
+          await tx
+            .delete(saasSeatsTable)
+            .where(
+              and(
+                eq(saasSeatsTable.tenantId, tenantId),
+                eq(saasSeatsTable.provider, provider),
+                notInArray(
+                  saasSeatsTable.email,
+                  textSet(seats.map((s) => s.email.toLowerCase())),
+                ),
               ),
-            ),
-          );
-      } else {
-        await db
-          .delete(saasSeatsTable)
-          .where(
-            and(
-              eq(saasSeatsTable.tenantId, tenantId),
-              eq(saasSeatsTable.provider, provider),
-            ),
-          );
-      }
+            );
+        } else {
+          await tx
+            .delete(saasSeatsTable)
+            .where(
+              and(
+                eq(saasSeatsTable.tenantId, tenantId),
+                eq(saasSeatsTable.provider, provider),
+              ),
+            );
+        }
+      });
     }
 
     // Prefill missing price book rows from the static catalog.

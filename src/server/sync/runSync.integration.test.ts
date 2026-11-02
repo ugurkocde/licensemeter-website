@@ -1,6 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -433,6 +433,54 @@ describe("runSync against a deleted tenant", () => {
 });
 
 describe("runSync without a Microsoft connection", () => {
+  it("rolls back earlier seat batches when a later batch fails", async () => {
+    await seedTenant({ tid: null, consentedAt: null });
+    await currentDb.insert(schema.saasConnections).values({
+      tenantId: TENANT_ID,
+      provider: "zoom",
+      orgRef: "acct-1",
+      clientId: "client",
+      secretEnc: "enc",
+    });
+    await currentDb.insert(schema.saasSeats).values({
+      tenantId: TENANT_ID,
+      provider: "zoom",
+      email: "existing@contoso.test",
+      displayName: "Original",
+      status: "active",
+      products: ["Licensed"],
+    });
+    await currentDb.execute(sql`
+      create function reject_later_seat() returns trigger language plpgsql as $$
+      begin
+        if NEW.email = 'seat250@contoso.test' then
+          raise exception 'injected later batch failure';
+        end if;
+        return NEW;
+      end $$;
+    `);
+    await currentDb.execute(sql`
+      create trigger reject_later_seat before insert on saas_seats
+      for each row execute function reject_later_seat();
+    `);
+    const seats = Array.from({ length: 251 }, (_, i) => ({
+      email: i === 0 ? "existing@contoso.test" : `seat${i}@contoso.test`,
+      displayName: "Changed",
+      status: "active",
+      products: ["Licensed"],
+      lastActiveAt: null,
+    }));
+    buildSaasClientMock.mockImplementation(() =>
+      Promise.resolve({
+        getSeats: () => Promise.resolve(seats),
+      }),
+    );
+    expect((await runSync(TENANT_ID)).status).toBe("failed");
+    const stored = await currentDb.select().from(schema.saasSeats);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.displayName).toBe("Original");
+  });
+
   it("persists thousands of seats and findings without exceeding the bind limit", async () => {
     await seedTenant({ tid: null, consentedAt: null });
     await currentDb.insert(schema.saasConnections).values({
