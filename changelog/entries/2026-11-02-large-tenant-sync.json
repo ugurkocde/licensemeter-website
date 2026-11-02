@@ -1,0 +1,7 @@
+{
+  "title": "More reliable syncs for large workspaces",
+  "summary": "Fixed a database limit that could cause syncs to fail in large workspaces with many users, seats, or findings.",
+  "type": "fixed",
+  "publishedOn": "2026-11-02",
+  "idempotencyKey": "licensemeter:large-tenant-sync-2026-11-02"
+}

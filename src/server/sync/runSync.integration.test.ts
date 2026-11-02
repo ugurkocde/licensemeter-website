@@ -433,6 +433,32 @@ describe("runSync against a deleted tenant", () => {
 });
 
 describe("runSync without a Microsoft connection", () => {
+  it("persists thousands of seats and findings without exceeding the bind limit", async () => {
+    await seedTenant({ tid: null, consentedAt: null });
+    await currentDb.insert(schema.saasConnections).values({
+      tenantId: TENANT_ID,
+      provider: "zoom",
+      orgRef: "acct-1",
+      clientId: "client",
+      secretEnc: "enc",
+    });
+    const seats = Array.from({ length: 6500 }, (_, i) => ({
+      email: `seat${i}@contoso.test`,
+      displayName: `Seat ${i}`,
+      status: "active",
+      products: ["Licensed"],
+      lastActiveAt: new Date(Date.now() - 200 * 86400000),
+    }));
+    buildSaasClientMock.mockImplementation(() =>
+      Promise.resolve({
+        getSeats: () => Promise.resolve(seats),
+      }),
+    );
+    expect((await runSync(TENANT_ID)).status).toBe("success");
+    expect(await countRows(schema.saasSeats)).toBe(6500);
+    expect(await countRows(schema.findings)).toBe(6500);
+  }, 30000);
+
   it("skips the Microsoft steps, syncs the SaaS connector and does not fail", async () => {
     // No tid, no ms_connections row: resolveMsCredential would reject.
     await seedTenant({ tid: null, consentedAt: null });
