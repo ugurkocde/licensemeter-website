@@ -212,6 +212,53 @@ describe("resolveScanTenant", () => {
           .insert(schema.msConnections)
           .values({ tenantId, mode: "managed", tid: OTHER_TID }),
     ],
+    [
+      "a vendor renewal",
+      (tenantId) =>
+        currentDb.insert(schema.vendorRenewals).values({
+          tenantId,
+          vendor: "Vendor",
+          contractName: "Contract",
+          renewalDate: "2027-01-01",
+        }),
+    ],
+    [
+      "a metering connection",
+      (tenantId) =>
+        currentDb
+          .insert(schema.meteringConnections)
+          .values({ tenantId, tid: OTHER_TID }),
+    ],
+    [
+      "an Adobe connection",
+      (tenantId) =>
+        currentDb.insert(schema.adobeConnections).values({
+          tenantId,
+          orgId: "org",
+          clientId: "client",
+          clientSecretEnc: "enc",
+        }),
+    ],
+    [
+      "a SaaS connection",
+      (tenantId) =>
+        currentDb.insert(schema.saasConnections).values({
+          tenantId,
+          provider: "chatgpt",
+          orgRef: "org",
+          secretEnc: "enc",
+        }),
+    ],
+    [
+      "AI spend history",
+      (tenantId) =>
+        currentDb.insert(schema.aiSpendDaily).values({
+          tenantId,
+          provider: "chatgpt",
+          day: "2026-11-01",
+          category: "usage",
+        }),
+    ],
   ];
 
   it.each(usedBy)(
