@@ -1,0 +1,7 @@
+{
+  "title": "Instant scans fill your existing workspace",
+  "summary": "An instant scan now puts its results into the workspace you got at sign-in, instead of creating a second workspace next to it and leaving the first one empty.",
+  "type": "fixed",
+  "publishedOn": "2026-11-02",
+  "idempotencyKey": "licensemeter:instant-scan-same-workspace-2026-11-02"
+}
