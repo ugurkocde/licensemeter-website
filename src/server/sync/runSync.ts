@@ -52,6 +52,7 @@ import { notifyOps } from "~/server/ops";
 import { workspaceAdminEmails } from "~/server/workspaceEmail";
 import { aiSpendSinceDay } from "~/server/sync/aiSpendWindow";
 import { errText } from "~/server/sync/errText";
+import { textSet } from "~/server/sync/textSet";
 import { mergeAdobeUsers, mergeSaasSeats } from "~/server/sync/mergeByEmail";
 import {
   entraIdentitiesOf,
@@ -564,48 +565,51 @@ export const runSync = async (
     const joined = joinSignals({ graphUsers, usageRows, copilotRows, hasP1 });
 
     // --- Persist phase (upsert + prune; no destructive window) -------------
-    if (skus.length > 0) {
-      await db
-        .insert(tenantSkus)
-        .values(
-          skus.map((s) => ({
-            tenantId,
-            skuId: s.skuId,
-            skuPartNumber: s.skuPartNumber,
-            displayName: skuDisplayName(s.skuId, s.skuPartNumber),
-            prepaidEnabled: s.prepaidUnits.enabled,
-            prepaidSuspended: s.prepaidUnits.suspended,
-            prepaidWarning: s.prepaidUnits.warning,
-            consumedUnits: s.consumedUnits,
-            updatedAt: now,
-          })),
-        )
-        .onConflictDoUpdate({
-          target: [tenantSkus.tenantId, tenantSkus.skuId],
-          set: {
-            skuPartNumber: sql`excluded.sku_part_number`,
-            displayName: sql`excluded.display_name`,
-            prepaidEnabled: sql`excluded.prepaid_enabled`,
-            prepaidSuspended: sql`excluded.prepaid_suspended`,
-            prepaidWarning: sql`excluded.prepaid_warning`,
-            consumedUnits: sql`excluded.consumed_units`,
-            updatedAt: sql`excluded.updated_at`,
-          },
-        });
-    }
-    // Prune only when Graph returned data; an empty result keeps the last
-    // known inventory instead of wiping it (defensive against odd responses).
-    if (skus.length > 0) {
-      await db.delete(tenantSkus).where(
-        and(
-          eq(tenantSkus.tenantId, tenantId),
-          notInArray(
-            tenantSkus.skuId,
-            skus.map((s) => s.skuId),
-          ),
-        ),
-      );
-    }
+    await db.transaction(async (tx) => {
+      if (skus.length > 0) {
+        for (const batch of chunk(skus, 250)) {
+          await tx
+            .insert(tenantSkus)
+            .values(
+              batch.map((s) => ({
+                tenantId,
+                skuId: s.skuId,
+                skuPartNumber: s.skuPartNumber,
+                displayName: skuDisplayName(s.skuId, s.skuPartNumber),
+                prepaidEnabled: s.prepaidUnits.enabled,
+                prepaidSuspended: s.prepaidUnits.suspended,
+                prepaidWarning: s.prepaidUnits.warning,
+                consumedUnits: s.consumedUnits,
+                updatedAt: now,
+              })),
+            )
+            .onConflictDoUpdate({
+              target: [tenantSkus.tenantId, tenantSkus.skuId],
+              set: {
+                skuPartNumber: sql`excluded.sku_part_number`,
+                displayName: sql`excluded.display_name`,
+                prepaidEnabled: sql`excluded.prepaid_enabled`,
+                prepaidSuspended: sql`excluded.prepaid_suspended`,
+                prepaidWarning: sql`excluded.prepaid_warning`,
+                consumedUnits: sql`excluded.consumed_units`,
+                updatedAt: sql`excluded.updated_at`,
+              },
+            });
+        }
+      }
+      // Prune only when Graph returned data; an empty result keeps the last
+      // known inventory instead of wiping it (defensive against odd responses).
+      if (skus.length > 0) {
+        await tx
+          .delete(tenantSkus)
+          .where(
+            and(
+              eq(tenantSkus.tenantId, tenantId),
+              notInArray(tenantSkus.skuId, textSet(skus.map((s) => s.skuId))),
+            ),
+          );
+      }
+    });
 
     for (const batch of chunk(joined.users, 250)) {
       await db
@@ -645,107 +649,121 @@ export const runSync = async (
         });
     }
     if (joined.users.length > 0) {
-      await db.delete(tenantUsers).where(
-        and(
-          eq(tenantUsers.tenantId, tenantId),
-          notInArray(
-            tenantUsers.graphId,
-            joined.users.map((u) => u.graphId),
+      await db
+        .delete(tenantUsers)
+        .where(
+          and(
+            eq(tenantUsers.tenantId, tenantId),
+            notInArray(
+              tenantUsers.graphId,
+              textSet(joined.users.map((u) => u.graphId)),
+            ),
           ),
-        ),
-      );
+        );
     }
 
     // Persist Adobe users (upsert + prune) when the connector is active.
     if (adobeActive) {
-      if (adobeRows.length > 0) {
-        await db
-          .insert(adobeUsersTable)
-          .values(
-            adobeRows.map((u) => ({
-              tenantId,
-              email: u.email.toLowerCase(),
-              status: u.status,
-              products: u.products,
-              syncedAt: now,
-            })),
-          )
-          .onConflictDoUpdate({
-            target: [adobeUsersTable.tenantId, adobeUsersTable.email],
-            set: {
-              status: sql`excluded.status`,
-              products: sql`excluded.products`,
-              syncedAt: sql`excluded.synced_at`,
-            },
-          });
-        await db.delete(adobeUsersTable).where(
-          and(
-            eq(adobeUsersTable.tenantId, tenantId),
-            notInArray(
-              adobeUsersTable.email,
-              adobeRows.map((u) => u.email.toLowerCase()),
-            ),
-          ),
-        );
-      } else {
-        await db
-          .delete(adobeUsersTable)
-          .where(eq(adobeUsersTable.tenantId, tenantId));
-      }
+      await db.transaction(async (tx) => {
+        if (adobeRows.length > 0) {
+          for (const batch of chunk(adobeRows, 250)) {
+            await tx
+              .insert(adobeUsersTable)
+              .values(
+                batch.map((u) => ({
+                  tenantId,
+                  email: u.email.toLowerCase(),
+                  status: u.status,
+                  products: u.products,
+                  syncedAt: now,
+                })),
+              )
+              .onConflictDoUpdate({
+                target: [adobeUsersTable.tenantId, adobeUsersTable.email],
+                set: {
+                  status: sql`excluded.status`,
+                  products: sql`excluded.products`,
+                  syncedAt: sql`excluded.synced_at`,
+                },
+              });
+          }
+          await tx
+            .delete(adobeUsersTable)
+            .where(
+              and(
+                eq(adobeUsersTable.tenantId, tenantId),
+                notInArray(
+                  adobeUsersTable.email,
+                  textSet(adobeRows.map((u) => u.email.toLowerCase())),
+                ),
+              ),
+            );
+        } else {
+          await tx
+            .delete(adobeUsersTable)
+            .where(eq(adobeUsersTable.tenantId, tenantId));
+        }
+      });
     }
 
     // Persist SaaS seats (upsert + prune) for providers that fetched cleanly.
     for (const provider of saasPersist) {
       const seats = saasRows.get(provider) ?? [];
-      if (seats.length > 0) {
-        await db
-          .insert(saasSeatsTable)
-          .values(
-            seats.map((s) => ({
-              tenantId,
-              provider,
-              email: s.email.toLowerCase(),
-              displayName: s.displayName,
-              status: s.status,
-              products: s.products,
-              lastActiveAt: s.lastActiveAt,
-              syncedAt: now,
-            })),
-          )
-          .onConflictDoUpdate({
-            target: [
-              saasSeatsTable.tenantId,
-              saasSeatsTable.provider,
-              saasSeatsTable.email,
-            ],
-            set: {
-              displayName: sql`excluded.display_name`,
-              status: sql`excluded.status`,
-              products: sql`excluded.products`,
-              lastActiveAt: sql`excluded.last_active_at`,
-              syncedAt: sql`excluded.synced_at`,
-            },
-          });
-        await db.delete(saasSeatsTable).where(
-          and(
-            eq(saasSeatsTable.tenantId, tenantId),
-            eq(saasSeatsTable.provider, provider),
-            notInArray(
-              saasSeatsTable.email,
-              seats.map((s) => s.email.toLowerCase()),
-            ),
-          ),
-        );
-      } else {
-        await db
-          .delete(saasSeatsTable)
-          .where(
-            and(
-              eq(saasSeatsTable.tenantId, tenantId),
-              eq(saasSeatsTable.provider, provider),
-            ),
-          );
-      }
+      await db.transaction(async (tx) => {
+        if (seats.length > 0) {
+          for (const batch of chunk(seats, 250)) {
+            await tx
+              .insert(saasSeatsTable)
+              .values(
+                batch.map((s) => ({
+                  tenantId,
+                  provider,
+                  email: s.email.toLowerCase(),
+                  displayName: s.displayName,
+                  status: s.status,
+                  products: s.products,
+                  lastActiveAt: s.lastActiveAt,
+                  syncedAt: now,
+                })),
+              )
+              .onConflictDoUpdate({
+                target: [
+                  saasSeatsTable.tenantId,
+                  saasSeatsTable.provider,
+                  saasSeatsTable.email,
+                ],
+                set: {
+                  displayName: sql`excluded.display_name`,
+                  status: sql`excluded.status`,
+                  products: sql`excluded.products`,
+                  lastActiveAt: sql`excluded.last_active_at`,
+                  syncedAt: sql`excluded.synced_at`,
+                },
+              });
+          }
+          await tx
+            .delete(saasSeatsTable)
+            .where(
+              and(
+                eq(saasSeatsTable.tenantId, tenantId),
+                eq(saasSeatsTable.provider, provider),
+                notInArray(
+                  saasSeatsTable.email,
+                  textSet(seats.map((s) => s.email.toLowerCase())),
+                ),
+              ),
+            );
+        } else {
+          await tx
+            .delete(saasSeatsTable)
+            .where(
+              and(
+                eq(saasSeatsTable.tenantId, tenantId),
+                eq(saasSeatsTable.provider, provider),
+              ),
+            );
+        }
+      });
     }
 
     // Prefill missing price book rows from the static catalog.
@@ -755,17 +773,19 @@ export const runSync = async (
     const known = new Set(existingPrices.map((p) => p.skuId));
     const missing = skus.filter((s) => !known.has(s.skuId));
     if (missing.length > 0) {
-      await db.insert(priceBook).values(
-        missing.map((s) => ({
-          tenantId,
-          skuId: s.skuId,
-          monthlyPriceCents: skuDefaultPriceCents(
-            s.skuId,
-            tenant.currencyRatePpm,
-          ),
-          source: "default" as const,
-        })),
-      );
+      for (const batch of chunk(missing, 250)) {
+        await db.insert(priceBook).values(
+          batch.map((s) => ({
+            tenantId,
+            skuId: s.skuId,
+            monthlyPriceCents: skuDefaultPriceCents(
+              s.skuId,
+              tenant.currencyRatePpm,
+            ),
+            source: "default" as const,
+          })),
+        );
+      }
     }
 
     // Prefill Adobe product prices (demo gets plausible list estimates).
@@ -779,19 +799,21 @@ export const runSync = async (
       .map(adobePriceKey)
       .filter((id) => !known.has(id));
     if (missingAdobe.length > 0) {
-      await db
-        .insert(priceBook)
-        .values(
-          missingAdobe.map((id) => ({
-            tenantId,
-            skuId: id,
-            monthlyPriceCents: tenant.isDemo
-              ? (DEMO_ADOBE_PRICES[id.slice("adobe:".length)] ?? 0)
-              : 0,
-            source: "default" as const,
-          })),
-        )
-        .onConflictDoNothing();
+      for (const batch of chunk(missingAdobe, 250)) {
+        await db
+          .insert(priceBook)
+          .values(
+            batch.map((id) => ({
+              tenantId,
+              skuId: id,
+              monthlyPriceCents: tenant.isDemo
+                ? (DEMO_ADOBE_PRICES[id.slice("adobe:".length)] ?? 0)
+                : 0,
+              source: "default" as const,
+            })),
+          )
+          .onConflictDoNothing();
+      }
     }
 
     // Prefill SaaS connector prices (demo gets plausible list estimates).
@@ -803,17 +825,21 @@ export const runSync = async (
       )
       .filter((id) => !known.has(id));
     if (missingSaas.length > 0) {
-      await db
-        .insert(priceBook)
-        .values(
-          missingSaas.map((id) => ({
-            tenantId,
-            skuId: id,
-            monthlyPriceCents: tenant.isDemo ? (DEMO_SAAS_PRICES[id] ?? 0) : 0,
-            source: "default" as const,
-          })),
-        )
-        .onConflictDoNothing();
+      for (const batch of chunk(missingSaas, 250)) {
+        await db
+          .insert(priceBook)
+          .values(
+            batch.map((id) => ({
+              tenantId,
+              skuId: id,
+              monthlyPriceCents: tenant.isDemo
+                ? (DEMO_SAAS_PRICES[id] ?? 0)
+                : 0,
+              source: "default" as const,
+            })),
+          )
+          .onConflictDoNothing();
+      }
     }
     const prices = Object.fromEntries(
       (
@@ -1200,12 +1226,12 @@ const diffFindings = async (
     const newByKey = new Map(newFindings.map((f) => [f.dedupeKey, f]));
 
     const toInsert = newFindings.filter((f) => !existingByKey.has(f.dedupeKey));
-    let inserted: InsertedFinding[] = [];
-    if (toInsert.length > 0) {
-      inserted = await tx
+    const inserted: InsertedFinding[] = [];
+    for (const batch of chunk(toInsert, 250)) {
+      const rows = await tx
         .insert(findings)
         .values(
-          toInsert.map((f) => ({
+          batch.map((f) => ({
             tenantId,
             dedupeKey: f.dedupeKey,
             rule: f.rule,
@@ -1225,6 +1251,7 @@ const diffFindings = async (
           title: findings.title,
           monthlyImpactCents: findings.monthlyImpactCents,
         });
+      inserted.push(...rows);
     }
 
     for (const f of existing) {
