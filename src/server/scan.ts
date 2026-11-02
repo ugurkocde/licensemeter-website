@@ -1,7 +1,26 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, isNull, ne, notExists, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "~/server/db";
-import { memberships, tenants } from "~/server/db/schema";
+import { isUniqueViolation } from "~/server/db/errors";
+import {
+  adobeConnections,
+  adobeUsers,
+  aiSpendDaily,
+  findings,
+  memberships,
+  meteringConnections,
+  msConnections,
+  priceBook,
+  saasConnections,
+  saasSeats,
+  snapshots,
+  syncRuns,
+  tenants,
+  tenantSkus,
+  tenantUsers,
+  vendorRenewals,
+} from "~/server/db/schema";
 import { DelegatedGraphClient } from "~/server/graph/msGraph";
 import { runSync } from "~/server/sync/runSync";
 
@@ -42,8 +61,10 @@ export type ScanIdentity = {
  * Resolves (or creates) the workspace an instant scan may write to. Same
  * matrix as the CSV import (connect/csv/actions.ts): demo never; a consented
  * tenant already syncs nightly; an existing imported workspace is only
- * re-scannable by its admins and owners; otherwise a fresh imported tenant is
- * created with the caller as owner, conflict-safe against a colleague racing.
+ * re-scannable by its admins and owners; otherwise the caller's own empty
+ * sign-in workspace is bound to the tenant, and only a caller without one gets
+ * a fresh imported tenant with them as owner, conflict-safe against a
+ * colleague racing.
  */
 export const resolveScanTenant = async (
   identity: ScanIdentity,
@@ -81,6 +102,12 @@ export const resolveScanTenant = async (
     // exactly.
     return { ok: true, tenantId: existing.id };
   }
+
+  // Workspace-first, like the consent flow and the CSV import: sign-in already
+  // gave the caller a workspace, so the scan fills that one instead of
+  // creating a duplicate next to it and leaving it empty.
+  const own = await bindOwnEmptyWorkspace(tid, actor.oid, ms.upn);
+  if (own) return own;
 
   // The tenant and its owner membership are created together: a crash between
   // them would leave a tid-bound workspace with no member, which the guard
@@ -122,6 +149,114 @@ export const resolveScanTenant = async (
 
     return { ok: true, tenantId: inserted.id } as const;
   });
+};
+
+/**
+ * Binds the caller's own empty workspace to the scanned tenant: one they own
+ * as its only member (no colleague, invitee or pending invite would suddenly
+ * see the caller's tenant), not yet tied to any Microsoft tenant, never
+ * consented, not the demo, not an MSP client workspace, and never used (no
+ * row in WORKSPACE_DATA, so imported data is never overwritten by the
+ * caller's home tenant). The oldest such
+ * workspace wins, like the CSV import. Returns null when there is none, so the
+ * caller creates a fresh workspace.
+ */
+const otherMembers = alias(memberships, "other_members");
+
+/**
+ * Every table that holds a workspace's data, connections or history. A
+ * workspace with a row in any of them has been used (a CSV or SaaS import, a
+ * connector, a past sync, edited prices, renewals) and may describe another
+ * organization, so the scan never binds it. A CSV re-upload clears only the
+ * user and SKU rows, so its prices, findings and snapshots keep it excluded
+ * while the upload is in flight or after it failed.
+ */
+const WORKSPACE_DATA = [
+  tenantUsers,
+  tenantSkus,
+  priceBook,
+  findings,
+  snapshots,
+  syncRuns,
+  vendorRenewals,
+  msConnections,
+  meteringConnections,
+  adobeConnections,
+  adobeUsers,
+  saasConnections,
+  saasSeats,
+  aiSpendDaily,
+] as const;
+
+const bindOwnEmptyWorkspace = async (
+  tid: string,
+  oid: string,
+  upn: string,
+): Promise<ScanTenantResult | null> => {
+  const empty = and(
+    isNull(tenants.tid),
+    isNull(tenants.consentedAt),
+    eq(tenants.isDemo, false),
+    isNull(tenants.mspAccountId),
+    notExists(
+      db
+        .select({ one: sql`1` })
+        .from(otherMembers)
+        .where(
+          and(
+            eq(otherMembers.tenantId, tenants.id),
+            or(isNull(otherMembers.oid), ne(otherMembers.oid, oid)),
+          ),
+        ),
+    ),
+    ...WORKSPACE_DATA.map((table) =>
+      notExists(
+        db
+          .select({ one: sql`1` })
+          .from(table)
+          .where(eq(table.tenantId, tenants.id)),
+      ),
+    ),
+  );
+  const candidate = (
+    await db
+      .select({ id: tenants.id })
+      .from(memberships)
+      .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
+      .where(
+        and(eq(memberships.oid, oid), eq(memberships.role, "owner"), empty),
+      )
+      .orderBy(asc(tenants.createdAt), asc(tenants.id))
+      .limit(1)
+  )[0];
+  if (!candidate) return null;
+
+  try {
+    // The guards are repeated in the update, so a workspace that changed since
+    // the read (connected, imported into) is never bound.
+    const [bound] = await db
+      .update(tenants)
+      .set({
+        tid,
+        // Same placeholder as a fresh scan workspace when sign-in left no name;
+        // the scan replaces it with the name from /organization.
+        name: sql`coalesce(${tenants.name}, ${upn.split("@")[1] ?? null})`,
+        concealedNames: false,
+        hasP1: false,
+        activitySignal: "none",
+        copilotSignal: "none",
+      })
+      .where(and(eq(tenants.id, candidate.id), empty))
+      .returning({ id: tenants.id });
+    return bound ? { ok: true, tenantId: bound.id } : null;
+  } catch (err) {
+    // A colleague bound the tenant to their workspace between our lookup and
+    // this update: same answer as losing the insert race below.
+    if (isUniqueViolation(err)) {
+      return { ok: false, error: "scan_workspace_invite" };
+    }
+    throw err;
+  }
 };
 
 /**
