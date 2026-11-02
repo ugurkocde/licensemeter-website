@@ -157,6 +157,82 @@ describe("resolveScanTenant", () => {
     expect(shared.map((t) => t.tid)).toEqual([null, null]);
   });
 
+  const usedBy: [string, (tenantId: string) => Promise<unknown>][] = [
+    [
+      "a SaaS seat import",
+      (tenantId) =>
+        currentDb.insert(schema.saasSeats).values({
+          tenantId,
+          provider: "chatgpt",
+          email: "someone@customer.example",
+        }),
+    ],
+    [
+      "an Adobe user list",
+      (tenantId) =>
+        currentDb
+          .insert(schema.adobeUsers)
+          .values({ tenantId, email: "someone@customer.example" }),
+    ],
+    [
+      "edited prices",
+      (tenantId) =>
+        currentDb
+          .insert(schema.priceBook)
+          .values({ tenantId, skuId: "sku-1", monthlyPriceCents: 1000 }),
+    ],
+    [
+      "findings",
+      (tenantId) =>
+        currentDb.insert(schema.findings).values({
+          tenantId,
+          dedupeKey: "k",
+          rule: "never_active",
+          title: "t",
+        }),
+    ],
+    [
+      "a snapshot",
+      (tenantId) =>
+        currentDb
+          .insert(schema.snapshots)
+          .values({ tenantId, day: "2026-11-01" }),
+    ],
+    [
+      "a past sync run",
+      (tenantId) =>
+        currentDb
+          .insert(schema.syncRuns)
+          .values({ tenantId, status: "failed" }),
+    ],
+    [
+      "a Microsoft connection",
+      (tenantId) =>
+        currentDb
+          .insert(schema.msConnections)
+          .values({ tenantId, mode: "managed", tid: OTHER_TID }),
+    ],
+  ];
+
+  it.each(usedBy)(
+    "never binds a workspace that holds %s",
+    async (_label, seed) => {
+      const used = await workspace(OWNER_OID);
+      await seed(used.id);
+
+      const result = await scanAs(OWNER_OID, "owner@acme.com");
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.tenantId).not.toBe(used.id);
+      const [row] = await currentDb
+        .select()
+        .from(schema.tenants)
+        .where(eq(schema.tenants.id, used.id));
+      expect(row?.tid).toBeNull();
+    },
+  );
+
   it("skips the demo and workspaces that were consented without a tenant id", async () => {
     const demo = await workspace(OWNER_OID, { isDemo: true });
     const consented = await workspace(OWNER_OID, { consentedAt: new Date() });
@@ -290,6 +366,70 @@ describe("resolveScanTenant", () => {
 
     expect(again).toEqual({ ok: true, tenantId: own!.id });
     expect(await allTenants()).toHaveLength(1);
+  });
+
+  it("refuses a demo identity before touching any workspace", async () => {
+    const own = await workspace(OWNER_OID);
+
+    const result = await resolveScanTenant({
+      ms: { tid: ACME_TID, upn: "owner@acme.com" },
+      actor: { oid: OWNER_OID },
+      isDemo: true,
+    });
+
+    expect(result).toEqual({ ok: false, error: "scan_demo" });
+    const [row] = await allTenants();
+    expect(row).toMatchObject({ id: own.id, tid: null });
+  });
+
+  it.each([
+    ["owner", { ok: true }],
+    ["admin", { ok: true }],
+    ["viewer", { ok: false, error: "scan_workspace_role" }],
+  ] as const)(
+    "re-scans an imported workspace as %s with the existing role rule",
+    async (role, expected) => {
+      const bound = await workspace(OWNER_OID, { tid: ACME_TID }, role);
+
+      const result = await scanAs(OWNER_OID, "owner@acme.com");
+
+      expect(result).toEqual(
+        expected.ok ? { ok: true, tenantId: bound.id } : expected,
+      );
+      expect(await allTenants()).toHaveLength(1);
+    },
+  );
+
+  it("sends a non-member of an imported tenant to ask for an invite", async () => {
+    await workspace(CASEY_OID, { tid: ACME_TID });
+    await workspace(OWNER_OID);
+
+    const result = await scanAs(OWNER_OID, "owner@acme.com");
+
+    expect(result).toEqual({ ok: false, error: "scan_workspace_invite" });
+    expect((await allTenants()).filter((t) => t.tid === ACME_TID)).toHaveLength(
+      1,
+    );
+  });
+
+  it("points a member of a consented tenant at the existing workspace", async () => {
+    const bound = await workspace(OWNER_OID, {
+      tid: ACME_TID,
+      consentedAt: new Date(),
+    });
+    await workspace(OWNER_OID, { createdAt: new Date("2020-01-01") });
+
+    const result = await scanAs(OWNER_OID, "owner@acme.com");
+
+    expect(result).toEqual({ ok: false, error: "scan_already_synced" });
+    const [row] = await currentDb
+      .select()
+      .from(schema.tenants)
+      .where(eq(schema.tenants.id, bound.id));
+    expect(row?.tid).toBe(ACME_TID);
+    expect((await allTenants()).filter((t) => t.tid === ACME_TID)).toHaveLength(
+      1,
+    );
   });
 
   it("keeps refusing a tenant that is already consented elsewhere", async () => {

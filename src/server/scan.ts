@@ -4,10 +4,22 @@ import { alias } from "drizzle-orm/pg-core";
 import { db } from "~/server/db";
 import { isUniqueViolation } from "~/server/db/errors";
 import {
+  adobeConnections,
+  adobeUsers,
+  aiSpendDaily,
+  findings,
   memberships,
+  meteringConnections,
+  msConnections,
+  priceBook,
+  saasConnections,
+  saasSeats,
+  snapshots,
+  syncRuns,
   tenants,
   tenantSkus,
   tenantUsers,
+  vendorRenewals,
 } from "~/server/db/schema";
 import { DelegatedGraphClient } from "~/server/graph/msGraph";
 import { runSync } from "~/server/sync/runSync";
@@ -143,13 +155,38 @@ export const resolveScanTenant = async (
  * Binds the caller's own empty workspace to the scanned tenant: one they own
  * as its only member (no colleague, invitee or pending invite would suddenly
  * see the caller's tenant), not yet tied to any Microsoft tenant, never
- * consented, not the demo, not an MSP client workspace, and holding no user or
- * SKU rows (a CSV import may describe another organization, so imported data
- * is never overwritten by the caller's home tenant). The oldest such
+ * consented, not the demo, not an MSP client workspace, and never used (no
+ * row in WORKSPACE_DATA, so imported data is never overwritten by the
+ * caller's home tenant). The oldest such
  * workspace wins, like the CSV import. Returns null when there is none, so the
  * caller creates a fresh workspace.
  */
 const otherMembers = alias(memberships, "other_members");
+
+/**
+ * Every table that holds a workspace's data, connections or history. A
+ * workspace with a row in any of them has been used (a CSV or SaaS import, a
+ * connector, a past sync, edited prices, renewals) and may describe another
+ * organization, so the scan never binds it. A CSV re-upload clears only the
+ * user and SKU rows, so its prices, findings and snapshots keep it excluded
+ * while the upload is in flight or after it failed.
+ */
+const WORKSPACE_DATA = [
+  tenantUsers,
+  tenantSkus,
+  priceBook,
+  findings,
+  snapshots,
+  syncRuns,
+  vendorRenewals,
+  msConnections,
+  meteringConnections,
+  adobeConnections,
+  adobeUsers,
+  saasConnections,
+  saasSeats,
+  aiSpendDaily,
+] as const;
 
 const bindOwnEmptyWorkspace = async (
   tid: string,
@@ -172,17 +209,13 @@ const bindOwnEmptyWorkspace = async (
           ),
         ),
     ),
-    notExists(
-      db
-        .select({ one: sql`1` })
-        .from(tenantUsers)
-        .where(eq(tenantUsers.tenantId, tenants.id)),
-    ),
-    notExists(
-      db
-        .select({ one: sql`1` })
-        .from(tenantSkus)
-        .where(eq(tenantSkus.tenantId, tenants.id)),
+    ...WORKSPACE_DATA.map((table) =>
+      notExists(
+        db
+          .select({ one: sql`1` })
+          .from(table)
+          .where(eq(table.tenantId, tenants.id)),
+      ),
     ),
   );
   const candidate = (
