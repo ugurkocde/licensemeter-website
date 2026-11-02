@@ -1,4 +1,5 @@
-import { and, asc, eq, isNull, notExists, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, ne, notExists, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "~/server/db";
 import { isUniqueViolation } from "~/server/db/errors";
@@ -139,13 +140,17 @@ export const resolveScanTenant = async (
 };
 
 /**
- * Binds the caller's own empty workspace to the scanned tenant: one they own,
- * not yet tied to any Microsoft tenant, never consented, not the demo, not an
- * MSP client workspace, and holding no user or SKU rows (a CSV import may
- * describe another organization, so imported data is never overwritten by the
- * caller's home tenant). The oldest such workspace wins, like the CSV import.
- * Returns null when there is none, so the caller creates a fresh workspace.
+ * Binds the caller's own empty workspace to the scanned tenant: one they own
+ * as its only member (no colleague, invitee or pending invite would suddenly
+ * see the caller's tenant), not yet tied to any Microsoft tenant, never
+ * consented, not the demo, not an MSP client workspace, and holding no user or
+ * SKU rows (a CSV import may describe another organization, so imported data
+ * is never overwritten by the caller's home tenant). The oldest such
+ * workspace wins, like the CSV import. Returns null when there is none, so the
+ * caller creates a fresh workspace.
  */
+const otherMembers = alias(memberships, "other_members");
+
 const bindOwnEmptyWorkspace = async (
   tid: string,
   oid: string,
@@ -156,6 +161,17 @@ const bindOwnEmptyWorkspace = async (
     isNull(tenants.consentedAt),
     eq(tenants.isDemo, false),
     isNull(tenants.mspAccountId),
+    notExists(
+      db
+        .select({ one: sql`1` })
+        .from(otherMembers)
+        .where(
+          and(
+            eq(otherMembers.tenantId, tenants.id),
+            or(isNull(otherMembers.oid), ne(otherMembers.oid, oid)),
+          ),
+        ),
+    ),
     notExists(
       db
         .select({ one: sql`1` })

@@ -114,8 +114,59 @@ describe("resolveScanTenant", () => {
       id: own!.id,
       tid: ACME_TID,
       consentedAt: null,
-      name: own!.name,
+      concealedNames: false,
+      hasP1: false,
+      activitySignal: "none",
+      copilotSignal: "none",
     });
+  });
+
+  it("keeps an existing workspace name", async () => {
+    await workspace(OWNER_OID, { name: "Acme Ltd" });
+
+    await scanAs(OWNER_OID, "owner@acme.com");
+
+    const [row] = await allTenants();
+    expect(row).toMatchObject({ tid: ACME_TID, name: "Acme Ltd" });
+  });
+
+  it("never binds a workspace shared with anyone else, invited or claimed", async () => {
+    const withColleague = await workspace(OWNER_OID);
+    await currentDb.insert(schema.memberships).values({
+      tenantId: withColleague.id,
+      oid: CASEY_OID,
+      email: "casey@acme.com",
+      role: "viewer",
+    });
+    const withInvite = await workspace(OWNER_OID);
+    await currentDb.insert(schema.memberships).values({
+      tenantId: withInvite.id,
+      oid: null,
+      email: "invitee@elsewhere.example",
+      role: "viewer",
+    });
+
+    const result = await scanAs(OWNER_OID, "owner@acme.com");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect([withColleague.id, withInvite.id]).not.toContain(result.tenantId);
+    const shared = (await allTenants()).filter((t) =>
+      [withColleague.id, withInvite.id].includes(t.id),
+    );
+    expect(shared.map((t) => t.tid)).toEqual([null, null]);
+  });
+
+  it("skips the demo and workspaces that were consented without a tenant id", async () => {
+    const demo = await workspace(OWNER_OID, { isDemo: true });
+    const consented = await workspace(OWNER_OID, { consentedAt: new Date() });
+
+    const result = await scanAs(OWNER_OID, "owner@acme.com");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect([demo.id, consented.id]).not.toContain(result.tenantId);
+    expect(await allTenants()).toHaveLength(3);
   });
 
   it("fills in the placeholder name when the sign-in workspace has none", async () => {
