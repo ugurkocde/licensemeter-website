@@ -593,3 +593,80 @@ describe("admin exclusions across connectors", () => {
     expect((await open()).some((f) => f.includes("orphaned"))).toBe(false);
   });
 });
+
+describe("connector seats on mail aliases", () => {
+  const svc = graphUser("u-svc", "svc-backup@contoso.com", {
+    accountEnabled: false,
+    mail: "backup@contoso.com",
+    proxyAddresses: ["SMTP:backup@contoso.com", "smtp:svc@contoso.com"],
+  });
+  const seedAliasSeats = async () => {
+    await currentDb.insert(schema.adobeUsers).values({
+      tenantId: TENANT,
+      email: "backup@contoso.com",
+      products: ["Acrobat Pro"],
+    });
+    await currentDb.insert(schema.saasSeats).values([
+      {
+        tenantId: TENANT,
+        provider: "chatgpt",
+        email: "svc@contoso.com",
+        products: ["Business"],
+      },
+      // A seat whose vendor name imitates an excluded service account but
+      // has no directory user behind it: it must stay an orphan.
+      {
+        tenantId: TENANT,
+        provider: "chatgpt",
+        email: "leaked@fabrikam.com",
+        displayName: "svc-backup",
+        products: ["Business"],
+      },
+    ]);
+  };
+  const connectorRules = async () =>
+    (await openFindings())
+      .filter((f) => !f.rule.startsWith("disabled_account"))
+      .map((f) => `${f.rule}:${f.graphUserId ?? f.dedupeKey}`)
+      .sort();
+
+  it("stores the aliases and keeps alias seats correlated on reanalysis", async () => {
+    await seedAliasSeats();
+    await runSync(TENANT, {
+      client: client([sku(E3, "SPE_E3", 1, 1)], {}, [svc]),
+    });
+    const stored = await currentDb.query.tenantUsers.findFirst({
+      where: eq(schema.tenantUsers.graphId, "u-svc"),
+    });
+    expect(stored!.mailAliases).toEqual([
+      "backup@contoso.com",
+      "svc@contoso.com",
+    ]);
+
+    await runAnalysis(TENANT);
+    expect(await connectorRules()).toEqual([
+      "adobe_disabled_in_entra:u-svc",
+      "saas_disabled_in_entra:u-svc",
+      "saas_orphaned:saas_orphaned|chatgpt:leaked@fabrikam.com|-",
+    ]);
+  });
+
+  it("excludes alias seats of excluded users after saving, and never hides an orphan", async () => {
+    await seedAliasSeats();
+    await runSync(TENANT, {
+      client: client([sku(E3, "SPE_E3", 1, 1)], {}, [svc]),
+    });
+    await currentDb
+      .update(schema.tenants)
+      .set({ findingExclusions: ["svc-*"] })
+      .where(eq(schema.tenants.id, TENANT));
+    await runAnalysis(TENANT);
+
+    expect(await connectorRules()).toEqual([
+      "saas_orphaned:saas_orphaned|chatgpt:leaked@fabrikam.com|-",
+    ]);
+    expect(
+      (await openFindings()).some((f) => f.rule === "adobe_orphaned"),
+    ).toBe(false);
+  });
+});
