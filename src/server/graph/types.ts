@@ -97,8 +97,10 @@ export interface GraphClient {
   /**
    * Commerce subscriptions (trial flags, renewal dates). Optional: clients
    * that cannot read them omit it and the sync records the step as skipped.
+   * `deadline` bounds this call (every retry and wait) below the client's
+   * own request deadline.
    */
-  getSubscriptions?(): Promise<GraphSubscription[]>;
+  getSubscriptions?(deadline: number): Promise<GraphSubscription[]>;
   /** displayConcealedNames from /admin/reportSettings; null when unreadable. */
   getReportConcealment(): Promise<boolean | null>;
   /** Throws PremiumLicenseRequiredError when includeSignInActivity is true on a non-P1 tenant. */

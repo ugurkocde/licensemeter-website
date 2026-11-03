@@ -654,9 +654,10 @@ export class MsGraphClient implements GraphClient {
    */
   private async withAppIdentityRetry<T>(
     run: (token: string) => Promise<T>,
+    deadline: number = this.deadline,
   ): Promise<T> {
     for (let attempt = 0; ; attempt++) {
-      const token = await acquireToken(this.cred, { deadline: this.deadline });
+      const token = await acquireToken(this.cred, { deadline });
       try {
         return await run(token);
       } catch (err) {
@@ -665,7 +666,7 @@ export class MsGraphClient implements GraphClient {
           msalApps.delete(appCacheKey(this.cred));
           if (
             attempt < APP_IDENTITY_WAITS_MS.length &&
-            withinDeadline(this.deadline, APP_IDENTITY_WAITS_MS[attempt]!)
+            withinDeadline(deadline, APP_IDENTITY_WAITS_MS[attempt]!)
           ) {
             await sleep(APP_IDENTITY_WAITS_MS[attempt]!);
             continue;
@@ -703,15 +704,19 @@ export class MsGraphClient implements GraphClient {
 
   /**
    * Readable with the connector's existing directory permissions (verified
-   * app-only). The caller treats every failure as non-critical.
+   * app-only). The caller treats every failure as non-critical and passes a
+   * short deadline so throttling here cannot use up the sync budget.
    */
-  async getSubscriptions(): Promise<GraphSubscription[]> {
-    return this.withAppIdentityRetry((token) =>
-      getAllPages<GraphSubscription>(
-        token,
-        `${GRAPH}/directory/subscriptions?$select=${SUBSCRIPTION_FIELDS}`,
-        this.deadline,
-      ),
+  async getSubscriptions(deadline: number): Promise<GraphSubscription[]> {
+    const until = Math.min(deadline, this.deadline);
+    return this.withAppIdentityRetry(
+      (token) =>
+        getAllPages<GraphSubscription>(
+          token,
+          `${GRAPH}/directory/subscriptions?$select=${SUBSCRIPTION_FIELDS}`,
+          until,
+        ),
+      until,
     );
   }
 

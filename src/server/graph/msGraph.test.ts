@@ -402,7 +402,7 @@ describe("directory reads", () => {
 
     const rows = await new MsGraphClient(
       managedCred("99999999-9999-9999-9999-999999999999"),
-    ).getSubscriptions();
+    ).getSubscriptions(Date.now() + 20_000);
 
     expect(rows).toEqual([subscription]);
     const [url] = requestedUrls(fetchMock);
@@ -410,6 +410,40 @@ describe("directory reads", () => {
     expect(url?.searchParams.get("$select")).toBe(
       "skuId,skuPartNumber,status,isTrial,totalLicenses,nextLifecycleDateTime",
     );
+  });
+
+  it("gives up on throttled subscriptions within its own budget and leaves the rest of the sync budget intact", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/directory/subscriptions")) {
+        return new Response(null, {
+          status: 429,
+          headers: { "retry-after": "5" },
+        });
+      }
+      return Response.json({ value: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+    const client = new MsGraphClient(
+      managedCred("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+      Date.now() + 240_000,
+    );
+
+    const pending = client.getSubscriptions(Date.now() + 12_000);
+    const outcome = expect(pending).rejects.toMatchObject({
+      status: 429,
+      code: "throttled",
+    });
+    // Settles inside its 12 s budget: two 5 s waits fit, the third does not.
+    await vi.advanceTimersByTimeAsync(12_000);
+    await outcome;
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    // The client's own deadline is untouched: the users pull still runs.
+    await expect(
+      client.listUsers({ includeSignInActivity: false }),
+    ).resolves.toEqual([]);
   });
 
   it("leaves subscriptions out of the delegated instant scan", () => {

@@ -389,3 +389,141 @@ describe("admin exclusions", () => {
     expect(resolved!.resolvedAt).not.toBeNull();
   });
 });
+
+describe("subscriptions budget", () => {
+  it("reads subscriptions after the users pull with a short deadline of its own", async () => {
+    let received: number | undefined;
+    const startedAt = Date.now();
+    const result = await runSync(TENANT, {
+      deadline: startedAt + 250_000,
+      client: client([sku(E3, "SPE_E3", 10, 10)], {
+        getSubscriptions: (deadline) => {
+          received = deadline;
+          return Promise.resolve([]);
+        },
+      }),
+    });
+    const order = result.steps.map((s) => s.step);
+    expect(order.indexOf("subscriptions")).toBeGreaterThan(
+      order.indexOf("users"),
+    );
+    expect(received).toBeGreaterThan(startedAt);
+    expect(received! - startedAt).toBeLessThanOrEqual(21_000);
+  });
+
+  it("skips the read and keeps stored trial data when too little time is left", async () => {
+    const seats = [sku(E3, "SPE_E3", 125, 90)];
+    await runSync(TENANT, {
+      client: client(seats, {
+        getSubscriptions: () =>
+          Promise.resolve([
+            subscription({ skuId: E3, isTrial: true, totalLicenses: 25 }),
+          ]),
+      }),
+    });
+    const getSubscriptions = vi.fn(() => Promise.resolve([]));
+    const result = await runSync(TENANT, {
+      deadline: Date.now() + 61_000,
+      client: client(seats, { getSubscriptions }),
+    });
+    expect(getSubscriptions).not.toHaveBeenCalled();
+    expect(result.status).toBe("success");
+    expect(result.steps.find((s) => s.step === "subscriptions")).toMatchObject({
+      status: "skipped",
+    });
+    expect((await skuRow(E3))!.trialUnits).toBe(25);
+  });
+
+  it("never fails the sync when the read runs out of time", async () => {
+    const result = await runSync(TENANT, {
+      client: client([sku(E3, "SPE_E3", 10, 10)], {
+        getSubscriptions: () =>
+          Promise.reject(
+            new GraphHttpError(504, "deadline_exceeded", "deadline reached"),
+          ),
+      }),
+    });
+    expect(result.status).toBe("success");
+    expect(result.steps.find((s) => s.step === "subscriptions")).toMatchObject({
+      status: "warning",
+    });
+    expect(result.steps.find((s) => s.step === "users")).toMatchObject({
+      status: "ok",
+    });
+  });
+});
+
+describe("assigned trial licenses during sync", () => {
+  it("prices a disabled user holding only a trial-only license at 0", async () => {
+    await runSync(TENANT, {
+      client: client(
+        [sku(COPILOT, "Microsoft_365_Copilot", 25, 1)],
+        {
+          getSubscriptions: () =>
+            Promise.resolve([
+              subscription({
+                skuId: COPILOT,
+                isTrial: true,
+                totalLicenses: 25,
+              }),
+            ]),
+        },
+        [
+          graphUser("u-1", "alex@contoso.com", {
+            accountEnabled: false,
+            assignedLicenses: [{ skuId: COPILOT, disabledPlans: [] }],
+          }),
+        ],
+      ),
+    });
+    const findings = await openFindings();
+    expect(findings.map((f) => [f.rule, f.monthlyImpactCents])).toEqual([
+      ["disabled_account_with_license", 0],
+    ]);
+    const [snapshot] = await currentDb.query.snapshots.findMany({
+      where: eq(schema.snapshots.tenantId, TENANT),
+    });
+    expect(snapshot!.totalMonthlySpendCents).toBe(0);
+  });
+});
+
+describe("same-day snapshots", () => {
+  const snapshot = async () =>
+    (
+      await currentDb.query.snapshots.findMany({
+        where: eq(schema.snapshots.tenantId, TENANT),
+      })
+    )[0]!;
+
+  it("rewrites bySku with paid seats on a second sync and on reanalysis", async () => {
+    const seats = [sku(E3, "SPE_E3", 125, 90)];
+    await runSync(TENANT, { client: client(seats) });
+    expect(await snapshot()).toMatchObject({
+      purchasedSeats: 125,
+      bySku: { [E3]: { purchased: 125, assigned: 90 } },
+    });
+
+    await runSync(TENANT, {
+      client: client(seats, {
+        getSubscriptions: () =>
+          Promise.resolve([
+            subscription({ skuId: E3, isTrial: true, totalLicenses: 25 }),
+          ]),
+      }),
+    });
+    expect(await snapshot()).toMatchObject({
+      purchasedSeats: 100,
+      bySku: { [E3]: { purchased: 100, assigned: 90 } },
+    });
+
+    await currentDb
+      .update(schema.tenantSkus)
+      .set({ trialUnits: 50 })
+      .where(eq(schema.tenantSkus.tenantId, TENANT));
+    await runAnalysis(TENANT);
+    expect(await snapshot()).toMatchObject({
+      purchasedSeats: 75,
+      bySku: { [E3]: { purchased: 75, assigned: 90 } },
+    });
+  });
+});

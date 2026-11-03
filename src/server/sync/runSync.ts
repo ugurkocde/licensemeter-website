@@ -54,6 +54,7 @@ import { pickLeakFindings } from "~/server/leakAlerts";
 import { notifyOps } from "~/server/ops";
 import { workspaceAdminEmails } from "~/server/workspaceEmail";
 import { aiSpendSinceDay } from "~/server/sync/aiSpendWindow";
+import { optionalStepDeadline } from "~/server/sync/deadline";
 import { errText } from "~/server/sync/errText";
 import { textSet } from "~/server/sync/textSet";
 import { mergeAdobeUsers, mergeSaasSeats } from "~/server/sync/mergeByEmail";
@@ -80,6 +81,26 @@ const chunk = <T>(arr: T[], size: number): T[][] => {
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 };
+
+/**
+ * Per-SKU seats for the daily snapshot: paid seats (trial seats excluded,
+ * matching purchasedSeats) and assigned seats. Written on insert and on every
+ * same-day rewrite so the two never disagree.
+ */
+const bySkuOf = (
+  skus: readonly {
+    skuId: string;
+    prepaidEnabled: number;
+    consumedUnits: number;
+    trialUnits?: number;
+  }[],
+): Record<string, { purchased: number; assigned: number }> =>
+  Object.fromEntries(
+    skus.map((s) => [
+      s.skuId,
+      { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
+    ]),
+  );
 
 /** Milliseconds since `start`, recorded on every step to diagnose slow syncs. */
 const since = (start: number): number => Date.now() - start;
@@ -326,48 +347,6 @@ export const runSync = async (
         throw err; // critical: nothing useful without SKUs
       }
 
-      // Trial seats and renewal dates. Never critical: without them the
-      // shelfware rule counts every prepaid seat as paid, as it always did.
-      started = Date.now();
-      if (!client.getSubscriptions) {
-        steps.push({
-          step: "subscriptions",
-          status: "skipped",
-          message: "Trial and renewal data is not read by this connection",
-          durationMs: 0,
-        });
-      } else {
-        try {
-          const subscriptions = (await client.getSubscriptions()).map((s) => ({
-            ...s,
-            skuPartNumber: cleanPartNumber(s.skuPartNumber),
-          }));
-          skuTerms = subscriptionTermsBySku(subscriptions);
-          steps.push({
-            step: "subscriptions",
-            status: "ok",
-            count: subscriptions.length,
-            durationMs: since(started),
-          });
-        } catch (err) {
-          const denied =
-            err instanceof GraphHttpError &&
-            (err.status === 401 || err.status === 403);
-          // Denied: this tenant does not expose the data, so trial seats are
-          // not adjusted at all. Transient failure: keep the stored values so
-          // trial seats do not flip into shelfware for one run.
-          if (!denied) skuTerms = null;
-          steps.push({
-            step: "subscriptions",
-            status: denied ? "skipped" : "warning",
-            message: denied
-              ? "Trial and renewal data is not available for this tenant"
-              : errText(err),
-            durationMs: since(started),
-          });
-        }
-      }
-
       // Read the name only after the critical SKU pull, so the non-critical
       // lookup cannot consume the propagation budget the SKU retry needs.
       orgName = await client.getOrganizationName();
@@ -433,6 +412,62 @@ export const runSync = async (
           durationMs: since(started),
         });
         throw err; // critical
+      }
+
+      // Trial seats and renewal dates, read after the critical directory
+      // pulls on a bounded budget of its own, so throttling here can never
+      // starve them or the reports that follow. Never critical: without the
+      // data the shelfware rule counts every prepaid seat as paid, as before.
+      started = Date.now();
+      const subscriptionsDeadline = optionalStepDeadline(deadline);
+      if (!client.getSubscriptions) {
+        steps.push({
+          step: "subscriptions",
+          status: "skipped",
+          message: "Trial and renewal data is not read by this connection",
+          durationMs: 0,
+        });
+      } else if (subscriptionsDeadline === null) {
+        skuTerms = null; // keep the stored values
+        steps.push({
+          step: "subscriptions",
+          status: "skipped",
+          message:
+            "Not enough sync time left; kept the last trial and renewal data",
+          durationMs: 0,
+        });
+      } else {
+        try {
+          const subscriptions = (
+            await client.getSubscriptions(subscriptionsDeadline)
+          ).map((s) => ({
+            ...s,
+            skuPartNumber: cleanPartNumber(s.skuPartNumber),
+          }));
+          skuTerms = subscriptionTermsBySku(subscriptions);
+          steps.push({
+            step: "subscriptions",
+            status: "ok",
+            count: subscriptions.length,
+            durationMs: since(started),
+          });
+        } catch (err) {
+          const denied =
+            err instanceof GraphHttpError &&
+            (err.status === 401 || err.status === 403);
+          // Denied: this tenant does not expose the data, so trial seats are
+          // not adjusted at all. Transient failure or timeout: keep the stored
+          // values so trial seats do not flip into shelfware for one run.
+          if (!denied) skuTerms = null;
+          steps.push({
+            step: "subscriptions",
+            status: denied ? "skipped" : "warning",
+            message: denied
+              ? "Trial and renewal data is not available for this tenant"
+              : errText(err),
+            durationMs: since(started),
+          });
+        }
       }
 
       started = Date.now();
@@ -1088,12 +1123,7 @@ export const runSync = async (
         totalMonthlyWasteCents,
         purchasedSeats,
         assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
-        bySku: Object.fromEntries(
-          inventory.map((s) => [
-            s.skuId,
-            { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
-          ]),
-        ),
+        bySku: bySkuOf(inventory),
       })
       .onConflictDoUpdate({
         target: [snapshots.tenantId, snapshots.day],
@@ -1102,6 +1132,7 @@ export const runSync = async (
           totalMonthlyWasteCents,
           purchasedSeats,
           assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
+          bySku: bySkuOf(inventory),
         },
       });
 
@@ -1319,12 +1350,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
       totalMonthlyWasteCents,
       purchasedSeats,
       assignedSeats,
-      bySku: Object.fromEntries(
-        skuRows.map((s) => [
-          s.skuId,
-          { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
-        ]),
-      ),
+      bySku: bySkuOf(skuRows),
     })
     .onConflictDoUpdate({
       target: [snapshots.tenantId, snapshots.day],
@@ -1333,6 +1359,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
         totalMonthlyWasteCents,
         purchasedSeats,
         assignedSeats,
+        bySku: bySkuOf(skuRows),
       },
     });
 };
