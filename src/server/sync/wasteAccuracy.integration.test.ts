@@ -527,3 +527,69 @@ describe("same-day snapshots", () => {
     });
   });
 });
+
+describe("admin exclusions across connectors", () => {
+  const seedSeats = async () => {
+    for (const email of ["svc-backup@contoso.com", "alex@contoso.com"]) {
+      await currentDb.insert(schema.adobeUsers).values({
+        tenantId: TENANT,
+        email,
+        products: ["Acrobat Pro"],
+      });
+      await currentDb.insert(schema.saasSeats).values({
+        tenantId: TENANT,
+        provider: "chatgpt",
+        email,
+        products: ["Business"],
+      });
+    }
+  };
+  const users = [
+    graphUser("u-svc", "svc-backup@contoso.com", { accountEnabled: false }),
+    graphUser("u-alex", "alex@contoso.com", { accountEnabled: false }),
+  ];
+  const open = async () =>
+    (await openFindings()).map((f) => `${f.rule}:${f.graphUserId}`).sort();
+
+  it("drops Microsoft, Adobe and SaaS findings of excluded accounts without inventing orphans", async () => {
+    await seedSeats();
+    const msClient = client([sku(E3, "SPE_E3", 2, 2)], {}, users);
+    await runSync(TENANT, { client: msClient });
+    await runAnalysis(TENANT); // stored Adobe seats join the analysis here
+    expect(await open()).toEqual([
+      "adobe_disabled_in_entra:u-alex",
+      "adobe_disabled_in_entra:u-svc",
+      "disabled_account_with_license:u-alex",
+      "disabled_account_with_license:u-svc",
+      "saas_disabled_in_entra:u-alex",
+      "saas_disabled_in_entra:u-svc",
+    ]);
+
+    await currentDb
+      .update(schema.tenants)
+      .set({ findingExclusions: ["SVC-*"] })
+      .where(eq(schema.tenants.id, TENANT));
+    await runAnalysis(TENANT);
+    const expected = [
+      "adobe_disabled_in_entra:u-alex",
+      "disabled_account_with_license:u-alex",
+      "saas_disabled_in_entra:u-alex",
+    ];
+    expect(await open()).toEqual(expected);
+    const svc = await currentDb.query.findings.findMany({
+      where: eq(schema.findings.tenantId, TENANT),
+    });
+    expect(
+      svc
+        .filter((f) => f.dedupeKey.includes("svc-backup"))
+        .every((f) => f.status === "resolved"),
+    ).toBe(true);
+
+    // The sync path applies the same exclusions to connector seats.
+    await runSync(TENANT, { client: msClient });
+    expect((await open()).filter((f) => !f.startsWith("adobe"))).toEqual(
+      expected.filter((f) => !f.startsWith("adobe")),
+    );
+    expect((await open()).some((f) => f.includes("orphaned"))).toBe(false);
+  });
+});

@@ -62,6 +62,7 @@ import {
   subscriptionTermsBySku,
   type SkuTerms,
 } from "~/server/sync/subscriptionTerms";
+import { connectorSeatExclusion } from "~/server/sync/connectorExclusions";
 import {
   entraIdentitiesOf,
   joinSignals,
@@ -1070,20 +1071,34 @@ export const runSync = async (
     // instead, which a CSV import fills without any Microsoft connection.
     // Dropping it here would resolve the leak findings runAnalysis creates and
     // recreate them on the next analysis.
+    const directory =
+      graphUsers.length > 0
+        ? joined.users
+        : await db.query.tenantUsers.findMany({
+            where: eq(tenantUsers.tenantId, tenantId),
+          });
     const entraIdentities =
       graphUsers.length > 0
         ? entraIdentitiesOf(graphUsers)
-        : storedIdentitiesOf(
-            await db.query.tenantUsers.findMany({
-              where: eq(tenantUsers.tenantId, tenantId),
-            }),
-          );
-    const adobeFindings = analyzeAdobeWaste(adobeRows, entraIdentities, prices);
+        : storedIdentitiesOf(directory);
+    const seatExcluded = connectorSeatExclusion(
+      tenant.findingExclusions,
+      directory,
+      entraIdentities,
+    );
+    const adobeFindings = analyzeAdobeWaste(
+      adobeRows.filter((u) => !seatExcluded(u)),
+      entraIdentities,
+      prices,
+    );
     const saasFindings = [...saasRows.entries()].flatMap(([provider, seats]) =>
-      analyzeSaasWaste(provider, seats, entraIdentities, prices, {
-        inactiveDays: tenant.inactiveDays,
-        now,
-      }),
+      analyzeSaasWaste(
+        provider,
+        seats.filter((seat) => !seatExcluded(seat)),
+        entraIdentities,
+        prices,
+        { inactiveDays: tenant.inactiveDays, now },
+      ),
     );
     const allFindings = newFindings.concat(adobeFindings, saasFindings);
     steps.push({
@@ -1289,17 +1304,25 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
   });
 
   const entraIdentities = storedIdentitiesOf(userRows);
+  const seatExcluded = connectorSeatExclusion(
+    tenant.findingExclusions,
+    userRows,
+    entraIdentities,
+  );
   const adobeFindings = analyzeAdobeWaste(
-    adobeRows.map((r) => ({
-      email: r.email,
-      status: r.status,
-      products: r.products,
-    })),
+    adobeRows
+      .filter((r) => !seatExcluded(r))
+      .map((r) => ({
+        email: r.email,
+        status: r.status,
+        products: r.products,
+      })),
     entraIdentities,
     prices,
   );
   const seatsByProvider = new Map<SaasProvider, SaasSeat[]>();
   for (const r of saasSeatRows) {
+    if (seatExcluded(r)) continue;
     const list = seatsByProvider.get(r.provider) ?? [];
     list.push({
       email: r.email,
