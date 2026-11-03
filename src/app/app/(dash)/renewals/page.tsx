@@ -4,30 +4,13 @@ import type { Metadata } from "next";
 import { Card, Pill } from "~/components/ui";
 import { RenewalManager } from "~/components/workspace/RenewalManager";
 import { lifecycleLabel } from "~/components/workspace/SkuTerms";
-import { fmtDate } from "~/lib/format";
+import { calendarDaysUntil, fmtDate, relativeDayLabel } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
 import { isKnownFreeSku } from "~/server/graph/skuCatalog";
 import { memberships, tenantSkus, vendorRenewals } from "~/server/db/schema";
 
 export const metadata: Metadata = { title: "Renewals" };
-
-const DAY_MS = 86_400_000;
-
-/** Whole calendar days from now until the date; null without a date. */
-const daysFromNow = (date: Date | null, nowMs: number): number | null =>
-  date ? Math.ceil((date.getTime() - nowMs) / DAY_MS) : null;
-
-const relativeDays = (days: number): string =>
-  days < -1
-    ? `${-days} days ago`
-    : days === -1
-      ? "Yesterday"
-      : days === 0
-        ? "Today"
-        : days === 1
-          ? "Tomorrow"
-          : `In ${days} days`;
 
 export default async function RenewalsPage() {
   const ctx = await requireAccess("viewer");
@@ -52,7 +35,8 @@ export default async function RenewalsPage() {
     (s) => !isKnownFreeSku(s.skuId, s.skuPartNumber),
   );
   const canEdit = hasRole(ctx, "admin") && !ctx.tenant.isDemo;
-  const nowMs = Date.now();
+  const now = new Date();
+  const nowMs = now.getTime();
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 pb-8">
       <header className="rise rise-1">
@@ -86,7 +70,9 @@ export default async function RenewalsPage() {
             <ul className="border-line mt-4 border-t">
               {microsoftDates.map((s) => {
                 const label = lifecycleLabel(s);
-                const days = daysFromNow(s.nextLifecycleAt, nowMs);
+                const days = s.nextLifecycleAt
+                  ? calendarDaysUntil(s.nextLifecycleAt, now)
+                  : null;
                 return (
                   <li
                     key={s.skuId}
@@ -123,7 +109,7 @@ export default async function RenewalsPage() {
                                 : "text-ink-faint"
                             }`}
                           >
-                            {relativeDays(days)}
+                            {relativeDayLabel(days)}
                           </span>
                         )}
                       </div>
