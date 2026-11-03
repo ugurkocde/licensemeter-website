@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import Link from "next/link";
 
@@ -14,9 +14,10 @@ import {
 } from "~/components/workspace/SyncStatus";
 import { Card, buttonClass } from "~/components/ui";
 import { fmtDate } from "~/lib/format";
+import { syncStatusRun } from "~/lib/syncStatusRun";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
-import { adobeConnections, adobeUsers } from "~/server/db/schema";
+import { adobeConnections, adobeUsers, syncRuns } from "~/server/db/schema";
 
 export const metadata = { title: "Adobe connector" };
 // Connect action syncs in after(); needs the same 300s budget as other sync paths.
@@ -26,7 +27,7 @@ export default async function AdobeConnectorPage() {
   const ctx = await requireAccess("viewer");
   const isAdmin = hasRole(ctx, "admin");
 
-  const [adobeConn, adobeCount] = await Promise.all([
+  const [adobeConn, adobeCount, lastRun] = await Promise.all([
     db.query.adobeConnections.findFirst({
       where: eq(adobeConnections.tenantId, ctx.tenant.id),
     }),
@@ -35,6 +36,13 @@ export default async function AdobeConnectorPage() {
       .from(adobeUsers)
       .where(eq(adobeUsers.tenantId, ctx.tenant.id))
       .then((r) => r[0]?.n ?? 0),
+    // Only the newest run's state, so a sync already going (nightly, or
+    // started elsewhere) is followed live when the page loads.
+    db.query.syncRuns.findFirst({
+      where: eq(syncRuns.tenantId, ctx.tenant.id),
+      orderBy: desc(syncRuns.startedAt),
+      columns: { id: true, status: true, startedAt: true },
+    }),
   ]);
 
   const microsoftDisconnected =
@@ -121,7 +129,10 @@ export default async function AdobeConnectorPage() {
               first.
             </p>
           ) : adobeConn ? (
-            <SyncStatusProvider initialRun={null}>
+            <SyncStatusProvider
+              // Before the first sync the poller below follows the run.
+              initialRun={adobeConn.lastSyncAt ? syncStatusRun(lastRun) : null}
+            >
               <div className="flex flex-col gap-4">
                 {reconnectNotice}
                 <div className="flex flex-wrap items-center justify-between gap-4">

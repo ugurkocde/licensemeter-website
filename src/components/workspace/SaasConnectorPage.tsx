@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import Link from "next/link";
 
@@ -19,9 +19,10 @@ import {
 import { Card, buttonClass } from "~/components/ui";
 import { connectorSpec } from "~/lib/connectors";
 import { fmtDate } from "~/lib/format";
+import { syncStatusRun } from "~/lib/syncStatusRun";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
-import { saasConnections, saasSeats } from "~/server/db/schema";
+import { saasConnections, saasSeats, syncRuns } from "~/server/db/schema";
 import type { SaasProvider } from "~/server/types";
 import { getAiPreview, shouldPreviewAi } from "~/server/demo/aiPreview";
 import { AiSampleNotice } from "~/components/workspace/AiSampleNotice";
@@ -43,7 +44,7 @@ export const SaasConnectorPage = async ({
   const isAdmin = hasRole(ctx, "admin");
   const spec = connectorSpec(provider);
 
-  const [conn, seats] = await Promise.all([
+  const [conn, seats, lastRun] = await Promise.all([
     db.query.saasConnections.findFirst({
       where: and(
         eq(saasConnections.tenantId, ctx.tenant.id),
@@ -63,6 +64,13 @@ export const SaasConnectorPage = async ({
         ),
       )
       .then((r) => r[0] ?? { n: 0, lastImportAt: null }),
+    // Only the newest run's state, so a sync already going (nightly, or
+    // started elsewhere) is followed live when the page loads.
+    db.query.syncRuns.findFirst({
+      where: eq(syncRuns.tenantId, ctx.tenant.id),
+      orderBy: desc(syncRuns.startedAt),
+      columns: { id: true, status: true, startedAt: true },
+    }),
   ]);
   const aiProvider =
     provider === "openai" || provider === "anthropic" ? provider : null;
@@ -227,7 +235,10 @@ export const SaasConnectorPage = async ({
               {isAdmin && <ImportSeatsForm spec={spec} />}
             </div>
           ) : conn ? (
-            <SyncStatusProvider initialRun={null}>
+            <SyncStatusProvider
+              // Before the first sync the poller below follows the run.
+              initialRun={conn.lastSyncAt ? syncStatusRun(lastRun) : null}
+            >
               <div className="flex flex-col gap-4">
                 {reconnectNotice}
                 <div className="flex flex-wrap items-center justify-between gap-4">
