@@ -141,6 +141,14 @@ export const tenants = pgTable(
     /** Per-workspace inactivity threshold for the inactive-users rule. */
     inactiveDays: integer("inactive_days").notNull().default(90),
     /**
+     * Admin globs (`*` wildcard, matched against UPN or display name) for
+     * accounts kept out of per-user findings, such as service or room accounts.
+     */
+    findingExclusions: text("finding_exclusions")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    /**
      * Deprecated compatibility field. New code reads vendorRenewals. Keep for
      * one deploy after the multi-vendor cutover, then drop in a contract
      * migration once no running application version selects it.
@@ -470,6 +478,10 @@ export const tenantSkus = pgTable(
     prepaidSuspended: integer("prepaid_suspended").notNull().default(0),
     prepaidWarning: integer("prepaid_warning").notNull().default(0),
     consumedUnits: integer("consumed_units").notNull().default(0),
+    /** Enabled trial seats (from /directory/subscriptions) inside prepaidEnabled. */
+    trialUnits: integer("trial_units").notNull().default(0),
+    /** Renewal of the paid seats, or the trial end for a SKU only on trial. */
+    nextLifecycleAt: timestamp("next_lifecycle_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -486,6 +498,15 @@ export const tenantUsers = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     graphId: text("graph_id").notNull(),
     upn: text("upn").notNull(),
+    /**
+     * Primary mail and smtp proxy addresses besides the UPN, lowercased, so
+     * connector seats on an alias correlate in every analysis, not only in
+     * the sync that pulled them. Empty for CSV-imported directories.
+     */
+    mailAliases: text("mail_aliases")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     displayName: text("display_name"),
     accountEnabled: boolean("account_enabled").notNull().default(true),
     userType: text("user_type"),

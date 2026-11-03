@@ -1,0 +1,7 @@
+{
+  "title": "More accurate waste figures and fewer noisy findings",
+  "summary": "List prices now cover many more Microsoft products, including Intune Suite, Teams Premium, the no-Teams suites, Windows 365, Power Platform and Dynamics 365, and a notice shows when licenses still have no price. Trial seats no longer count as paid waste, and the license inventory shows trials and renewal dates. Accounts that hold only free licenses, such as Teams resource accounts, no longer appear as findings, and owners and admins can exclude service or room accounts by name pattern in Settings. Findings for disabled service plans now name the plans that are switched off most often. Syncs of large tenants also finish faster.",
+  "type": "improved",
+  "publishedOn": "2026-11-03",
+  "idempotencyKey": "licensemeter:waste-accuracy-2026-11-03"
+}

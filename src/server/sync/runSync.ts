@@ -34,10 +34,12 @@ import type { AdobeUser, SaasProvider, SaasSeat } from "~/server/types";
 import { DemoGraphClient } from "~/server/graph/demoGraph";
 import { msGraphClientForTenant } from "~/server/graph/msConnection";
 import {
+  cleanPartNumber,
   skuDefaultPriceCents,
   skuDisplayName,
 } from "~/server/graph/skuCatalog";
 import {
+  GraphHttpError,
   PremiumLicenseRequiredError,
   type CopilotUsageRow,
   type GraphClient,
@@ -52,18 +54,22 @@ import { pickLeakFindings } from "~/server/leakAlerts";
 import { notifyOps } from "~/server/ops";
 import { workspaceAdminEmails } from "~/server/workspaceEmail";
 import { aiSpendSinceDay } from "~/server/sync/aiSpendWindow";
+import { optionalStepDeadline } from "~/server/sync/deadline";
 import { errText } from "~/server/sync/errText";
 import { textSet } from "~/server/sync/textSet";
 import { mergeAdobeUsers, mergeSaasSeats } from "~/server/sync/mergeByEmail";
 import {
-  entraIdentitiesOf,
-  joinSignals,
-  storedIdentitiesOf,
-} from "~/server/sync/join";
+  subscriptionTermsBySku,
+  type SkuTerms,
+} from "~/server/sync/subscriptionTerms";
+import { connectorSeatExclusion } from "~/server/sync/connectorExclusions";
+import { directoryIdentitiesOf, joinSignals } from "~/server/sync/join";
 import type { SyncRunStatus, SyncStep, WasteRuleId } from "~/server/types";
 import {
   analyzeWaste,
+  paidSeatsOf,
   purchasedSeatsOf,
+  spendSeatsOf,
   type WasteFinding,
 } from "~/server/waste/engine";
 
@@ -73,9 +79,33 @@ const chunk = <T>(arr: T[], size: number): T[][] => {
   return out;
 };
 
+/**
+ * Per-SKU seats for the daily snapshot: paid seats (trial seats excluded,
+ * matching purchasedSeats) and assigned seats. Written on insert and on every
+ * same-day rewrite so the two never disagree.
+ */
+const bySkuOf = (
+  skus: readonly {
+    skuId: string;
+    prepaidEnabled: number;
+    consumedUnits: number;
+    trialUnits?: number;
+  }[],
+): Record<string, { purchased: number; assigned: number }> =>
+  Object.fromEntries(
+    skus.map((s) => [
+      s.skuId,
+      { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
+    ]),
+  );
+
+/** Milliseconds since `start`, recorded on every step to diagnose slow syncs. */
+const since = (start: number): number => Date.now() - start;
+
 /** Steps that need a Graph credential; skipped when Microsoft is not connected. */
 const MICROSOFT_STEPS = [
   "subscribedSkus",
+  "subscriptions",
   "reportSettings",
   "users",
   "usageReports",
@@ -105,6 +135,7 @@ const syncAiSpend = async (
   deadline?: number,
 ): Promise<void> => {
   const step = `${provider}Spend` as const;
+  const started = Date.now();
   try {
     const ensureWithinDeadline = (): void => {
       if (deadline !== undefined && Date.now() >= deadline) {
@@ -151,9 +182,19 @@ const syncAiSpend = async (
           },
         });
     }
-    steps.push({ step, status: "ok", count: rows.length });
+    steps.push({
+      step,
+      status: "ok",
+      count: rows.length,
+      durationMs: since(started),
+    });
   } catch (err) {
-    steps.push({ step, status: "warning", message: errText(err) });
+    steps.push({
+      step,
+      status: "warning",
+      message: errText(err),
+      durationMs: since(started),
+    });
   }
 };
 
@@ -261,6 +302,8 @@ export const runSync = async (
     // --- Pull phase -----------------------------------------------------
     let orgName: string | null = null;
     let skus: GraphSubscribedSku[] = [];
+    /** Per-SKU trial seats and renewal dates; null keeps the stored values. */
+    let skuTerms: Map<string, SkuTerms> | null = new Map();
     let concealmentSetting: boolean | null = null;
     let graphUsers: GraphUser[] = [];
     let hasP1 = true;
@@ -273,21 +316,30 @@ export const runSync = async (
           step,
           status: "skipped",
           message: "Microsoft 365 is not connected",
+          durationMs: 0,
         });
       }
     } else {
+      let started = Date.now();
       try {
-        skus = await client.getSubscribedSkus();
+        // Graph returns some part numbers with zero-width characters; the
+        // upsert below rewrites stored rows with the cleaned value.
+        skus = (await client.getSubscribedSkus()).map((s) => ({
+          ...s,
+          skuPartNumber: cleanPartNumber(s.skuPartNumber),
+        }));
         steps.push({
           step: "subscribedSkus",
           status: "ok",
           count: skus.length,
+          durationMs: since(started),
         });
       } catch (err) {
         steps.push({
           step: "subscribedSkus",
           status: "failed",
           message: errText(err),
+          durationMs: since(started),
         });
         throw err; // critical: nothing useful without SKUs
       }
@@ -296,6 +348,7 @@ export const runSync = async (
       // lookup cannot consume the propagation budget the SKU retry needs.
       orgName = await client.getOrganizationName();
 
+      started = Date.now();
       try {
         concealmentSetting = await client.getReportConcealment();
         steps.push({
@@ -305,15 +358,26 @@ export const runSync = async (
             concealmentSetting === null
               ? "Could not read /admin/reportSettings"
               : `displayConcealedNames=${concealmentSetting}`,
+          durationMs: since(started),
         });
       } catch {
-        steps.push({ step: "reportSettings", status: "warning" });
+        steps.push({
+          step: "reportSettings",
+          status: "warning",
+          durationMs: since(started),
+        });
       }
 
+      started = Date.now();
       try {
+        const signInStarted = Date.now();
         try {
           graphUsers = await client.listUsers({ includeSignInActivity: true });
-          steps.push({ step: "signInActivity", status: "ok" });
+          steps.push({
+            step: "signInActivity",
+            status: "ok",
+            durationMs: since(signInStarted),
+          });
         } catch (err) {
           if (err instanceof PremiumLicenseRequiredError) {
             hasP1 = false;
@@ -322,6 +386,7 @@ export const runSync = async (
               status: "skipped",
               message:
                 "Sign-in activity unavailable (no Entra ID P1/P2, or AuditLog.Read.All not granted); falling back to usage reports",
+              durationMs: since(signInStarted),
             });
             graphUsers = await client.listUsers({
               includeSignInActivity: false,
@@ -330,43 +395,111 @@ export const runSync = async (
             throw err;
           }
         }
-        steps.push({ step: "users", status: "ok", count: graphUsers.length });
+        steps.push({
+          step: "users",
+          status: "ok",
+          count: graphUsers.length,
+          durationMs: since(started),
+        });
       } catch (err) {
         steps.push({
           step: "users",
           status: "failed",
           message: errText(err),
+          durationMs: since(started),
         });
         throw err; // critical
       }
 
+      // Trial seats and renewal dates, read after the critical directory
+      // pulls on a bounded budget of its own, so throttling here can never
+      // starve them or the reports that follow. Never critical: without the
+      // data the shelfware rule counts every prepaid seat as paid, as before.
+      started = Date.now();
+      const subscriptionsDeadline = optionalStepDeadline(deadline);
+      if (!client.getSubscriptions) {
+        steps.push({
+          step: "subscriptions",
+          status: "skipped",
+          message: "Trial and renewal data is not read by this connection",
+          durationMs: 0,
+        });
+      } else if (subscriptionsDeadline === null) {
+        skuTerms = null; // keep the stored values
+        steps.push({
+          step: "subscriptions",
+          status: "skipped",
+          message:
+            "Not enough sync time left; kept the last trial and renewal data",
+          durationMs: 0,
+        });
+      } else {
+        try {
+          const subscriptions = (
+            await client.getSubscriptions(subscriptionsDeadline)
+          ).map((s) => ({
+            ...s,
+            skuPartNumber: cleanPartNumber(s.skuPartNumber),
+          }));
+          skuTerms = subscriptionTermsBySku(subscriptions);
+          steps.push({
+            step: "subscriptions",
+            status: "ok",
+            count: subscriptions.length,
+            durationMs: since(started),
+          });
+        } catch (err) {
+          const denied =
+            err instanceof GraphHttpError &&
+            (err.status === 401 || err.status === 403);
+          // Denied: this tenant does not expose the data, so trial seats are
+          // not adjusted at all. Transient failure or timeout: keep the stored
+          // values so trial seats do not flip into shelfware for one run.
+          if (!denied) skuTerms = null;
+          steps.push({
+            step: "subscriptions",
+            status: denied ? "skipped" : "warning",
+            message: denied
+              ? "Trial and renewal data is not available for this tenant"
+              : errText(err),
+            durationMs: since(started),
+          });
+        }
+      }
+
+      started = Date.now();
       try {
         usageRows = await client.getActiveUserDetail("D90");
         steps.push({
           step: "usageReports",
           status: "ok",
           count: usageRows.length,
+          durationMs: since(started),
         });
       } catch (err) {
         steps.push({
           step: "usageReports",
           status: "warning",
           message: errText(err),
+          durationMs: since(started),
         });
       }
 
+      started = Date.now();
       try {
         copilotRows = await client.getCopilotUsage("D90");
         steps.push({
           step: "copilotUsage",
           status: "ok",
           count: copilotRows.length,
+          durationMs: since(started),
         });
       } catch (err) {
         steps.push({
           step: "copilotUsage",
           status: "warning",
           message: errText(err),
+          durationMs: since(started),
         });
       }
     }
@@ -379,6 +512,7 @@ export const runSync = async (
     });
     if (tenant.isDemo || adobeConn) {
       adobeActive = true;
+      const started = Date.now();
       try {
         if (outOfTime()) {
           throw new Error("Sync deadline reached; using stored data");
@@ -398,6 +532,7 @@ export const runSync = async (
           step: "adobeUsers",
           status: "ok",
           count: adobeRows.length,
+          durationMs: since(started),
         });
         if (adobeConn) {
           await db
@@ -415,6 +550,7 @@ export const runSync = async (
           step: "adobeUsers",
           status: "warning",
           message: errText(err),
+          durationMs: since(started),
         });
         const stored = await db.query.adobeUsers.findMany({
           where: eq(adobeUsersTable.tenantId, tenantId),
@@ -450,6 +586,7 @@ export const runSync = async (
       : saasConns.map((c) => c.provider);
     for (const provider of activeSaas) {
       const conn = saasConns.find((c) => c.provider === provider);
+      const started = Date.now();
       try {
         if (outOfTime()) {
           throw new Error("Sync deadline reached; using stored data");
@@ -471,6 +608,7 @@ export const runSync = async (
           step: `${provider}Seats`,
           status: "ok",
           count: seats.length,
+          durationMs: since(started),
         });
         if (conn) {
           await db
@@ -498,6 +636,7 @@ export const runSync = async (
           step: `${provider}Seats`,
           status: "warning",
           message: errText(err),
+          durationMs: since(started),
         });
         const stored = await db.query.saasSeats.findMany({
           where: and(
@@ -536,6 +675,7 @@ export const runSync = async (
     if (!tenant.isDemo) {
       for (const provider of IMPORT_PROVIDERS) {
         if (saasRows.has(provider)) continue;
+        const started = Date.now();
         const stored = await db.query.saasSeats.findMany({
           where: and(
             eq(saasSeatsTable.tenantId, tenantId),
@@ -558,12 +698,31 @@ export const runSync = async (
           status: "ok",
           count: stored.length,
           message: "imported snapshot",
+          durationMs: since(started),
         });
       }
     }
 
     // --- Join + analyze ---------------------------------------------------
+    const analysisStarted = Date.now();
     const joined = joinSignals({ graphUsers, usageRows, copilotRows, hasP1 });
+
+    // A failed subscriptions read keeps the trial seats and renewal dates of
+    // the last successful one.
+    if (skuTerms === null) {
+      const stored = await db.query.tenantSkus.findMany({
+        where: eq(tenantSkus.tenantId, tenantId),
+        columns: { skuId: true, trialUnits: true, nextLifecycleAt: true },
+      });
+      skuTerms = new Map(
+        stored.map((r) => [
+          r.skuId,
+          { trialUnits: r.trialUnits, nextLifecycleAt: r.nextLifecycleAt },
+        ]),
+      );
+    }
+    const termsOf = (skuId: string): SkuTerms =>
+      skuTerms?.get(skuId) ?? { trialUnits: 0, nextLifecycleAt: null };
 
     // --- Persist phase (upsert + prune; no destructive window) -------------
     await db.transaction(async (tx) => {
@@ -581,6 +740,8 @@ export const runSync = async (
                 prepaidSuspended: s.prepaidUnits.suspended,
                 prepaidWarning: s.prepaidUnits.warning,
                 consumedUnits: s.consumedUnits,
+                trialUnits: termsOf(s.skuId).trialUnits,
+                nextLifecycleAt: termsOf(s.skuId).nextLifecycleAt,
                 updatedAt: now,
               })),
             )
@@ -593,6 +754,8 @@ export const runSync = async (
                 prepaidSuspended: sql`excluded.prepaid_suspended`,
                 prepaidWarning: sql`excluded.prepaid_warning`,
                 consumedUnits: sql`excluded.consumed_units`,
+                trialUnits: sql`excluded.trial_units`,
+                nextLifecycleAt: sql`excluded.next_lifecycle_at`,
                 updatedAt: sql`excluded.updated_at`,
               },
             });
@@ -620,6 +783,7 @@ export const runSync = async (
             tenantId,
             graphId: u.graphId,
             upn: u.upn,
+            mailAliases: u.mailAliases,
             displayName: u.displayName,
             accountEnabled: u.accountEnabled,
             userType: u.userType,
@@ -636,6 +800,7 @@ export const runSync = async (
           target: [tenantUsers.tenantId, tenantUsers.graphId],
           set: {
             upn: sql`excluded.upn`,
+            mailAliases: sql`excluded.mail_aliases`,
             displayName: sql`excluded.display_name`,
             accountEnabled: sql`excluded.account_enabled`,
             userType: sql`excluded.user_type`,
@@ -772,6 +937,33 @@ export const runSync = async (
       where: eq(priceBook.tenantId, tenantId),
     });
     const known = new Set(existingPrices.map((p) => p.skuId));
+    // Catalog prices added after a row was prefilled: a row still on the
+    // catalog's old fallback of 0 picks up the new list price. Only rows the
+    // customer never touched (source "default") qualify; any edited price
+    // is "custom" and is never overwritten.
+    const skuIds = new Set(skus.map((s) => s.skuId));
+    for (const p of existingPrices) {
+      if (
+        p.source !== "default" ||
+        p.monthlyPriceCents !== 0 ||
+        !skuIds.has(p.skuId)
+      ) {
+        continue;
+      }
+      const price = skuDefaultPriceCents(p.skuId, tenant.currencyRatePpm);
+      if (price === 0) continue;
+      await db
+        .update(priceBook)
+        .set({ monthlyPriceCents: price, updatedAt: now })
+        .where(
+          and(
+            eq(priceBook.tenantId, tenantId),
+            eq(priceBook.skuId, p.skuId),
+            eq(priceBook.source, "default"),
+            eq(priceBook.monthlyPriceCents, 0),
+          ),
+        );
+    }
     const missing = skus.filter((s) => !known.has(s.skuId));
     if (missing.length > 0) {
       for (const batch of chunk(missing, 250)) {
@@ -850,14 +1042,16 @@ export const runSync = async (
       ).map((p) => [p.skuId, p.monthlyPriceCents]),
     );
 
+    const inventory = skus.map((s) => ({
+      skuId: s.skuId,
+      skuPartNumber: s.skuPartNumber,
+      prepaidEnabled: s.prepaidUnits.enabled,
+      consumedUnits: s.consumedUnits,
+      trialUnits: termsOf(s.skuId).trialUnits,
+    }));
     const newFindings = analyzeWaste({
       users: joined.users,
-      skus: skus.map((s) => ({
-        skuId: s.skuId,
-        skuPartNumber: s.skuPartNumber,
-        prepaidEnabled: s.prepaidUnits.enabled,
-        consumedUnits: s.consumedUnits,
-      })),
+      skus: inventory,
       prices,
       now,
       activitySignal: joined.activitySignal,
@@ -865,43 +1059,55 @@ export const runSync = async (
       usageAggregate: joined.usageAggregate,
       copilotAggregate: joined.copilotAggregate,
       inactiveDays: tenant.inactiveDays,
+      exclusions: tenant.findingExclusions,
     });
     // Every sign-in name plus mail alias of each directory user, so connector
-    // seats registered under an alias still match (in-memory only; the
-    // tenant_users table keeps the UPN alone).
+    // seats registered under an alias still match. The aliases are stored on
+    // tenant_users, so runAnalysis builds the very same identities.
     // No Graph pull this run (Microsoft not connected, or an empty result that
     // left the stored inventory alone): correlate against the stored directory
     // instead, which a CSV import fills without any Microsoft connection.
     // Dropping it here would resolve the leak findings runAnalysis creates and
     // recreate them on the next analysis.
-    const entraIdentities =
+    const directory =
       graphUsers.length > 0
-        ? entraIdentitiesOf(graphUsers)
-        : storedIdentitiesOf(
-            await db.query.tenantUsers.findMany({
-              where: eq(tenantUsers.tenantId, tenantId),
-            }),
-          );
-    const adobeFindings = analyzeAdobeWaste(adobeRows, entraIdentities, prices);
+        ? joined.users
+        : await db.query.tenantUsers.findMany({
+            where: eq(tenantUsers.tenantId, tenantId),
+          });
+    const entraIdentities = directoryIdentitiesOf(directory);
+    const seatExcluded = connectorSeatExclusion(
+      tenant.findingExclusions,
+      directory,
+    );
+    const adobeFindings = analyzeAdobeWaste(
+      adobeRows.filter((u) => !seatExcluded(u)),
+      entraIdentities,
+      prices,
+    );
     const saasFindings = [...saasRows.entries()].flatMap(([provider, seats]) =>
-      analyzeSaasWaste(provider, seats, entraIdentities, prices, {
-        inactiveDays: tenant.inactiveDays,
-        now,
-      }),
+      analyzeSaasWaste(
+        provider,
+        seats.filter((seat) => !seatExcluded(seat)),
+        entraIdentities,
+        prices,
+        { inactiveDays: tenant.inactiveDays, now },
+      ),
     );
     const allFindings = newFindings.concat(adobeFindings, saasFindings);
     steps.push({
       step: "wasteAnalysis",
       status: "ok",
       count: allFindings.length,
+      durationMs: since(analysisStarted),
     });
 
     const inserted = await diffFindings(tenantId, allFindings, now);
     await sendLeakAlert(tenant, inserted, now);
 
     // --- Snapshot + tenant capabilities ------------------------------------
-    const totalMonthlySpendCents = skus.reduce(
-      (sum, s) => sum + s.consumedUnits * (prices[s.skuId] ?? 0),
+    const totalMonthlySpendCents = inventory.reduce(
+      (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
       0,
     );
     const openRows = await db.query.findings.findMany({
@@ -916,12 +1122,7 @@ export const runSync = async (
     );
 
     const day = now.toISOString().slice(0, 10);
-    const purchasedSeats = purchasedSeatsOf(
-      skus.map((s) => ({
-        skuPartNumber: s.skuPartNumber,
-        prepaidEnabled: s.prepaidUnits.enabled,
-      })),
-    );
+    const purchasedSeats = purchasedSeatsOf(inventory);
     await db
       .insert(snapshots)
       .values({
@@ -931,12 +1132,7 @@ export const runSync = async (
         totalMonthlyWasteCents,
         purchasedSeats,
         assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
-        bySku: Object.fromEntries(
-          skus.map((s) => [
-            s.skuId,
-            { purchased: s.prepaidUnits.enabled, assigned: s.consumedUnits },
-          ]),
-        ),
+        bySku: bySkuOf(inventory),
       })
       .onConflictDoUpdate({
         target: [snapshots.tenantId, snapshots.day],
@@ -945,6 +1141,7 @@ export const runSync = async (
           totalMonthlyWasteCents,
           purchasedSeats,
           assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
+          bySku: bySkuOf(inventory),
         },
       });
 
@@ -1083,12 +1280,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
         : null,
       licenses: r.licenses,
     })),
-    skus: skuRows.map((s) => ({
-      skuId: s.skuId,
-      skuPartNumber: s.skuPartNumber,
-      prepaidEnabled: s.prepaidEnabled,
-      consumedUnits: s.consumedUnits,
-    })),
+    skus: skuRows,
     prices,
     now,
     // Prefer the signal recorded by the last sync; the boolean derivation is
@@ -1102,20 +1294,28 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     usageAggregate: tenant.usageAggregate ?? undefined,
     copilotAggregate: tenant.copilotAggregate ?? undefined,
     inactiveDays: tenant.inactiveDays,
+    exclusions: tenant.findingExclusions,
   });
 
-  const entraIdentities = storedIdentitiesOf(userRows);
+  const entraIdentities = directoryIdentitiesOf(userRows);
+  const seatExcluded = connectorSeatExclusion(
+    tenant.findingExclusions,
+    userRows,
+  );
   const adobeFindings = analyzeAdobeWaste(
-    adobeRows.map((r) => ({
-      email: r.email,
-      status: r.status,
-      products: r.products,
-    })),
+    adobeRows
+      .filter((r) => !seatExcluded(r))
+      .map((r) => ({
+        email: r.email,
+        status: r.status,
+        products: r.products,
+      })),
     entraIdentities,
     prices,
   );
   const seatsByProvider = new Map<SaasProvider, SaasSeat[]>();
   for (const r of saasSeatRows) {
+    if (seatExcluded(r)) continue;
     const list = seatsByProvider.get(r.provider) ?? [];
     list.push({
       email: r.email,
@@ -1141,7 +1341,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
   );
 
   const totalMonthlySpendCents = skuRows.reduce(
-    (sum, s) => sum + s.consumedUnits * (prices[s.skuId] ?? 0),
+    (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
     0,
   );
   const openRows = await db.query.findings.findMany({
@@ -1166,12 +1366,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
       totalMonthlyWasteCents,
       purchasedSeats,
       assignedSeats,
-      bySku: Object.fromEntries(
-        skuRows.map((s) => [
-          s.skuId,
-          { purchased: s.prepaidEnabled, assigned: s.consumedUnits },
-        ]),
-      ),
+      bySku: bySkuOf(skuRows),
     })
     .onConflictDoUpdate({
       target: [snapshots.tenantId, snapshots.day],
@@ -1180,6 +1375,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
         totalMonthlyWasteCents,
         purchasedSeats,
         assignedSeats,
+        bySku: bySkuOf(skuRows),
       },
     });
 };

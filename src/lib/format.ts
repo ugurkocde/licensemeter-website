@@ -45,6 +45,28 @@ export const fmtDate = (d: Date | string | null): string => {
   }).format(date);
 };
 
+/**
+ * Calendar days from `now` to `date`, counted on the dates fmtDate shows (the
+ * server's local timezone), not on elapsed hours: an evening `now` and a
+ * same-day `date` are 0 apart, tomorrow evening is 1 away. Negative when past.
+ */
+export const calendarDaysUntil = (date: Date, now: Date): number => {
+  const day = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((day(date) - day(now)) / 86_400_000);
+};
+
+/** "Today", "Tomorrow", "In 5 days", "Yesterday", "3 days ago". */
+export const relativeDayLabel = (days: number): string =>
+  days < -1
+    ? `${-days} days ago`
+    : days === -1
+      ? "Yesterday"
+      : days === 0
+        ? "Today"
+        : days === 1
+          ? "Tomorrow"
+          : `In ${days} days`;
+
 /** fmtDate plus 24h time, for lists where same-day entries must stay apart. */
 export const fmtDateTime = (d: Date | string | null): string => {
   if (!d) return "-";

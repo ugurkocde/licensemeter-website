@@ -29,3 +29,31 @@ export const withinDeadline = (
   deadline: number | undefined,
   waitMs: number,
 ): boolean => deadline === undefined || Date.now() + waitMs <= deadline;
+
+/** Longest an optional sync step (such as the subscriptions read) may take. */
+export const OPTIONAL_STEP_BUDGET_MS = 20_000;
+
+/**
+ * Time kept free after an optional step for the reads and connectors that
+ * still follow it (usage and Copilot reports, Adobe, SaaS).
+ */
+export const OPTIONAL_STEP_RESERVE_MS = 60_000;
+
+/** Below this much budget an optional step is skipped instead of started. */
+export const OPTIONAL_STEP_MIN_MS = 3_000;
+
+/**
+ * Deadline for an optional step starting now: at most OPTIONAL_STEP_BUDGET_MS,
+ * and never into the reserve before the request deadline. Null when less
+ * than OPTIONAL_STEP_MIN_MS would remain, so the caller skips the step.
+ */
+export const optionalStepDeadline = (
+  deadline: number | undefined,
+  now: number = Date.now(),
+): number | null => {
+  const until = Math.min(
+    now + OPTIONAL_STEP_BUDGET_MS,
+    deadline === undefined ? Infinity : deadline - OPTIONAL_STEP_RESERVE_MS,
+  );
+  return until - now >= OPTIONAL_STEP_MIN_MS ? until : null;
+};

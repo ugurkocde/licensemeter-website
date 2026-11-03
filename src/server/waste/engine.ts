@@ -1,4 +1,9 @@
-import { skuDisplayName } from "~/server/graph/skuCatalog";
+import { exclusionMatcher } from "~/lib/findingExclusions";
+import {
+  isKnownFreeSku,
+  SERVICE_PLAN_NAMES,
+  skuDisplayName,
+} from "~/server/graph/skuCatalog";
 import type { AggregateUsage, UserLicense, WasteRuleId } from "~/server/types";
 
 /** Detection thresholds (days). */
@@ -90,6 +95,8 @@ export type WasteSku = {
   skuPartNumber: string;
   prepaidEnabled: number;
   consumedUnits: number;
+  /** Enabled trial seats included in prepaidEnabled; they cost nothing. */
+  trialUnits?: number;
 };
 
 export type WasteInput = {
@@ -109,6 +116,8 @@ export type WasteInput = {
   copilotAggregate?: AggregateUsage;
   /** Per-workspace inactivity threshold in days; defaults to INACTIVE_DAYS. */
   inactiveDays?: number;
+  /** Admin globs (upn or display name) for accounts kept out of per-user findings. */
+  exclusions?: readonly string[];
 };
 
 export type WasteFinding = {
@@ -127,25 +136,6 @@ const key = (
   skuId?: string | null,
 ) => `${rule}|${userId ?? "-"}|${skuId ?? "-"}`;
 
-/**
- * Free, viral and capacity-style SKUs whose "unassigned seats" carry no cost:
- * every real tenant has e.g. WINDOWS_STORE with a million prepaid units.
- * Observed on the first live tenant sync; without this every customer sees
- * meaningless shelfware findings on day one.
- */
-const SHELFWARE_EXEMPT_PART_NUMBERS = new Set([
-  "WINDOWS_STORE",
-  "FLOW_FREE",
-  "POWERAPPS_VIRAL",
-  "POWER_VIRTUAL_AGENTS_VIRAL",
-  "TEAMS_EXPLORATORY",
-  "TEAMS_COMMERCIAL_TRIAL",
-  "POWER_BI_STANDARD",
-  "CCIBOTS_PRIVPREV_VIRAL",
-  "RIGHTSMANAGEMENT_ADHOC",
-  "POWERAPPS_DEV",
-]);
-
 /** Capacity-style allotments (10k+ "seats") are licensing plumbing, not purchases. */
 const SHELFWARE_CAPACITY_THRESHOLD = 5000;
 
@@ -153,29 +143,129 @@ const SHELFWARE_CAPACITY_THRESHOLD = 5000;
  * True for free/viral/capacity SKUs that Microsoft auto-provisions into every
  * tenant (e.g. WINDOWS_STORE's 1,000,000 prepaid units, FLOW_FREE). These carry
  * no cost and represent no purchase, so they are excluded from shelfware
- * findings and the dashboard license inventory.
+ * findings and the dashboard license inventory. "Free" comes from the catalog
+ * (isKnownFreeSku), the one source of truth shared with the user rules.
  */
 export const isShelfwareExempt = (
   skuPartNumber: string,
   prepaidEnabled: number,
 ): boolean =>
-  SHELFWARE_EXEMPT_PART_NUMBERS.has(skuPartNumber) ||
+  isKnownFreeSku(null, skuPartNumber) ||
   prepaidEnabled >= SHELFWARE_CAPACITY_THRESHOLD;
+
+type SeatCounts = {
+  prepaidEnabled: number;
+  consumedUnits: number;
+  trialUnits?: number;
+};
+
+/** Paid seats: prepaid (enabled) seats minus the enabled trial seats among them. */
+export const paidSeatsOf = (s: Omit<SeatCounts, "consumedUnits">): number =>
+  Math.max(0, s.prepaidEnabled - (s.trialUnits ?? 0));
+
+/** Paid seats nobody is assigned to (over-assigned SKUs clamp to 0). */
+export const idleSeatsOf = (s: SeatCounts): number =>
+  Math.max(0, paidSeatsOf(s) - s.consumedUnits);
+
+/**
+ * Assigned seats that cost money. Without trial seats this is the consumed
+ * count exactly as Microsoft reports it, over-assignment included. With trial
+ * seats only the paid seats can be billed: min(consumed, paid), so a SKU that
+ * is fully on trial never has spend, however many users hold it.
+ */
+export const spendSeatsOf = (s: SeatCounts): number =>
+  (s.trialUnits ?? 0) > 0
+    ? Math.min(s.consumedUnits, paidSeatsOf(s))
+    : s.consumedUnits;
+
+/**
+ * Monthly price of one assignment, for rules that price individual users.
+ * Which assignment sits on a trial seat is unknowable, so on SKUs with trial
+ * seats the paid spend is spread over every assignment (rounded down, so the
+ * per-user amounts never add up to more than the paid spend). SKUs without
+ * trial seats keep their price unchanged.
+ */
+export const assignmentPrices = (
+  skus: readonly (SeatCounts & { skuId: string })[],
+  prices: Record<string, number>,
+): Record<string, number> => {
+  const out = { ...prices };
+  for (const s of skus) {
+    if ((s.trialUnits ?? 0) <= 0) continue;
+    const price = prices[s.skuId] ?? 0;
+    out[s.skuId] =
+      s.consumedUnits > 0
+        ? Math.floor((price * spendSeatsOf(s)) / s.consumedUnits)
+        : 0;
+  }
+  return out;
+};
+
+/**
+ * One user's licenses priced exactly as the findings price them: the
+ * trial-aware assignment price per license (assignmentPrices) and their sum.
+ * `onTrialSku` marks licenses of SKUs that have trial seats. SKUs without
+ * trial seats keep their price book value.
+ */
+export const userLicensePricing = (
+  licenses: readonly { skuId: string }[],
+  skus: readonly (SeatCounts & { skuId: string })[],
+  prices: Record<string, number>,
+): {
+  rows: { skuId: string; monthlyPriceCents: number; onTrialSku: boolean }[];
+  totalCents: number;
+} => {
+  const assigned = assignmentPrices(skus, prices);
+  const trialSkus = new Set(
+    skus.filter((s) => (s.trialUnits ?? 0) > 0).map((s) => s.skuId),
+  );
+  const rows = licenses.map((l) => ({
+    skuId: l.skuId,
+    monthlyPriceCents: assigned[l.skuId] ?? 0,
+    onTrialSku: trialSkus.has(l.skuId),
+  }));
+  return {
+    rows,
+    totalCents: rows.reduce((sum, r) => sum + r.monthlyPriceCents, 0),
+  };
+};
+
+/**
+ * Microsoft SKUs with paid seats (assigned or not) but no price, excluding
+ * known-free, capacity and fully trial SKUs: waste on them is priced at 0
+ * and therefore understated until someone enters a price.
+ */
+export const unpricedSkuCount = (
+  skus: readonly (SeatCounts & { skuId: string; skuPartNumber: string })[],
+  priceCents: (skuId: string) => number,
+): number =>
+  skus.filter(
+    (s) =>
+      (paidSeatsOf(s) > 0 || spendSeatsOf(s) > 0) &&
+      !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled) &&
+      !isKnownFreeSku(s.skuId, s.skuPartNumber) &&
+      priceCents(s.skuId) <= 0,
+  ).length;
 
 /**
  * Purchased seats for reporting: prepaid (enabled) seats summed only over SKUs
  * that represent a real purchase. Excludes the same free/viral/capacity SKUs as
  * the shelfware rule, so Microsoft's sentinel allotments (e.g. WINDOWS_STORE's
- * 1,000,000 prepaid units) never inflate the purchased seat count.
+ * 1,000,000 prepaid units) never inflate the purchased seat count. Trial seats
+ * are not purchases either.
  */
 export const purchasedSeatsOf = (
-  skus: readonly { skuPartNumber: string; prepaidEnabled: number }[],
+  skus: readonly {
+    skuPartNumber: string;
+    prepaidEnabled: number;
+    trialUnits?: number;
+  }[],
 ): number =>
   skus.reduce(
     (sum, s) =>
       isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled)
         ? sum
-        : sum + s.prepaidEnabled,
+        : sum + paidSeatsOf(s),
     0,
   );
 
@@ -205,14 +295,38 @@ const userDetail = (u: WasteUser, prices: Record<string, number>) => ({
 
 /** Pure rule evaluation over a tenant snapshot. Persistence and diffing live in the sync layer. */
 export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
-  const { users, skus, prices, now } = input;
+  const { users, skus, now } = input;
+  /** List prices: what an idle paid seat costs (shelfware). */
+  const listPrices = input.prices;
+  /** Per-assignment prices: what one user's license costs (every user rule). */
+  const prices = assignmentPrices(skus, listPrices);
   const inactiveThreshold = input.inactiveDays ?? INACTIVE_DAYS;
   const findings: WasteFinding[] = [];
-  /** SKU -> enabled users carrying it with disabled service plans. */
-  const planDisables = new Map<string, number>();
+  /** SKU -> enabled users with disabled service plans, and users per plan. */
+  const planDisables = new Map<
+    string,
+    { users: number; byPlan: Map<string, number> }
+  >();
+  const partNumberOf = new Map(skus.map((s) => [s.skuId, s.skuPartNumber]));
+  const isExcluded = exclusionMatcher(input.exclusions ?? []);
 
   for (const u of users) {
     if (u.licenses.length === 0) continue;
+    // Admin-excluded accounts (service, room, shared mailboxes) get no
+    // per-user findings; any open ones resolve on this run.
+    if (isExcluded(u)) continue;
+    // Only known-free licenses (e.g. Teams resource accounts on the free
+    // Phone Resource Account SKU): nothing to reclaim. An unknown-priced
+    // license still counts, since its price may simply not be entered yet.
+    // Guests are treated the same: a guest holding only free licenses
+    // costs nothing and is not a licensed-guest finding.
+    if (
+      u.licenses.every((l) =>
+        isKnownFreeSku(l.skuId, partNumberOf.get(l.skuId)),
+      )
+    ) {
+      continue;
+    }
 
     // Rule 1: disabled account still holding licenses (offboarding leak).
     if (!u.accountEnabled) {
@@ -317,7 +431,15 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
     // Tally for rule 8 (service plans disabled on paid suites).
     for (const l of u.licenses) {
       if (l.disabledPlans.length > 0 && OVERLAP_MAP[l.skuId]) {
-        planDisables.set(l.skuId, (planDisables.get(l.skuId) ?? 0) + 1);
+        const tally = planDisables.get(l.skuId) ?? {
+          users: 0,
+          byPlan: new Map<string, number>(),
+        };
+        tally.users++;
+        for (const plan of new Set(l.disabledPlans)) {
+          tally.byPlan.set(plan, (tally.byPlan.get(plan) ?? 0) + 1);
+        }
+        planDisables.set(l.skuId, tally);
       }
     }
 
@@ -347,10 +469,11 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
     }
   }
 
-  // Rule 4: shelfware, paid seats nobody is assigned to.
+  // Rule 4: shelfware, paid seats nobody is assigned to. Trial seats are
+  // not paid, so a SKU that is fully on trial never yields a finding.
   for (const sku of skus) {
     if (isShelfwareExempt(sku.skuPartNumber, sku.prepaidEnabled)) continue;
-    const unassigned = sku.prepaidEnabled - sku.consumedUnits;
+    const unassigned = idleSeatsOf(sku);
     if (unassigned > 0) {
       findings.push({
         dedupeKey: key("shelfware", null, sku.skuId),
@@ -361,25 +484,42 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
         detail: {
           skuId: sku.skuId,
           skuPartNumber: sku.skuPartNumber,
-          purchased: sku.prepaidEnabled,
+          purchased: paidSeatsOf(sku),
+          ...(sku.trialUnits ? { trialSeats: sku.trialUnits } : {}),
           assigned: sku.consumedUnits,
           unassigned,
         },
-        monthlyImpactCents: unassigned * (prices[sku.skuId] ?? 0),
+        monthlyImpactCents: unassigned * (listPrices[sku.skuId] ?? 0),
       });
     }
   }
 
   // Rule 8: paid suites where users have service plans switched off.
-  // Informational (plan fractions cannot be priced), hints at downgrades.
-  for (const [skuId, count] of planDisables) {
+  // Informational (plan fractions cannot be priced), hints at downgrades by
+  // naming the plans switched off for the most users.
+  for (const [skuId, { users: count, byPlan }] of planDisables) {
+    const topPlans = [...byPlan.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 3)
+      .map(([planId, users]) => ({
+        planId,
+        name: SERVICE_PLAN_NAMES[planId] ?? planId,
+        users,
+      }));
+    const planNames = topPlans.map((p) => p.name).join(", ");
     findings.push({
       dedupeKey: key("service_plans_disabled", "aggregate", skuId),
       rule: "service_plans_disabled",
       graphUserId: null,
       skuId,
-      title: `${count} users have service plans disabled on ${skuDisplayName(skuId)}`,
-      detail: { aggregate: true, skuId, usersWithDisabledPlans: count },
+      title: `${count} users have service plans disabled on ${skuDisplayName(skuId)} (most often ${planNames})`,
+      detail: {
+        aggregate: true,
+        skuId,
+        usersWithDisabledPlans: count,
+        topDisabledPlans: topPlans,
+        hint: `If these users do not need ${planNames}, a smaller SKU may fit them.`,
+      },
       monthlyImpactCents: 0,
     });
   }

@@ -113,6 +113,20 @@
       "when": 1793140338253,
       "tag": "0015_workspace_branding",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793710646359,
+      "tag": "0016_waste_accuracy",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793716358757,
+      "tag": "0017_tenant_user_mail_aliases",
+      "breakpoints": true
     }
   ]
 }

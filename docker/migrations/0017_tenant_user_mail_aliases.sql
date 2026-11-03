@@ -1,0 +1,1 @@
+ALTER TABLE "tenant_users" ADD COLUMN "mail_aliases" text[] DEFAULT '{}'::text[] NOT NULL;

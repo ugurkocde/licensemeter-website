@@ -1,10 +1,14 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
 import Link from "next/link";
 
 import { CurrencySelect } from "~/components/workspace/CurrencySelect";
 import { DangerZone } from "~/components/workspace/DangerZone";
 import { DomainJoinControl } from "~/components/workspace/DomainJoinControl";
 import { EmailPreferenceToggle } from "~/components/workspace/EmailPreferenceToggle";
+import {
+  ExclusionChip,
+  FindingExclusionsForm,
+} from "~/components/workspace/FindingExclusionsForm";
 import { InactiveDaysForm } from "~/components/workspace/InactiveDaysForm";
 import { InviteForm } from "~/components/workspace/InviteForm";
 import { JoinRequestActions } from "~/components/workspace/JoinRequestActions";
@@ -23,6 +27,7 @@ import {
   deliveryLabel,
   EMAIL_JOB_LABELS,
 } from "~/lib/emailDeliveryLabels";
+import { exclusionLikePatterns } from "~/lib/findingExclusions";
 import { fmtDate, fmtDateTime, workspaceLabel } from "~/lib/format";
 import { ROLE_DESCRIPTION } from "~/lib/roles";
 import { hasRole, inviteExpiry, requireAccess } from "~/server/access";
@@ -33,12 +38,13 @@ import {
   emailDeliveries,
   memberships,
   syncRuns,
+  tenantUsers,
 } from "~/server/db/schema";
 import { currentFindingsRecipients } from "~/server/currentFindings";
 import { holdsJoinableDomain, pendingJoinRequests } from "~/server/domainJoin";
 import { emailEnabled } from "~/server/email";
 import { loadSharedAddress } from "~/server/notificationAddress";
-import { syncStepLabel } from "~/lib/activityLabels";
+import { SyncStepList } from "~/components/workspace/SyncStepList";
 
 const Capability = ({
   ok,
@@ -93,6 +99,7 @@ export default async function SettingsPage() {
     blocks,
     sharedAddress,
     findingsRecipients,
+    excludedAccounts,
   ] = await Promise.all([
     db.query.memberships.findMany({
       where: eq(memberships.tenantId, ctx.tenant.id),
@@ -140,6 +147,26 @@ export default async function SettingsPage() {
     canEdit
       ? currentFindingsRecipients(ctx.tenant.id)
       : Promise.resolve([] as string[]),
+    // How many synced accounts the saved exclusions match, counted in SQL.
+    ctx.tenant.findingExclusions.length > 0
+      ? db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(tenantUsers)
+          .where(
+            and(
+              eq(tenantUsers.tenantId, ctx.tenant.id),
+              or(
+                ...exclusionLikePatterns(ctx.tenant.findingExclusions).flatMap(
+                  (p) => [
+                    ilike(tenantUsers.upn, p),
+                    ilike(tenantUsers.displayName, p),
+                  ],
+                ),
+              ),
+            ),
+          )
+          .then((rows) => rows[0]?.n ?? 0)
+      : Promise.resolve(null),
   ]);
 
   return (
@@ -193,6 +220,30 @@ export default async function SettingsPage() {
                   <InactiveDaysForm value={ctx.tenant.inactiveDays} />
                 ) : (
                   `${ctx.tenant.inactiveDays} days`
+                )}
+              </dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="text-ink-faint">Excluded accounts</dt>
+              <dd className="mt-0.5">
+                {canEdit ? (
+                  <FindingExclusionsForm
+                    value={ctx.tenant.findingExclusions}
+                    matched={excludedAccounts}
+                  />
+                ) : ctx.tenant.findingExclusions.length > 0 ? (
+                  <ul
+                    aria-label="Excluded account patterns"
+                    className="mt-1 flex flex-wrap gap-2"
+                  >
+                    {ctx.tenant.findingExclusions.map((p) => (
+                      <li key={p}>
+                        <ExclusionChip pattern={p} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  "None"
                 )}
               </dd>
             </div>
@@ -437,13 +488,13 @@ export default async function SettingsPage() {
             <p className="text-ink-soft text-sm">No syncs yet.</p>
           ) : (
             <>
-              <ul className="flex flex-col gap-2">
+              <ul className="flex flex-col">
                 {runs.map((run) => (
                   <li
                     key={run.id}
-                    className="border-line flex flex-wrap items-center justify-between gap-2 border-b pb-2 text-sm last:border-b-0 last:pb-0"
+                    className="border-line flex flex-col gap-2 border-b py-3 text-sm first:pt-0 last:border-b-0 last:pb-0"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <span
                         aria-hidden="true"
                         className={`inline-block size-2 rounded-full ${
@@ -459,21 +510,11 @@ export default async function SettingsPage() {
                       <span className="font-medium capitalize">
                         {run.status}
                       </span>
-                      <span className="text-ink-faint">
+                      <span className="text-ink-faint tnum">
                         {fmtDateTime(run.startedAt)}
                       </span>
                     </div>
-                    <div className="text-ink-soft min-w-0 font-mono text-[11px] break-words">
-                      {run.steps
-                        .map(
-                          (s) =>
-                            `${syncStepLabel(s.step)}${s.count !== undefined ? `: ${s.count}` : ""}${
-                              s.status === "ok" ? "" : ` · ${s.status}`
-                            }`,
-                        )
-                        .join(" · ") ||
-                        (run.error ?? "")}
-                    </div>
+                    <SyncStepList steps={run.steps} error={run.error} />
                   </li>
                 ))}
               </ul>

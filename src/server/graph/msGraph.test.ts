@@ -34,11 +34,13 @@ vi.mock("~/env", () => ({
 }));
 
 import {
+  DelegatedGraphClient,
   MsGraphClient,
   parseRetryAfter,
   verifyManagedConsent,
   verifyMsCredential,
 } from "./msGraph";
+import type { GraphClient } from "./types";
 
 const NOW = Date.parse("2026-09-18T12:00:00Z");
 
@@ -356,5 +358,125 @@ describe("consent probe", () => {
 
     await expect(pending).resolves.toBe(true);
     expect(mocks.mint).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("directory reads", () => {
+  const requestedUrls = (fetchMock: ReturnType<typeof vi.fn>): URL[] =>
+    fetchMock.mock.calls.map((call) => new URL(String(call[0])));
+
+  it("pages users at Graph's maximum of 999 in both clients", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ value: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    await new MsGraphClient(
+      managedCred("88888888-8888-8888-8888-888888888888"),
+    ).listUsers({ includeSignInActivity: true });
+    await new DelegatedGraphClient("delegated-token").listUsers({
+      includeSignInActivity: false,
+    });
+
+    const [appOnly, delegated] = requestedUrls(fetchMock);
+    expect(appOnly?.searchParams.get("$top")).toBe("999");
+    expect(appOnly?.searchParams.get("$select")).toContain("signInActivity");
+    expect(delegated?.searchParams.get("$top")).toBe("999");
+    // Unlicensed users stay in the result: the connector leak rules need them.
+    expect(appOnly?.searchParams.has("$filter")).toBe(false);
+  });
+
+  it("reads trial flags and renewal dates from /directory/subscriptions", async () => {
+    const subscription = {
+      skuId: "sku-1",
+      skuPartNumber: "SPE_E3",
+      status: "Enabled",
+      isTrial: true,
+      totalLicenses: 25,
+      nextLifecycleDateTime: "2026-12-01T00:00:00Z",
+    };
+    const fetchMock = vi.fn(async () =>
+      Response.json({ value: [subscription] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    const rows = await new MsGraphClient(
+      managedCred("99999999-9999-9999-9999-999999999999"),
+    ).getSubscriptions(Date.now() + 20_000);
+
+    expect(rows).toEqual([subscription]);
+    const [url] = requestedUrls(fetchMock);
+    expect(url?.pathname).toBe("/v1.0/directory/subscriptions");
+    expect(url?.searchParams.get("$select")).toBe(
+      "skuId,skuPartNumber,status,isTrial,totalLicenses,nextLifecycleDateTime",
+    );
+  });
+
+  it("gives up on throttled subscriptions within its own budget and leaves the rest of the sync budget intact", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      if (String(url).includes("/directory/subscriptions")) {
+        return new Response(null, {
+          status: 429,
+          headers: { "retry-after": "5" },
+        });
+      }
+      return Response.json({ value: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+    const client = new MsGraphClient(
+      managedCred("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+      Date.now() + 240_000,
+    );
+
+    const pending = client.getSubscriptions(Date.now() + 12_000);
+    const outcome = expect(pending).rejects.toMatchObject({
+      status: 429,
+      code: "throttled",
+    });
+    // Settles inside its 12 s budget: two 5 s waits fit, the third does not.
+    await vi.advanceTimersByTimeAsync(12_000);
+    await outcome;
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    // The client's own deadline is untouched: the users pull still runs.
+    await expect(
+      client.listUsers({ includeSignInActivity: false }),
+    ).resolves.toEqual([]);
+  });
+
+  it("settles by its deadline while the token is still being acquired", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => Response.json({ value: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    let deliverToken: ((value: { accessToken: string }) => void) | undefined;
+    mocks.mint.mockReturnValue(
+      new Promise((resolve) => {
+        deliverToken = resolve;
+      }),
+    );
+    const client = new MsGraphClient(
+      managedCred("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+      Date.now() + 240_000,
+    );
+
+    const pending = client.getSubscriptions(Date.now() + 50);
+    const outcome = expect(pending).rejects.toMatchObject({
+      status: 504,
+      code: "deadline_exceeded",
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    await outcome;
+
+    // The token arrives late: the abandoned call must not reach Graph.
+    deliverToken!({ accessToken: withOid() });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves subscriptions out of the delegated instant scan", () => {
+    const client: GraphClient = new DelegatedGraphClient("delegated-token");
+    expect("getSubscriptions" in client).toBe(false);
   });
 });

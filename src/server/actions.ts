@@ -59,6 +59,11 @@ import { connectorSpec } from "~/lib/connectors";
 import { MICROSOFT_RULES } from "~/lib/rules";
 import { isSupportedCurrency } from "~/lib/currency";
 import { isValidEmailAddress } from "~/lib/emailAddress";
+import {
+  MAX_EXCLUSION_LENGTH,
+  MAX_EXCLUSIONS,
+  parseExclusions,
+} from "~/lib/findingExclusions";
 import { rateBetween } from "~/lib/exchangeRates";
 import { workspaceLabel } from "~/lib/format";
 import { isValidIsoDate } from "~/lib/isoDate";
@@ -856,6 +861,36 @@ export const setInactiveDays = async (
     .set({ inactiveDays: days })
     .where(eq(tenants.id, ctx.tenant.id));
   await audit(ctx, "threshold_changed", { inactiveDays: days });
+  await runAnalysis(ctx.tenant.id);
+  revalidateApp();
+  return ok();
+};
+
+/**
+ * Accounts kept out of per-user findings (service, room or shared accounts),
+ * as case-insensitive globs over UPN or display name. Re-runs the analysis so
+ * open findings of newly excluded accounts resolve right away.
+ */
+export const setFindingExclusions = async (
+  formData: FormData,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
+  const raw = formData.get("patterns");
+  if (typeof raw !== "string") return fail("Enter one pattern per line");
+  if (raw.length > MAX_EXCLUSIONS * (MAX_EXCLUSION_LENGTH + 2)) {
+    return fail(`Use at most ${MAX_EXCLUSIONS} patterns`);
+  }
+  const parsed = parseExclusions(raw);
+  if (!parsed.ok) return fail(parsed.error);
+  await db
+    .update(tenants)
+    .set({ findingExclusions: parsed.patterns })
+    .where(eq(tenants.id, ctx.tenant.id));
+  await audit(ctx, "finding_exclusions_changed", {
+    patterns: parsed.patterns.length,
+  });
   await runAnalysis(ctx.tenant.id);
   revalidateApp();
   return ok();

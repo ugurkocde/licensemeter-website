@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { Lightbulb } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -24,16 +25,37 @@ const DETAIL_LABELS: Record<string, string> = {
   copilotLastActivity: "Last Copilot activity",
   inactiveDays: "Inactive for",
   accountAgeDays: "Account age",
-  purchased: "Purchased seats",
+  purchased: "Paid seats",
   assigned: "Assigned seats",
   unassigned: "Unassigned seats",
   usersWithDisabledPlans: "Affected users",
+  topDisabledPlans: "Most often disabled",
+  trialSeats: "Trial seats (not counted)",
   inactiveCount: "Inactive seats",
   totalCount: "Total seats",
   hint: "Recommended next step",
   pairs: "Overlapping products",
   licenses: "Assigned products",
 };
+
+const DETAIL_ORDER = Object.keys(DETAIL_LABELS);
+const detailRank = (key: string) => {
+  const rank = DETAIL_ORDER.indexOf(key);
+  return rank === -1 ? DETAIL_ORDER.length : rank;
+};
+
+/** Per-plan user counts, e.g. topDisabledPlans on service_plans_disabled. */
+type PlanCount = { name: string; users: number };
+const isPlanCounts = (value: unknown): value is PlanCount[] =>
+  Array.isArray(value) &&
+  value.length > 0 &&
+  value.every(
+    (item) =>
+      item !== null &&
+      typeof item === "object" &&
+      typeof (item as PlanCount).name === "string" &&
+      typeof (item as PlanCount).users === "number",
+  );
 
 const TECHNICAL_DETAIL_KEYS = new Set([
   "aggregate",
@@ -104,7 +126,15 @@ export default async function FindingDetailPage({
   const allDetails = Object.entries(finding.detail).filter(
     ([, value]) => value !== null && value !== undefined && value !== "",
   );
-  const details = allDetails.filter(([key]) => !TECHNICAL_DETAIL_KEYS.has(key));
+  // Stored detail is jsonb, whose key order is not the engine's: show the
+  // labelled facts in a fixed order and the recommendation as a callout.
+  const details = allDetails
+    .filter(([key]) => !TECHNICAL_DETAIL_KEYS.has(key) && key !== "hint")
+    .sort(([a], [b]) => detailRank(a) - detailRank(b));
+  const hint =
+    typeof finding.detail.hint === "string" && finding.detail.hint !== ""
+      ? finding.detail.hint
+      : null;
   const technicalDetails = allDetails.filter(([key]) =>
     TECHNICAL_DETAIL_KEYS.has(key),
   );
@@ -200,10 +230,35 @@ export default async function FindingDetailPage({
                 {DETAIL_LABELS[key] ?? key.replaceAll("_", " ")}
               </dt>
               <dd className="mt-1 text-sm break-words">
-                {formatDetailValue(key, value)}
+                {isPlanCounts(value) ? (
+                  <ul className="flex flex-col gap-1">
+                    {value.map((plan) => (
+                      <li
+                        key={plan.name}
+                        className="flex items-baseline justify-between gap-3"
+                      >
+                        <span className="min-w-0">{plan.name}</span>
+                        <span className="tnum text-ink-faint shrink-0 text-xs">
+                          {plan.users} {plan.users === 1 ? "user" : "users"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  formatDetailValue(key, value)
+                )}
               </dd>
             </div>
           ))}
+          {hint && (
+            <div className="border-brand/15 bg-brand-soft/60 rounded-xl border px-4 py-3.5 sm:col-span-2">
+              <dt className="text-brand-deep flex items-center gap-2 text-xs font-medium">
+                <Lightbulb aria-hidden="true" className="size-4 shrink-0" />
+                {DETAIL_LABELS.hint}
+              </dt>
+              <dd className="text-ink mt-1.5 text-sm break-words">{hint}</dd>
+            </div>
+          )}
         </dl>
         {technicalDetails.length > 0 && (
           <details className="border-line mt-5 border-t pt-3">

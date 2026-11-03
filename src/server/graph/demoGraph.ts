@@ -3,6 +3,7 @@ import {
   type CopilotUsageRow,
   type GraphClient,
   type GraphSubscribedSku,
+  type GraphSubscription,
   type GraphUser,
   type UsageReportRow,
 } from "./types";
@@ -109,11 +110,13 @@ export class DemoGraphClient implements GraphClient {
   private readonly users: DemoUser[];
   private readonly hasP1: boolean;
   private readonly concealed: boolean;
+  private readonly now: Date;
 
   constructor(opts: DemoOptions = {}) {
     this.hasP1 = opts.hasP1 ?? true;
     this.concealed = opts.concealed ?? false;
-    this.users = buildUsers(opts.now ?? new Date());
+    this.now = opts.now ?? new Date();
+    this.users = buildUsers(this.now);
   }
 
   getOrganizationName(): Promise<string | null> {
@@ -143,6 +146,20 @@ export class DemoGraphClient implements GraphClient {
       sku(SKU.TEAMS_PHONE, "MCOEV", 60),
       sku(SKU.VISIO, "VISIOCLIENT", 10),
     ]);
+  }
+
+  /** One paid annual subscription per SKU, renewing on staggered dates. */
+  async getSubscriptions(): Promise<GraphSubscription[]> {
+    return (await this.getSubscribedSkus()).map((sku, i) => ({
+      skuId: sku.skuId,
+      skuPartNumber: sku.skuPartNumber,
+      status: "Enabled",
+      isTrial: false,
+      totalLicenses: sku.prepaidUnits.enabled,
+      nextLifecycleDateTime: new Date(
+        this.now.getTime() + (45 + i * 60) * 24 * 60 * 60 * 1000,
+      ).toISOString(),
+    }));
   }
 
   getReportConcealment(): Promise<boolean | null> {

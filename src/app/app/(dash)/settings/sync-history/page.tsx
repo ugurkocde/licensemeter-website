@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { Card, buttonClass } from "~/components/ui";
 import { fmtDateTime } from "~/lib/format";
-import { syncStepLabel } from "~/lib/activityLabels";
+import { SyncStepList } from "~/components/workspace/SyncStepList";
 import { requireAccess } from "~/server/access";
 import { db } from "~/server/db";
 import { syncRuns } from "~/server/db/schema";
@@ -87,33 +87,23 @@ export default async function SyncHistoryPage({
           {runs.length === 0 ? (
             <p className="text-ink-soft text-sm">No syncs yet.</p>
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col">
               {runs.map((run) => (
                 <li
                   key={run.id}
-                  className="border-line flex flex-wrap items-center justify-between gap-2 border-b pb-2 text-sm last:border-b-0 last:pb-0"
+                  className="border-line flex flex-col gap-2 border-b py-3 text-sm first:pt-0 last:border-b-0 last:pb-0"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span
                       aria-hidden="true"
                       className={`inline-block size-2 rounded-full ${statusDot(run.status)}`}
                     />
                     <span className="font-medium capitalize">{run.status}</span>
-                    <span className="text-ink-faint">
+                    <span className="text-ink-faint tnum">
                       {fmtDateTime(run.startedAt)}
                     </span>
                   </div>
-                  <div className="text-ink-soft min-w-0 font-mono text-[11px] break-words">
-                    {run.steps
-                      .map(
-                        (s) =>
-                          `${syncStepLabel(s.step)}${s.count !== undefined ? `: ${s.count}` : ""}${
-                            s.status === "ok" ? "" : ` · ${s.status}`
-                          }`,
-                      )
-                      .join(" · ") ||
-                      (run.error ?? "")}
-                  </div>
+                  <SyncStepList steps={run.steps} error={run.error} />
                 </li>
               ))}
             </ul>
