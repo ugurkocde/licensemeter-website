@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { connectorSeatExclusion } from "./connectorExclusions";
-import { directoryIdentitiesOf } from "./join";
 
 const directory = [
   {
@@ -28,11 +27,7 @@ const directory = [
 ];
 
 describe("connectorSeatExclusion", () => {
-  const excluded = connectorSeatExclusion(
-    ["svc-*", "room_*"],
-    directory,
-    directoryIdentitiesOf(directory),
-  );
+  const excluded = connectorSeatExclusion(["svc-*", "room_*"], directory);
 
   it("excludes seats of excluded directory users, aliases included", () => {
     expect(excluded({ email: "SVC-backup@contoso.com" })).toBe(true);
@@ -52,12 +47,42 @@ describe("connectorSeatExclusion", () => {
     expect(excluded({ email: "alex@contoso.com" })).toBe(false);
   });
 
+  it("excludes a shared address only when every claimant is excluded", () => {
+    const shared = [
+      {
+        graphId: "u-a",
+        upn: "svc-a@contoso.com",
+        displayName: "Service A",
+        accountEnabled: true,
+        mailAliases: ["b@contoso.com", "team@contoso.com"],
+      },
+      {
+        graphId: "u-b",
+        upn: "b@contoso.com",
+        displayName: "B",
+        accountEnabled: false,
+        mailAliases: [],
+      },
+      {
+        graphId: "u-c",
+        upn: "svc-c@contoso.com",
+        displayName: "Service C",
+        accountEnabled: true,
+        mailAliases: ["team@contoso.com"],
+      },
+    ];
+    for (const rows of [shared, [...shared].reverse()]) {
+      const check = connectorSeatExclusion(["svc-*"], rows);
+      expect(check({ email: "b@contoso.com" })).toBe(false);
+      expect(check({ email: "team@contoso.com" })).toBe(true);
+    }
+  });
+
   it("excludes nothing without patterns", () => {
     expect(
       connectorSeatExclusion(
         [],
         directory,
-        directoryIdentitiesOf(directory),
       )({
         email: "svc-backup@contoso.com",
       }),

@@ -187,37 +187,79 @@ export const mailAliasesOf = (g: GraphUser): string[] => {
   return [...new Set(aliases)];
 };
 
+export type DirectoryRow = {
+  graphId: string;
+  upn: string;
+  displayName: string | null;
+  accountEnabled: boolean;
+  mailAliases?: readonly string[];
+};
+
+const normalizeAddress = (address: string): string =>
+  address.trim().toLowerCase();
+
+/** Lowest graphId first: a fixed order that does not depend on row order. */
+const byGraphId = (a: DirectoryRow, b: DirectoryRow): number =>
+  a.graphId < b.graphId ? -1 : a.graphId > b.graphId ? 1 : 0;
+
 /**
- * Directory identities for connector seat matching: one entry per address a
- * user is reachable under (UPN, then the mail aliases), lowercased for
- * lookup, first writer wins on a shared address. The same function serves a
- * fresh sync (joined users) and every analysis from the database (stored
- * tenant_users rows), so both correlate seats identically. CSV-imported
- * directories have no aliases and match on the UPN alone.
+ * Every directory user claiming each address, as UPN or as a mail alias,
+ * sorted by graphId. The basis for seat correlation and exclusions, so both
+ * are independent of the order the rows arrive in (Graph order in a sync,
+ * database order in a re-analysis).
  */
-export const directoryIdentitiesOf = (
-  rows: readonly {
-    graphId: string;
-    upn: string;
-    displayName: string | null;
-    accountEnabled: boolean;
-    mailAliases?: readonly string[];
-  }[],
-): EntraIdentity[] => {
-  const byAddress = new Map<string, EntraIdentity>();
+export const addressClaimantsOf = (
+  rows: readonly DirectoryRow[],
+): Map<string, { upnOwners: DirectoryRow[]; all: DirectoryRow[] }> => {
+  const claims = new Map<
+    string,
+    { upnOwners: DirectoryRow[]; all: DirectoryRow[] }
+  >();
+  const claim = (address: string, row: DirectoryRow, asUpn: boolean) => {
+    if (address === "") return;
+    const entry = claims.get(address) ?? { upnOwners: [], all: [] };
+    if (asUpn) entry.upnOwners.push(row);
+    if (!entry.all.includes(row)) entry.all.push(row);
+    claims.set(address, entry);
+  };
   for (const r of rows) {
-    for (const raw of [r.upn, ...(r.mailAliases ?? [])]) {
-      const address = raw.trim().toLowerCase();
-      if (address === "" || byAddress.has(address)) continue;
-      byAddress.set(address, {
-        graphId: r.graphId,
-        upn: address,
-        displayName: r.displayName,
-        accountEnabled: r.accountEnabled,
-      });
+    const upn = normalizeAddress(r.upn);
+    claim(upn, r, true);
+    for (const alias of r.mailAliases ?? []) {
+      const address = normalizeAddress(alias);
+      if (address !== upn) claim(address, r, false);
     }
   }
-  return [...byAddress.values()];
+  for (const entry of claims.values()) {
+    entry.upnOwners.sort(byGraphId);
+    entry.all.sort(byGraphId);
+  }
+  return claims;
 };
+
+/**
+ * Directory identities for connector seat matching: one entry per address a
+ * user is reachable under (UPN and mail aliases), lowercased, sorted by
+ * address. An address that is some user's UPN always belongs to that user,
+ * even when another user lists it as an alias; an alias shared by several
+ * users goes to the lowest graphId. The same function serves a fresh sync
+ * (joined users) and every analysis from the database (stored tenant_users
+ * rows), and neither depends on row order, so both correlate identically.
+ * CSV-imported directories have no aliases and match on the UPN alone.
+ */
+export const directoryIdentitiesOf = (
+  rows: readonly DirectoryRow[],
+): EntraIdentity[] =>
+  [...addressClaimantsOf(rows).entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([address, { upnOwners, all }]) => {
+      const owner = upnOwners[0] ?? all[0]!;
+      return {
+        graphId: owner.graphId,
+        upn: address,
+        displayName: owner.displayName,
+        accountEnabled: owner.accountEnabled,
+      };
+    });
 
 export { COPILOT_SKU_ID };

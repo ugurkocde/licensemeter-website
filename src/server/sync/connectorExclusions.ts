@@ -1,11 +1,12 @@
 import { exclusionMatcher } from "~/lib/findingExclusions";
-import type { EntraIdentity } from "~/server/adobe/analyze";
+import { addressClaimantsOf, type DirectoryRow } from "~/server/sync/join";
 
 /**
  * Admin exclusions for connector seats (Adobe and SaaS), so an excluded
  * account gets no per-user connector finding either. A seat is excluded only
  * when its email correlates (UPN or a stored mail alias) to a directory user
- * whose UPN or display name matches a pattern.
+ * whose UPN or display name matches a pattern, and, for an address several
+ * users claim, only when all of them are excluded.
  *
  * The seat's own email and vendor display name are never matched: the seat
  * holder controls them, so a leaked account could hide itself by renaming.
@@ -15,12 +16,7 @@ import type { EntraIdentity } from "~/server/adobe/analyze";
  */
 export const connectorSeatExclusion = (
   patterns: readonly string[],
-  directory: readonly {
-    graphId: string;
-    upn: string;
-    displayName: string | null;
-  }[],
-  identities: readonly EntraIdentity[],
+  directory: readonly DirectoryRow[],
 ): ((seat: { email: string }) => boolean) => {
   if (patterns.length === 0) return () => false;
   const isExcluded = exclusionMatcher(patterns);
@@ -28,11 +24,13 @@ export const connectorSeatExclusion = (
     directory.filter((u) => isExcluded(u)).map((u) => u.graphId),
   );
   if (excludedIds.size === 0) return () => false;
-  const idByAddress = new Map(
-    identities.map((i) => [i.upn.toLowerCase(), i.graphId]),
-  );
+  const claims = addressClaimantsOf(directory);
+  // Conservative on shared addresses: the seat leaves the analysis only when
+  // every directory user claiming its address is excluded.
   return (seat) => {
-    const graphId = idByAddress.get(seat.email.trim().toLowerCase());
-    return graphId !== undefined && excludedIds.has(graphId);
+    const claimants = claims.get(seat.email.trim().toLowerCase())?.all ?? [];
+    return (
+      claimants.length > 0 && claimants.every((u) => excludedIds.has(u.graphId))
+    );
   };
 };

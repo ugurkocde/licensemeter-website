@@ -52,7 +52,7 @@ describe("mailAliasesOf", () => {
 });
 
 describe("directoryIdentitiesOf", () => {
-  it("lists the UPN, mail and every smtp proxy address, lowercased, first writer wins", () => {
+  it("lists the UPN, mail and every smtp proxy address, lowercased, sorted by address", () => {
     const identities = entraIdentitiesOf([
       graphUser({
         id: "g-1",
@@ -74,12 +74,12 @@ describe("directoryIdentitiesOf", () => {
       }),
     ]);
     expect(identities.map((i) => [i.upn, i.graphId])).toEqual([
+      ["j.doe@contoso.example", "g-1"],
       ["jane.doe@contoso.example", "g-1"],
       ["jane@contoso.com", "g-1"],
-      ["j.doe@contoso.example", "g-1"],
       ["second@contoso.example", "g-2"],
     ]);
-    expect(identities[1]).toMatchObject({
+    expect(identities[2]).toMatchObject({
       displayName: "Jane Doe",
       accountEnabled: true,
     });
@@ -107,6 +107,40 @@ describe("directoryIdentitiesOf", () => {
       }),
     );
     expect(directoryIdentitiesOf(stored)).toEqual(entraIdentitiesOf(users));
+  });
+
+  const row = (graphId: string, upn: string, mailAliases: string[] = []) => ({
+    graphId,
+    upn,
+    displayName: graphId,
+    accountEnabled: true,
+    mailAliases,
+  });
+
+  it("gives an address to its UPN owner over anyone listing it as an alias", () => {
+    const rows = [
+      row("u-a", "svc-a@contoso.com", ["b@contoso.com"]),
+      row("u-b", "B@contoso.com"),
+    ];
+    for (const order of [rows, [...rows].reverse()]) {
+      const owner = directoryIdentitiesOf(order).find(
+        (i) => i.upn === "b@contoso.com",
+      );
+      expect(owner?.graphId).toBe("u-b");
+    }
+  });
+
+  it("resolves a shared alias to the lowest graphId in any row order", () => {
+    const rows = [
+      row("u-2", "two@contoso.com", ["team@contoso.com"]),
+      row("u-1", "one@contoso.com", ["team@contoso.com"]),
+      row("u-3", "three@contoso.com", ["team@contoso.com"]),
+    ];
+    const forward = directoryIdentitiesOf(rows);
+    expect(directoryIdentitiesOf([...rows].reverse())).toEqual(forward);
+    expect(forward.find((i) => i.upn === "team@contoso.com")?.graphId).toBe(
+      "u-1",
+    );
   });
 
   it("falls back to the UPN alone when mail and proxy addresses are absent", () => {

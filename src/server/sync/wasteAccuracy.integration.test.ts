@@ -670,3 +670,41 @@ describe("connector seats on mail aliases", () => {
     ).toBe(false);
   });
 });
+
+describe("addresses shared by several directory users", () => {
+  // A is excluded and lists B's UPN as an alias; B is disabled and is not.
+  const a = graphUser("u-a", "svc-a@contoso.com", {
+    mail: "svc-a@contoso.com",
+    proxyAddresses: ["smtp:b@contoso.com"],
+  });
+  const b = graphUser("u-b", "b@contoso.com", { accountEnabled: false });
+
+  it.each([
+    ["A first", [a, b]],
+    ["B first", [b, a]],
+  ])(
+    "reports B's seat with %s, in sync and reanalysis",
+    async (_order, users) => {
+      await currentDb
+        .update(schema.tenants)
+        .set({ findingExclusions: ["svc-*"] })
+        .where(eq(schema.tenants.id, TENANT));
+      await currentDb.insert(schema.saasSeats).values({
+        tenantId: TENANT,
+        provider: "chatgpt",
+        email: "b@contoso.com",
+        products: ["Business"],
+      });
+      const rules = async () =>
+        (await openFindings())
+          .filter((f) => f.rule.startsWith("saas"))
+          .map((f) => `${f.rule}:${f.graphUserId}`);
+      await runSync(TENANT, {
+        client: client([sku(E3, "SPE_E3", 2, 2)], {}, users),
+      });
+      expect(await rules()).toEqual(["saas_disabled_in_entra:u-b"]);
+      await runAnalysis(TENANT);
+      expect(await rules()).toEqual(["saas_disabled_in_entra:u-b"]);
+    },
+  );
+});

@@ -1079,7 +1079,6 @@ export const runSync = async (
     const seatExcluded = connectorSeatExclusion(
       tenant.findingExclusions,
       directory,
-      entraIdentities,
     );
     const adobeFindings = analyzeAdobeWaste(
       adobeRows.filter((u) => !seatExcluded(u)),
@@ -1302,7 +1301,6 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
   const seatExcluded = connectorSeatExclusion(
     tenant.findingExclusions,
     userRows,
-    entraIdentities,
   );
   const adobeFindings = analyzeAdobeWaste(
     adobeRows
