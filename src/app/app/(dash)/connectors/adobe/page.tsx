@@ -8,6 +8,10 @@ import {
 } from "~/components/workspace/AdobeConnectForm";
 import { ConnectPoller } from "~/components/workspace/ConnectPoller";
 import { SyncNowButton } from "~/components/workspace/SyncNowButton";
+import {
+  SyncStatusPanel,
+  SyncStatusProvider,
+} from "~/components/workspace/SyncStatus";
 import { Card, buttonClass } from "~/components/ui";
 import { fmtDate } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
@@ -117,59 +121,64 @@ export default async function AdobeConnectorPage() {
               first.
             </p>
           ) : adobeConn ? (
-            <div className="flex flex-col gap-4">
-              {reconnectNotice}
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="text-sm">
-                  <div className="font-medium">
-                    Connected: {adobeCount} Adobe seats
+            <SyncStatusProvider initialRun={null}>
+              <div className="flex flex-col gap-4">
+                {reconnectNotice}
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="text-sm">
+                    <div className="font-medium">
+                      Connected: {adobeCount} Adobe seats
+                    </div>
+                    <div className="text-ink-soft mt-0.5 text-xs">
+                      Org {adobeConn.orgId} ·{" "}
+                      {adobeConn.lastSyncAt
+                        ? `last sync ${fmtDate(adobeConn.lastSyncAt)} (${adobeConn.lastSyncStatus ?? "pending"})`
+                        : "first sync pending"}
+                    </div>
+                    {adobeConn.lastSyncStatus === "failed" && (
+                      <p className="text-danger-text mt-2 max-w-md text-xs">
+                        The last sync could not reach Adobe. Findings are based
+                        on the previous snapshot. If the credentials were
+                        changed or revoked, update them below or reconnect with
+                        fresh values.
+                      </p>
+                    )}
                   </div>
-                  <div className="text-ink-soft mt-0.5 text-xs">
-                    Org {adobeConn.orgId} ·{" "}
-                    {adobeConn.lastSyncAt
-                      ? `last sync ${fmtDate(adobeConn.lastSyncAt)} (${adobeConn.lastSyncStatus ?? "pending"})`
-                      : "first sync pending"}
-                  </div>
-                  {adobeConn.lastSyncStatus === "failed" && (
-                    <p className="text-danger-text mt-2 max-w-md text-xs">
-                      The last sync could not reach Adobe. Findings are based on
-                      the previous snapshot. If the credentials were changed or
-                      revoked, update them below or reconnect with fresh values.
-                    </p>
+                  {isAdmin && (
+                    <div className="flex items-center gap-3">
+                      {!microsoftDisconnected && <SyncNowButton />}
+                      <AdobeDisconnectButton />
+                    </div>
                   )}
                 </div>
-                {isAdmin && (
-                  <div className="flex items-center gap-3">
-                    {!microsoftDisconnected && <SyncNowButton />}
-                    <AdobeDisconnectButton />
-                  </div>
+                {/* Sync now reports progress and the outcome right below its row. */}
+                <SyncStatusPanel />
+                {/* Rotate credentials without a destructive disconnect: connectAdobe
+                  upserts the row, so resubmitting replaces the stored secret. */}
+                {isAdmin && !microsoftDisconnected && (
+                  <details className="text-sm">
+                    <summary className="text-ink-soft hover:text-ink cursor-pointer text-xs underline-offset-4 hover:underline">
+                      Update credentials
+                    </summary>
+                    <div className="mt-3">
+                      <AdobeConnectForm />
+                    </div>
+                  </details>
+                )}
+                {/* First sync hasn't landed yet: poll until it does, matching the
+                  Microsoft connector's post-connect experience. */}
+                {!adobeConn.lastSyncAt && !microsoftDisconnected && (
+                  <ConnectPoller
+                    redirectTo="/app/connectors/adobe"
+                    retryUnavailable={
+                      isAdmin
+                        ? undefined
+                        : "Ask a workspace admin to run the sync again."
+                    }
+                  />
                 )}
               </div>
-              {/* Rotate credentials without a destructive disconnect: connectAdobe
-                  upserts the row, so resubmitting replaces the stored secret. */}
-              {isAdmin && !microsoftDisconnected && (
-                <details className="text-sm">
-                  <summary className="text-ink-soft hover:text-ink cursor-pointer text-xs underline-offset-4 hover:underline">
-                    Update credentials
-                  </summary>
-                  <div className="mt-3">
-                    <AdobeConnectForm />
-                  </div>
-                </details>
-              )}
-              {/* First sync hasn't landed yet: poll until it does, matching the
-                  Microsoft connector's post-connect experience. */}
-              {!adobeConn.lastSyncAt && !microsoftDisconnected && (
-                <ConnectPoller
-                  redirectTo="/app/connectors/adobe"
-                  retryUnavailable={
-                    isAdmin
-                      ? undefined
-                      : "Ask a workspace admin to run the sync again."
-                  }
-                />
-              )}
-            </div>
+            </SyncStatusProvider>
           ) : isAdmin ? (
             <div className="flex flex-col gap-3">
               <p className="text-ink-soft text-sm">

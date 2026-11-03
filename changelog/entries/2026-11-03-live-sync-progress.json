@@ -1,0 +1,7 @@
+{
+  "title": "See each sync step as it runs, with a clear result when it ends",
+  "summary": "Sync now and the first sync after connecting Microsoft 365 now show a live checklist of the steps finished so far and the elapsed time. The Overview also follows a sync that is already running, such as the nightly sync, and refreshes the figures when it ends. A short confirmation shows when the sync finished, and a failed or refused sync shows a clear message below the page header with a link to the sync history.",
+  "type": "improved",
+  "publishedOn": "2026-11-03",
+  "idempotencyKey": "licensemeter:live-sync-progress-2026-11-03"
+}

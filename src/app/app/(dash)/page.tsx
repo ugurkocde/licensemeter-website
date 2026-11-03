@@ -17,6 +17,11 @@ import { OnboardingEmptyState } from "~/components/workspace/OnboardingEmptyStat
 import { PriceAccuracyCard } from "~/components/workspace/PriceAccuracyCard";
 import { UnpricedNotice } from "~/components/workspace/UnpricedNotice";
 import { SyncNowButton } from "~/components/workspace/SyncNowButton";
+import {
+  SyncStatusPanel,
+  SyncStatusProvider,
+  SyncStatusText,
+} from "~/components/workspace/SyncStatus";
 import { TrendChart } from "~/components/workspace/TrendChart";
 import { Tour } from "~/components/workspace/Tour";
 import {
@@ -25,6 +30,7 @@ import {
 } from "~/components/workspace/tourSteps";
 import { fmtAgo, fmtDate, fmtMoney, fmtNumber } from "~/lib/format";
 import { calculatePriceCoverage } from "~/lib/priceCoverage";
+import { syncStatusRun } from "~/lib/syncStatusRun";
 import { ALL_RULES, RULE_META } from "~/lib/rules";
 import { upgradePath } from "~/lib/upgrade";
 import type { WasteRuleId } from "~/server/types";
@@ -464,38 +470,49 @@ export default async function OverviewPage({
           finalButtonLabel="Done"
         />
       )}
-      <header className="rise rise-1 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-3xl tracking-tight">Overview</h1>
-          <p className="text-ink-soft mt-1 text-sm">
-            {lastRun?.status === "running"
-              ? "Sync running…"
-              : isImported
-                ? `Imported ${fmtDate(importedUser?.syncedAt ?? null)}`
-                : `Last synced ${fmtAgo(lastRun?.finishedAt ?? null)}`}
-            {lastRun?.status === "failed" && (
-              <span className="text-danger-text ml-2">(last sync failed)</span>
-            )}
-            {lastRun?.status === "partial" && (
-              <span className="text-gold-text ml-2">
-                (completed with warnings
-                {degradedSteps > 0
-                  ? ` · ${fmtNumber(degradedSteps, currency)} ${
-                      degradedSteps === 1 ? "step" : "steps"
-                    } degraded`
-                  : ""}
-                )
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ButtonAnchor href="/api/export/report">PDF report</ButtonAnchor>
-          {/* Imported workspaces (consentedAt null) have no Graph access: a
+      {/* The sync status covers the header line, Sync now and the slot below
+          the header: live progress, then a confirmation or the problem. */}
+      <SyncStatusProvider initialRun={syncStatusRun(lastRun)}>
+        <header className="rise rise-1 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="font-display text-3xl tracking-tight">Overview</h1>
+            <p className="text-ink-soft mt-1 text-sm">
+              <SyncStatusText>
+                {lastRun?.status === "running"
+                  ? "Sync running…"
+                  : isImported
+                    ? `Imported ${fmtDate(importedUser?.syncedAt ?? null)}`
+                    : `Last synced ${fmtAgo(lastRun?.finishedAt ?? null)}`}
+                {lastRun?.status === "failed" && (
+                  <span className="text-danger-text ml-2">
+                    (last sync failed)
+                  </span>
+                )}
+                {lastRun?.status === "partial" && (
+                  <span className="text-gold-text ml-2">
+                    (completed with warnings
+                    {degradedSteps > 0
+                      ? ` · ${fmtNumber(degradedSteps, currency)} ${
+                          degradedSteps === 1 ? "step" : "steps"
+                        } degraded`
+                      : ""}
+                    )
+                  </span>
+                )}
+              </SyncStatusText>
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <ButtonAnchor href="/api/export/report">PDF report</ButtonAnchor>
+            {/* Imported workspaces (consentedAt null) have no Graph access: a
                   manual sync could only fail. Demo tenants have consentedAt set. */}
-          {hasRole(ctx, "admin") && ctx.tenant.consentedAt && <SyncNowButton />}
-        </div>
-      </header>
+            {hasRole(ctx, "admin") && ctx.tenant.consentedAt && (
+              <SyncNowButton />
+            )}
+          </div>
+        </header>
+        <SyncStatusPanel className="rise mt-5" />
+      </SyncStatusProvider>
 
       {!ctx.tenant.consentedAt && !ctx.tenant.isDemo && (
         <section className="rise rise-2 mt-8">
