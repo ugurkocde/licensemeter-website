@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isFollowedRun } from "./syncStatusRun";
+import { finishedReadOutcome, isFollowedRun } from "./syncStatusRun";
 
 const CLICK = Date.parse("2026-11-03T18:00:00Z");
 const baseline = { id: "before-click", after: CLICK - 5000 };
@@ -54,5 +54,39 @@ describe("isFollowedRun", () => {
     expect(
       isFollowedRun(run, { watchedId: null, baseline: null, offsetMs: 0 }),
     ).toBe(true);
+  });
+});
+
+describe("finishedReadOutcome", () => {
+  const read = {
+    followed: false,
+    actionPending: false,
+    clickWatch: true,
+    watching: false,
+  };
+
+  it("waits while the Sync now action is still in flight", () => {
+    expect(
+      finishedReadOutcome({ ...read, followed: true, actionPending: true }),
+    ).toBe("wait");
+  });
+
+  it("shows the followed run's result", () => {
+    expect(finishedReadOutcome({ ...read, followed: true })).toBe("run");
+  });
+
+  it("falls back once the action returned without a run, on any read", () => {
+    // The action threw and its own final read failed too: the next periodic
+    // read, which only sees the previous finished run, must still end the
+    // watch with the stored message instead of polling until the cap.
+    expect(finishedReadOutcome(read)).toBe("fallback");
+  });
+
+  it("keeps following a known run instead of falling back", () => {
+    expect(finishedReadOutcome({ ...read, watching: true })).toBe("wait");
+  });
+
+  it("never falls back for a run followed on load", () => {
+    expect(finishedReadOutcome({ ...read, clickWatch: false })).toBe("wait");
   });
 });

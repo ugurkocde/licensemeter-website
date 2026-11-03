@@ -14,7 +14,7 @@ import {
 } from "react";
 
 import { SyncProgress } from "~/components/workspace/SyncProgress";
-import { isFollowedRun } from "~/lib/syncStatusRun";
+import { finishedReadOutcome, isFollowedRun } from "~/lib/syncStatusRun";
 import { triggerSync } from "~/server/actions";
 import type { SyncRunStatus, SyncStep } from "~/server/types";
 
@@ -175,12 +175,12 @@ export const SyncStatusProvider = ({
   );
 
   /**
-   * Applies one status read. Only the Sync now action's own final read
-   * (`final`) may end a watch without a matching run; a periodic read that
-   * shows some other finished run is ignored, and the next read decides.
+   * Applies one status read of the current watch (stale reads are dropped by
+   * generation before they get here). What a finished read means is decided
+   * by `finishedReadOutcome`; see there.
    */
   const handle = useCallback(
-    (latest: Awaited<ReturnType<typeof fetchLatestRun>>, final = false) => {
+    (latest: Awaited<ReturnType<typeof fetchLatestRun>>) => {
       if (!latest || !active.current || !mounted.current) return;
       const { run, offsetMs } = latest;
       if (run?.status === "running") {
@@ -205,27 +205,27 @@ export const SyncStatusProvider = ({
         );
         return;
       }
-      // While Sync now is in flight its result decides; an older finished
-      // run seen meanwhile is not the one it started.
-      if (actionPending.current) return;
-      const isNew =
-        run !== null &&
-        isFollowedRun(run, {
-          watchedId: watchedId.current,
-          baseline: baseline.current,
-          offsetMs,
-        });
-      if (isNew) {
+      const outcome = finishedReadOutcome({
+        followed:
+          run !== null &&
+          isFollowedRun(run, {
+            watchedId: watchedId.current,
+            baseline: baseline.current,
+            offsetMs,
+          }),
+        actionPending: actionPending.current,
+        clickWatch: baseline.current !== null,
+        watching: watchedId.current !== null,
+      });
+      if (outcome === "run" && run !== null) {
         latestId.current = run.id;
         finish(finishedView(run), true);
-      } else if (!final || watchedId.current !== null) {
-        // Not the followed run, and either not authoritative or a known run
-        // is still being followed: keep polling.
-        return;
-      } else if (refusal.current) {
-        finish({ kind: "message", ...refusal.current }, false);
-      } else {
-        finish({ kind: "idle" }, true);
+      } else if (outcome === "fallback") {
+        if (refusal.current) {
+          finish({ kind: "message", ...refusal.current }, false);
+        } else {
+          finish({ kind: "idle" }, true);
+        }
       }
     },
     [finish],
@@ -344,9 +344,10 @@ export const SyncStatusProvider = ({
           text: "Could not start the sync. Try again.",
         };
       }
+      // If this read fails, the next periodic read applies the same rules.
       const latest = await fetchLatestRun();
       if (gen !== generation.current) return;
-      handle(latest, true);
+      handle(latest);
     })();
   }, [handle, finish]);
 

@@ -33,3 +33,25 @@ export const isFollowedRun = (
     run.id !== b.id && Date.parse(run.startedAt) - opts.offsetMs >= b.after
   );
 };
+
+/**
+ * What a status read whose latest run is not running means for the watch:
+ * - "run": it is the followed run; show its result.
+ * - "wait": keep polling. While Sync now is in flight its own result decides
+ *   (a finished run seen meanwhile is older); a known run is still being
+ *   followed; or, for a run followed on load, nothing else can be meant.
+ * - "fallback": a Sync now click whose action has returned, with no run of
+ *   its own: show the stored refusal, or go idle. Any read of the click's
+ *   watch may decide this, so a failed final read only defers it.
+ */
+export const finishedReadOutcome = (read: {
+  followed: boolean;
+  actionPending: boolean;
+  clickWatch: boolean;
+  watching: boolean;
+}): "run" | "wait" | "fallback" => {
+  if (read.actionPending) return "wait";
+  if (read.followed) return "run";
+  if (read.watching || !read.clickWatch) return "wait";
+  return "fallback";
+};
