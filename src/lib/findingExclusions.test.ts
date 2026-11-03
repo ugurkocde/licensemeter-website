@@ -71,6 +71,66 @@ describe("exclusionMatcher", () => {
     expect(performance.now() - started).toBeLessThan(1000);
   });
 
+  it("stays fast on a pattern built to force backtracking", () => {
+    const adversarial = `*${"a".repeat(118)}b`;
+    const m = exclusionMatcher(Array.from({ length: 50 }, () => adversarial));
+    const as = "a".repeat(256);
+    const started = performance.now();
+    for (let i = 0; i < 1000; i++) {
+      expect(m({ upn: as, displayName: as })).toBe(false);
+    }
+    expect(m({ upn: `${as}b`, displayName: null })).toBe(true);
+    expect(performance.now() - started).toBeLessThan(3000);
+  });
+
+  it("checks 60,000 accounts against 50 worst-case patterns in time", () => {
+    const patterns = Array.from(
+      { length: 50 },
+      (_, i) => `*${"a*".repeat(20)}${"a".repeat(60)}${i}b`,
+    );
+    expect(parseExclusions(patterns.join("\n")).ok).toBe(true);
+    const m = exclusionMatcher(patterns);
+    // Every account runs prefix and suffix checks against every pattern;
+    // half of them also reach the middle chunks and match the last pattern.
+    const miss = {
+      upn: `${"a".repeat(100)}@contoso.com`,
+      displayName: "a".repeat(120),
+    };
+    const hit = { upn: `${"a".repeat(110)}49b`, displayName: null };
+    const started = performance.now();
+    let matched = 0;
+    for (let i = 0; i < 60_000; i++) {
+      if (m(i % 2 === 0 ? miss : hit)) matched++;
+    }
+    expect(matched).toBe(30_000);
+    expect(performance.now() - started).toBeLessThan(3000);
+  });
+
+  it("agrees with a reference glob implementation", () => {
+    const reference = (pattern: string, value: string) =>
+      new RegExp(
+        `^${pattern
+          .split("*")
+          .map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join(".*")}$`,
+        "is",
+      ).test(value);
+    const alphabet = ["a", "b", "*"];
+    let seed = 7;
+    const next = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31);
+    const word = (len: number, chars: string[]) =>
+      Array.from({ length: len }, () => chars[next() % chars.length]).join("");
+    for (let i = 0; i < 2000; i++) {
+      const pattern = word(1 + (next() % 6), alphabet).replace(/\*{2,}/g, "*");
+      if (pattern === "*") continue;
+      const value = word(next() % 8, ["a", "b"]);
+      expect(
+        exclusionMatcher([pattern])({ upn: value, displayName: null }),
+        `${pattern} vs ${value}`,
+      ).toBe(reference(pattern, value));
+    }
+  });
+
   it("matches nothing without patterns", () => {
     expect(
       exclusionMatcher([])({ upn: "x@contoso.com", displayName: "x" }),

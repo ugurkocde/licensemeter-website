@@ -42,44 +42,73 @@ export const parseExclusions = (raw: string): ExclusionParse => {
   return { ok: true, patterns };
 };
 
-/**
- * Whole-string match of a lowercased `*` glob against a lowercased value.
- * Iterative two-pointer matching with one backtrack point (the last `*`):
- * O(pattern x value) in the worst case, never exponential, and no RegExp, so
- * no pattern can stall a sync over tens of thousands of accounts.
- */
-const globMatches = (pattern: string, value: string): boolean => {
-  let p = 0;
-  let v = 0;
-  let star = -1;
-  let resume = 0;
-  while (v < value.length) {
-    if (p < pattern.length && pattern[p] === "*") {
-      star = p++;
-      resume = v;
-    } else if (p < pattern.length && pattern[p] === value[v]) {
-      p++;
-      v++;
-    } else if (star !== -1) {
-      p = star + 1;
-      v = ++resume;
-    } else {
-      return false;
-    }
-  }
-  while (p < pattern.length && pattern[p] === "*") p++;
-  return p === pattern.length;
+/** A `*` glob split once into its literal chunks, lowercased. */
+type CompiledGlob = { first: string; middle: string[]; last: string | null };
+
+const compileGlob = (pattern: string): CompiledGlob => {
+  const chunks = pattern.toLowerCase().split("*");
+  // No star: one chunk, an exact match.
+  if (chunks.length === 1) return { first: chunks[0]!, middle: [], last: null };
+  return {
+    first: chunks[0]!,
+    middle: chunks.slice(1, -1).filter((c) => c !== ""),
+    last: chunks[chunks.length - 1]!,
+  };
 };
 
-/** Matcher over upn and display name; with no patterns nothing matches. */
+/**
+ * True when `chunk` occurs in `value` at `at`. Compares from the chunk's end:
+ * suffix mismatches (the common case) then fail on the first character, which
+ * a front-to-back startsWith/endsWith does not do for run-heavy chunks.
+ */
+const occursAt = (value: string, chunk: string, at: number): boolean => {
+  for (let i = chunk.length - 1; i >= 0; i--) {
+    if (value.charCodeAt(at + i) !== chunk.charCodeAt(i)) return false;
+  }
+  return true;
+};
+
+/**
+ * Star-only glob match in linear time: the last chunk is an anchored suffix,
+ * the first an anchored prefix, and each middle chunk is found greedily left
+ * to right with indexOf. Taking the earliest occurrence never rules out a
+ * match for star-only globs, so nothing is ever searched twice and no
+ * pattern can backtrack.
+ */
+const globMatches = (g: CompiledGlob, value: string): boolean => {
+  if (g.last === null) return value === g.first;
+  if (value.length < g.first.length + g.last.length) return false;
+  if (
+    !occursAt(value, g.last, value.length - g.last.length) ||
+    !occursAt(value, g.first, 0)
+  ) {
+    return false;
+  }
+  let at = g.first.length;
+  const end = value.length - g.last.length;
+  for (const chunk of g.middle) {
+    const found = value.indexOf(chunk, at);
+    if (found === -1 || found + chunk.length > end) return false;
+    at = found + chunk.length;
+  }
+  return true;
+};
+
+/**
+ * Matcher over upn and display name; with no patterns nothing matches.
+ * Patterns are compiled once, so build one matcher per analysis run.
+ */
 export const exclusionMatcher = (
   patterns: readonly string[],
 ): ((account: { upn: string; displayName: string | null }) => boolean) => {
-  const globs = patterns.map((p) => p.replace(/\*{2,}/g, "*").toLowerCase());
+  const globs = patterns.map(compileGlob);
+  if (globs.length === 0) return () => false;
   return ({ upn, displayName }) => {
-    const values = [upn.toLowerCase()];
-    if (displayName !== null) values.push(displayName.toLowerCase());
-    return globs.some((g) => values.some((v) => globMatches(g, v)));
+    const u = upn.toLowerCase();
+    const d = displayName?.toLowerCase() ?? null;
+    return globs.some(
+      (g) => globMatches(g, u) || (d !== null && globMatches(g, d)),
+    );
   };
 };
 
