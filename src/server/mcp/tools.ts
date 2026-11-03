@@ -15,7 +15,12 @@ import type { Entitlement } from "~/server/entitlement";
 import { historyStartDay } from "~/server/history";
 import { loadWasteHistory } from "~/server/historyStore";
 import type { FindingStatus, WasteRuleId } from "~/server/types";
-import { isShelfwareExempt } from "~/server/waste/engine";
+import {
+  idleSeatsOf,
+  isShelfwareExempt,
+  paidSeatsOf,
+  spendSeatsOf,
+} from "~/server/waste/engine";
 
 /**
  * The read-only tools of the MCP endpoint. Every handler reads the workspace
@@ -397,8 +402,8 @@ const listLicenses: Tool = {
       .filter((s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled))
       .map((s) => {
         const price = priceBySku.get(s.skuId) ?? 0;
-        // Over-assigned SKUs have no spare seats; clamp to 0 like the table.
-        const unused = Math.max(0, s.prepaidEnabled - s.consumedUnits);
+        // Paid seats only; over-assigned SKUs clamp to 0 like the table.
+        const unused = idleSeatsOf(s);
         return { sku: s, price, unused, unusedCents: unused * price };
       })
       .sort(
@@ -419,11 +424,11 @@ const listLicenses: Tool = {
         licenses: rows.map(({ sku, price, unused, unusedCents }) => ({
           name: sku.displayName ?? sku.skuPartNumber,
           part_number: sku.skuPartNumber,
-          purchased: sku.prepaidEnabled,
+          purchased: paidSeatsOf(sku),
           assigned: sku.consumedUnits,
           unused,
           monthly_price: amount(price),
-          monthly_spend: amount(sku.consumedUnits * price),
+          monthly_spend: amount(spendSeatsOf(sku) * price),
           monthly_cost_of_unused: amount(unusedCents),
         })),
       },

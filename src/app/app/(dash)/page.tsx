@@ -15,6 +15,7 @@ import {
 } from "~/components/workspace/MetricCards";
 import { OnboardingEmptyState } from "~/components/workspace/OnboardingEmptyState";
 import { PriceAccuracyCard } from "~/components/workspace/PriceAccuracyCard";
+import { UnpricedNotice } from "~/components/workspace/UnpricedNotice";
 import { SyncNowButton } from "~/components/workspace/SyncNowButton";
 import { TrendChart } from "~/components/workspace/TrendChart";
 import { Tour } from "~/components/workspace/Tour";
@@ -38,7 +39,12 @@ import {
 import { workspaceHasConnectorOrData } from "~/server/workspaceState";
 import { daysUntilDate } from "~/server/digestDelta";
 import { loadWasteHistory } from "~/server/historyStore";
-import { isShelfwareExempt } from "~/server/waste/engine";
+import {
+  isShelfwareExempt,
+  paidSeatsOf,
+  spendSeatsOf,
+  unpricedSkuCount,
+} from "~/server/waste/engine";
 import {
   findings,
   priceBook,
@@ -213,10 +219,10 @@ export default async function OverviewPage({
     (s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled),
   );
 
-  const monthlySpend = realSkus.reduce(
-    (sum, s) => sum + s.consumedUnits * (priceBySku.get(s.skuId) ?? 0),
-    0,
-  );
+  // Seats on trial cost nothing, so spend counts paid assignments only.
+  const spendOf = (s: (typeof realSkus)[number]) =>
+    spendSeatsOf(s) * (priceBySku.get(s.skuId) ?? 0);
+  const monthlySpend = realSkus.reduce((sum, s) => sum + spendOf(s), 0);
   const monthlyWaste = ruleAgg.reduce((sum, r) => sum + r.cents, 0);
   const wasteShare = monthlySpend > 0 ? (monthlyWaste / monthlySpend) * 100 : 0;
 
@@ -226,9 +232,9 @@ export default async function OverviewPage({
     skuId: s.skuId,
     name: s.displayName ?? s.skuPartNumber,
     partNumber: s.skuPartNumber,
-    purchased: s.prepaidEnabled,
+    purchased: paidSeatsOf(s),
     assigned: s.consumedUnits,
-    spendCents: s.consumedUnits * (priceBySku.get(s.skuId) ?? 0),
+    spendCents: spendOf(s),
   }));
 
   const priceRowsBySku = new Map(prices.map((p) => [p.skuId, p]));
@@ -236,11 +242,15 @@ export default async function OverviewPage({
     realSkus.map((s) => {
       const price = priceRowsBySku.get(s.skuId);
       return {
-        seats: s.consumedUnits,
+        seats: spendSeatsOf(s),
         priceCents: price?.monthlyPriceCents ?? 0,
         source: price?.source,
       };
     }),
+  );
+  const unpricedSkus = unpricedSkuCount(
+    realSkus,
+    (skuId) => priceBySku.get(skuId) ?? 0,
   );
 
   const nextRenewal = upcomingRenewals[0] ?? null;
@@ -276,13 +286,13 @@ export default async function OverviewPage({
     .map((s) => ({
       sku: s,
       price: priceBySku.get(s.skuId) ?? 0,
-      cents: s.consumedUnits * (priceBySku.get(s.skuId) ?? 0),
+      cents: spendOf(s),
     }))
     .filter((r) => r.cents > 0)
     .sort((a, b) => b.cents - a.cents)
     .map((r) => ({
       label: r.sku.displayName ?? r.sku.skuPartNumber,
-      sub: `${fmtNumber(r.sku.consumedUnits, currency)} × ${fmtMoney(
+      sub: `${fmtNumber(spendSeatsOf(r.sku), currency)} × ${fmtMoney(
         r.price,
         currency,
       )}`,
@@ -556,6 +566,12 @@ export default async function OverviewPage({
         )}
 
       <MetricCards cards={metricCards} />
+
+      {unpricedSkus > 0 && (
+        <section className="rise rise-2 mt-6">
+          <UnpricedNotice count={unpricedSkus} />
+        </section>
+      )}
 
       {!priceCoverage.complete && priceCoverage.totalProducts > 0 && (
         <section className="rise rise-2 mt-6">

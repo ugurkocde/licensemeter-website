@@ -1,10 +1,11 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
 import Link from "next/link";
 
 import { CurrencySelect } from "~/components/workspace/CurrencySelect";
 import { DangerZone } from "~/components/workspace/DangerZone";
 import { DomainJoinControl } from "~/components/workspace/DomainJoinControl";
 import { EmailPreferenceToggle } from "~/components/workspace/EmailPreferenceToggle";
+import { FindingExclusionsForm } from "~/components/workspace/FindingExclusionsForm";
 import { InactiveDaysForm } from "~/components/workspace/InactiveDaysForm";
 import { InviteForm } from "~/components/workspace/InviteForm";
 import { JoinRequestActions } from "~/components/workspace/JoinRequestActions";
@@ -23,6 +24,7 @@ import {
   deliveryLabel,
   EMAIL_JOB_LABELS,
 } from "~/lib/emailDeliveryLabels";
+import { exclusionLikePatterns } from "~/lib/findingExclusions";
 import { fmtDate, fmtDateTime, workspaceLabel } from "~/lib/format";
 import { ROLE_DESCRIPTION } from "~/lib/roles";
 import { hasRole, inviteExpiry, requireAccess } from "~/server/access";
@@ -33,6 +35,7 @@ import {
   emailDeliveries,
   memberships,
   syncRuns,
+  tenantUsers,
 } from "~/server/db/schema";
 import { currentFindingsRecipients } from "~/server/currentFindings";
 import { holdsJoinableDomain, pendingJoinRequests } from "~/server/domainJoin";
@@ -93,6 +96,7 @@ export default async function SettingsPage() {
     blocks,
     sharedAddress,
     findingsRecipients,
+    excludedAccounts,
   ] = await Promise.all([
     db.query.memberships.findMany({
       where: eq(memberships.tenantId, ctx.tenant.id),
@@ -140,6 +144,26 @@ export default async function SettingsPage() {
     canEdit
       ? currentFindingsRecipients(ctx.tenant.id)
       : Promise.resolve([] as string[]),
+    // How many synced accounts the saved exclusions match, counted in SQL.
+    ctx.tenant.findingExclusions.length > 0
+      ? db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(tenantUsers)
+          .where(
+            and(
+              eq(tenantUsers.tenantId, ctx.tenant.id),
+              or(
+                ...exclusionLikePatterns(ctx.tenant.findingExclusions).flatMap(
+                  (p) => [
+                    ilike(tenantUsers.upn, p),
+                    ilike(tenantUsers.displayName, p),
+                  ],
+                ),
+              ),
+            ),
+          )
+          .then((rows) => rows[0]?.n ?? 0)
+      : Promise.resolve(null),
   ]);
 
   return (
@@ -193,6 +217,23 @@ export default async function SettingsPage() {
                   <InactiveDaysForm value={ctx.tenant.inactiveDays} />
                 ) : (
                   `${ctx.tenant.inactiveDays} days`
+                )}
+              </dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="text-ink-faint">Excluded accounts</dt>
+              <dd className="mt-0.5">
+                {canEdit ? (
+                  <FindingExclusionsForm
+                    value={ctx.tenant.findingExclusions}
+                    matched={excludedAccounts}
+                  />
+                ) : ctx.tenant.findingExclusions.length > 0 ? (
+                  <span className="font-mono text-xs">
+                    {ctx.tenant.findingExclusions.join(", ")}
+                  </span>
+                ) : (
+                  "None"
                 )}
               </dd>
             </div>

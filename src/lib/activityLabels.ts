@@ -1,5 +1,6 @@
 const SYNC_STEP_LABELS: Record<string, string> = {
   subscribedSkus: "Microsoft subscriptions",
+  subscriptions: "Trials and renewal dates",
   reportSettings: "Report privacy settings",
   signInActivity: "Sign-in activity",
   users: "Directory users",
@@ -41,6 +42,7 @@ const ACTION_LABELS: Record<string, string> = {
   member_identity_linked: "Member confirmed with Microsoft",
   domain_join_mode_changed: "Who can join changed",
   threshold_changed: "Inactivity threshold changed",
+  finding_exclusions_changed: "Finding exclusions changed",
   currency_changed: "Reporting currency changed",
   renewal_created: "Renewal created",
   renewal_updated: "Renewal updated",

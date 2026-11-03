@@ -7,7 +7,12 @@ import { centsToDecimal, csvResponse, toCsv } from "~/server/csv";
 import { db } from "~/server/db";
 import { priceBook, tenantSkus } from "~/server/db/schema";
 import { withTenant } from "~/server/db/tenant";
-import { isShelfwareExempt } from "~/server/waste/engine";
+import {
+  idleSeatsOf,
+  isShelfwareExempt,
+  paidSeatsOf,
+  spendSeatsOf,
+} from "~/server/waste/engine";
 
 export const GET = async () => {
   const ctx = await apiAccess("viewer");
@@ -47,16 +52,16 @@ export const GET = async () => {
       ],
       ...visibleSkus.map((s) => {
         const price = priceBySku.get(s.skuId) ?? 0;
-        // Clamp to match the table's Unassigned column (no negative counts).
-        const available = Math.max(0, s.prepaidEnabled - s.consumedUnits);
+        // Paid seats only, clamped like the table's Unassigned column.
+        const available = idleSeatsOf(s);
         return [
           s.displayName ?? s.skuPartNumber,
           s.skuPartNumber,
-          s.prepaidEnabled,
+          paidSeatsOf(s),
           s.consumedUnits,
           available,
           centsToDecimal(price),
-          centsToDecimal(s.consumedUnits * price),
+          centsToDecimal(spendSeatsOf(s) * price),
           centsToDecimal(available * price),
         ];
       }),

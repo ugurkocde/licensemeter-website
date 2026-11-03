@@ -1,16 +1,20 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
 import type { Metadata } from "next";
 
+import { Card } from "~/components/ui";
 import { RenewalManager } from "~/components/workspace/RenewalManager";
+import { lifecycleLabel } from "~/components/workspace/SkuTerms";
+import { fmtDate } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
-import { memberships, vendorRenewals } from "~/server/db/schema";
+import { isKnownFreeSku } from "~/server/graph/skuCatalog";
+import { memberships, tenantSkus, vendorRenewals } from "~/server/db/schema";
 
 export const metadata: Metadata = { title: "Renewals" };
 
 export default async function RenewalsPage() {
   const ctx = await requireAccess("viewer");
-  const [renewals, members] = await Promise.all([
+  const [renewals, members, microsoftTerms] = await Promise.all([
     db.query.vendorRenewals.findMany({
       where: eq(vendorRenewals.tenantId, ctx.tenant.id),
       orderBy: asc(vendorRenewals.renewalDate),
@@ -19,7 +23,17 @@ export default async function RenewalsPage() {
       where: eq(memberships.tenantId, ctx.tenant.id),
       columns: { id: true, name: true, email: true },
     }),
+    db.query.tenantSkus.findMany({
+      where: and(
+        eq(tenantSkus.tenantId, ctx.tenant.id),
+        isNotNull(tenantSkus.nextLifecycleAt),
+      ),
+      orderBy: asc(tenantSkus.nextLifecycleAt),
+    }),
   ]);
+  const microsoftDates = microsoftTerms.filter(
+    (s) => !isKnownFreeSku(s.skuId, s.skuPartNumber),
+  );
   const canEdit = hasRole(ctx, "admin") && !ctx.tenant.isDemo;
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 pb-8">
@@ -44,6 +58,31 @@ export default async function RenewalsPage() {
           nowMs={Date.now()}
         />
       </div>
+      {microsoftDates.length > 0 && (
+        <div className="rise rise-3">
+          <Card title="Microsoft subscription dates">
+            <p className="text-ink-soft text-sm">
+              Read from Microsoft 365 on every sync. Add a contract above to
+              track its notice period.
+            </p>
+            <ul className="border-line mt-3 border-t">
+              {microsoftDates.map((s) => (
+                <li
+                  key={s.skuId}
+                  className="border-line flex flex-wrap items-baseline justify-between gap-2 border-b py-2 text-sm last:border-b-0"
+                >
+                  <span className="font-medium">
+                    {s.displayName ?? s.skuPartNumber}
+                  </span>
+                  <span className="text-ink-soft tnum">
+                    {lifecycleLabel(s)} {fmtDate(s.nextLifecycleAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

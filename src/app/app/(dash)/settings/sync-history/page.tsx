@@ -109,6 +109,11 @@ export default async function SyncHistoryPage({
                         (s) =>
                           `${syncStepLabel(s.step)}${s.count !== undefined ? `: ${s.count}` : ""}${
                             s.status === "ok" ? "" : ` · ${s.status}`
+                          }${
+                            // Older runs have no durations; sub-second steps stay quiet.
+                            (s.durationMs ?? 0) >= 1000
+                              ? ` (${Math.round(s.durationMs! / 1000)} s)`
+                              : ""
                           }`,
                       )
                       .join(" · ") ||

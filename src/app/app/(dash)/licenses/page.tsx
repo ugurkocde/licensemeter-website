@@ -6,6 +6,8 @@ import { ImportPricesForm } from "./ImportPricesForm";
 import { EmptyState } from "~/components/workspace/EmptyState";
 import { PriceEditor } from "~/components/workspace/PriceRow";
 import { PriceAccuracyCard } from "~/components/workspace/PriceAccuracyCard";
+import { SkuTerms } from "~/components/workspace/SkuTerms";
+import { UnpricedNotice } from "~/components/workspace/UnpricedNotice";
 import { ButtonAnchor, Pill, buttonClass } from "~/components/ui";
 import { CONNECTORS } from "~/lib/connectors";
 import { fmtMoney, fmtNumber } from "~/lib/format";
@@ -13,7 +15,13 @@ import { calculatePriceCoverage } from "~/lib/priceCoverage";
 import { adobePriceKey } from "~/server/adobe/analyze";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
-import { isShelfwareExempt } from "~/server/waste/engine";
+import {
+  idleSeatsOf,
+  isShelfwareExempt,
+  paidSeatsOf,
+  spendSeatsOf,
+  unpricedSkuCount,
+} from "~/server/waste/engine";
 import { saasPriceKey } from "~/server/saas/analyze";
 import {
   adobeUsers,
@@ -117,25 +125,24 @@ export default async function LicensesPage({
     ),
   );
 
+  // Purchased and unassigned count paid seats only: trial seats cost nothing.
   // Over-assigned SKUs (assigned > purchased) have no spare seats; clamp to 0.
-  const unassignedOf = (s: (typeof allSorted)[number]) =>
-    Math.max(0, s.prepaidEnabled - s.consumedUnits);
+  const unassignedOf = idleSeatsOf;
+  const spendOf = (s: (typeof allSorted)[number]) =>
+    spendSeatsOf(s) * (priceRows.get(s.skuId)?.monthlyPriceCents ?? 0);
   const totals = allSorted.reduce(
-    (acc, s) => {
-      const cents = priceRows.get(s.skuId)?.monthlyPriceCents ?? 0;
-      return {
-        purchased: acc.purchased + s.prepaidEnabled,
-        assigned: acc.assigned + s.consumedUnits,
-        unassigned: acc.unassigned + unassignedOf(s),
-        spendCents: acc.spendCents + s.consumedUnits * cents,
-      };
-    },
+    (acc, s) => ({
+      purchased: acc.purchased + paidSeatsOf(s),
+      assigned: acc.assigned + s.consumedUnits,
+      unassigned: acc.unassigned + unassignedOf(s),
+      spendCents: acc.spendCents + spendOf(s),
+    }),
     { purchased: 0, assigned: 0, unassigned: 0, spendCents: 0 },
   );
 
   const coverageProducts = [
     ...allSorted.map((s) => ({
-      seats: s.consumedUnits,
+      seats: spendSeatsOf(s),
       priceCents: priceRows.get(s.skuId)?.monthlyPriceCents ?? 0,
       source: priceRows.get(s.skuId)?.source,
     })),
@@ -155,6 +162,10 @@ export default async function LicensesPage({
     ),
   ];
   const priceCoverage = calculatePriceCoverage(coverageProducts);
+  const unpricedSkus = unpricedSkuCount(
+    allSorted,
+    (skuId) => priceRows.get(skuId)?.monthlyPriceCents ?? 0,
+  );
   const matchesPrice = (price: PriceRow | undefined) =>
     pricingFilter === "all" ||
     (pricingFilter === "unpriced" &&
@@ -231,6 +242,12 @@ export default async function LicensesPage({
           <ButtonAnchor href="/api/export/licenses">Export CSV</ButtonAnchor>
         </div>
       </header>
+
+      {unpricedSkus > 0 && (
+        <section className="rise rise-2 mt-6">
+          <UnpricedNotice count={unpricedSkus} />
+        </section>
+      )}
 
       {!priceCoverage.complete && priceCoverage.totalProducts > 0 && (
         <section className="rise rise-2 mt-6">
@@ -314,9 +331,10 @@ export default async function LicensesPage({
                     <div className="text-ink-faint font-mono text-[11px]">
                       {s.skuPartNumber}
                     </div>
+                    <SkuTerms sku={s} />
                   </td>
                   <td className="tnum px-4 py-3 text-right font-mono">
-                    {fmtNumber(s.prepaidEnabled, currency)}
+                    {fmtNumber(paidSeatsOf(s), currency)}
                   </td>
                   <td className="tnum px-4 py-3 text-right font-mono">
                     {fmtNumber(s.consumedUnits, currency)}
@@ -331,7 +349,7 @@ export default async function LicensesPage({
                     {fmtNumber(free, currency)}
                   </td>
                   <td className="tnum px-4 py-3 text-right font-mono">
-                    {fmtMoney(s.consumedUnits * cents, currency)}
+                    {fmtMoney(spendOf(s), currency)}
                   </td>
                   <td className="px-4 py-3">
                     <PriceSourcePill price={p} />
@@ -410,6 +428,7 @@ export default async function LicensesPage({
                   <div className="text-ink-faint font-mono text-[11px]">
                     {s.skuPartNumber}
                   </div>
+                  <SkuTerms sku={s} />
                 </div>
                 <PriceSourcePill price={p} />
               </div>
@@ -418,7 +437,7 @@ export default async function LicensesPage({
                   <dt className="text-ink-faint font-sans text-xs">
                     Purchased
                   </dt>
-                  <dd>{fmtNumber(s.prepaidEnabled, currency)}</dd>
+                  <dd>{fmtNumber(paidSeatsOf(s), currency)}</dd>
                 </div>
                 <div className="flex justify-between gap-2">
                   <dt className="text-ink-faint font-sans text-xs">Assigned</dt>
@@ -438,7 +457,7 @@ export default async function LicensesPage({
                 </div>
                 <div className="flex justify-between gap-2">
                   <dt className="text-ink-faint font-sans text-xs">Spend/mo</dt>
-                  <dd>{fmtMoney(s.consumedUnits * cents, currency)}</dd>
+                  <dd>{fmtMoney(spendOf(s), currency)}</dd>
                 </div>
               </dl>
               <div className="border-line mt-3 border-t pt-3">
