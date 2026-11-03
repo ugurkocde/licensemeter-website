@@ -2,7 +2,7 @@
 
 import { Info } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { Button } from "~/components/ui";
 import { triggerSync } from "~/server/actions";
@@ -39,13 +39,23 @@ export const ConnectPoller = ({
   const [retrying, startRetry] = useTransition();
   const [retryError, setRetryError] = useState<string | null>(null);
   const expired = tick >= MAX_TICKS;
+  /* A retry's sync can outlive the page: once the admin has navigated away,
+     late status reads must neither update state nor redirect them. */
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   /** Latest run, applied to state; redirects once the sync has landed. */
   const poll = useCallback(async (): Promise<RunInfo | undefined> => {
     try {
       const res = await fetch("/api/sync", { cache: "no-store" });
-      if (!res.ok) return undefined;
+      if (!res.ok || !mounted.current) return undefined;
       const body = (await res.json()) as { run: RunInfo };
+      if (!mounted.current) return undefined;
       setRun(body.run);
       if (body.run?.status === "success" || body.run?.status === "partial") {
         window.location.href = redirectTo;
@@ -81,7 +91,9 @@ export const ConnectPoller = ({
         // Network failure or a server error before the run was recorded.
         result = { ok: false, error: "Could not start the sync. Try again." };
       }
+      if (!mounted.current) return;
       const latest = await poll();
+      if (!mounted.current) return;
       // The status read failed. A failed result may still have recorded a new
       // run, so always resume polling: the next read shows the latest run.
       // Until then a failed retry keeps the old failure on screen.
