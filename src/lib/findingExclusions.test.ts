@@ -52,6 +52,25 @@ describe("exclusionMatcher", () => {
     );
   });
 
+  it("handles ? and other characters literally and anchors both ends", () => {
+    const m = exclusionMatcher(["svc?*", "*room"]);
+    expect(m({ upn: "svc?1@contoso.com", displayName: null })).toBe(true);
+    expect(m({ upn: "svcx1@contoso.com", displayName: null })).toBe(false);
+    expect(m({ upn: "x@contoso.com", displayName: "Board Room" })).toBe(true);
+    expect(m({ upn: "x@contoso.com", displayName: "Board Rooms" })).toBe(false);
+  });
+
+  it("finishes fast on a pathological pattern", () => {
+    const m = exclusionMatcher(["*a*a*a*a*a*a*a*a*a*b"]);
+    const long = "a".repeat(20_000);
+    const started = performance.now();
+    for (let i = 0; i < 50; i++) {
+      expect(m({ upn: long, displayName: long })).toBe(false);
+    }
+    expect(m({ upn: `${long}b`, displayName: null })).toBe(true);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it("matches nothing without patterns", () => {
     expect(
       exclusionMatcher([])({ upn: "x@contoso.com", displayName: "x" }),
