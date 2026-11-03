@@ -316,6 +316,45 @@ describe("service principal propagation on the sync path", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("settles the SKU read by the deadline when a re-minted token is slow", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => deniedResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint
+      .mockResolvedValueOnce({ accessToken: withOid() })
+      // The token after the first wait never arrives.
+      .mockReturnValueOnce(new Promise(() => undefined));
+
+    const client = new MsGraphClient(
+      managedCred("16161616-1616-1616-1616-161616161616"),
+      Date.now() + 20_000,
+    );
+    const pending = client.getSubscribedSkus();
+    const outcome = expect(pending).rejects.toMatchObject({
+      status: 504,
+      code: "deadline_exceeded",
+    });
+    await vi.advanceTimersByTimeAsync(20_000);
+    await outcome;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a token Graph denied on the organization read without waiting", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => deniedResponse()),
+    );
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    const cred = managedCred("17171717-1717-1717-1717-171717171717");
+    await expect(
+      new MsGraphClient(cred).getOrganizationName(),
+    ).resolves.toBeNull();
+
+    await verifyMsCredential(cred);
+    expect(mocks.clientsCreated).toBe(2);
+  });
+
   it("does not treat an opaque token as identity-less", async () => {
     stubSkusFetch();
     mocks.mint.mockResolvedValue({ accessToken: "opaque-token" });

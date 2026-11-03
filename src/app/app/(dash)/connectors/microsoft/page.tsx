@@ -193,7 +193,8 @@ export default async function MicrosoftConnectorPage({
       {status === "syncing" && (
         <div className="rise rise-2">
           <Card title="Tenant connected">
-            <ConnectPoller />
+            {/* No stored credential means this run was the instant scan. */}
+            <ConnectPoller retryScan={!conn} />
           </Card>
         </div>
       )}

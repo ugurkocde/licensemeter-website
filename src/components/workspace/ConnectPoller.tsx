@@ -4,7 +4,7 @@ import { Info } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState, useTransition } from "react";
 
-import { Button } from "~/components/ui";
+import { Button, ButtonAnchor } from "~/components/ui";
 import { triggerSync } from "~/server/actions";
 import type { SyncStep } from "~/server/types";
 
@@ -26,8 +26,12 @@ const MAX_TICKS = Math.floor((3 * 60 * 1000) / POLL_INTERVAL_MS);
  * route so the admin stays in context after adding a connector. */
 export const ConnectPoller = ({
   redirectTo = "/app",
+  retryScan = false,
 }: {
   redirectTo?: string;
+  /** The run came from the delegated instant scan, which has no stored
+   * credential: retrying signs in for a fresh scan token instead of syncing. */
+  retryScan?: boolean;
 }) => {
   const [run, setRun] = useState<RunInfo>(null);
   const [tick, setTick] = useState(0);
@@ -64,16 +68,26 @@ export const ConnectPoller = ({
   /* Runs the sync again. The poller keeps showing the running line meanwhile,
      then redirects on success or shows the new failure. */
   const retry = () => {
-    const failedRunId = run?.id;
+    const failedRun = run;
     startRetry(async () => {
       setRetryError(null);
       setRun(null);
       setTick(0);
-      const result = await triggerSync();
+      let result: Awaited<ReturnType<typeof triggerSync>>;
+      try {
+        result = await triggerSync();
+      } catch {
+        // Network failure or a server error before the run was recorded.
+        result = { ok: false, error: "Could not start the sync. Try again." };
+      }
       const latest = await poll();
+      if (latest === undefined) setRun(failedRun);
       // No new run means the sync was refused before it started (role, demo
       // workspace); a new failed run speaks for itself in the box.
-      if (!result.ok && (latest === undefined || latest?.id === failedRunId)) {
+      if (
+        !result.ok &&
+        (latest === undefined || latest?.id === failedRun?.id)
+      ) {
         setRetryError(result.error ?? "Could not start the sync.");
       }
     });
@@ -90,9 +104,13 @@ export const ConnectPoller = ({
             {run.error ?? "Check the sync history in settings."}
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
-            <Button type="button" onClick={retry}>
-              Try again
-            </Button>
+            {retryScan ? (
+              <ButtonAnchor href="/api/scan/start">Try again</ButtonAnchor>
+            ) : (
+              <Button type="button" onClick={retry}>
+                Try again
+              </Button>
+            )}
             <Link
               href="/app/settings/sync-history"
               className="hover:text-ink -mx-1 inline-flex min-h-11 items-center rounded-md px-1 text-xs font-medium underline underline-offset-4"

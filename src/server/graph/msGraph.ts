@@ -722,25 +722,32 @@ export class MsGraphClient implements GraphClient {
       );
       const body = (await res.json()) as { value?: { displayName?: string }[] };
       return body.value?.[0]?.displayName ?? null;
-    } catch {
+    } catch (err) {
+      // Non-critical, so no wait, but never keep a token Graph denied.
+      if (isPermissionDenial(err)) msalApps.delete(appCacheKey(this.cred));
       return null;
     }
   }
 
   /**
    * The first Graph read of every sync, so it is the one that meets a token
-   * minted moments after admin consent: it retries a permission denial.
+   * minted moments after admin consent: it retries a permission denial. The
+   * whole read, token calls included, settles by the deadline, so a token
+   * request that starts after the last wait cannot outlive it.
    */
   async getSubscribedSkus(): Promise<GraphSubscribedSku[]> {
-    return this.withAppIdentityRetry(
-      (token) =>
-        getAllPages<GraphSubscribedSku>(
-          token,
-          `${GRAPH}/subscribedSkus`,
-          this.deadline,
-        ),
+    return settleBy(
+      this.withAppIdentityRetry(
+        (token) =>
+          getAllPages<GraphSubscribedSku>(
+            token,
+            `${GRAPH}/subscribedSkus`,
+            this.deadline,
+          ),
+        this.deadline,
+        { retryDenied: true },
+      ),
       this.deadline,
-      { retryDenied: true },
     );
   }
 
