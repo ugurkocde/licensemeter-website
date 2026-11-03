@@ -82,11 +82,12 @@ export const ConnectPoller = ({
         result = { ok: false, error: "Could not start the sync. Try again." };
       }
       const latest = await poll();
-      // The status read failed: keep the old failure only when the retry did
-      // not run; after a sync that did run, resume polling for its result.
+      // The status read failed. A failed result may still have recorded a new
+      // run, so always resume polling: the next read shows the latest run.
+      // Until then a failed retry keeps the old failure on screen.
       if (latest === undefined) {
-        if (result.ok) setTick(0);
-        else setRun(failedRun);
+        if (!result.ok) setRun(failedRun);
+        setTick(0);
       }
       // No new run means the sync was refused before it started (role, demo
       // workspace); a new failed run speaks for itself in the box.
