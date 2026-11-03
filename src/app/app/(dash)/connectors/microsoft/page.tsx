@@ -195,7 +195,17 @@ export default async function MicrosoftConnectorPage({
           <Card title="Tenant connected">
             {/* Without a stored credential (instant scan, or disconnected
                 since) there is nothing to re-sync with. */}
-            <ConnectPoller canRetry={Boolean(conn)} />
+            <ConnectPoller
+              retryUnavailable={
+                conn
+                  ? undefined
+                  : ctx.tenant.isDemo
+                    ? "The demo workspace is read-only."
+                    : isAdmin
+                      ? "To try again, connect Microsoft 365 below."
+                      : "Ask a workspace admin to connect Microsoft 365 again."
+              }
+            />
           </Card>
         </div>
       )}

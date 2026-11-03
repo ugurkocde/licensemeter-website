@@ -26,13 +26,13 @@ const MAX_TICKS = Math.floor((3 * 60 * 1000) / POLL_INTERVAL_MS);
  * route so the admin stays in context after adding a connector. */
 export const ConnectPoller = ({
   redirectTo = "/app",
-  canRetry = true,
+  retryUnavailable,
 }: {
   redirectTo?: string;
-  /** False when the workspace holds no stored credential to sync with (an
-   * instant scan, or a connector removed since): the box then points to the
-   * page's connection options instead of offering Try again. */
-  canRetry?: boolean;
+  /** Set when the workspace holds no stored credential to sync with (an
+   * instant scan, or a connector removed since): this line replaces Try
+   * again and tells the viewer how to recover. */
+  retryUnavailable?: string;
 }) => {
   const [run, setRun] = useState<RunInfo>(null);
   const [tick, setTick] = useState(0);
@@ -105,16 +105,14 @@ export const ConnectPoller = ({
             {run.error ?? "Check the sync history in settings."}
           </p>
           <div
-            className={`${canRetry ? "mt-4" : "mt-2"} flex flex-wrap items-center gap-x-5 gap-y-1`}
+            className={`${retryUnavailable ? "mt-2" : "mt-4"} flex flex-wrap items-center gap-x-5 gap-y-1`}
           >
-            {canRetry ? (
+            {retryUnavailable ? (
+              <p className="text-ink">{retryUnavailable}</p>
+            ) : (
               <Button type="button" onClick={retry}>
                 Try again
               </Button>
-            ) : (
-              <p className="text-ink">
-                To try again, connect Microsoft 365 below.
-              </p>
             )}
             <Link
               href="/app/settings/sync-history"
