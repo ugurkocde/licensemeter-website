@@ -25,6 +25,7 @@ const toDate = (value: string | null | undefined): Date | null => {
 };
 
 export type JoinedUser = WasteUser & {
+  mailAliases: string[];
   lastInteractiveSignIn: Date | null;
   lastNonInteractiveSignIn: Date | null;
   workloadActivity: WorkloadActivity;
@@ -111,6 +112,7 @@ export const joinSignals = (args: {
     return {
       graphId: g.id,
       upn: g.userPrincipalName,
+      mailAliases: mailAliasesOf(g),
       displayName: g.displayName,
       accountEnabled: g.accountEnabled,
       userType: g.userType,
@@ -167,54 +169,55 @@ export const joinSignals = (args: {
 };
 
 /**
- * Directory identities for connector seat matching: one entry per address a
- * user is reachable under (UPN, primary mail, every smtp: proxy address),
- * lowercased for lookup, first writer wins on a shared address. Built in
- * memory per sync; nothing beyond the UPN is persisted.
+ * Mail addresses a user is reachable under besides the UPN: primary mail and
+ * every smtp: proxy address, trimmed, lowercased and deduped, the UPN itself
+ * left out. Persisted on tenant_users so a re-analysis from the database
+ * correlates connector seats exactly like the sync that pulled them.
  */
-export const entraIdentitiesOf = (graphUsers: GraphUser[]): EntraIdentity[] => {
+export const mailAliasesOf = (g: GraphUser): string[] => {
+  const upn = g.userPrincipalName.trim().toLowerCase();
+  const aliases = [
+    g.mail ?? "",
+    ...(g.proxyAddresses ?? [])
+      .filter((p) => /^smtp:/i.test(p))
+      .map((p) => p.slice("smtp:".length)),
+  ]
+    .map((a) => a.trim().toLowerCase())
+    .filter((a) => a !== "" && a !== upn);
+  return [...new Set(aliases)];
+};
+
+/**
+ * Directory identities for connector seat matching: one entry per address a
+ * user is reachable under (UPN, then the mail aliases), lowercased for
+ * lookup, first writer wins on a shared address. The same function serves a
+ * fresh sync (joined users) and every analysis from the database (stored
+ * tenant_users rows), so both correlate seats identically. CSV-imported
+ * directories have no aliases and match on the UPN alone.
+ */
+export const directoryIdentitiesOf = (
+  rows: readonly {
+    graphId: string;
+    upn: string;
+    displayName: string | null;
+    accountEnabled: boolean;
+    mailAliases?: readonly string[];
+  }[],
+): EntraIdentity[] => {
   const byAddress = new Map<string, EntraIdentity>();
-  for (const g of graphUsers) {
-    const addresses = [
-      g.userPrincipalName,
-      g.mail ?? "",
-      ...(g.proxyAddresses ?? [])
-        .filter((p) => /^smtp:/i.test(p))
-        .map((p) => p.slice("smtp:".length)),
-    ];
-    for (const raw of addresses) {
+  for (const r of rows) {
+    for (const raw of [r.upn, ...(r.mailAliases ?? [])]) {
       const address = raw.trim().toLowerCase();
       if (address === "" || byAddress.has(address)) continue;
       byAddress.set(address, {
-        graphId: g.id,
+        graphId: r.graphId,
         upn: address,
-        displayName: g.displayName,
-        accountEnabled: g.accountEnabled,
+        displayName: r.displayName,
+        accountEnabled: r.accountEnabled,
       });
     }
   }
   return [...byAddress.values()];
 };
-
-/**
- * Directory identities from the stored tenant_users rows, for analyses that
- * run without a fresh Graph pull: a re-analysis from the database, and syncs
- * of workspaces whose directory came from a CSV import instead of Microsoft.
- * Only the UPN is persisted, so unlike entraIdentitiesOf there are no aliases.
- */
-export const storedIdentitiesOf = (
-  rows: {
-    graphId: string;
-    upn: string;
-    displayName: string | null;
-    accountEnabled: boolean;
-  }[],
-): EntraIdentity[] =>
-  rows.map((r) => ({
-    graphId: r.graphId,
-    upn: r.upn,
-    displayName: r.displayName,
-    accountEnabled: r.accountEnabled,
-  }));
 
 export { COPILOT_SKU_ID };

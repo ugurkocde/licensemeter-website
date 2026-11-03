@@ -63,11 +63,7 @@ import {
   type SkuTerms,
 } from "~/server/sync/subscriptionTerms";
 import { connectorSeatExclusion } from "~/server/sync/connectorExclusions";
-import {
-  entraIdentitiesOf,
-  joinSignals,
-  storedIdentitiesOf,
-} from "~/server/sync/join";
+import { directoryIdentitiesOf, joinSignals } from "~/server/sync/join";
 import type { SyncRunStatus, SyncStep, WasteRuleId } from "~/server/types";
 import {
   analyzeWaste,
@@ -787,6 +783,7 @@ export const runSync = async (
             tenantId,
             graphId: u.graphId,
             upn: u.upn,
+            mailAliases: u.mailAliases,
             displayName: u.displayName,
             accountEnabled: u.accountEnabled,
             userType: u.userType,
@@ -803,6 +800,7 @@ export const runSync = async (
           target: [tenantUsers.tenantId, tenantUsers.graphId],
           set: {
             upn: sql`excluded.upn`,
+            mailAliases: sql`excluded.mail_aliases`,
             displayName: sql`excluded.display_name`,
             accountEnabled: sql`excluded.account_enabled`,
             userType: sql`excluded.user_type`,
@@ -1064,8 +1062,8 @@ export const runSync = async (
       exclusions: tenant.findingExclusions,
     });
     // Every sign-in name plus mail alias of each directory user, so connector
-    // seats registered under an alias still match (in-memory only; the
-    // tenant_users table keeps the UPN alone).
+    // seats registered under an alias still match. The aliases are stored on
+    // tenant_users, so runAnalysis builds the very same identities.
     // No Graph pull this run (Microsoft not connected, or an empty result that
     // left the stored inventory alone): correlate against the stored directory
     // instead, which a CSV import fills without any Microsoft connection.
@@ -1077,10 +1075,7 @@ export const runSync = async (
         : await db.query.tenantUsers.findMany({
             where: eq(tenantUsers.tenantId, tenantId),
           });
-    const entraIdentities =
-      graphUsers.length > 0
-        ? entraIdentitiesOf(graphUsers)
-        : storedIdentitiesOf(directory);
+    const entraIdentities = directoryIdentitiesOf(directory);
     const seatExcluded = connectorSeatExclusion(
       tenant.findingExclusions,
       directory,
@@ -1303,7 +1298,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     exclusions: tenant.findingExclusions,
   });
 
-  const entraIdentities = storedIdentitiesOf(userRows);
+  const entraIdentities = directoryIdentitiesOf(userRows);
   const seatExcluded = connectorSeatExclusion(
     tenant.findingExclusions,
     userRows,

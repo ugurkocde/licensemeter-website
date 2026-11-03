@@ -498,6 +498,15 @@ export const tenantUsers = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     graphId: text("graph_id").notNull(),
     upn: text("upn").notNull(),
+    /**
+     * Primary mail and smtp proxy addresses besides the UPN, lowercased, so
+     * connector seats on an alias correlate in every analysis, not only in
+     * the sync that pulled them. Empty for CSV-imported directories.
+     */
+    mailAliases: text("mail_aliases")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     displayName: text("display_name"),
     accountEnabled: boolean("account_enabled").notNull().default(true),
     userType: text("user_type"),
