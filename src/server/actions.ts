@@ -1258,16 +1258,26 @@ export const setCurrency = async (
 };
 
 /** Manual sync trigger from the Overview page. */
-export const triggerSync = async (): Promise<ActionResult> => {
+/**
+ * Manual sync. `runId` names the run this call started, or the one already in
+ * flight that the concurrency lock handed back, so the client can recognise
+ * that run's result even when it started before the click.
+ */
+export const triggerSync = async (): Promise<
+  ActionResult & { runId?: string }
+> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
   if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   await audit(ctx, "sync_triggered", {});
   const result = await runSync(ctx.tenant.id, { deadline: requestDeadline() });
   revalidateApp();
-  return result.status === "failed"
-    ? fail("Sync failed; see sync history")
-    : ok();
+  return {
+    ...(result.status === "failed"
+      ? fail("Sync failed; see sync history")
+      : ok()),
+    runId: result.runId,
+  };
 };
 
 /** Connect the Adobe Admin Console (UMAPI server-to-server credentials). */

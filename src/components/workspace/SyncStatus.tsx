@@ -14,6 +14,7 @@ import {
 } from "react";
 
 import { SyncProgress } from "~/components/workspace/SyncProgress";
+import { isFollowedRun } from "~/lib/syncStatusRun";
 import { triggerSync } from "~/server/actions";
 import type { SyncRunStatus, SyncStep } from "~/server/types";
 
@@ -147,6 +148,11 @@ export const SyncStatusProvider = ({
   /** Watched runs report the elapsed time from their server start time. */
   const sinceFromServer = useRef(initiallyRunning);
   const latestId = useRef(initialRun?.id ?? null);
+  /** A run seen running while following, or the one Sync now attached to:
+   * its result is shown whenever it started. */
+  const watchedId = useRef<string | null>(
+    initiallyRunning ? (initialRun?.id ?? null) : null,
+  );
 
   useEffect(() => {
     mounted.current = true;
@@ -171,6 +177,7 @@ export const SyncStatusProvider = ({
       const { run, offsetMs } = latest;
       if (run?.status === "running") {
         latestId.current = run.id;
+        watchedId.current = run.id;
         // The Date header has whole-second precision, so each poll's offset
         // differs by up to a second: adopt the server start only when it
         // corrects real clock skew, or the clock would jump back and forth.
@@ -193,11 +200,13 @@ export const SyncStatusProvider = ({
       // While Sync now is in flight its result decides; an older finished
       // run seen meanwhile is not the one it started.
       if (actionPending.current) return;
-      const b = baseline.current;
       const isNew =
         run !== null &&
-        (b === null ||
-          (run.id !== b.id && Date.parse(run.startedAt) - offsetMs >= b.after));
+        isFollowedRun(run, {
+          watchedId: watchedId.current,
+          baseline: baseline.current,
+          offsetMs,
+        });
       if (isNew) {
         latestId.current = run.id;
         finish(finishedView(run), true);
@@ -254,6 +263,7 @@ export const SyncStatusProvider = ({
     if (initialStatus !== "running" || !initialStartedAt) return;
     active.current = true;
     baseline.current = null;
+    watchedId.current = initialId;
     refusal.current = null;
     sinceFromServer.current = true;
     setView({
@@ -277,6 +287,7 @@ export const SyncStatusProvider = ({
     active.current = true;
     actionPending.current = true;
     refusal.current = null;
+    watchedId.current = null;
     sinceFromServer.current = false;
     const clickedAt = Date.now();
     baseline.current = {
@@ -295,6 +306,7 @@ export const SyncStatusProvider = ({
       }
       if (!mounted.current) return;
       actionPending.current = false;
+      if (result?.runId) watchedId.current = result.runId;
       if (!result) {
         refusal.current = {
           tone: "danger",
