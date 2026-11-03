@@ -446,6 +446,35 @@ describe("directory reads", () => {
     ).resolves.toEqual([]);
   });
 
+  it("settles by its deadline while the token is still being acquired", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => Response.json({ value: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    let deliverToken: ((value: { accessToken: string }) => void) | undefined;
+    mocks.mint.mockReturnValue(
+      new Promise((resolve) => {
+        deliverToken = resolve;
+      }),
+    );
+    const client = new MsGraphClient(
+      managedCred("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+      Date.now() + 240_000,
+    );
+
+    const pending = client.getSubscriptions(Date.now() + 50);
+    const outcome = expect(pending).rejects.toMatchObject({
+      status: 504,
+      code: "deadline_exceeded",
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    await outcome;
+
+    // The token arrives late: the abandoned call must not reach Graph.
+    deliverToken!({ accessToken: withOid() });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("leaves subscriptions out of the delegated instant scan", () => {
     const client: GraphClient = new DelegatedGraphClient("delegated-token");
     expect("getSubscriptions" in client).toBe(false);

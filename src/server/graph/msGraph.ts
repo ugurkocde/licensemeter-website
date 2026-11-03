@@ -633,6 +633,34 @@ const fetchCopilotUsage = async (
     }));
 };
 
+/**
+ * Settles `work` by an absolute deadline: past it the caller gets a
+ * deadline_exceeded error, whatever is still pending. MSAL token calls cannot
+ * be aborted, so this race is what bounds them. The abandoned work cannot
+ * reach the network after the deadline either: every Graph request clamps
+ * its timeout to the same deadline and refuses to start once it has passed.
+ * Its result is dropped, and a late rejection is swallowed rather than left
+ * unhandled.
+ */
+const settleBy = <T>(work: Promise<T>, deadline: number): Promise<T> => {
+  work.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new GraphHttpError(
+            504,
+            "deadline_exceeded",
+            "Step deadline reached before Graph answered",
+          ),
+        ),
+      Math.max(0, deadline - Date.now()),
+    );
+  });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+};
+
 export class MsGraphClient implements GraphClient {
   /** One request deadline shared by every call and retry in the run. */
   private readonly deadline: number;
@@ -705,17 +733,21 @@ export class MsGraphClient implements GraphClient {
   /**
    * Readable with the connector's existing directory permissions (verified
    * app-only). The caller treats every failure as non-critical and passes a
-   * short deadline so throttling here cannot use up the sync budget.
+   * short deadline so neither throttling nor a slow token refresh can use up
+   * the sync budget: the whole call, MSAL included, settles by it.
    */
   async getSubscriptions(deadline: number): Promise<GraphSubscription[]> {
     const until = Math.min(deadline, this.deadline);
-    return this.withAppIdentityRetry(
-      (token) =>
-        getAllPages<GraphSubscription>(
-          token,
-          `${GRAPH}/directory/subscriptions?$select=${SUBSCRIPTION_FIELDS}`,
-          until,
-        ),
+    return settleBy(
+      this.withAppIdentityRetry(
+        (token) =>
+          getAllPages<GraphSubscription>(
+            token,
+            `${GRAPH}/directory/subscriptions?$select=${SUBSCRIPTION_FIELDS}`,
+            until,
+          ),
+        until,
+      ),
       until,
     );
   }
