@@ -8,6 +8,7 @@ import {
   purchasedSeatsOf,
   spendSeatsOf,
   unpricedSkuCount,
+  userLicensePricing,
   type WasteInput,
   type WasteUser,
 } from "./engine";
@@ -738,5 +739,50 @@ describe("over-assigned trial SKUs", () => {
   it("keeps Microsoft's consumed count when there are no trial seats", () => {
     expect(spendSeatsOf(seats(10, 12))).toBe(12);
     expect(spendSeatsOf(seats(10, 8))).toBe(8);
+  });
+});
+
+describe("userLicensePricing (user detail page)", () => {
+  const skus = [
+    {
+      skuId: COPILOT_SKU_ID,
+      prepaidEnabled: 25,
+      consumedUnits: 10,
+      trialUnits: 25,
+    },
+    { skuId: E3, prepaidEnabled: 125, consumedUnits: 110, trialUnits: 25 },
+  ];
+
+  it("prices a trial-only license at 0 and flags it", () => {
+    expect(userLicensePricing([lic(COPILOT_SKU_ID)], skus, PRICES)).toEqual({
+      rows: [{ skuId: COPILOT_SKU_ID, monthlyPriceCents: 0, onTrialSku: true }],
+      totalCents: 0,
+    });
+  });
+
+  it("matches the price the findings use on a mixed SKU", () => {
+    const pricing = userLicensePricing([lic(E3)], skus, PRICES);
+    const [finding] = run({
+      users: [user({ accountEnabled: false })],
+      skus: skus.map((s) => ({ ...s, skuPartNumber: "X" })),
+    });
+    expect(pricing.totalCents).toBe(Math.floor((3670 * 100) / 110));
+    expect(pricing.totalCents).toBe(finding!.monthlyImpactCents);
+  });
+
+  it("shows the price book value for SKUs without trial seats", () => {
+    expect(
+      userLicensePricing(
+        [lic(E3), lic(COPILOT_SKU_ID)],
+        [{ skuId: E3, prepaidEnabled: 10, consumedUnits: 12, trialUnits: 0 }],
+        PRICES,
+      ),
+    ).toEqual({
+      rows: [
+        { skuId: E3, monthlyPriceCents: 3670, onTrialSku: false },
+        { skuId: COPILOT_SKU_ID, monthlyPriceCents: 2810, onTrialSku: false },
+      ],
+      totalCents: 3670 + 2810,
+    });
   });
 });

@@ -12,7 +12,13 @@ import { fmtDate, fmtMoney } from "~/lib/format";
 import { skuDisplayName } from "~/server/graph/skuCatalog";
 import { requireAccess } from "~/server/access";
 import { db } from "~/server/db";
-import { findings, priceBook, tenantUsers } from "~/server/db/schema";
+import {
+  findings,
+  priceBook,
+  tenantSkus,
+  tenantUsers,
+} from "~/server/db/schema";
+import { userLicensePricing } from "~/server/waste/engine";
 
 /**
  * Access check + tenant-scoped user lookup, memoized for the request so
@@ -61,7 +67,7 @@ export default async function UserDetailPage({
   // tenant price book to look up a handful of ids.
   const userSkuIds = user.licenses.map((l) => l.skuId);
 
-  const [userFindings, prices] = await Promise.all([
+  const [userFindings, prices, skus] = await Promise.all([
     db.query.findings.findMany({
       where: and(
         eq(findings.tenantId, ctx.tenant.id),
@@ -79,12 +85,29 @@ export default async function UserDetailPage({
           ),
         })
       : Promise.resolve([]),
+    // Seat counts of the same SKUs: on a SKU with trial seats one assignment
+    // costs its share of the paid spend, exactly as the findings price it.
+    userSkuIds.length > 0
+      ? db.query.tenantSkus.findMany({
+          where: and(
+            eq(tenantSkus.tenantId, ctx.tenant.id),
+            inArray(tenantSkus.skuId, userSkuIds),
+          ),
+          columns: {
+            skuId: true,
+            prepaidEnabled: true,
+            consumedUnits: true,
+            trialUnits: true,
+          },
+        })
+      : Promise.resolve([]),
   ]);
-  const priceBySku = new Map(prices.map((p) => [p.skuId, p.monthlyPriceCents]));
-  const monthlyCost = user.licenses.reduce(
-    (sum, l) => sum + (priceBySku.get(l.skuId) ?? 0),
-    0,
+  const pricing = userLicensePricing(
+    user.licenses,
+    skus,
+    Object.fromEntries(prices.map((p) => [p.skuId, p.monthlyPriceCents])),
   );
+  const monthlyCost = pricing.totalCents;
   const currency = ctx.tenant.currency;
 
   return (
@@ -138,13 +161,22 @@ export default async function UserDetailPage({
           Licenses
         </h2>
         <ul className="border-line bg-card mt-3 border">
-          {user.licenses.map((l) => (
+          {user.licenses.map((l, i) => (
             <li
               key={l.skuId}
               className="border-line flex flex-wrap items-baseline justify-between gap-2 border-b px-4 py-3 last:border-b-0"
             >
               <div>
                 <span className="font-medium">{skuDisplayName(l.skuId)}</span>
+                {pricing.rows[i]!.onTrialSku && (
+                  <Pill
+                    tone="plum"
+                    className="ml-2 align-middle"
+                    title="This product has trial seats, which cost nothing. The price is this seat's share of the paid seats."
+                  >
+                    Trial
+                  </Pill>
+                )}
                 {l.assignedByGroup && (
                   <details className="ml-2 inline-block align-middle">
                     <summary className="text-ink-faint hover:text-ink inline-flex min-h-11 cursor-pointer touch-manipulation items-center text-xs underline-offset-4 hover:underline">
@@ -162,7 +194,7 @@ export default async function UserDetailPage({
                 )}
               </div>
               <span className="tnum font-mono text-sm">
-                {fmtMoney(priceBySku.get(l.skuId) ?? 0, currency)}/mo
+                {fmtMoney(pricing.rows[i]!.monthlyPriceCents, currency)}/mo
               </span>
             </li>
           ))}

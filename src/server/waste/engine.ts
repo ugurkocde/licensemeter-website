@@ -202,6 +202,35 @@ export const assignmentPrices = (
 };
 
 /**
+ * One user's licenses priced exactly as the findings price them: the
+ * trial-aware assignment price per license (assignmentPrices) and their sum.
+ * `onTrialSku` marks licenses of SKUs that have trial seats. SKUs without
+ * trial seats keep their price book value.
+ */
+export const userLicensePricing = (
+  licenses: readonly { skuId: string }[],
+  skus: readonly (SeatCounts & { skuId: string })[],
+  prices: Record<string, number>,
+): {
+  rows: { skuId: string; monthlyPriceCents: number; onTrialSku: boolean }[];
+  totalCents: number;
+} => {
+  const assigned = assignmentPrices(skus, prices);
+  const trialSkus = new Set(
+    skus.filter((s) => (s.trialUnits ?? 0) > 0).map((s) => s.skuId),
+  );
+  const rows = licenses.map((l) => ({
+    skuId: l.skuId,
+    monthlyPriceCents: assigned[l.skuId] ?? 0,
+    onTrialSku: trialSkus.has(l.skuId),
+  }));
+  return {
+    rows,
+    totalCents: rows.reduce((sum, r) => sum + r.monthlyPriceCents, 0),
+  };
+};
+
+/**
  * Microsoft SKUs with paid seats (assigned or not) but no price, excluding
  * known-free, capacity and fully trial SKUs: waste on them is priced at 0
  * and therefore understated until someone enters a price.
