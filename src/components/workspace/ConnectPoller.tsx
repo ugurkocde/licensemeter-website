@@ -4,7 +4,7 @@ import { Info } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState, useTransition } from "react";
 
-import { Button, ButtonAnchor } from "~/components/ui";
+import { Button } from "~/components/ui";
 import { triggerSync } from "~/server/actions";
 import type { SyncStep } from "~/server/types";
 
@@ -26,12 +26,13 @@ const MAX_TICKS = Math.floor((3 * 60 * 1000) / POLL_INTERVAL_MS);
  * route so the admin stays in context after adding a connector. */
 export const ConnectPoller = ({
   redirectTo = "/app",
-  retryScan = false,
+  canRetry = true,
 }: {
   redirectTo?: string;
-  /** The run came from the delegated instant scan, which has no stored
-   * credential: retrying signs in for a fresh scan token instead of syncing. */
-  retryScan?: boolean;
+  /** False when the workspace holds no stored credential to sync with (an
+   * instant scan, or a connector removed since): the box then points to the
+   * page's connection options instead of offering Try again. */
+  canRetry?: boolean;
 }) => {
   const [run, setRun] = useState<RunInfo>(null);
   const [tick, setTick] = useState(0);
@@ -103,13 +104,17 @@ export const ConnectPoller = ({
           <p className="mt-1">
             {run.error ?? "Check the sync history in settings."}
           </p>
-          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
-            {retryScan ? (
-              <ButtonAnchor href="/api/scan/start">Try again</ButtonAnchor>
-            ) : (
+          <div
+            className={`${canRetry ? "mt-4" : "mt-2"} flex flex-wrap items-center gap-x-5 gap-y-1`}
+          >
+            {canRetry ? (
               <Button type="button" onClick={retry}>
                 Try again
               </Button>
+            ) : (
+              <p className="text-ink">
+                To try again, connect Microsoft 365 below.
+              </p>
             )}
             <Link
               href="/app/settings/sync-history"

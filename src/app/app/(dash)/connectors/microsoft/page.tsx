@@ -193,8 +193,9 @@ export default async function MicrosoftConnectorPage({
       {status === "syncing" && (
         <div className="rise rise-2">
           <Card title="Tenant connected">
-            {/* No stored credential means this run was the instant scan. */}
-            <ConnectPoller retryScan={!conn} />
+            {/* Without a stored credential (instant scan, or disconnected
+                since) there is nothing to re-sync with. */}
+            <ConnectPoller canRetry={Boolean(conn)} />
           </Card>
         </div>
       )}
