@@ -10,7 +10,8 @@ const sku = (
   skuPartNumber: string,
   prepaidEnabled: number,
   consumedUnits: number,
-) => ({ skuId, skuPartNumber, prepaidEnabled, consumedUnits });
+  trialUnits = 0,
+) => ({ skuId, skuPartNumber, prepaidEnabled, consumedUnits, trialUnits });
 
 const E3 = "05e9a617-0261-4cee-bb44-138d3ef5d965";
 const PHONE_RESOURCE = "440eaaa8-b3e0-484b-a8be-62870b9ba70a";
@@ -57,6 +58,7 @@ describe("UnpricedNotice", () => {
           sku(E3, "SPE_E3", 10, 10),
           sku(UNKNOWN, "SOME_NEW_ADDON", 0, 0),
           sku("capacity", "SOME_CAPACITY_SKU", 10_000, 3),
+          sku("trial-only", "SOME_EVAL_ADDON", 25, 20, 25),
         ],
         { [E3]: 3670 },
       ),

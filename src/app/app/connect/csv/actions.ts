@@ -306,6 +306,9 @@ export const submitCsvImport = async (
           prepaidSuspended: 0,
           prepaidWarning: 0,
           consumedUnits: s.count,
+          // Exports carry no subscription data: no trial seats, no dates.
+          trialUnits: 0,
+          nextLifecycleAt: null,
           updatedAt: now,
         })),
       )
@@ -316,6 +319,8 @@ export const submitCsvImport = async (
           displayName: sql`excluded.display_name`,
           prepaidEnabled: sql`excluded.prepaid_enabled`,
           consumedUnits: sql`excluded.consumed_units`,
+          trialUnits: sql`excluded.trial_units`,
+          nextLifecycleAt: sql`excluded.next_lifecycle_at`,
           updatedAt: sql`excluded.updated_at`,
         },
       });

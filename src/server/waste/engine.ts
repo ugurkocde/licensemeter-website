@@ -181,22 +181,17 @@ export const spendSeatsOf = (s: SeatCounts): number => {
 };
 
 /**
- * Microsoft SKUs with assigned or prepaid seats but no price, excluding
- * known-free and capacity SKUs: waste on them is priced at 0 and therefore
- * understated until someone enters a price.
+ * Microsoft SKUs with paid seats (assigned or not) but no price, excluding
+ * known-free, capacity and fully trial SKUs: waste on them is priced at 0
+ * and therefore understated until someone enters a price.
  */
 export const unpricedSkuCount = (
-  skus: readonly {
-    skuId: string;
-    skuPartNumber: string;
-    prepaidEnabled: number;
-    consumedUnits: number;
-  }[],
+  skus: readonly (SeatCounts & { skuId: string; skuPartNumber: string })[],
   priceCents: (skuId: string) => number,
 ): number =>
   skus.filter(
     (s) =>
-      (s.prepaidEnabled > 0 || s.consumedUnits > 0) &&
+      (paidSeatsOf(s) > 0 || spendSeatsOf(s) > 0) &&
       !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled) &&
       !isKnownFreeSku(s.skuId, s.skuPartNumber) &&
       priceCents(s.skuId) <= 0,
