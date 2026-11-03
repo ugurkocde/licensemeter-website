@@ -273,7 +273,14 @@ export const SaasConnectorPage = async ({
                   Microsoft connector's post-connect experience. Stay on this
                   settings page rather than bouncing to the dashboard. */}
               {!conn.lastSyncAt && !microsoftDisconnected && (
-                <ConnectPoller redirectTo={`/app/connectors/${provider}`} />
+                <ConnectPoller
+                  redirectTo={`/app/connectors/${provider}`}
+                  retryUnavailable={
+                    isAdmin
+                      ? undefined
+                      : "Ask a workspace admin to run the sync again."
+                  }
+                />
               )}
             </div>
           ) : isAdmin ? (
