@@ -12,6 +12,17 @@ export type GraphSubscribedSku = {
   };
 };
 
+/** One commerce subscription from /directory/subscriptions (several per SKU are common). */
+export type GraphSubscription = {
+  skuId: string;
+  skuPartNumber: string;
+  status: "Enabled" | "Warning" | "Suspended" | "Deleted" | "LockedOut";
+  isTrial: boolean;
+  totalLicenses: number;
+  /** Renewal or expiry of the current term; null for free/viral SKUs. */
+  nextLifecycleDateTime: string | null;
+};
+
 export type GraphLicenseAssignmentState = {
   skuId: string;
   assignedByGroup: string | null;
@@ -83,6 +94,11 @@ export interface GraphClient {
   /** Organization display name from /organization; null when unreadable. */
   getOrganizationName(): Promise<string | null>;
   getSubscribedSkus(): Promise<GraphSubscribedSku[]>;
+  /**
+   * Commerce subscriptions (trial flags, renewal dates). Optional: clients
+   * that cannot read them omit it and the sync records the step as skipped.
+   */
+  getSubscriptions?(): Promise<GraphSubscription[]>;
   /** displayConcealedNames from /admin/reportSettings; null when unreadable. */
   getReportConcealment(): Promise<boolean | null>;
   /** Throws PremiumLicenseRequiredError when includeSignInActivity is true on a non-P1 tenant. */

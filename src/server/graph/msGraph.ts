@@ -12,6 +12,7 @@ import {
   type CopilotUsageRow,
   type GraphClient,
   type GraphSubscribedSku,
+  type GraphSubscription,
   type GraphUser,
   type UsageReportRow,
 } from "./types";
@@ -511,9 +512,10 @@ const graphFetch = async (
 };
 
 /**
- * Upper bound on pages a single getAllPages call will follow. At $top=250 this
- * is 250k rows, far beyond any real tenant, so it never trips a healthy sync,
- * but stops a looping/duplicating @odata.nextLink from running to the 300s
+ * Upper bound on pages a single getAllPages call will follow. At the users
+ * page size of $top=999 this is about 1M rows, far beyond any real tenant, so
+ * it never trips a healthy sync, but stops a looping/duplicating
+ * @odata.nextLink from running to the 300s
  * maxDuration timeout. Every SaaS paginator bounds its loop the same way.
  */
 const MAX_PAGES = 1000;
@@ -562,6 +564,12 @@ const getAllPages = async <T>(
 
 const USER_FIELDS =
   "id,displayName,userPrincipalName,mail,proxyAddresses,accountEnabled,userType,createdDateTime,assignedLicenses,licenseAssignmentStates";
+
+/** Graph's maximum $top for /users (1 to 999 inclusive). */
+const USERS_PAGE_SIZE = 999;
+
+const SUBSCRIPTION_FIELDS =
+  "skuId,skuPartNumber,status,isTrial,totalLicenses,nextLifecycleDateTime";
 
 /** Office 365 active-user-detail CSV -> usage rows (shared by both clients). */
 const fetchActiveUserDetail = async (
@@ -693,6 +701,20 @@ export class MsGraphClient implements GraphClient {
     );
   }
 
+  /**
+   * Readable with the connector's existing directory permissions (verified
+   * app-only). The caller treats every failure as non-critical.
+   */
+  async getSubscriptions(): Promise<GraphSubscription[]> {
+    return this.withAppIdentityRetry((token) =>
+      getAllPages<GraphSubscription>(
+        token,
+        `${GRAPH}/directory/subscriptions?$select=${SUBSCRIPTION_FIELDS}`,
+        this.deadline,
+      ),
+    );
+  }
+
   async getReportConcealment(): Promise<boolean | null> {
     try {
       const body = await this.withAppIdentityRetry(async (token) => {
@@ -716,8 +738,10 @@ export class MsGraphClient implements GraphClient {
     const select = opts.includeSignInActivity
       ? `${USER_FIELDS},signInActivity`
       : USER_FIELDS;
-    // signInActivity caps the page size at lower limits; 250 is safe for both shapes.
-    const url = `${GRAPH}/users?$select=${select}&$top=250`;
+    // 999 is Graph's maximum users page size (1000 is rejected), verified
+    // with and without signInActivity. Fewer pages keep large tenants well
+    // inside the sync budget.
+    const url = `${GRAPH}/users?$select=${select}&$top=${USERS_PAGE_SIZE}`;
     try {
       return await this.withAppIdentityRetry((token) =>
         getAllPages<GraphUser>(token, url, this.deadline),
@@ -782,7 +806,8 @@ const isAuthDenied = (err: unknown): boolean =>
  * degrades on 401/403 into the same signal-absent shapes the sync pipeline
  * already handles for non-P1/concealed tenants. Only the directory reads
  * (users, subscribedSkus) may fail the scan: without them there is nothing
- * to analyze.
+ * to analyze. It does not read /directory/subscriptions (not verified for
+ * delegated tokens), so instant scans record that step as skipped.
  */
 export class DelegatedGraphClient implements GraphClient {
   private readonly deadline: number;
@@ -841,7 +866,7 @@ export class DelegatedGraphClient implements GraphClient {
     const select = opts.includeSignInActivity
       ? `${USER_FIELDS},signInActivity`
       : USER_FIELDS;
-    const url = `${GRAPH}/users?$select=${select}&$top=250`;
+    const url = `${GRAPH}/users?$select=${select}&$top=${USERS_PAGE_SIZE}`;
     try {
       return await getAllPages<GraphUser>(this.accessToken, url, this.deadline);
     } catch (err) {

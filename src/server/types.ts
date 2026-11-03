@@ -71,6 +71,7 @@ export type WorkloadActivity = {
 export type SyncStep = {
   step:
     | "subscribedSkus"
+    | "subscriptions"
     | "reportSettings"
     | "users"
     | "signInActivity"
@@ -90,6 +91,8 @@ export type SyncStep = {
   status: "ok" | "warning" | "failed" | "skipped";
   message?: string;
   count?: number;
+  /** Wall-clock time of the step; absent on runs recorded before it existed. */
+  durationMs?: number;
 };
 
 export type WasteRuleId =
@@ -181,6 +184,7 @@ export type AuditAction =
   | "invite_resent"
   | "export_report"
   | "threshold_changed"
+  | "finding_exclusions_changed"
   | "findings_bulk_updated"
   | "export_pricebook_csv"
   | "prices_imported"

@@ -34,11 +34,13 @@ vi.mock("~/env", () => ({
 }));
 
 import {
+  DelegatedGraphClient,
   MsGraphClient,
   parseRetryAfter,
   verifyManagedConsent,
   verifyMsCredential,
 } from "./msGraph";
+import type { GraphClient } from "./types";
 
 const NOW = Date.parse("2026-09-18T12:00:00Z");
 
@@ -356,5 +358,62 @@ describe("consent probe", () => {
 
     await expect(pending).resolves.toBe(true);
     expect(mocks.mint).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("directory reads", () => {
+  const requestedUrls = (fetchMock: ReturnType<typeof vi.fn>): URL[] =>
+    fetchMock.mock.calls.map((call) => new URL(String(call[0])));
+
+  it("pages users at Graph's maximum of 999 in both clients", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ value: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    await new MsGraphClient(
+      managedCred("88888888-8888-8888-8888-888888888888"),
+    ).listUsers({ includeSignInActivity: true });
+    await new DelegatedGraphClient("delegated-token").listUsers({
+      includeSignInActivity: false,
+    });
+
+    const [appOnly, delegated] = requestedUrls(fetchMock);
+    expect(appOnly?.searchParams.get("$top")).toBe("999");
+    expect(appOnly?.searchParams.get("$select")).toContain("signInActivity");
+    expect(delegated?.searchParams.get("$top")).toBe("999");
+    // Unlicensed users stay in the result: the connector leak rules need them.
+    expect(appOnly?.searchParams.has("$filter")).toBe(false);
+  });
+
+  it("reads trial flags and renewal dates from /directory/subscriptions", async () => {
+    const subscription = {
+      skuId: "sku-1",
+      skuPartNumber: "SPE_E3",
+      status: "Enabled",
+      isTrial: true,
+      totalLicenses: 25,
+      nextLifecycleDateTime: "2026-12-01T00:00:00Z",
+    };
+    const fetchMock = vi.fn(async () =>
+      Response.json({ value: [subscription] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    const rows = await new MsGraphClient(
+      managedCred("99999999-9999-9999-9999-999999999999"),
+    ).getSubscriptions();
+
+    expect(rows).toEqual([subscription]);
+    const [url] = requestedUrls(fetchMock);
+    expect(url?.pathname).toBe("/v1.0/directory/subscriptions");
+    expect(url?.searchParams.get("$select")).toBe(
+      "skuId,skuPartNumber,status,isTrial,totalLicenses,nextLifecycleDateTime",
+    );
+  });
+
+  it("leaves subscriptions out of the delegated instant scan", () => {
+    const client: GraphClient = new DelegatedGraphClient("delegated-token");
+    expect("getSubscriptions" in client).toBe(false);
   });
 });
