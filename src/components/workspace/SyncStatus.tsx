@@ -148,6 +148,9 @@ export const SyncStatusProvider = ({
   /** Watched runs report the elapsed time from their server start time. */
   const sinceFromServer = useRef(initiallyRunning);
   const latestId = useRef(initialRun?.id ?? null);
+  /** Bumped by every new watch (a Sync now click or a run found on refresh),
+   * so a status read started for an earlier watch is dropped on arrival. */
+  const generation = useRef(0);
   /** A run seen running while following, or the one Sync now attached to:
    * its result is shown whenever it started. */
   const watchedId = useRef<string | null>(
@@ -171,8 +174,13 @@ export const SyncStatusProvider = ({
     [router],
   );
 
+  /**
+   * Applies one status read. Only the Sync now action's own final read
+   * (`final`) may end a watch without a matching run; a periodic read that
+   * shows some other finished run is ignored, and the next read decides.
+   */
   const handle = useCallback(
-    (latest: Awaited<ReturnType<typeof fetchLatestRun>>) => {
+    (latest: Awaited<ReturnType<typeof fetchLatestRun>>, final = false) => {
       if (!latest || !active.current || !mounted.current) return;
       const { run, offsetMs } = latest;
       if (run?.status === "running") {
@@ -210,6 +218,10 @@ export const SyncStatusProvider = ({
       if (isNew) {
         latestId.current = run.id;
         finish(finishedView(run), true);
+      } else if (!final || watchedId.current !== null) {
+        // Not the followed run, and either not authoritative or a known run
+        // is still being followed: keep polling.
+        return;
       } else if (refusal.current) {
         finish({ kind: "message", ...refusal.current }, false);
       } else {
@@ -228,9 +240,10 @@ export const SyncStatusProvider = ({
     let timer: ReturnType<typeof setTimeout> | undefined;
     const watchStarted = Date.now();
     const tick = async () => {
+      const gen = generation.current;
       const latest = await fetchLatestRun();
       if (stopped) return;
-      handle(latest);
+      if (gen === generation.current) handle(latest);
       if (!active.current) return;
       if (!actionPending.current && Date.now() - watchStarted > MAX_WATCH_MS) {
         finish(
@@ -262,6 +275,7 @@ export const SyncStatusProvider = ({
     latestId.current = initialId;
     if (initialStatus !== "running" || !initialStartedAt) return;
     active.current = true;
+    generation.current += 1;
     baseline.current = null;
     watchedId.current = initialId;
     refusal.current = null;
@@ -289,6 +303,7 @@ export const SyncStatusProvider = ({
     refusal.current = null;
     watchedId.current = null;
     sinceFromServer.current = false;
+    const gen = (generation.current += 1);
     const clickedAt = Date.now();
     baseline.current = {
       id: latestId.current,
@@ -304,23 +319,36 @@ export const SyncStatusProvider = ({
         // run may still be going, so the next status read decides.
         result = null;
       }
-      if (!mounted.current) return;
+      // A later click owns the panel now; this result is stale.
+      if (!mounted.current || gen !== generation.current) return;
       actionPending.current = false;
+      if (result && !result.ok && !result.runId) {
+        // Refused before any run (role, demo workspace): definitive, so no
+        // run that happens to be going may stand in for this click's result.
+        finish(
+          {
+            kind: "message",
+            tone: "info",
+            text: result.error ?? "Could not start the sync.",
+          },
+          false,
+        );
+        return;
+      }
       if (result?.runId) watchedId.current = result.runId;
       if (!result) {
+        // Transport failure: the run may still be going, so the status read
+        // decides and this message is only the fallback.
         refusal.current = {
           tone: "danger",
           text: "Could not start the sync. Try again.",
         };
-      } else if (!result.ok) {
-        refusal.current = {
-          tone: "info",
-          text: result.error ?? "Could not start the sync.",
-        };
       }
-      handle(await fetchLatestRun());
+      const latest = await fetchLatestRun();
+      if (gen !== generation.current) return;
+      handle(latest, true);
     })();
-  }, [handle]);
+  }, [handle, finish]);
 
   const dismiss = useCallback(() => {
     setView((v) => (v.kind === "message" ? { kind: "idle" } : v));
