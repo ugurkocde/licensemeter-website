@@ -151,6 +151,18 @@ export default async function MicrosoftConnectorPage({
   const byoEnabled = byoConnectorEnabled();
   const connectorConfigured = Boolean(env.CONNECTOR_CLIENT_ID);
   const scanConfigured = Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID);
+  // Why a failed first sync cannot be retried from the poller, if it cannot.
+  // Without a stored credential (instant scan, or disconnected since) there
+  // is nothing to re-sync with; viewers cannot start a sync at all.
+  const retryUnavailable = ctx.tenant.isDemo
+    ? "The demo workspace is read-only."
+    : !isAdmin
+      ? conn
+        ? "Ask a workspace admin to run the sync again."
+        : "Ask a workspace admin to connect Microsoft 365 again."
+      : conn
+        ? undefined
+        : "To try again, connect Microsoft 365 below.";
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 pb-8">
@@ -193,7 +205,9 @@ export default async function MicrosoftConnectorPage({
       {status === "syncing" && (
         <div className="rise rise-2">
           <Card title="Tenant connected">
-            <ConnectPoller />
+            {/* Without a stored credential (instant scan, or disconnected
+                since) there is nothing to re-sync with. */}
+            <ConnectPoller retryUnavailable={retryUnavailable} />
           </Card>
         </div>
       )}

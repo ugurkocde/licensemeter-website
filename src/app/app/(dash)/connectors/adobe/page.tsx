@@ -160,7 +160,14 @@ export default async function AdobeConnectorPage() {
               {/* First sync hasn't landed yet: poll until it does, matching the
                   Microsoft connector's post-connect experience. */}
               {!adobeConn.lastSyncAt && !microsoftDisconnected && (
-                <ConnectPoller redirectTo="/app/connectors/adobe" />
+                <ConnectPoller
+                  redirectTo="/app/connectors/adobe"
+                  retryUnavailable={
+                    isAdmin
+                      ? undefined
+                      : "Ask a workspace admin to run the sync again."
+                  }
+                />
               )}
             </div>
           ) : isAdmin ? (
