@@ -91,15 +91,13 @@ const finishedView = (run: Run): View => {
       detail: `${plural(failed, "step", "steps")} could not finish. The figures use the data that did sync.`,
     };
   }
-  const found = run.steps.find((s) => s.step === "wasteAnalysis")?.count;
+  // No count here: the analysis step counts every detected finding, including
+  // dismissed and snoozed ones, so it could contradict the open findings card.
   return {
     kind: "message",
     tone: "good",
     text: "Synced just now.",
-    detail:
-      found === undefined
-        ? null
-        : `The analysis found ${plural(found, "finding", "findings")}.`,
+    detail: "Figures and findings are up to date.",
   };
 };
 
