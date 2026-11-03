@@ -168,16 +168,37 @@ export const idleSeatsOf = (s: SeatCounts): number =>
   Math.max(0, paidSeatsOf(s) - s.consumedUnits);
 
 /**
- * Assigned seats that cost money. Without trials this is the consumed count
- * (as Microsoft reports it, over-assignment included). Assignments beyond the
- * paid seats sit on trial seats, up to the trial count, and cost nothing.
+ * Assigned seats that cost money. Without trial seats this is the consumed
+ * count exactly as Microsoft reports it, over-assignment included. With trial
+ * seats only the paid seats can be billed: min(consumed, paid), so a SKU that
+ * is fully on trial never has spend, however many users hold it.
  */
-export const spendSeatsOf = (s: SeatCounts): number => {
-  const onTrial = Math.min(
-    s.trialUnits ?? 0,
-    Math.max(0, s.consumedUnits - paidSeatsOf(s)),
-  );
-  return s.consumedUnits - onTrial;
+export const spendSeatsOf = (s: SeatCounts): number =>
+  (s.trialUnits ?? 0) > 0
+    ? Math.min(s.consumedUnits, paidSeatsOf(s))
+    : s.consumedUnits;
+
+/**
+ * Monthly price of one assignment, for rules that price individual users.
+ * Which assignment sits on a trial seat is unknowable, so on SKUs with trial
+ * seats the paid spend is spread over every assignment (rounded down, so the
+ * per-user amounts never add up to more than the paid spend). SKUs without
+ * trial seats keep their price unchanged.
+ */
+export const assignmentPrices = (
+  skus: readonly (SeatCounts & { skuId: string })[],
+  prices: Record<string, number>,
+): Record<string, number> => {
+  const out = { ...prices };
+  for (const s of skus) {
+    if ((s.trialUnits ?? 0) <= 0) continue;
+    const price = prices[s.skuId] ?? 0;
+    out[s.skuId] =
+      s.consumedUnits > 0
+        ? Math.floor((price * spendSeatsOf(s)) / s.consumedUnits)
+        : 0;
+  }
+  return out;
 };
 
 /**
@@ -245,7 +266,11 @@ const userDetail = (u: WasteUser, prices: Record<string, number>) => ({
 
 /** Pure rule evaluation over a tenant snapshot. Persistence and diffing live in the sync layer. */
 export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
-  const { users, skus, prices, now } = input;
+  const { users, skus, now } = input;
+  /** List prices: what an idle paid seat costs (shelfware). */
+  const listPrices = input.prices;
+  /** Per-assignment prices: what one user's license costs (every user rule). */
+  const prices = assignmentPrices(skus, listPrices);
   const inactiveThreshold = input.inactiveDays ?? INACTIVE_DAYS;
   const findings: WasteFinding[] = [];
   /** SKU -> enabled users with disabled service plans, and users per plan. */
@@ -435,7 +460,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
           assigned: sku.consumedUnits,
           unassigned,
         },
-        monthlyImpactCents: unassigned * (prices[sku.skuId] ?? 0),
+        monthlyImpactCents: unassigned * (listPrices[sku.skuId] ?? 0),
       });
     }
   }

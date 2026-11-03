@@ -7,6 +7,7 @@ import {
   isShelfwareExempt,
   purchasedSeatsOf,
   spendSeatsOf,
+  unpricedSkuCount,
   type WasteInput,
   type WasteUser,
 } from "./engine";
@@ -600,5 +601,142 @@ describe("service_plans_disabled downgrade hint", () => {
     expect(agg!.detail.topDisabledPlans).toEqual([
       { planId: UNNAMED, name: UNNAMED, users: 1 },
     ]);
+  });
+});
+
+describe("assigned trial licenses", () => {
+  const e3 = (
+    prepaidEnabled: number,
+    consumedUnits: number,
+    trialUnits = 0,
+  ) => ({
+    skuId: E3,
+    skuPartNumber: "SPE_E3",
+    prepaidEnabled,
+    consumedUnits,
+    trialUnits,
+  });
+  const copilot = (consumedUnits: number, trialUnits: number) => ({
+    skuId: COPILOT_SKU_ID,
+    skuPartNumber: "Microsoft_365_Copilot",
+    prepaidEnabled: 25,
+    consumedUnits,
+    trialUnits,
+  });
+  const disabledE3 = user({ accountEnabled: false });
+
+  it("prices a disabled user on a trial-only SKU at 0", () => {
+    const [finding] = run({ users: [disabledE3], skus: [e3(25, 1, 25)] });
+    expect(finding!.rule).toBe("disabled_account_with_license");
+    expect(finding!.monthlyImpactCents).toBe(0);
+    expect(finding!.detail.licenses).toEqual([
+      expect.objectContaining({ skuId: E3, monthlyPriceCents: 0 }),
+    ]);
+  });
+
+  it("prices trial-only Copilot at 0, per user and in aggregate", () => {
+    const perUser = run({
+      users: [user({ licenses: [lic(COPILOT_SKU_ID)] })],
+      skus: [copilot(10, 25)],
+    });
+    expect(perUser.map((f) => [f.rule, f.monthlyImpactCents])).toEqual([
+      ["copilot_unused", 0],
+    ]);
+    const aggregate = run({
+      copilotSignal: "aggregate",
+      copilotAggregate: { inactiveCount: 4, totalCount: 10 },
+      skus: [copilot(10, 25)],
+    });
+    expect(aggregate[0]!.monthlyImpactCents).toBe(0);
+  });
+
+  it("spreads the paid spend of a mixed SKU over every assignment", () => {
+    // 100 paid + 25 trial seats, 110 assigned: 100 payable of 110.
+    const users = Array.from({ length: 110 }, (_, i) =>
+      user({ graphId: `u-${i}`, accountEnabled: false }),
+    );
+    const findings = run({ users, skus: [e3(125, 110, 25)] });
+    const each = Math.floor((3670 * 100) / 110);
+    expect(findings).toHaveLength(110);
+    expect(new Set(findings.map((f) => f.monthlyImpactCents))).toEqual(
+      new Set([each]),
+    );
+    const total = findings.reduce((sum, f) => sum + f.monthlyImpactCents, 0);
+    expect(total).toBeLessThanOrEqual(100 * 3670);
+  });
+
+  it("prices overlapping trial licenses at their assignment price", () => {
+    const EXCHANGE_P1 = "4b9405b0-7788-4568-add1-99614e613b69";
+    const [finding] = run({
+      prices: { ...PRICES, [EXCHANGE_P1]: 370 },
+      users: [user({ licenses: [lic(E3), lic(EXCHANGE_P1)] })],
+      skus: [
+        {
+          skuId: EXCHANGE_P1,
+          skuPartNumber: "EXCHANGESTANDARD",
+          prepaidEnabled: 5,
+          consumedUnits: 1,
+          trialUnits: 5,
+        },
+      ],
+    });
+    expect(finding!.rule).toBe("overlapping_licenses");
+    expect(finding!.monthlyImpactCents).toBe(0);
+  });
+
+  it("leaves SKUs without trial seats exactly as before", () => {
+    const users = [
+      disabledE3,
+      user({ graphId: "u-2", licenses: [lic(COPILOT_SKU_ID)] }),
+    ];
+    const withSkus = run({
+      users,
+      skus: [e3(10, 12), { ...copilot(5, 0), prepaidEnabled: 5 }],
+    });
+    const without = run({ users });
+    expect(withSkus.map((f) => f.monthlyImpactCents)).toEqual([3670, 2810]);
+    expect(without.map((f) => f.monthlyImpactCents)).toEqual([3670, 2810]);
+  });
+});
+
+describe("over-assigned trial SKUs", () => {
+  const seats = (
+    prepaidEnabled: number,
+    consumedUnits: number,
+    trialUnits = 0,
+  ) => ({
+    skuId: E3,
+    skuPartNumber: "SPE_E3",
+    prepaidEnabled,
+    consumedUnits,
+    trialUnits,
+  });
+
+  it("never invents paid spend on a trial-only SKU", () => {
+    expect(spendSeatsOf(seats(25, 30, 25))).toBe(0);
+    expect(purchasedSeatsOf([seats(25, 30, 25)])).toBe(0);
+    expect(
+      unpricedSkuCount(
+        [
+          {
+            ...seats(25, 30, 25),
+            skuId: "unknown",
+            skuPartNumber: "NEW_ADDON",
+          },
+        ],
+        () => 0,
+      ),
+    ).toBe(0);
+    expect(run({ skus: [seats(25, 30, 25)] })).toEqual([]);
+  });
+
+  it("caps a mixed SKU's spend at its paid seats", () => {
+    expect(spendSeatsOf(seats(125, 140, 25))).toBe(100);
+    expect(spendSeatsOf(seats(125, 60, 25))).toBe(60);
+  });
+
+  it("keeps Microsoft's consumed count when there are no trial seats", () => {
+    expect(spendSeatsOf(seats(10, 12))).toBe(12);
+    expect(spendSeatsOf(seats(10, 8))).toBe(8);
   });
 });
