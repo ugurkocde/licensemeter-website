@@ -1,4 +1,5 @@
-import { Timer } from "lucide-react";
+import { Check, Timer } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { syncStepLabel } from "~/lib/activityLabels";
 import type { SyncStep } from "~/server/types";
@@ -21,16 +22,23 @@ const fmtDuration = (ms: number): string => {
 /**
  * The steps of one sync run as compact tags: label, item count, any status
  * other than ok, and the duration of steps that took a second or more (older
- * runs carry no durations and sub-second steps stay quiet).
+ * runs carry no durations and sub-second steps stay quiet). The live view
+ * marks finished steps with a check and appends the step still in progress.
  */
 export const SyncStepList = ({
   steps,
   error,
+  checks = false,
+  trailing,
 }: {
   steps: readonly SyncStep[];
   error?: string | null;
+  /** Mark each ok step with a check, for the live checklist. */
+  checks?: boolean;
+  /** A last item after the steps, such as the step still in progress. */
+  trailing?: ReactNode;
 }) => {
-  if (steps.length === 0) {
+  if (steps.length === 0 && !trailing) {
     return error ? (
       <p className="text-danger-text text-xs break-words">{error}</p>
     ) : null;
@@ -42,6 +50,12 @@ export const SyncStepList = ({
           key={`${s.step}-${i}`}
           className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] leading-5 ${STEP_TONE[s.status]}`}
         >
+          {checks && s.status === "ok" && (
+            <Check
+              aria-hidden="true"
+              className="text-good-text -ml-0.5 size-3 shrink-0"
+            />
+          )}
           <span className="min-w-0 truncate">{syncStepLabel(s.step)}</span>
           {s.count !== undefined && (
             <span className="tnum text-ink font-mono font-medium">
@@ -60,6 +74,7 @@ export const SyncStepList = ({
           )}
         </li>
       ))}
+      {trailing}
     </ul>
   );
 };

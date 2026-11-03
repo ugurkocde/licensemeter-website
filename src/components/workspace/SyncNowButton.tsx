@@ -1,41 +1,46 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { RefreshCw } from "lucide-react";
 
 import { Button } from "~/components/ui";
-import { triggerSync } from "~/server/actions";
+import { useElapsed } from "~/components/workspace/SyncProgress";
+import { useSyncStatus } from "~/components/workspace/SyncStatus";
 
+/**
+ * Starts a full workspace sync. Lives inside a SyncStatusProvider, which runs
+ * the action and shows progress and the outcome in its status panel below
+ * the header. While any run is going the button shows a spinner and the
+ * elapsed time at a fixed width, so neighbouring buttons never move. It stays
+ * focusable (aria-disabled, not disabled) so keyboard focus is not lost.
+ */
 export const SyncNowButton = () => {
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
+  const { view, start } = useSyncStatus();
+  const running = view.kind === "running";
+  const elapsed = useElapsed(running ? view.since : null);
 
   return (
-    <div className="flex items-center gap-3">
-      {/* Persistent live region; sr-only while empty so the button stays put. */}
-      <span
-        role="status"
-        aria-live="polite"
-        className={error ? "text-danger-text text-xs" : "sr-only"}
-      >
-        {error}
-      </span>
-      <Button
-        variant="secondary"
-        disabled={pending}
-        title="Runs a full workspace sync across every connected service, not just this one."
-        onClick={() =>
-          startTransition(async () => {
-            setError(null);
-            const result = await triggerSync();
-            if (!result.ok) setError(result.error ?? "Sync failed");
-            router.refresh();
-          })
-        }
-      >
-        {pending ? "Syncing…" : "Sync now"}
-      </Button>
-    </div>
+    <Button
+      type="button"
+      variant="secondary"
+      aria-disabled={running || undefined}
+      onClick={start}
+      className="aria-disabled:hover:border-line-strong aria-disabled:hover:bg-card min-w-[10.5rem] aria-disabled:cursor-progress"
+      title="Runs a full workspace sync across every connected service, not just this one."
+    >
+      <RefreshCw
+        aria-hidden="true"
+        className={`text-ink-soft size-4 shrink-0 ${running ? "motion-safe:animate-spin" : ""}`}
+      />
+      {running ? (
+        <span>
+          Syncing{" "}
+          <span className="tnum text-ink-soft inline-block w-[2.25rem] text-left font-mono text-xs">
+            {elapsed}
+          </span>
+        </span>
+      ) : (
+        "Sync now"
+      )}
+    </Button>
   );
 };

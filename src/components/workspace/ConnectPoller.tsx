@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { Button } from "~/components/ui";
+import { SyncProgress } from "~/components/workspace/SyncProgress";
 import { triggerSync } from "~/server/actions";
 import type { SyncStep } from "~/server/types";
 
@@ -113,7 +114,8 @@ export const ConnectPoller = ({
   };
 
   /* One persistent live region from first render; its content swaps between
-     the running line and the failure box so the change is announced. */
+     the running checklist and the failure box so the change is announced.
+     New steps are announced as they land; the ticking clock is hidden. */
   return (
     <div role="status" aria-live="polite">
       {run?.status === "failed" && !retrying ? (
@@ -164,13 +166,14 @@ export const ConnectPoller = ({
           </p>
         </div>
       ) : (
-        <div className="text-ink-soft flex items-center gap-3 text-sm">
-          <span
-            aria-hidden="true"
-            className="bg-brand inline-block size-2 rounded-full motion-safe:animate-pulse"
-          />
-          Running the first sync: pulling licenses, users and usage reports…
-        </div>
+        /* Steps appear as the sync records them; the elapsed time counts
+           from when this view appeared (the consent redirect, or Try
+           again), which needs no server clock. */
+        <SyncProgress
+          title="Running the first sync"
+          hint="Pulling licenses, users and usage reports."
+          steps={run && run.status !== "failed" ? run.steps : []}
+        />
       )}
     </div>
   );

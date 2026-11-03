@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import Link from "next/link";
 
@@ -12,12 +12,17 @@ import {
 } from "~/components/workspace/SaasConnectForm";
 import { ConnectPoller } from "~/components/workspace/ConnectPoller";
 import { SyncNowButton } from "~/components/workspace/SyncNowButton";
+import {
+  SyncStatusPanel,
+  SyncStatusProvider,
+} from "~/components/workspace/SyncStatus";
 import { Card, buttonClass } from "~/components/ui";
 import { connectorSpec } from "~/lib/connectors";
 import { fmtDate } from "~/lib/format";
+import { syncStatusRun } from "~/lib/syncStatusRun";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
-import { saasConnections, saasSeats } from "~/server/db/schema";
+import { saasConnections, saasSeats, syncRuns } from "~/server/db/schema";
 import type { SaasProvider } from "~/server/types";
 import { getAiPreview, shouldPreviewAi } from "~/server/demo/aiPreview";
 import { AiSampleNotice } from "~/components/workspace/AiSampleNotice";
@@ -39,7 +44,7 @@ export const SaasConnectorPage = async ({
   const isAdmin = hasRole(ctx, "admin");
   const spec = connectorSpec(provider);
 
-  const [conn, seats] = await Promise.all([
+  const [conn, seats, lastRun] = await Promise.all([
     db.query.saasConnections.findFirst({
       where: and(
         eq(saasConnections.tenantId, ctx.tenant.id),
@@ -59,6 +64,13 @@ export const SaasConnectorPage = async ({
         ),
       )
       .then((r) => r[0] ?? { n: 0, lastImportAt: null }),
+    // Only the newest run's state, so a sync already going (nightly, or
+    // started elsewhere) is followed live when the page loads.
+    db.query.syncRuns.findFirst({
+      where: eq(syncRuns.tenantId, ctx.tenant.id),
+      orderBy: desc(syncRuns.startedAt),
+      columns: { id: true, status: true, startedAt: true },
+    }),
   ]);
   const aiProvider =
     provider === "openai" || provider === "anthropic" ? provider : null;
@@ -223,66 +235,74 @@ export const SaasConnectorPage = async ({
               {isAdmin && <ImportSeatsForm spec={spec} />}
             </div>
           ) : conn ? (
-            <div className="flex flex-col gap-4">
-              {reconnectNotice}
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="text-sm">
-                  <div className="font-medium">
-                    Connected: {seatCount} {spec.seatNoun}
-                  </div>
-                  <div className="text-ink-soft mt-0.5 text-xs">
-                    {showOrgRef && (
-                      <>
-                        <span className="break-all">{conn.orgRef}</span> ·{" "}
-                      </>
+            <SyncStatusProvider
+              // Before the first sync the poller below follows the run.
+              initialRun={conn.lastSyncAt ? syncStatusRun(lastRun) : null}
+            >
+              <div className="flex flex-col gap-4">
+                {reconnectNotice}
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="text-sm">
+                    <div className="font-medium">
+                      Connected: {seatCount} {spec.seatNoun}
+                    </div>
+                    <div className="text-ink-soft mt-0.5 text-xs">
+                      {showOrgRef && (
+                        <>
+                          <span className="break-all">{conn.orgRef}</span>{" "}
+                          ·{" "}
+                        </>
+                      )}
+                      {conn.lastSyncAt
+                        ? `last sync ${fmtDate(conn.lastSyncAt)} (${conn.lastSyncStatus ?? "pending"})`
+                        : "first sync pending"}
+                    </div>
+                    {conn.lastSyncStatus === "failed" && (
+                      <p className="text-danger-text mt-2 max-w-md text-xs">
+                        The last sync could not reach {spec.label}. Findings are
+                        based on the previous snapshot. If the credentials were
+                        changed or revoked, disconnect and reconnect with fresh
+                        values.
+                      </p>
                     )}
-                    {conn.lastSyncAt
-                      ? `last sync ${fmtDate(conn.lastSyncAt)} (${conn.lastSyncStatus ?? "pending"})`
-                      : "first sync pending"}
                   </div>
-                  {conn.lastSyncStatus === "failed" && (
-                    <p className="text-danger-text mt-2 max-w-md text-xs">
-                      The last sync could not reach {spec.label}. Findings are
-                      based on the previous snapshot. If the credentials were
-                      changed or revoked, disconnect and reconnect with fresh
-                      values.
-                    </p>
+                  {isAdmin && (
+                    <div className="flex items-center gap-3">
+                      {!microsoftDisconnected && <SyncNowButton />}
+                      <SaasDisconnectButton spec={spec} />
+                    </div>
                   )}
                 </div>
-                {isAdmin && (
-                  <div className="flex items-center gap-3">
-                    {!microsoftDisconnected && <SyncNowButton />}
-                    <SaasDisconnectButton spec={spec} />
-                  </div>
-                )}
-              </div>
-              {/* Rotate credentials without a destructive disconnect: the
+                {/* Sync now reports progress and the outcome right below its row. */}
+                <SyncStatusPanel />
+                {/* Rotate credentials without a destructive disconnect: the
                   connect action upserts the row, so resubmitting replaces the
                   stored secret in place. */}
-              {isAdmin && !microsoftDisconnected && (
-                <details className="text-sm">
-                  <summary className="text-ink-soft hover:text-ink cursor-pointer text-xs underline-offset-4 hover:underline">
-                    Update credentials
-                  </summary>
-                  <div className="mt-3">
-                    <SaasConnectForm spec={spec} />
-                  </div>
-                </details>
-              )}
-              {/* First sync hasn't landed yet: poll until it does, matching the
+                {isAdmin && !microsoftDisconnected && (
+                  <details className="text-sm">
+                    <summary className="text-ink-soft hover:text-ink cursor-pointer text-xs underline-offset-4 hover:underline">
+                      Update credentials
+                    </summary>
+                    <div className="mt-3">
+                      <SaasConnectForm spec={spec} />
+                    </div>
+                  </details>
+                )}
+                {/* First sync hasn't landed yet: poll until it does, matching the
                   Microsoft connector's post-connect experience. Stay on this
                   settings page rather than bouncing to the dashboard. */}
-              {!conn.lastSyncAt && !microsoftDisconnected && (
-                <ConnectPoller
-                  redirectTo={`/app/connectors/${provider}`}
-                  retryUnavailable={
-                    isAdmin
-                      ? undefined
-                      : "Ask a workspace admin to run the sync again."
-                  }
-                />
-              )}
-            </div>
+                {!conn.lastSyncAt && !microsoftDisconnected && (
+                  <ConnectPoller
+                    redirectTo={`/app/connectors/${provider}`}
+                    retryUnavailable={
+                      isAdmin
+                        ? undefined
+                        : "Ask a workspace admin to run the sync again."
+                    }
+                  />
+                )}
+              </div>
+            </SyncStatusProvider>
           ) : isAdmin ? (
             <div className="flex flex-col gap-3">
               <p className="text-ink-soft text-sm">{spec.setupHint}</p>

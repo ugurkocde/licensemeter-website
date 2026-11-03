@@ -5,8 +5,14 @@ import Link from "next/link";
 import { ButtonLink, Card } from "~/components/ui";
 import { SpendChart } from "~/components/workspace/SpendChart";
 import { SyncNowButton } from "~/components/workspace/SyncNowButton";
+import {
+  SyncStatusPanel,
+  SyncStatusProvider,
+  SyncStatusText,
+} from "~/components/workspace/SyncStatus";
 import { CONNECTOR_LABELS } from "~/lib/connectors";
 import { fmtAgo, fmtDate, fmtMoney } from "~/lib/format";
+import { syncStatusRun } from "~/lib/syncStatusRun";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
 import {
@@ -195,33 +201,42 @@ export default async function AiCostsPage({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <header className="rise rise-1 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-3xl tracking-tight">AI costs</h1>
-          <p className="text-ink-soft mt-1 text-sm">
-            {isPreview
-              ? "Explore 60 days of sample OpenAI and Anthropic usage"
-              : lastRun?.status === "running"
-                ? "Sync running…"
-                : isImported
-                  ? `Imported ${fmtDate(importedUser?.syncedAt ?? null)}`
-                  : `Last synced ${fmtAgo(lastRun?.finishedAt ?? null)}`}
-            {!isPreview && lastRun?.status === "failed" && (
-              <span className="text-danger-text ml-2">(last sync failed)</span>
-            )}
-            {!isPreview && lastRun?.status === "partial" && (
-              <span className="text-gold-text ml-2">
-                (completed with warnings
-                {degradedSteps > 0
-                  ? ` · ${degradedSteps} ${degradedSteps === 1 ? "step" : "steps"} degraded`
-                  : ""}
-                )
-              </span>
-            )}
-          </p>
-        </div>
-        {canSync && rows.length > 0 && <SyncNowButton />}
-      </header>
+      <SyncStatusProvider
+        initialRun={isPreview ? null : syncStatusRun(lastRun)}
+      >
+        <header className="rise rise-1 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="font-display text-3xl tracking-tight">AI costs</h1>
+            <p className="text-ink-soft mt-1 text-sm">
+              <SyncStatusText>
+                {isPreview
+                  ? "Explore 60 days of sample OpenAI and Anthropic usage"
+                  : lastRun?.status === "running"
+                    ? "Sync running…"
+                    : isImported
+                      ? `Imported ${fmtDate(importedUser?.syncedAt ?? null)}`
+                      : `Last synced ${fmtAgo(lastRun?.finishedAt ?? null)}`}
+                {!isPreview && lastRun?.status === "failed" && (
+                  <span className="text-danger-text ml-2">
+                    (last sync failed)
+                  </span>
+                )}
+                {!isPreview && lastRun?.status === "partial" && (
+                  <span className="text-gold-text ml-2">
+                    (completed with warnings
+                    {degradedSteps > 0
+                      ? ` · ${degradedSteps} ${degradedSteps === 1 ? "step" : "steps"} degraded`
+                      : ""}
+                    )
+                  </span>
+                )}
+              </SyncStatusText>
+            </p>
+          </div>
+          {canSync && rows.length > 0 && <SyncNowButton />}
+        </header>
+        <SyncStatusPanel className="rise mt-5" />
+      </SyncStatusProvider>
 
       {isPreview && (
         <>

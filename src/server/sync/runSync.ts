@@ -56,6 +56,7 @@ import { workspaceAdminEmails } from "~/server/workspaceEmail";
 import { aiSpendSinceDay } from "~/server/sync/aiSpendWindow";
 import { optionalStepDeadline } from "~/server/sync/deadline";
 import { errText } from "~/server/sync/errText";
+import { createStepLog, persistRunSteps } from "~/server/sync/stepProgress";
 import { textSet } from "~/server/sync/textSet";
 import { mergeAdobeUsers, mergeSaasSeats } from "~/server/sync/mergeByEmail";
 import {
@@ -131,7 +132,7 @@ const syncAiSpend = async (
   provider: "openai" | "anthropic",
   client: AiSpendClient,
   now: Date,
-  steps: SyncStep[],
+  record: (step: SyncStep) => void,
   deadline?: number,
 ): Promise<void> => {
   const step = `${provider}Spend` as const;
@@ -182,14 +183,14 @@ const syncAiSpend = async (
           },
         });
     }
-    steps.push({
+    record({
       step,
       status: "ok",
       count: rows.length,
       durationMs: since(started),
     });
   } catch (err) {
-    steps.push({
+    record({
       step,
       status: "warning",
       message: errText(err),
@@ -285,7 +286,10 @@ export const runSync = async (
     return { runId: inFlight.id, status: "running", steps: [] };
   }
 
-  const steps: SyncStep[] = [];
+  // Each recorded step is also written to the running row, so the status poll
+  // can show progress before the run finishes.
+  const log = createStepLog((soFar) => persistRunSteps(runId, soFar));
+  const { steps, record } = log;
   const now = new Date();
 
   try {
@@ -312,7 +316,7 @@ export const runSync = async (
 
     if (!client) {
       for (const step of MICROSOFT_STEPS) {
-        steps.push({
+        record({
           step,
           status: "skipped",
           message: "Microsoft 365 is not connected",
@@ -328,14 +332,14 @@ export const runSync = async (
           ...s,
           skuPartNumber: cleanPartNumber(s.skuPartNumber),
         }));
-        steps.push({
+        record({
           step: "subscribedSkus",
           status: "ok",
           count: skus.length,
           durationMs: since(started),
         });
       } catch (err) {
-        steps.push({
+        record({
           step: "subscribedSkus",
           status: "failed",
           message: errText(err),
@@ -351,7 +355,7 @@ export const runSync = async (
       started = Date.now();
       try {
         concealmentSetting = await client.getReportConcealment();
-        steps.push({
+        record({
           step: "reportSettings",
           status: concealmentSetting === null ? "warning" : "ok",
           message:
@@ -361,7 +365,7 @@ export const runSync = async (
           durationMs: since(started),
         });
       } catch {
-        steps.push({
+        record({
           step: "reportSettings",
           status: "warning",
           durationMs: since(started),
@@ -373,7 +377,7 @@ export const runSync = async (
         const signInStarted = Date.now();
         try {
           graphUsers = await client.listUsers({ includeSignInActivity: true });
-          steps.push({
+          record({
             step: "signInActivity",
             status: "ok",
             durationMs: since(signInStarted),
@@ -381,7 +385,7 @@ export const runSync = async (
         } catch (err) {
           if (err instanceof PremiumLicenseRequiredError) {
             hasP1 = false;
-            steps.push({
+            record({
               step: "signInActivity",
               status: "skipped",
               message:
@@ -395,14 +399,14 @@ export const runSync = async (
             throw err;
           }
         }
-        steps.push({
+        record({
           step: "users",
           status: "ok",
           count: graphUsers.length,
           durationMs: since(started),
         });
       } catch (err) {
-        steps.push({
+        record({
           step: "users",
           status: "failed",
           message: errText(err),
@@ -418,7 +422,7 @@ export const runSync = async (
       started = Date.now();
       const subscriptionsDeadline = optionalStepDeadline(deadline);
       if (!client.getSubscriptions) {
-        steps.push({
+        record({
           step: "subscriptions",
           status: "skipped",
           message: "Trial and renewal data is not read by this connection",
@@ -426,7 +430,7 @@ export const runSync = async (
         });
       } else if (subscriptionsDeadline === null) {
         skuTerms = null; // keep the stored values
-        steps.push({
+        record({
           step: "subscriptions",
           status: "skipped",
           message:
@@ -442,7 +446,7 @@ export const runSync = async (
             skuPartNumber: cleanPartNumber(s.skuPartNumber),
           }));
           skuTerms = subscriptionTermsBySku(subscriptions);
-          steps.push({
+          record({
             step: "subscriptions",
             status: "ok",
             count: subscriptions.length,
@@ -456,7 +460,7 @@ export const runSync = async (
           // not adjusted at all. Transient failure or timeout: keep the stored
           // values so trial seats do not flip into shelfware for one run.
           if (!denied) skuTerms = null;
-          steps.push({
+          record({
             step: "subscriptions",
             status: denied ? "skipped" : "warning",
             message: denied
@@ -470,14 +474,14 @@ export const runSync = async (
       started = Date.now();
       try {
         usageRows = await client.getActiveUserDetail("D90");
-        steps.push({
+        record({
           step: "usageReports",
           status: "ok",
           count: usageRows.length,
           durationMs: since(started),
         });
       } catch (err) {
-        steps.push({
+        record({
           step: "usageReports",
           status: "warning",
           message: errText(err),
@@ -488,14 +492,14 @@ export const runSync = async (
       started = Date.now();
       try {
         copilotRows = await client.getCopilotUsage("D90");
-        steps.push({
+        record({
           step: "copilotUsage",
           status: "ok",
           count: copilotRows.length,
           durationMs: since(started),
         });
       } catch (err) {
-        steps.push({
+        record({
           step: "copilotUsage",
           status: "warning",
           message: errText(err),
@@ -528,7 +532,7 @@ export const runSync = async (
               ),
             });
         adobeRows = mergeAdobeUsers(await adobeClient.getUsers());
-        steps.push({
+        record({
           step: "adobeUsers",
           status: "ok",
           count: adobeRows.length,
@@ -546,7 +550,7 @@ export const runSync = async (
         // rather than auto-resolving and reopening (same pattern as the
         // generic SaaS connectors below).
         adobeActive = false;
-        steps.push({
+        record({
           step: "adobeUsers",
           status: "warning",
           message: errText(err),
@@ -604,7 +608,7 @@ export const runSync = async (
         const seats = mergeSaasSeats(await saasClient.getSeats());
         saasRows.set(provider, seats);
         saasPersist.add(provider);
-        steps.push({
+        record({
           step: `${provider}Seats`,
           status: "ok",
           count: seats.length,
@@ -627,12 +631,12 @@ export const runSync = async (
             provider,
             saasClient as AiSpendClient,
             now,
-            steps,
+            record,
             deadline,
           );
         }
       } catch (err) {
-        steps.push({
+        record({
           step: `${provider}Seats`,
           status: "warning",
           message: errText(err),
@@ -693,7 +697,7 @@ export const runSync = async (
             lastActiveAt: r.lastActiveAt,
           })),
         );
-        steps.push({
+        record({
           step: `${provider}Seats`,
           status: "ok",
           count: stored.length,
@@ -1095,7 +1099,7 @@ export const runSync = async (
       ),
     );
     const allFindings = newFindings.concat(adobeFindings, saasFindings);
-    steps.push({
+    record({
       step: "wasteAnalysis",
       status: "ok",
       count: allFindings.length,
@@ -1165,6 +1169,7 @@ export const runSync = async (
     const status: SyncRunStatus = steps.some((s) => s.status === "failed")
       ? "partial"
       : "success";
+    await log.settled();
     await db
       .update(syncRuns)
       .set({ status, steps, finishedAt: new Date() })
@@ -1194,6 +1199,7 @@ export const runSync = async (
         })
         .where(eq(msConnections.tenantId, tenantId));
     }
+    await log.settled();
     await db
       .update(syncRuns)
       .set({

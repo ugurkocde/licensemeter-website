@@ -650,6 +650,86 @@ describe("runSync without a Microsoft connection", () => {
   });
 });
 
+describe("runSync live step progress", () => {
+  it("writes the steps so far to the running row before the run finishes", async () => {
+    await seedTenant();
+    let midRun: (typeof schema.syncRuns.$inferSelect)[] = [];
+    // The usage report pull runs after the SKU, settings and user steps: the
+    // running row must already carry those steps when it starts.
+    const client = makeGraphClient({
+      getActiveUserDetail: vi.fn(async () => {
+        await vi.waitFor(async () => {
+          midRun = await getRuns();
+          expect(midRun[0]!.steps.map((s) => s.step)).toContain("users");
+        });
+        return [];
+      }),
+    });
+
+    const result = await runSync(TENANT_ID, { client });
+
+    expect(midRun).toHaveLength(1);
+    expect(midRun[0]!.status).toBe("running");
+    expect(midRun[0]!.finishedAt).toBeNull();
+    const midSteps = midRun[0]!.steps.map((s) => s.step);
+    expect(midSteps).toContain("subscribedSkus");
+    expect(midSteps).not.toContain("wasteAnalysis");
+    // The final write carries the full log and the final status.
+    expect(result.status).toBe("success");
+    const [final] = await getRuns();
+    expect(final!.status).toBe("success");
+    expect(final!.steps).toEqual(result.steps);
+    expect(final!.steps.map((s) => s.step)).toContain("wasteAnalysis");
+  });
+
+  it("a progress write landing after the final write leaves the final row untouched", async () => {
+    await seedTenant();
+    const result = await runSync(TENANT_ID, { client: makeGraphClient() });
+    const { persistRunSteps } = await import("~/server/sync/stepProgress");
+
+    await persistRunSteps(result.runId, [
+      { step: "subscribedSkus", status: "ok" },
+    ]);
+
+    const [run] = await getRuns();
+    expect(run!.status).toBe("success");
+    expect(run!.steps).toEqual(result.steps);
+  });
+
+  it("failing progress writes never fail the sync", async () => {
+    await seedTenant();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    // Reject every progress write (a steps-only update of sync_runs); the
+    // final write, which also sets the status, goes through.
+    const realUpdate = currentDb.update.bind(currentDb);
+    const update = vi
+      .spyOn(currentDb, "update")
+      .mockImplementation((table: PgTable) => {
+        const builder = realUpdate(table);
+        if (table !== schema.syncRuns) return builder;
+        const realSet = builder.set.bind(builder);
+        builder.set = (values: Record<string, unknown>) => {
+          if (!("status" in values)) throw new Error("progress write refused");
+          return realSet(values);
+        };
+        return builder;
+      });
+
+    const result = await runSync(TENANT_ID, { client: makeGraphClient() });
+
+    expect(result.status).toBe("success");
+    const [run] = await getRuns();
+    expect(run!.status).toBe("success");
+    expect(run!.steps).toEqual(result.steps);
+    expect(warn).toHaveBeenCalledWith(
+      "[sync] progress write failed",
+      "progress write refused",
+    );
+    update.mockRestore();
+    warn.mockRestore();
+  });
+});
+
 describe("disconnectMicrosoft during a running sync", () => {
   it("purges the Microsoft dataset but leaves the running run and findings in place", async () => {
     const tenant = await seedTenant({ tid: TID, consentedAt: new Date() });
