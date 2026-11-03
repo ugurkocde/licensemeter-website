@@ -1,3 +1,5 @@
+import { CalendarClock } from "lucide-react";
+
 import { Pill } from "~/components/ui";
 import { fmtDate } from "~/lib/format";
 
@@ -19,15 +21,26 @@ export const lifecycleLabel = (s: Terms): string =>
  */
 export const SkuTerms = ({ sku }: { sku: Terms }) =>
   sku.trialUnits > 0 || sku.nextLifecycleAt ? (
-    <div className="text-ink-faint mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+    <div className="text-ink-soft mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
       {sku.trialUnits > 0 && (
         <Pill tone="plum" title="Trial seats are not counted as paid seats">
           Trial · {sku.trialUnits}
+          <span className="sr-only"> seats, not counted as paid</span>
         </Pill>
       )}
       {sku.nextLifecycleAt && (
-        <span>
-          {lifecycleLabel(sku)} {fmtDate(sku.nextLifecycleAt)}
+        <span className="inline-flex items-center gap-1">
+          <CalendarClock
+            aria-hidden="true"
+            className="text-ink-faint size-3.5 shrink-0"
+          />
+          {lifecycleLabel(sku)}{" "}
+          <time
+            className="tnum"
+            dateTime={sku.nextLifecycleAt.toISOString().slice(0, 10)}
+          >
+            {fmtDate(sku.nextLifecycleAt)}
+          </time>
         </span>
       )}
     </div>

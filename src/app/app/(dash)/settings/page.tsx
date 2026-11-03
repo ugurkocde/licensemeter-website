@@ -5,7 +5,10 @@ import { CurrencySelect } from "~/components/workspace/CurrencySelect";
 import { DangerZone } from "~/components/workspace/DangerZone";
 import { DomainJoinControl } from "~/components/workspace/DomainJoinControl";
 import { EmailPreferenceToggle } from "~/components/workspace/EmailPreferenceToggle";
-import { FindingExclusionsForm } from "~/components/workspace/FindingExclusionsForm";
+import {
+  ExclusionChip,
+  FindingExclusionsForm,
+} from "~/components/workspace/FindingExclusionsForm";
 import { InactiveDaysForm } from "~/components/workspace/InactiveDaysForm";
 import { InviteForm } from "~/components/workspace/InviteForm";
 import { JoinRequestActions } from "~/components/workspace/JoinRequestActions";
@@ -41,7 +44,7 @@ import { currentFindingsRecipients } from "~/server/currentFindings";
 import { holdsJoinableDomain, pendingJoinRequests } from "~/server/domainJoin";
 import { emailEnabled } from "~/server/email";
 import { loadSharedAddress } from "~/server/notificationAddress";
-import { syncStepLabel } from "~/lib/activityLabels";
+import { SyncStepList } from "~/components/workspace/SyncStepList";
 
 const Capability = ({
   ok,
@@ -229,9 +232,16 @@ export default async function SettingsPage() {
                     matched={excludedAccounts}
                   />
                 ) : ctx.tenant.findingExclusions.length > 0 ? (
-                  <span className="font-mono text-xs">
-                    {ctx.tenant.findingExclusions.join(", ")}
-                  </span>
+                  <ul
+                    aria-label="Excluded account patterns"
+                    className="mt-1 flex flex-wrap gap-2"
+                  >
+                    {ctx.tenant.findingExclusions.map((p) => (
+                      <li key={p}>
+                        <ExclusionChip pattern={p} />
+                      </li>
+                    ))}
+                  </ul>
                 ) : (
                   "None"
                 )}
@@ -478,13 +488,13 @@ export default async function SettingsPage() {
             <p className="text-ink-soft text-sm">No syncs yet.</p>
           ) : (
             <>
-              <ul className="flex flex-col gap-2">
+              <ul className="flex flex-col">
                 {runs.map((run) => (
                   <li
                     key={run.id}
-                    className="border-line flex flex-wrap items-center justify-between gap-2 border-b pb-2 text-sm last:border-b-0 last:pb-0"
+                    className="border-line flex flex-col gap-2 border-b py-3 text-sm first:pt-0 last:border-b-0 last:pb-0"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <span
                         aria-hidden="true"
                         className={`inline-block size-2 rounded-full ${
@@ -500,21 +510,11 @@ export default async function SettingsPage() {
                       <span className="font-medium capitalize">
                         {run.status}
                       </span>
-                      <span className="text-ink-faint">
+                      <span className="text-ink-faint tnum">
                         {fmtDateTime(run.startedAt)}
                       </span>
                     </div>
-                    <div className="text-ink-soft min-w-0 font-mono text-[11px] break-words">
-                      {run.steps
-                        .map(
-                          (s) =>
-                            `${syncStepLabel(s.step)}${s.count !== undefined ? `: ${s.count}` : ""}${
-                              s.status === "ok" ? "" : ` · ${s.status}`
-                            }`,
-                        )
-                        .join(" · ") ||
-                        (run.error ?? "")}
-                    </div>
+                    <SyncStepList steps={run.steps} error={run.error} />
                   </li>
                 ))}
               </ul>

@@ -1,7 +1,7 @@
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 import type { Metadata } from "next";
 
-import { Card } from "~/components/ui";
+import { Card, Pill } from "~/components/ui";
 import { RenewalManager } from "~/components/workspace/RenewalManager";
 import { lifecycleLabel } from "~/components/workspace/SkuTerms";
 import { fmtDate } from "~/lib/format";
@@ -11,6 +11,23 @@ import { isKnownFreeSku } from "~/server/graph/skuCatalog";
 import { memberships, tenantSkus, vendorRenewals } from "~/server/db/schema";
 
 export const metadata: Metadata = { title: "Renewals" };
+
+const DAY_MS = 86_400_000;
+
+/** Whole calendar days from now until the date; null without a date. */
+const daysFromNow = (date: Date | null, nowMs: number): number | null =>
+  date ? Math.ceil((date.getTime() - nowMs) / DAY_MS) : null;
+
+const relativeDays = (days: number): string =>
+  days < -1
+    ? `${-days} days ago`
+    : days === -1
+      ? "Yesterday"
+      : days === 0
+        ? "Today"
+        : days === 1
+          ? "Tomorrow"
+          : `In ${days} days`;
 
 export default async function RenewalsPage() {
   const ctx = await requireAccess("viewer");
@@ -35,6 +52,7 @@ export default async function RenewalsPage() {
     (s) => !isKnownFreeSku(s.skuId, s.skuPartNumber),
   );
   const canEdit = hasRole(ctx, "admin") && !ctx.tenant.isDemo;
+  const nowMs = Date.now();
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 pb-8">
       <header className="rise rise-1">
@@ -55,30 +73,64 @@ export default async function RenewalsPage() {
           }))}
           currency={ctx.tenant.currency}
           canEdit={canEdit}
-          nowMs={Date.now()}
+          nowMs={nowMs}
         />
       </div>
       {microsoftDates.length > 0 && (
         <div className="rise rise-3">
           <Card title="Microsoft subscription dates">
-            <p className="text-ink-soft text-sm">
+            <p className="text-ink-soft max-w-2xl text-sm">
               Read from Microsoft 365 on every sync. Add a contract above to
               track its notice period.
             </p>
-            <ul className="border-line mt-3 border-t">
-              {microsoftDates.map((s) => (
-                <li
-                  key={s.skuId}
-                  className="border-line flex flex-wrap items-baseline justify-between gap-2 border-b py-2 text-sm last:border-b-0"
-                >
-                  <span className="font-medium">
-                    {s.displayName ?? s.skuPartNumber}
-                  </span>
-                  <span className="text-ink-soft tnum">
-                    {lifecycleLabel(s)} {fmtDate(s.nextLifecycleAt)}
-                  </span>
-                </li>
-              ))}
+            <ul className="border-line mt-4 border-t">
+              {microsoftDates.map((s) => {
+                const label = lifecycleLabel(s);
+                const days = daysFromNow(s.nextLifecycleAt, nowMs);
+                return (
+                  <li
+                    key={s.skuId}
+                    className="border-line flex flex-col gap-2 border-b py-3 last:border-b-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-ink text-sm font-medium">
+                        {s.displayName ?? s.skuPartNumber}
+                      </p>
+                      {s.displayName && (
+                        <p className="text-ink-faint font-mono text-[11px] break-all">
+                          {s.skuPartNumber}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <Pill tone={label === "Renews" ? "slate" : "plum"}>
+                        {label}
+                      </Pill>
+                      <div className="flex min-w-24 flex-col sm:items-end">
+                        <time
+                          className="tnum text-ink text-sm font-medium"
+                          dateTime={s.nextLifecycleAt
+                            ?.toISOString()
+                            .slice(0, 10)}
+                        >
+                          {fmtDate(s.nextLifecycleAt)}
+                        </time>
+                        {days !== null && (
+                          <span
+                            className={`tnum text-xs ${
+                              days >= 0 && days <= 30
+                                ? "text-waste-text font-medium"
+                                : "text-ink-faint"
+                            }`}
+                          >
+                            {relativeDays(days)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           </Card>
         </div>
