@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Info } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useState, useTransition } from "react";
 
+import { Button } from "~/components/ui";
+import { triggerSync } from "~/server/actions";
 import type { SyncStep } from "~/server/types";
 
 type RunInfo = {
+  id: string;
   status: "running" | "success" | "partial" | "failed";
   steps: SyncStep[];
   error: string | null;
@@ -26,29 +31,29 @@ export const ConnectPoller = ({
 }) => {
   const [run, setRun] = useState<RunInfo>(null);
   const [tick, setTick] = useState(0);
+  const [retrying, startRetry] = useTransition();
+  const [retryError, setRetryError] = useState<string | null>(null);
   const expired = tick >= MAX_TICKS;
 
-  useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const res = await fetch("/api/sync", { cache: "no-store" });
-        if (!res.ok) return;
-        const body = (await res.json()) as { run: RunInfo };
-        if (cancelled) return;
-        setRun(body.run);
-        if (body.run?.status === "success" || body.run?.status === "partial") {
-          window.location.href = redirectTo;
-        }
-      } catch {
-        // transient network error; keep polling
+  /** Latest run, applied to state; redirects once the sync has landed. */
+  const poll = useCallback(async (): Promise<RunInfo | undefined> => {
+    try {
+      const res = await fetch("/api/sync", { cache: "no-store" });
+      if (!res.ok) return undefined;
+      const body = (await res.json()) as { run: RunInfo };
+      setRun(body.run);
+      if (body.run?.status === "success" || body.run?.status === "partial") {
+        window.location.href = redirectTo;
       }
-    };
-    void poll();
-    return () => {
-      cancelled = true;
-    };
+      return body.run;
+    } catch {
+      return undefined; // transient network error; keep polling
+    }
   }, [redirectTo]);
+
+  useEffect(() => {
+    if (tick < MAX_TICKS) void poll();
+  }, [tick, poll]);
 
   useEffect(() => {
     if (expired) return;
@@ -56,34 +61,56 @@ export const ConnectPoller = ({
     return () => clearInterval(id);
   }, [expired]);
 
-  useEffect(() => {
-    if (tick === 0 || tick >= MAX_TICKS) return;
-    void fetch("/api/sync", { cache: "no-store" })
-      .then(async (res) =>
-        res.ok ? ((await res.json()) as { run: RunInfo }) : null,
-      )
-      .then((body) => {
-        if (!body) return;
-        setRun(body.run);
-        if (body.run?.status === "success" || body.run?.status === "partial") {
-          window.location.href = redirectTo;
-        }
-      })
-      .catch(() => undefined);
-  }, [tick, redirectTo]);
+  /* Runs the sync again. The poller keeps showing the running line meanwhile,
+     then redirects on success or shows the new failure. */
+  const retry = () => {
+    const failedRunId = run?.id;
+    startRetry(async () => {
+      setRetryError(null);
+      setRun(null);
+      setTick(0);
+      const result = await triggerSync();
+      const latest = await poll();
+      // No new run means the sync was refused before it started (role, demo
+      // workspace); a new failed run speaks for itself in the box.
+      if (!result.ok && (latest === undefined || latest?.id === failedRunId)) {
+        setRetryError(result.error ?? "Could not start the sync.");
+      }
+    });
+  };
 
   /* One persistent live region from first render; its content swaps between
      the running line and the failure box so the change is announced. */
   return (
     <div role="status" aria-live="polite">
-      {run?.status === "failed" ? (
+      {run?.status === "failed" && !retrying ? (
         <div className="border-danger-soft bg-danger-soft/50 text-danger-text border p-4 text-sm">
           <p className="font-medium">The first sync failed.</p>
           <p className="mt-1">
             {run.error ?? "Check the sync history in settings."}
           </p>
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
+            <Button type="button" onClick={retry}>
+              Try again
+            </Button>
+            <Link
+              href="/app/settings/sync-history"
+              className="hover:text-ink -mx-1 inline-flex min-h-11 items-center rounded-md px-1 text-xs font-medium underline underline-offset-4"
+            >
+              View sync history
+            </Link>
+          </div>
+          {retryError && (
+            <p className="text-ink mt-3 flex items-start gap-2 text-xs">
+              <Info
+                aria-hidden="true"
+                className="text-ink-soft mt-px size-3.5 shrink-0"
+              />
+              {retryError}
+            </p>
+          )}
         </div>
-      ) : expired ? (
+      ) : expired && !retrying ? (
         <div className="text-ink-soft text-sm">
           <p>This is taking longer than expected.</p>
           <p className="mt-1">

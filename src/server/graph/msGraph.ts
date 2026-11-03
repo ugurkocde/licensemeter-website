@@ -679,19 +679,26 @@ export class MsGraphClient implements GraphClient {
    * cached before it appeared), so retry with a fresh token instead of failing
    * the sync. Token and Graph waits share one deadline, and every Graph request
    * clamps its timeout to it, so no retry can outlive the route budget.
+   *
+   * `retryDenied` also retries a permission denial. Only the first critical
+   * read sets it: see isPermissionDenial for why that error can be transient.
    */
   private async withAppIdentityRetry<T>(
     run: (token: string) => Promise<T>,
     deadline: number = this.deadline,
+    { retryDenied = false }: { retryDenied?: boolean } = {},
   ): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       const token = await acquireToken(this.cred, { deadline });
       try {
         return await run(token);
       } catch (err) {
-        // Never keep a token Graph rejected, even on the final attempt.
-        if (isAppIdentityRejection(err)) {
-          msalApps.delete(appCacheKey(this.cred));
+        const unknownIdentity = isAppIdentityRejection(err);
+        const denied = isPermissionDenial(err);
+        // Never keep a token Graph rejected, even on the final attempt: MSAL
+        // would hand the same token to the next sync for up to an hour.
+        if (unknownIdentity || denied) msalApps.delete(appCacheKey(this.cred));
+        if (unknownIdentity || (denied && retryDenied)) {
           if (
             attempt < APP_IDENTITY_WAITS_MS.length &&
             withinDeadline(deadline, APP_IDENTITY_WAITS_MS[attempt]!)
@@ -720,13 +727,20 @@ export class MsGraphClient implements GraphClient {
     }
   }
 
+  /**
+   * The first Graph read of every sync, so it is the one that meets a token
+   * minted moments after admin consent: it retries a permission denial.
+   */
   async getSubscribedSkus(): Promise<GraphSubscribedSku[]> {
-    return this.withAppIdentityRetry((token) =>
-      getAllPages<GraphSubscribedSku>(
-        token,
-        `${GRAPH}/subscribedSkus`,
-        this.deadline,
-      ),
+    return this.withAppIdentityRetry(
+      (token) =>
+        getAllPages<GraphSubscribedSku>(
+          token,
+          `${GRAPH}/subscribedSkus`,
+          this.deadline,
+        ),
+      this.deadline,
+      { retryDenied: true },
     );
   }
 
@@ -828,6 +842,20 @@ const isAppIdentityRejection = (err: unknown): boolean =>
     /identity of the calling application could not be established/i.test(
       err.message,
     ));
+
+/**
+ * Graph's 403 Authorization_RequestDenied ("Insufficient privileges to complete
+ * the operation"): the token's roles claim lacks the permission for this read.
+ * Right after admin consent this is transient: Entra creates the app role
+ * assignments one by one, and a token minted a second later can carry some
+ * roles but not all. Observed 2026-11-03: roles granted 15:34:25Z, first sync
+ * at 15:34:26Z denied on /subscribedSkus; the response shape was confirmed
+ * against Graph v1.0 app-only.
+ */
+const isPermissionDenial = (err: unknown): boolean =>
+  err instanceof GraphHttpError &&
+  err.status === 403 &&
+  err.code === "Authorization_RequestDenied";
 
 /** 401/403: the delegated caller lacks the directory role for this read. */
 const isAuthDenied = (err: unknown): boolean =>

@@ -71,6 +71,21 @@ const stubSkusFetch = () =>
     vi.fn(async () => Response.json({ value: [] })),
   );
 
+/**
+ * Graph's answer to a token whose roles claim lacks the permission, as
+ * returned by GET /v1.0/subscribedSkus app-only (verified 2026-11-03).
+ */
+const deniedResponse = (): Response =>
+  new Response(
+    JSON.stringify({
+      error: {
+        code: "Authorization_RequestDenied",
+        message: "Insufficient privileges to complete the operation.",
+      },
+    }),
+    { status: 403, headers: { "content-type": "application/json" } },
+  );
+
 // Well past the full 15s + 30s + 45s propagation schedule.
 const advancePastPropagation = () => vi.advanceTimersByTimeAsync(120_000);
 
@@ -214,6 +229,91 @@ describe("service principal propagation on the sync path", () => {
     // The rejected client was not left cached: the next call builds a fresh one.
     await verifyMsCredential(cred);
     expect(mocks.clientsCreated).toBe(4);
+  });
+
+  it("re-mints and retries the SKU read when a fresh consent's roles have not reached the token", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => {
+      if (fetchMock.mock.calls.length === 1) return deniedResponse();
+      return Response.json({ value: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    const client = new MsGraphClient(
+      managedCred("12121212-1212-1212-1212-121212121212"),
+    );
+    const pending = client.getSubscribedSkus();
+    await advancePastPropagation();
+
+    await expect(pending).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The denied token's client was dropped, so the retry minted a new token.
+    expect(mocks.clientsCreated).toBe(2);
+    expect(mocks.mint).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces a persistent denial after the waits without keeping the denied token", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => deniedResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    const cred = managedCred("13131313-1313-1313-1313-131313131313");
+    const pending = new MsGraphClient(cred).getSubscribedSkus();
+    const assertion = expect(pending).rejects.toThrow(
+      "Insufficient privileges to complete the operation.",
+    );
+    await advancePastPropagation();
+    await assertion;
+
+    // Initial attempt plus the two Graph waits.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(mocks.clientsCreated).toBe(3);
+
+    // The next sync starts from a fresh client instead of the denied token.
+    await verifyMsCredential(cred);
+    expect(mocks.clientsCreated).toBe(4);
+  });
+
+  it("does not wait on a denial outside the SKU read, but still drops the token", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => deniedResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    const cred = managedCred("14141414-1414-1414-1414-141414141414");
+    await expect(
+      new MsGraphClient(cred).listUsers({ includeSignInActivity: false }),
+    ).rejects.toThrow("Insufficient privileges to complete the operation.");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await verifyMsCredential(cred);
+    expect(mocks.clientsCreated).toBe(2);
+  });
+
+  it("does not retry other 403s on the SKU read", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: "Forbidden", message: "Something else" },
+          }),
+          { status: 403, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.mint.mockResolvedValue({ accessToken: withOid() });
+
+    await expect(
+      new MsGraphClient(
+        managedCred("15151515-1515-1515-1515-151515151515"),
+      ).getSubscribedSkus(),
+    ).rejects.toThrow("Something else");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("does not treat an opaque token as identity-less", async () => {

@@ -1,0 +1,7 @@
+{
+  "title": "The first Microsoft 365 sync no longer fails right after admin consent",
+  "summary": "Microsoft can take a few seconds to activate the permissions an admin just granted. The first sync now waits and tries again when it starts before they are active, instead of stopping with \"Insufficient privileges to complete the operation\". If a first sync does fail, you can now run it again from the same page with Try again.",
+  "type": "fixed",
+  "publishedOn": "2026-11-03",
+  "idempotencyKey": "licensemeter:first-sync-after-consent-2026-11-03"
+}
