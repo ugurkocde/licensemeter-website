@@ -15,6 +15,7 @@ import { fmtDate } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
 import { msConnections } from "~/server/db/schema";
+import { loadAccessLoss, type AccessLossCause } from "~/server/msAccessLoss";
 
 export const metadata = { title: "Microsoft 365 connector" };
 // BYO connect action syncs in after(); same 300s budget as other sync paths.
@@ -132,6 +133,105 @@ const SetupOptions = ({
   </div>
 );
 
+const SupportLink = () => (
+  <Link
+    href="/app/support"
+    className="hover:text-ink underline underline-offset-4"
+  >
+    contact support
+  </Link>
+);
+
+/** Heading and explanation per cause; see loadAccessLoss for the causes. */
+const ACCESS_LOST_COPY: Record<
+  AccessLossCause,
+  { title: string; until: string; why: string }
+> = {
+  consent: {
+    title:
+      "Microsoft no longer accepts LicenseMeter\u2019s access to this tenant",
+    until: "access is restored",
+    why: "This usually means the LicenseMeter Connector app was removed from Enterprise applications in Microsoft Entra, or its admin consent was revoked.",
+  },
+  connector: {
+    title: "LicenseMeter could not sign in to Microsoft for this workspace",
+    until: "this is fixed",
+    why: "The problem is with LicenseMeter\u2019s own connector credential, not your tenant, so nothing needs to change in Microsoft Entra.",
+  },
+  unknown: {
+    title: "LicenseMeter could not sign in to Microsoft for this workspace",
+    until: "this is fixed",
+    why: "Microsoft rejected the sign-in, and the recent sync history does not show why.",
+  },
+};
+
+/**
+ * A managed connection whose syncs fail app-only authentication. There is no
+ * stored credential to re-enter: LicenseMeter's own connector app signs in.
+ * Only a lost consent offers the button: granting admin consent again fixes
+ * it, and the consent callback updates this connection in place, so data and
+ * settings stay. A rejected LicenseMeter credential, or a cause the history
+ * no longer shows, points to support instead.
+ */
+const AccessLostNotice = ({
+  cause,
+  canGrant,
+  lastSyncedAt,
+}: {
+  cause: AccessLossCause;
+  canGrant: boolean;
+  lastSyncedAt: Date | null;
+}) => {
+  const copy = ACCESS_LOST_COPY[cause];
+  return (
+    <div
+      role="alert"
+      className="border-danger-soft bg-danger-soft/50 flex flex-col gap-3 border p-4 text-sm"
+    >
+      <div className="flex flex-col gap-1">
+        <p className="text-danger-text font-medium">{copy.title}</p>
+        <p className="text-ink-soft">
+          The nightly sync stops until {copy.until}
+          {lastSyncedAt ? (
+            <>
+              ; the figures shown are from the last successful sync on{" "}
+              {fmtDate(lastSyncedAt)}
+            </>
+          ) : null}
+          . {copy.why}
+        </p>
+      </div>
+      {cause !== "consent" ? (
+        <p className="text-ink-soft">
+          {cause === "connector"
+            ? "If the sync has not resumed by tomorrow, "
+            : "Please "}
+          <SupportLink />.
+        </p>
+      ) : canGrant ? (
+        <div className="flex flex-col gap-2">
+          <div>
+            <ButtonAnchor href="/api/connect/start" variant="primary">
+              Grant admin consent again
+            </ButtonAnchor>
+          </div>
+          <p className="text-ink-faint text-xs">
+            Needs a Global Administrator or Privileged Role Administrator of
+            this tenant. Your workspace, prices and settings stay as they are,
+            and a fresh sync starts right after. If the consent fails or the
+            sync still does not resume, <SupportLink />.
+          </p>
+        </div>
+      ) : (
+        <p className="text-ink-soft">
+          Ask a workspace admin who is a Global Administrator of this tenant to
+          grant admin consent again on this page.
+        </p>
+      )}
+    </div>
+  );
+};
+
 export default async function MicrosoftConnectorPage({
   searchParams,
 }: {
@@ -148,6 +248,10 @@ export default async function MicrosoftConnectorPage({
   const conn = await db.query.msConnections.findFirst({
     where: eq(msConnections.tenantId, ctx.tenant.id),
   });
+  const lostAccess =
+    conn?.mode === "managed" && conn.lastVerifyError
+      ? await loadAccessLoss(ctx.tenant.id)
+      : null;
   const byoEnabled = byoConnectorEnabled();
   const connectorConfigured = Boolean(env.CONNECTOR_CLIENT_ID);
   const scanConfigured = Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID);
@@ -250,6 +354,15 @@ export default async function MicrosoftConnectorPage({
                 const expMs = conn.secretExpiresAt
                   ? new Date(conn.secretExpiresAt).getTime() - Date.now()
                   : null;
+                if (lostAccess) {
+                  return (
+                    <AccessLostNotice
+                      cause={lostAccess.cause}
+                      canGrant={isAdmin && connectorConfigured}
+                      lastSyncedAt={lostAccess.lastSyncedAt}
+                    />
+                  );
+                }
                 if (conn.lastVerifyError) {
                   return (
                     <div className="border-danger-soft bg-danger-soft/50 text-danger-text border p-3 text-sm">

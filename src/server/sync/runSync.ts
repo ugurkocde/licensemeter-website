@@ -51,6 +51,7 @@ import { emailEnabled } from "~/server/email";
 import { deliverOnce } from "~/server/emailDelivery";
 import { leakAlertMessage } from "~/server/leakAlertMessage";
 import { pickLeakFindings } from "~/server/leakAlerts";
+import { isAppAuthError } from "~/lib/msAuthError";
 import { notifyOps } from "~/server/ops";
 import { workspaceAdminEmails } from "~/server/workspaceEmail";
 import { aiSpendSinceDay } from "~/server/sync/aiSpendWindow";
@@ -1216,18 +1217,6 @@ export const runSync = async (
     return { runId, status: "failed", steps };
   }
 };
-
-/**
- * Whether a sync error is an app-only authentication failure (expired/revoked
- * credential), not a data error. Matches MSAL/AADSTS token-acquisition codes
- * only, deliberately not the bare word "certificate", which can appear in
- * unrelated Graph error bodies (AADSTS700027 already covers cert-credential
- * failures, "client assertion" the JWT-assertion path).
- */
-const isAppAuthError = (message: string): boolean =>
-  /AADSTS7000215|AADSTS700027|AADSTS700016|AADSTS7000222|invalid_client|invalid client secret|client assertion|acquire app-only token/i.test(
-    message,
-  );
 
 /**
  * Re-runs the waste analysis from data already in the database, used after
