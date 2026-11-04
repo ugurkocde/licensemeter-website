@@ -111,4 +111,12 @@ describe("GET /api/cron/sync", () => {
     expect(dispatchTenantSyncs).not.toHaveBeenCalled();
     expect(runSync).toHaveBeenCalledTimes(3);
   });
+
+  it("never sends the secret to an http base URL", async () => {
+    vi.stubEnv("VERCEL", "1");
+    env.APP_BASE_URL = "http://licensemeter.com";
+    await GET(req());
+    expect(dispatchTenantSyncs).not.toHaveBeenCalled();
+    expect(runSync).toHaveBeenCalledTimes(3);
+  });
 });

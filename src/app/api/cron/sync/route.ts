@@ -62,7 +62,10 @@ export const GET = async (req: NextRequest) => {
     ),
   });
 
-  const fanOut = Boolean(process.env.VERCEL && env.APP_BASE_URL);
+  // The bearer travels in every dispatch, so only over https.
+  const fanOut = Boolean(
+    process.env.VERCEL && env.APP_BASE_URL?.startsWith("https://"),
+  );
   let queue = allTenants;
   let dispatched = 0;
   if (fanOut && allTenants.length > 0) {
