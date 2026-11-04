@@ -132,6 +132,64 @@ const SetupOptions = ({
   </div>
 );
 
+/**
+ * A managed connection whose syncs fail app-only authentication. There is no
+ * stored credential to re-enter: LicenseMeter's own connector app signs in,
+ * so the cause is in the customer's tenant (the enterprise app was removed or
+ * its consent revoked) and the fix is granting admin consent again. The
+ * consent callback updates this connection in place, so data and settings
+ * stay.
+ */
+const ConsentLostNotice = ({
+  canGrant,
+  lastVerifiedAt,
+}: {
+  canGrant: boolean;
+  lastVerifiedAt: Date | null;
+}) => (
+  <div
+    role="alert"
+    className="border-danger-soft bg-danger-soft/50 flex flex-col gap-3 border p-4 text-sm"
+  >
+    <div className="flex flex-col gap-1">
+      <p className="text-danger-text font-medium">
+        Microsoft no longer accepts LicenseMeter&rsquo;s access to this tenant
+      </p>
+      <p className="text-ink-soft">
+        The nightly sync stops until access is restored
+        {lastVerifiedAt ? (
+          <>
+            ; the figures shown are from the last successful sync on{" "}
+            {fmtDate(lastVerifiedAt)}
+          </>
+        ) : null}
+        . This usually means the LicenseMeter Connector app was removed from
+        Enterprise applications in Microsoft Entra, or its admin consent was
+        revoked.
+      </p>
+    </div>
+    {canGrant ? (
+      <div className="flex flex-col gap-2">
+        <div>
+          <ButtonAnchor href="/api/connect/start" variant="primary">
+            Grant admin consent again
+          </ButtonAnchor>
+        </div>
+        <p className="text-ink-faint text-xs">
+          Needs a Global Administrator or Privileged Role Administrator of this
+          tenant. Your workspace, prices and settings stay as they are, and a
+          fresh sync starts right after.
+        </p>
+      </div>
+    ) : (
+      <p className="text-ink-soft">
+        Ask a workspace admin who is a Global Administrator of this tenant to
+        grant admin consent again on this page.
+      </p>
+    )}
+  </div>
+);
+
 export default async function MicrosoftConnectorPage({
   searchParams,
 }: {
@@ -250,6 +308,14 @@ export default async function MicrosoftConnectorPage({
                 const expMs = conn.secretExpiresAt
                   ? new Date(conn.secretExpiresAt).getTime() - Date.now()
                   : null;
+                if (conn.lastVerifyError && conn.mode === "managed") {
+                  return (
+                    <ConsentLostNotice
+                      canGrant={isAdmin && connectorConfigured}
+                      lastVerifiedAt={conn.lastVerifiedAt}
+                    />
+                  );
+                }
                 if (conn.lastVerifyError) {
                   return (
                     <div className="border-danger-soft bg-danger-soft/50 text-danger-text border p-3 text-sm">

@@ -1,0 +1,7 @@
+{
+  "title": "Restore Microsoft 365 access in one click when the admin consent was removed",
+  "summary": "When Microsoft stops accepting LicenseMeter's access to your tenant, for example because the LicenseMeter Connector app was removed from Enterprise applications, the Microsoft 365 connector page now explains what happened and when the figures were last updated. Workspace admins get a Grant admin consent again button that restores access without disconnecting, so your workspace, prices and settings stay as they are.",
+  "type": "improved",
+  "publishedOn": "2026-11-04",
+  "idempotencyKey": "licensemeter:grant-consent-again-2026-11-04"
+}
