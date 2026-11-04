@@ -1,0 +1,7 @@
+{
+  "title": "Every workspace now gets its full nightly sync, however many workspaces there are",
+  "summary": "The nightly sync used to share one time budget across all workspaces, so on busy nights the last few in line were skipped and kept the previous day's figures. Each workspace now syncs on its own with a full time budget, and a large workspace no longer delays or cuts off the others.",
+  "type": "fixed",
+  "publishedOn": "2026-11-04",
+  "idempotencyKey": "licensemeter:nightly-sync-every-workspace-2026-11-04"
+}
