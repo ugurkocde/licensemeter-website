@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isConnectorCredentialError } from "./msAuthError";
+import { isAppAuthError, isConnectorCredentialError } from "./msAuthError";
 
 describe("isConnectorCredentialError", () => {
   it("flags rejected LicenseMeter credentials", () => {
@@ -38,5 +38,24 @@ describe("isConnectorCredentialError", () => {
     expect(isConnectorCredentialError(null)).toBe(false);
     expect(isConnectorCredentialError(undefined)).toBe(false);
     expect(isConnectorCredentialError("")).toBe(false);
+  });
+});
+
+describe("isAppAuthError", () => {
+  it("matches token-acquisition failures", () => {
+    for (const message of [
+      "invalid_client: AADSTS7000229: missing service principal",
+      "AADSTS700016: Application was not found in the directory",
+      "AADSTS7000222: client secret keys are expired",
+      "Could not acquire app-only token",
+    ]) {
+      expect(isAppAuthError(message)).toBe(true);
+    }
+  });
+
+  it("ignores data and network errors", () => {
+    expect(isAppAuthError("fetch failed: getaddrinfo ENOTFOUND")).toBe(false);
+    expect(isAppAuthError("Graph 429: too many requests")).toBe(false);
+    expect(isAppAuthError("certificate in a Graph error body")).toBe(false);
   });
 });
