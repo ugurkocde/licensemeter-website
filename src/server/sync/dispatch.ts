@@ -48,9 +48,10 @@ export const sameSiteRedirect = (from: string, location: string | null) => {
  * Only a 202 counts. One apex/www redirect is followed and remembered for the
  * remaining tenants; any other redirect, a 401 from a protected host, a
  * timeout or a network error leaves the tenant for the in-process fallback.
- * Dispatching stops at `deadline` and after BREAKER_FAILURES failures with no
- * success; tenants not attempted by then are returned as rejected too, so a
- * broken hand-off costs the fallback at most one round of timeouts.
+ * No dispatch starts after `deadline` or after BREAKER_FAILURES failures with
+ * no success, and every request's timeout is clamped to `deadline`, so the
+ * whole hand-off ends by `deadline`. Tenants not attempted by then are
+ * returned as rejected too.
  *
  * A dispatch whose response was lost may still have started its sync. The
  * runSync lock keeps the fallback from running alongside it, but once that

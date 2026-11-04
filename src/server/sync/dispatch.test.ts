@@ -223,5 +223,33 @@ describe("dispatchTenantSyncs", () => {
       expect(fetchImpl).not.toHaveBeenCalled();
       expect(out).toEqual({ accepted: [], rejected: ["a", "b"] });
     });
+
+    it("ends hanging requests, redirects included, by the deadline", async () => {
+      // Requests only settle when their abort signal fires, like a host that
+      // accepts the connection and never answers.
+      const hang = (init: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          init.signal!.addEventListener("abort", () =>
+            reject(new Error("aborted")),
+          );
+        });
+      const fetchImpl = vi.fn((url: string, init: RequestInit) =>
+        url.startsWith("https://licensemeter.com")
+          ? Promise.resolve(
+              respond(308, "https://www.licensemeter.com/api/cron/sync/tenant"),
+            )
+          : hang(init),
+      );
+      const started = Date.now();
+      const out = await dispatchTenantSyncs(many, {
+        baseUrl: "https://licensemeter.com",
+        secret: "s3cret",
+        deadline: started + 300,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+      expect(Date.now() - started).toBeLessThan(1_000);
+      expect(out.accepted).toEqual([]);
+      expect([...out.rejected].sort()).toEqual([...many].sort());
+    });
   });
 });
