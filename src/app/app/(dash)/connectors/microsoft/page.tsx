@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 
 import { ConnectPoller } from "~/components/workspace/ConnectPoller";
@@ -14,7 +14,7 @@ import { CONNECTOR_SCOPES } from "~/lib/scopes";
 import { fmtDate } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
-import { msConnections } from "~/server/db/schema";
+import { msConnections, syncRuns } from "~/server/db/schema";
 
 export const metadata = { title: "Microsoft 365 connector" };
 // BYO connect action syncs in after(); same 300s budget as other sync paths.
@@ -134,18 +134,19 @@ const SetupOptions = ({
 
 /**
  * A managed connection whose syncs fail app-only authentication. There is no
- * stored credential to re-enter: LicenseMeter's own connector app signs in,
- * so the cause is in the customer's tenant (the enterprise app was removed or
- * its consent revoked) and the fix is granting admin consent again. The
- * consent callback updates this connection in place, so data and settings
- * stay.
+ * stored credential to re-enter: LicenseMeter's own connector app signs in.
+ * The usual cause is in the customer's tenant (the enterprise app was removed
+ * or its consent revoked), fixed by granting admin consent again; the consent
+ * callback updates this connection in place, so data and settings stay. A
+ * failure on LicenseMeter's side (its connector credential or app) shows the
+ * same error and is not fixed by consent, hence the support fallback.
  */
 const ConsentLostNotice = ({
   canGrant,
-  lastVerifiedAt,
+  lastSyncedAt,
 }: {
   canGrant: boolean;
-  lastVerifiedAt: Date | null;
+  lastSyncedAt: Date | null;
 }) => (
   <div
     role="alert"
@@ -157,10 +158,10 @@ const ConsentLostNotice = ({
       </p>
       <p className="text-ink-soft">
         The nightly sync stops until access is restored
-        {lastVerifiedAt ? (
+        {lastSyncedAt ? (
           <>
             ; the figures shown are from the last successful sync on{" "}
-            {fmtDate(lastVerifiedAt)}
+            {fmtDate(lastSyncedAt)}
           </>
         ) : null}
         . This usually means the LicenseMeter Connector app was removed from
@@ -178,7 +179,15 @@ const ConsentLostNotice = ({
         <p className="text-ink-faint text-xs">
           Needs a Global Administrator or Privileged Role Administrator of this
           tenant. Your workspace, prices and settings stay as they are, and a
-          fresh sync starts right after.
+          fresh sync starts right after. If the consent fails or the sync still
+          does not resume,{" "}
+          <Link
+            href="/app/support"
+            className="hover:text-ink underline underline-offset-4"
+          >
+            contact support
+          </Link>
+          .
         </p>
       </div>
     ) : (
@@ -206,6 +215,21 @@ export default async function MicrosoftConnectorPage({
   const conn = await db.query.msConnections.findFirst({
     where: eq(msConnections.tenantId, ctx.tenant.id),
   });
+  // When the figures were last refreshed, for the lost-access notice. Only a
+  // completed run counts: lastVerifiedAt also moves on a fresh consent.
+  const lastSyncedAt =
+    conn?.mode === "managed" && conn.lastVerifyError
+      ? ((
+          await db.query.syncRuns.findFirst({
+            where: and(
+              eq(syncRuns.tenantId, ctx.tenant.id),
+              inArray(syncRuns.status, ["success", "partial"]),
+            ),
+            orderBy: desc(syncRuns.startedAt),
+            columns: { finishedAt: true },
+          })
+        )?.finishedAt ?? null)
+      : null;
   const byoEnabled = byoConnectorEnabled();
   const connectorConfigured = Boolean(env.CONNECTOR_CLIENT_ID);
   const scanConfigured = Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID);
@@ -312,7 +336,7 @@ export default async function MicrosoftConnectorPage({
                   return (
                     <ConsentLostNotice
                       canGrant={isAdmin && connectorConfigured}
-                      lastVerifiedAt={conn.lastVerifiedAt}
+                      lastSyncedAt={lastSyncedAt}
                     />
                   );
                 }
