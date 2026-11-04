@@ -60,7 +60,13 @@ describe("GET /api/cron/sync", () => {
     expect(dispatchTenantSyncs).toHaveBeenCalledWith(["t1", "t2", "t3"], {
       baseUrl: "https://licensemeter.com",
       secret: "s3cret-s3cret-s3cret",
+      deadline: expect.any(Number) as number,
     });
+    const { deadline } = dispatchTenantSyncs.mock.calls[0]![1] as {
+      deadline: number;
+    };
+    // The hand-off keeps most of the request for the fallback.
+    expect(deadline - Date.now()).toBeLessThanOrEqual(30_000);
     expect(body).toMatchObject({ dispatched: 3, synced: 0 });
     expect(runSync).not.toHaveBeenCalled();
     expect(notifyOps).not.toHaveBeenCalled();

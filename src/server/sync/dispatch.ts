@@ -11,7 +11,14 @@ export const TENANT_SYNC_PATH = "/api/cron/sync/tenant";
 const DISPATCH_CONCURRENCY = 8;
 
 /** A dispatch that has not been accepted by then is synced in-process. */
-const DISPATCH_TIMEOUT_MS = 15_000;
+const DISPATCH_TIMEOUT_MS = 10_000;
+
+/**
+ * Stop dispatching once this many requests failed before any was accepted:
+ * the hand-off is broken (protection, firewall, wrong host), and the
+ * remaining tenants need the fallback's time more than further attempts.
+ */
+const BREAKER_FAILURES = 3;
 
 const bareHost = (host: string) => host.replace(/^www\./i, "").toLowerCase();
 
@@ -40,20 +47,30 @@ export const sameSiteRedirect = (from: string, location: string | null) => {
  * Posts one request per tenant and returns the ids that were not accepted.
  * Only a 202 counts. One apex/www redirect is followed and remembered for the
  * remaining tenants; any other redirect, a 401 from a protected host, a
- * timeout or a network error leaves the tenant for the in-process fallback. A
- * dispatch that timed out may still have started, which is harmless because
- * runSync's per-tenant lock turns the second run into a no-op.
+ * timeout or a network error leaves the tenant for the in-process fallback.
+ * Dispatching stops at `deadline` and after BREAKER_FAILURES failures with no
+ * success; tenants not attempted by then are returned as rejected too, so a
+ * broken hand-off costs the fallback at most one round of timeouts.
+ *
+ * A dispatch whose response was lost may still have started its sync. The
+ * runSync lock keeps the fallback from running alongside it, but once that
+ * sync finished the fallback syncs the tenant a second time: extra Graph
+ * reads in an already degraded night, never conflicting writes.
  */
 export const dispatchTenantSyncs = async (
   tenantIds: readonly string[],
   opts: {
     baseUrl: string;
     secret: string;
+    /** Absolute time (ms) after which no new dispatch is started. */
+    deadline: number;
     fetchImpl?: typeof fetch;
   },
 ): Promise<{ accepted: string[]; rejected: string[] }> => {
   const doFetch = opts.fetchImpl ?? fetch;
   let url = new URL(TENANT_SYNC_PATH, opts.baseUrl).toString();
+  const timeout = () =>
+    Math.max(1, Math.min(DISPATCH_TIMEOUT_MS, opts.deadline - Date.now()));
   const post = (target: string, tenantId: string) =>
     doFetch(target, {
       method: "POST",
@@ -65,13 +82,16 @@ export const dispatchTenantSyncs = async (
       // Never follow a redirect blindly: it could take the bearer to another
       // host or land on a page that answers 200.
       redirect: "manual",
-      signal: AbortSignal.timeout(DISPATCH_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeout()),
     });
   const accepted: string[] = [];
   const rejected: string[] = [];
   let cursor = 0;
+  const stop = () =>
+    Date.now() >= opts.deadline ||
+    (accepted.length === 0 && rejected.length >= BREAKER_FAILURES);
   const worker = async () => {
-    while (cursor < tenantIds.length) {
+    while (cursor < tenantIds.length && !stop()) {
       const tenantId = tenantIds[cursor++]!;
       try {
         const target = url;
@@ -80,7 +100,7 @@ export const dispatchTenantSyncs = async (
           res.status === 307 || res.status === 308
             ? sameSiteRedirect(target, res.headers.get("location"))
             : null;
-        if (next) {
+        if (next && Date.now() < opts.deadline) {
           await res.body?.cancel();
           url = next;
           res = await post(next, tenantId);
@@ -98,5 +118,6 @@ export const dispatchTenantSyncs = async (
       worker,
     ),
   );
+  rejected.push(...tenantIds.slice(cursor));
   return { accepted, rejected };
 };

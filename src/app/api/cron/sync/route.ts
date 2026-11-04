@@ -19,6 +19,12 @@ export const maxDuration = 300;
 const DEQUEUE_BUDGET_MS = 240_000;
 
 /**
+ * Longest the hand-off to per-tenant invocations may take before the rest
+ * falls back to this request, leaving the fallback most of its budget.
+ */
+const DISPATCH_BUDGET_MS = 30_000;
+
+/**
  * Nightly sync across all connected tenants. Protected by CRON_SECRET.
  *
  * On Vercel every tenant is dispatched to /api/cron/sync/tenant, its own
@@ -62,7 +68,11 @@ export const GET = async (req: NextRequest) => {
   if (fanOut && allTenants.length > 0) {
     const { accepted, rejected } = await dispatchTenantSyncs(
       allTenants.map((t) => t.id),
-      { baseUrl: env.APP_BASE_URL!, secret: env.CRON_SECRET! },
+      {
+        baseUrl: env.APP_BASE_URL!,
+        secret: env.CRON_SECRET!,
+        deadline: start + DISPATCH_BUDGET_MS,
+      },
     );
     dispatched = accepted.length;
     const left = new Set(rejected);
