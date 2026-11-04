@@ -12,6 +12,7 @@ import { connectErrorText } from "~/lib/connectErrors";
 import { MICROSOFT_CONNECTOR } from "~/lib/connectors";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
 import { fmtDate } from "~/lib/format";
+import { isConnectorCredentialError } from "~/lib/msAuthError";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
 import { msConnections, syncRuns } from "~/server/db/schema";
@@ -135,16 +136,19 @@ const SetupOptions = ({
 /**
  * A managed connection whose syncs fail app-only authentication. There is no
  * stored credential to re-enter: LicenseMeter's own connector app signs in.
- * The usual cause is in the customer's tenant (the enterprise app was removed
- * or its consent revoked), fixed by granting admin consent again; the consent
- * callback updates this connection in place, so data and settings stay. A
- * failure on LicenseMeter's side (its connector credential or app) shows the
- * same error and is not fixed by consent, hence the support fallback.
+ * `cause` comes from the last failed run's error. "consent" (the usual case:
+ * the enterprise app was removed from the tenant or its consent revoked) is
+ * fixed by granting admin consent again; the consent callback updates this
+ * connection in place, so data and settings stay. "connector" means
+ * LicenseMeter's own credential was rejected, which consent cannot fix, so
+ * the button is not offered.
  */
-const ConsentLostNotice = ({
+const AccessLostNotice = ({
+  cause,
   canGrant,
   lastSyncedAt,
 }: {
+  cause: "consent" | "connector";
   canGrant: boolean;
   lastSyncedAt: Date | null;
 }) => (
@@ -154,22 +158,37 @@ const ConsentLostNotice = ({
   >
     <div className="flex flex-col gap-1">
       <p className="text-danger-text font-medium">
-        Microsoft no longer accepts LicenseMeter&rsquo;s access to this tenant
+        {cause === "consent"
+          ? "Microsoft no longer accepts LicenseMeter\u2019s access to this tenant"
+          : "LicenseMeter could not sign in to Microsoft for this workspace"}
       </p>
       <p className="text-ink-soft">
-        The nightly sync stops until access is restored
+        The nightly sync stops until{" "}
+        {cause === "consent" ? "access is restored" : "this is fixed"}
         {lastSyncedAt ? (
           <>
             ; the figures shown are from the last successful sync on{" "}
             {fmtDate(lastSyncedAt)}
           </>
         ) : null}
-        . This usually means the LicenseMeter Connector app was removed from
-        Enterprise applications in Microsoft Entra, or its admin consent was
-        revoked.
+        .{" "}
+        {cause === "consent"
+          ? "This usually means the LicenseMeter Connector app was removed from Enterprise applications in Microsoft Entra, or its admin consent was revoked."
+          : "The problem is with LicenseMeter\u2019s own connector credential, not your tenant, so nothing needs to change in Microsoft Entra."}
       </p>
     </div>
-    {canGrant ? (
+    {cause === "connector" ? (
+      <p className="text-ink-soft">
+        If the sync has not resumed by tomorrow,{" "}
+        <Link
+          href="/app/support"
+          className="hover:text-ink underline underline-offset-4"
+        >
+          contact support
+        </Link>
+        .
+      </p>
+    ) : canGrant ? (
       <div className="flex flex-col gap-2">
         <div>
           <ButtonAnchor href="/api/connect/start" variant="primary">
@@ -215,20 +234,35 @@ export default async function MicrosoftConnectorPage({
   const conn = await db.query.msConnections.findFirst({
     where: eq(msConnections.tenantId, ctx.tenant.id),
   });
-  // When the figures were last refreshed, for the lost-access notice. Only a
-  // completed run counts: lastVerifiedAt also moves on a fresh consent.
-  const lastSyncedAt =
+  // For the lost-access notice: when the figures were last refreshed (only a
+  // completed run counts, since lastVerifiedAt also moves on a fresh consent)
+  // and the last failure, which tells a lost consent from a rejected
+  // LicenseMeter credential.
+  const lostAccess =
     conn?.mode === "managed" && conn.lastVerifyError
-      ? ((
-          await db.query.syncRuns.findFirst({
+      ? await Promise.all([
+          db.query.syncRuns.findFirst({
             where: and(
               eq(syncRuns.tenantId, ctx.tenant.id),
               inArray(syncRuns.status, ["success", "partial"]),
             ),
             orderBy: desc(syncRuns.startedAt),
             columns: { finishedAt: true },
-          })
-        )?.finishedAt ?? null)
+          }),
+          db.query.syncRuns.findFirst({
+            where: and(
+              eq(syncRuns.tenantId, ctx.tenant.id),
+              eq(syncRuns.status, "failed"),
+            ),
+            orderBy: desc(syncRuns.startedAt),
+            columns: { error: true },
+          }),
+        ]).then(([synced, failed]) => ({
+          lastSyncedAt: synced?.finishedAt ?? null,
+          cause: isConnectorCredentialError(failed?.error)
+            ? ("connector" as const)
+            : ("consent" as const),
+        }))
       : null;
   const byoEnabled = byoConnectorEnabled();
   const connectorConfigured = Boolean(env.CONNECTOR_CLIENT_ID);
@@ -332,11 +366,12 @@ export default async function MicrosoftConnectorPage({
                 const expMs = conn.secretExpiresAt
                   ? new Date(conn.secretExpiresAt).getTime() - Date.now()
                   : null;
-                if (conn.lastVerifyError && conn.mode === "managed") {
+                if (lostAccess) {
                   return (
-                    <ConsentLostNotice
+                    <AccessLostNotice
+                      cause={lostAccess.cause}
                       canGrant={isAdmin && connectorConfigured}
-                      lastSyncedAt={lastSyncedAt}
+                      lastSyncedAt={lostAccess.lastSyncedAt}
                     />
                   );
                 }
