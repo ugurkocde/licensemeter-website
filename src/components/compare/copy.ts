@@ -13,6 +13,7 @@ export const COMPARE_COPY = {
       no: "No",
       partial: "Partly",
       unknown: "Not stated",
+      unchecked: "Not checked",
     } satisfies Record<FeatureValue, string>,
     source: "Source",
     shortAnswer: "The short answer",
@@ -21,7 +22,7 @@ export const COMPARE_COPY = {
     strengths: (name: string) => `Where ${name} is stronger`,
     featuresTitle: "Feature by feature",
     featuresNote:
-      "Not stated means we could not find it on the vendor's own pages, not that it is missing. Values link to where the claim comes from.",
+      "Not stated means we could not find it on the vendor's own pages, not that it is missing. Not checked means we did not look into it for that product. Values link to where the claim comes from.",
     pricingTitle: "Pricing",
     checked: (name: string, date: string) =>
       `We last checked ${name}'s own website and documentation on ${date}.`,
@@ -64,6 +65,7 @@ export const COMPARE_COPY = {
       no: "Nein",
       partial: "Teilweise",
       unknown: "Keine Angabe",
+      unchecked: "Nicht geprüft",
     } satisfies Record<FeatureValue, string>,
     source: "Quelle",
     shortAnswer: "Die kurze Antwort",
@@ -72,7 +74,7 @@ export const COMPARE_COPY = {
     strengths: (name: string) => `Wo ${name} stärker ist`,
     featuresTitle: "Funktion für Funktion",
     featuresNote:
-      "Keine Angabe heißt: Wir haben es auf den eigenen Seiten des Anbieters nicht gefunden, nicht dass es fehlt. Werte verlinken ihre Quelle.",
+      "Keine Angabe heißt: Wir haben es auf den eigenen Seiten des Anbieters nicht gefunden, nicht dass es fehlt. Nicht geprüft heißt: Für dieses Produkt haben wir es nicht untersucht. Werte verlinken ihre Quelle.",
     pricingTitle: "Preise",
     checked: (name: string, date: string) =>
       `Website und Dokumentation von ${name} zuletzt geprüft am ${date}.`,

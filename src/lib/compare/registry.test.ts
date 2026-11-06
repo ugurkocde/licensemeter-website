@@ -65,7 +65,7 @@ describe("product files", () => {
     (_, p) => {
       expect(p.checkedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       for (const [key, entry] of Object.entries(p.features)) {
-        if (entry.value === "unknown") continue;
+        if (entry.value === "unknown" || entry.value === "unchecked") continue;
         if (p.category === "microsoft" && entry.value === "no") continue;
         expect(entry.source, `${p.slug}.${key}`).toMatch(/^https:\/\//);
       }

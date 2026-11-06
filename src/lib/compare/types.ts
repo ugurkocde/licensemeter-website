@@ -26,7 +26,11 @@ export type Lang = "en" | "de";
 /** Copy every vendor page shows in both editions. */
 export type Localized = { en: string; de: string };
 
-export type FeatureValue = "yes" | "no" | "partial" | "unknown";
+/**
+ * "unknown": we looked at the vendor's own pages and found nothing.
+ * "unchecked": we did not look, so no claim either way.
+ */
+export type FeatureValue = "yes" | "no" | "partial" | "unknown" | "unchecked";
 
 export type FeatureEntry = {
   value: FeatureValue;

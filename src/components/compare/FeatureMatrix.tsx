@@ -12,11 +12,12 @@ const MARK: Record<FeatureValue, { glyph: string; className: string }> = {
   no: { glyph: "✕", className: "bg-subtle text-ink-faint" },
   partial: { glyph: "◐", className: "bg-gold-soft text-gold-text" },
   unknown: { glyph: "?", className: "bg-subtle text-ink-faint" },
+  unchecked: { glyph: "·", className: "text-ink-faint border-line border" },
 };
 
 const Value = ({ value, lang }: { value: FeatureValue; lang: Lang }) => (
   <span
-    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${MARK[value].className}`}
+    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${MARK[value].className}`}
   >
     <span aria-hidden="true">{MARK[value].glyph}</span>
     {compareCopy(lang).values[value]}
