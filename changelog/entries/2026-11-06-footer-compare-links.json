@@ -1,0 +1,8 @@
+{
+  "title": "Comparison pages linked from the footer in English and German",
+  "summary": "The site footer now links to the comparison overview and to three key comparisons: the best Microsoft 365 license tools, CoreView alternatives and LicenseMeter vs CIPP. German visitors can now reach the German comparison pages from every German page.",
+  "type": "improved",
+  "publishedOn": "2026-11-06",
+  "idempotencyKey": "licensemeter:footer-compare-links-2026-11-06",
+  "sourceUrl": "https://www.licensemeter.com/compare"
+}
