@@ -19,6 +19,7 @@ import { Testimonial } from "~/components/landing/Testimonial";
 import { buttonClass } from "~/components/ui";
 import { PLAN_PRICES } from "~/lib/pricing";
 import { SITE_DEFINITION, SITE_DESCRIPTION, SITE_TITLE } from "~/lib/site";
+import { DEMO_BOOKING_URL } from "~/lib/support";
 
 const STEPS = [
   {
@@ -280,13 +281,19 @@ export default function LandingPage() {
           <p className="text-ink-faint mt-5 text-xs">
             Free to use. No credit card. Read-only access.
           </p>
-          <p className="mt-2 text-xs">
+          <p className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs">
             <Link
               href="/pricing"
-              className="text-ink-soft hover:text-ink underline underline-offset-4"
+              className="text-ink-soft hover:text-ink -my-3 py-3 underline underline-offset-4"
             >
               See what Pro and MSP add
             </Link>
+            <a
+              href={DEMO_BOOKING_URL}
+              className="text-ink-soft hover:text-ink -my-3 py-3 underline underline-offset-4"
+            >
+              Book a 30-minute demo
+            </a>
           </p>
         </div>
       </section>

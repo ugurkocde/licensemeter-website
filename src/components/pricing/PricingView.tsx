@@ -33,7 +33,7 @@ import {
 } from "~/lib/pricingContent";
 import { ANNOUNCED_POST } from "~/lib/blog";
 import { planName } from "~/lib/planLabel";
-import { SUPPORT_MAILTO } from "~/lib/support";
+import { DEMO_BOOKING_URL, SUPPORT_MAILTO } from "~/lib/support";
 import { UPGRADE_PATH } from "~/lib/upgrade";
 
 /**
@@ -760,7 +760,7 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
             {c.closing.h2}
           </h2>
           <p className="mt-3 max-w-xl text-white/70">{c.closing.body}</p>
-          <div className="mt-6 grid gap-2.5 md:grid-cols-[max-content_max-content]">
+          <div className="mt-6 grid gap-2.5 md:grid-cols-[repeat(3,max-content)]">
             <a
               href={startHref}
               className="bg-brand-bright text-brand-deep inline-flex min-h-12 touch-manipulation items-center justify-center rounded-xl px-5 py-3 text-[15px] font-semibold transition hover:bg-white"
@@ -772,6 +772,12 @@ export const PricingView = ({ lang }: { lang: PricingLang }) => {
               className="inline-flex min-h-12 touch-manipulation items-center justify-center rounded-xl border border-white/30 px-5 py-3 text-[15px] font-medium text-white transition hover:border-white"
             >
               {c.cta.talk}
+            </a>
+            <a
+              href={DEMO_BOOKING_URL}
+              className="inline-flex min-h-12 touch-manipulation items-center justify-center rounded-xl border border-white/30 px-5 py-3 text-[15px] font-medium text-white transition hover:border-white"
+            >
+              {c.cta.demo}
             </a>
           </div>
         </div>
