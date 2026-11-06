@@ -3,6 +3,10 @@ import Link from "next/link";
 
 import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
 import { SignInButtons } from "~/components/SignInButtons";
+import { ComparisonTable } from "~/components/compare/ComparisonTable";
+import { CorrectionNote } from "~/components/compare/CorrectionNote";
+import { statusQuoSourcePath } from "~/lib/compare";
+import { powershellAudit } from "~/lib/compare/status-quo/powershell-audit";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
 
 export const metadata: Metadata = {
@@ -13,77 +17,6 @@ export const metadata: Metadata = {
 };
 
 const BASE = siteUrl();
-
-/*
- * Every LicenseMeter cell is grounded in the codebase: the rules in
- * ~/lib/rules.ts, the read-only scopes in ~/lib/scopes.ts, the graceful
- * degradation described in README.md, the price book, the acknowledge/reopen
- * finding actions and the CSV/PowerShell exports. No invented numbers.
- */
-const COMPARISON_ROWS = [
-  {
-    dimension: "Cost",
-    script:
-      "Free, apart from the hours it takes to write, run and interpret the output.",
-    licensemeter:
-      "Free for every tenant, including continuous monitoring and exports.",
-  },
-  {
-    dimension: "Data gathering",
-    script:
-      "Separate calls: Get-MgUser for accounts, Get-MgSubscribedSku for seat counts, audit logs for sign-ins, usage reports per workload. You join the results yourself.",
-    licensemeter:
-      "One nightly sync joins directory data, license assignments, sign-in activity and per-workload usage reports into a single per-user picture.",
-  },
-  {
-    dimension: "Sign-in activity",
-    script:
-      "signInActivity needs Entra ID P1. Without it, your script has to fall back to workload reports, and you have to build that fallback.",
-    licensemeter:
-      "Same Graph constraint, handled for you: without P1, inactivity detection automatically falls back to per-workload usage reports.",
-  },
-  {
-    dimension: "Euro figures",
-    script:
-      "SKU GUIDs and part numbers. Mapping them to what a seat actually costs is a manual lookup you repeat every run.",
-    licensemeter:
-      "Every finding carries a monthly euro figure from an editable per-tenant price book, prefilled with list-price estimates.",
-  },
-  {
-    dimension: "Cadence",
-    script:
-      "Runs when someone remembers to run it. Between runs, new leavers and new idle seats bill unnoticed.",
-    licensemeter:
-      "Nightly sync plus manual sync, with full sync history. Waste is monitored month after month, not sampled once.",
-  },
-  {
-    dimension: "Findings workflow",
-    script:
-      "Console output or a CSV you triage in a spreadsheet. Re-running the script forgets what you already decided.",
-    licensemeter:
-      "Findings persist with an acknowledge and reopen workflow, so the seats you have already handled stay handled across syncs.",
-  },
-  {
-    dimension: "Finance handoff",
-    script:
-      "You format the export yourself and explain the columns in the email.",
-    licensemeter:
-      "One-click CSV export of all findings with their monthly cost, written for the finance side of the renewal conversation.",
-  },
-  {
-    dimension: "Remediation",
-    script: "You write the cleanup script, and you own every line of it.",
-    licensemeter:
-      "Generates the PowerShell remediation script for you. Your IT reviews and runs it; LicenseMeter itself never writes to the tenant.",
-  },
-  {
-    dimension: "Beyond Microsoft 365",
-    script:
-      "Graph cmdlets stop at the tenant boundary. Adobe, Zoom or Salesforce seats need separate scripts against separate admin APIs.",
-    licensemeter:
-      "Connectors cross-check Adobe, Zoom, Atlassian, Salesforce, OpenAI, Anthropic, ChatGPT and Claude seats against Entra ID in the same pass.",
-  },
-] as const;
 
 /* Static breadcrumb; "<" escaped so nothing can terminate the script. */
 const COMPARE_LD = {
@@ -119,61 +52,15 @@ export default function PowershellAuditComparePage() {
         <code className="tnum font-mono text-base">Get-MgSubscribedSku</code>{" "}
         one-liners, you can audit licenses for free, and for a one-off check
         that is a perfectly good answer. This page is about what changes when
-        the audit has to be joined across signals, priced in euros and repeated
-        every month.
+        the audit has to be joined across signals, priced in your currency and
+        repeated every month.
       </p>
 
       <section className="mt-14">
         <h2 className="font-display text-2xl tracking-tight">
           Side by side, dimension by dimension
         </h2>
-        <div className="border-line mt-8 overflow-x-auto border">
-          <table className="w-full min-w-[640px] border-collapse text-sm">
-            <thead>
-              <tr className="border-line bg-card border-b text-left">
-                <th
-                  scope="col"
-                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
-                >
-                  Dimension
-                </th>
-                <th
-                  scope="col"
-                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
-                >
-                  Manual PowerShell
-                </th>
-                <th
-                  scope="col"
-                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
-                >
-                  LicenseMeter
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {COMPARISON_ROWS.map((row) => (
-                <tr
-                  key={row.dimension}
-                  className="border-line border-b last:border-b-0"
-                >
-                  <th
-                    scope="row"
-                    className="text-ink px-4 py-4 text-left align-top font-medium whitespace-nowrap"
-                  >
-                    {row.dimension}
-                  </th>
-                  <td className="text-ink-soft px-4 py-4 align-top leading-relaxed">
-                    {row.script}
-                  </td>
-                  <td className="text-ink-soft bg-card px-4 py-4 align-top leading-relaxed">
-                    {row.licensemeter}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ComparisonTable comparison={powershellAudit} />
       </section>
 
       <section className="border-line bg-card mt-14 border px-6 py-6">
@@ -227,7 +114,7 @@ export default function PowershellAuditComparePage() {
               Numbers finance accepts
             </h3>
             <p className="text-ink-soft mt-3 text-sm leading-relaxed">
-              A list of stale SKU assignments starts a debate; a monthly euro
+              A list of stale SKU assignments starts a debate; a monthly cost
               figure starts a decision. The per-tenant price book prices every
               finding, prefilled with list-price estimates and editable to your
               negotiated rates, and the CSV export hands finance the list in
@@ -255,6 +142,8 @@ export default function PowershellAuditComparePage() {
           </div>
         </div>
       </section>
+
+      <CorrectionNote repoPath={statusQuoSourcePath(powershellAudit.slug)} />
 
       {/* Final CTA band, same pattern as the landing page and /msp. */}
       <section className="border-line mt-14 border-t pt-10">

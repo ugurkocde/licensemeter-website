@@ -3,6 +3,10 @@ import Link from "next/link";
 
 import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
 import { SignInButtons } from "~/components/SignInButtons";
+import { ComparisonTable } from "~/components/compare/ComparisonTable";
+import { CorrectionNote } from "~/components/compare/CorrectionNote";
+import { statusQuoSourcePath } from "~/lib/compare";
+import { excelLicenseTracking } from "~/lib/compare/status-quo/excel-license-tracking";
 
 export const metadata: Metadata = {
   title: "LicenseMeter vs tracking licenses in Excel",
@@ -12,77 +16,6 @@ export const metadata: Metadata = {
 };
 
 const BASE = siteUrl();
-
-/*
- * The spreadsheet cells describe failure modes any owner of a license sheet
- * recognizes; no invented statistics. Every LicenseMeter cell is grounded in
- * the codebase: nightly sync with history, the rules in ~/lib/rules.ts, the
- * price book, the acknowledge/reopen workflow and the CSV/PowerShell exports.
- */
-const COMPARISON_ROWS = [
-  {
-    dimension: "Cost",
-    spreadsheet:
-      "Free, apart from the hours spent keeping it honest - and those hours are the whole product.",
-    licensemeter:
-      "Free for every tenant, including continuous monitoring and exports.",
-  },
-  {
-    dimension: "Freshness",
-    spreadsheet:
-      "Accurate on the day someone updates it, stale the day after. Licenses move without the sheet hearing about it.",
-    licensemeter:
-      "Synced nightly from the source systems, with manual sync on demand and a full sync history.",
-  },
-  {
-    dimension: "Activity signal",
-    spreadsheet:
-      "None. A spreadsheet records what someone typed, not whether the seat was ever opened.",
-    licensemeter:
-      "Joins license assignments with sign-in activity and per-workload usage reports, so idle and never-used seats surface with evidence.",
-  },
-  {
-    dimension: "Staff changes",
-    spreadsheet:
-      "Breaks silently. Leavers stay listed as active until someone remembers to edit the row, and nobody is notified that nobody did.",
-    licensemeter:
-      "Disabled accounts still holding paid seats surface automatically, including the Adobe, Zoom or other connected-app seats the same people kept.",
-  },
-  {
-    dimension: "Per-seat cost",
-    spreadsheet:
-      "Formulas someone built once and now has to update whenever prices, tiers or seat mixes change.",
-    licensemeter:
-      "An editable per-tenant price book prices every finding in euros per month, prefilled with list-price estimates.",
-  },
-  {
-    dimension: "Coverage",
-    spreadsheet:
-      "Whatever columns someone added. Every new vendor means another tab and more manual entry.",
-    licensemeter:
-      "Connectors cross-check Microsoft 365, Adobe, Zoom, Atlassian, Salesforce, OpenAI, Anthropic, ChatGPT and Claude seats against Entra ID in the same pass.",
-  },
-  {
-    dimension: "Findings workflow",
-    spreadsheet:
-      "Cell colors and comments, reconciled across the copies of the file that inevitably exist.",
-    licensemeter:
-      "Findings persist across syncs with an acknowledge and reopen workflow, so decisions survive the next update.",
-  },
-  {
-    dimension: "Finance handoff",
-    spreadsheet:
-      "Already a spreadsheet, which is genuinely convenient - but the numbers are only as current as the last edit.",
-    licensemeter:
-      "One-click CSV export of all findings with owner, rule and monthly euro cost, current as of last night's sync.",
-  },
-  {
-    dimension: "Remediation",
-    spreadsheet: "A to-do column. The actual cleanup happens somewhere else.",
-    licensemeter:
-      "Generates the PowerShell remediation script for the seats you choose. Your IT reviews and runs it; LicenseMeter itself never writes to the tenant.",
-  },
-] as const;
 
 /* Static breadcrumb; "<" escaped so nothing can terminate the script. */
 const COMPARE_LD = {
@@ -123,53 +56,7 @@ export default function ExcelLicenseTrackingComparePage() {
         <h2 className="font-display text-2xl tracking-tight">
           Side by side, dimension by dimension
         </h2>
-        <div className="border-line mt-8 overflow-x-auto border">
-          <table className="w-full min-w-[640px] border-collapse text-sm">
-            <thead>
-              <tr className="border-line bg-card border-b text-left">
-                <th
-                  scope="col"
-                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
-                >
-                  Dimension
-                </th>
-                <th
-                  scope="col"
-                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
-                >
-                  License spreadsheet
-                </th>
-                <th
-                  scope="col"
-                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
-                >
-                  LicenseMeter
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {COMPARISON_ROWS.map((row) => (
-                <tr
-                  key={row.dimension}
-                  className="border-line border-b last:border-b-0"
-                >
-                  <th
-                    scope="row"
-                    className="text-ink px-4 py-4 text-left align-top font-medium whitespace-nowrap"
-                  >
-                    {row.dimension}
-                  </th>
-                  <td className="text-ink-soft px-4 py-4 align-top leading-relaxed">
-                    {row.spreadsheet}
-                  </td>
-                  <td className="text-ink-soft bg-card px-4 py-4 align-top leading-relaxed">
-                    {row.licensemeter}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ComparisonTable comparison={excelLicenseTracking} />
       </section>
 
       <section className="border-line bg-card mt-14 border px-6 py-6">
@@ -220,7 +107,7 @@ export default function ExcelLicenseTrackingComparePage() {
               A price book that does the math
             </h3>
             <p className="text-ink-soft mt-3 text-sm leading-relaxed">
-              Every finding carries a euro-per-month figure from an editable
+              Every finding carries a monthly cost figure from an editable
               per-tenant price book, prefilled with list-price estimates and
               adjustable to your negotiated rates. When a price changes, you
               edit it once and every figure recalculates - no formula
@@ -261,6 +148,10 @@ export default function ExcelLicenseTrackingComparePage() {
           nightly sync take over from the uploads.
         </p>
       </section>
+
+      <CorrectionNote
+        repoPath={statusQuoSourcePath(excelLicenseTracking.slug)}
+      />
 
       {/* Final CTA band, same pattern as the landing page and /msp. */}
       <section className="border-line mt-14 border-t pt-10">
