@@ -204,7 +204,13 @@ export type PricingContent = {
   planDetails: string;
   soonTitle: string;
   newBadge: string;
-  cta: { free: string; marketplace: string; card: string; talk: string };
+  cta: {
+    free: string;
+    marketplace: string;
+    card: string;
+    talk: string;
+    demo: string;
+  };
   plans: Record<PlanId, PlanCopy>;
   /** The Software Metering spotlight under the plan cards. */
   metering: {
@@ -290,6 +296,7 @@ const en: PricingContent = {
     marketplace: "Buy on Microsoft Marketplace",
     card: "Pay by card with Polar",
     talk: "Talk to us",
+    demo: "Book a demo",
   },
   plans: {
     free: {
@@ -615,6 +622,7 @@ const de: PricingContent = {
     marketplace: "Im Microsoft Marketplace kaufen",
     card: "Per Karte über Polar zahlen",
     talk: "Sprechen Sie mit uns",
+    demo: "Demo buchen",
   },
   plans: {
     free: {

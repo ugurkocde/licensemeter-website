@@ -4,7 +4,7 @@ import Link from "next/link";
 import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
 import { buttonClass } from "~/components/ui";
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
-import { SUPPORT_MAILTO } from "~/lib/support";
+import { DEMO_BOOKING_URL, SUPPORT_MAILTO } from "~/lib/support";
 
 export const metadata: Metadata = {
   title: "For MSPs",
@@ -109,6 +109,12 @@ const Ctas = ({
         </button>
       </form>
     )}
+    <a
+      href={DEMO_BOOKING_URL}
+      className={buttonClass("secondary", "w-full sm:w-auto")}
+    >
+      Book a demo
+    </a>
     {signInOk && (
       <a
         href={SUPPORT_MAILTO}

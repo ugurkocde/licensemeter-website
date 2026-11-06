@@ -1,0 +1,8 @@
+{
+  "title": "Book a 30-minute demo from the website",
+  "summary": "You can now pick a time for a 30-minute walkthrough of LicenseMeter straight from the site. The booking link sits in the header, the mobile menu, the pricing page, the MSP page and at the end of the home page, in English and German.",
+  "type": "new",
+  "publishedOn": "2026-11-06",
+  "idempotencyKey": "licensemeter:book-a-demo-2026-11-06",
+  "sourceUrl": "https://www.licensemeter.com/pricing"
+}

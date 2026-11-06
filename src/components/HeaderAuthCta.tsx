@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { ButtonAnchor, ButtonLink } from "~/components/ui";
 import { SIGN_IN_PAGE } from "~/lib/signIn";
+import { DEMO_BOOKING_URL } from "~/lib/support";
 
 /**
  * Session-aware header CTA, resolved client-side so the marketing pages can
@@ -47,6 +48,14 @@ export const HeaderAuthCta = () => {
     </ButtonLink>
   ) : (
     <>
+      {/* Only the xl header has room for the demo link; below lg the drawer
+          carries it instead. */}
+      <a
+        href={DEMO_BOOKING_URL}
+        className="text-ink-soft hover:text-ink hidden min-h-11 items-center text-sm font-medium whitespace-nowrap underline-offset-4 hover:underline xl:inline-flex"
+      >
+        {german ? "Demo buchen" : "Book a demo"}
+      </a>
       {/* No room next to brand, bell, burger and CTA below sm, nor beside the
           full link row at lg: there the sign-in page is one click behind the
           CTA. A plain anchor, because the page is rendered per request. */}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { MarketingMobileNav } from "~/components/MarketingMobileNav";
+import { DEMO_BOOKING_URL } from "~/lib/support";
 
 const ENGLISH = [
   { href: "/#product-tour", label: "Product" },
@@ -35,13 +36,20 @@ const GERMAN = [
 
 export const MarketingNav = () => {
   const pathname = usePathname();
-  const items = pathname.startsWith("/de/") ? GERMAN : ENGLISH;
-  const navLabel = pathname.startsWith("/de/") ? "Hauptnavigation" : "Main";
+  const german = pathname.startsWith("/de/");
+  const items = german ? GERMAN : ENGLISH;
+  const navLabel = german ? "Hauptnavigation" : "Main";
+  /* HeaderAuthCta shows the demo link from xl up; below lg the drawer
+     carries it. */
+  const drawerItems = [
+    ...items,
+    { href: DEMO_BOOKING_URL, label: german ? "Demo buchen" : "Book a demo" },
+  ];
   return (
     <>
       <nav
         aria-label={navLabel}
-        className="hidden items-center gap-3.5 lg:flex xl:gap-5"
+        className="hidden items-center gap-3.5 lg:flex xl:gap-4"
       >
         {items.map((item) => (
           <Link
@@ -53,7 +61,7 @@ export const MarketingNav = () => {
           </Link>
         ))}
       </nav>
-      <MarketingMobileNav items={items} navLabel={navLabel} />
+      <MarketingMobileNav items={drawerItems} navLabel={navLabel} />
     </>
   );
 };
