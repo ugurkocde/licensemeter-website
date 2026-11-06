@@ -6,9 +6,12 @@
 -- strings, nothing inside the app); see validateSignupSource in
 -- src/lib/signIn.ts.
 --
--- Order matters: run this BEFORE deploying the release that writes the
--- column. Until it exists, the first-sign-in insert fails and is only logged,
--- so sign-in keeps working but sign-in statistics stop updating.
+-- Run this before deploying the release that writes the column. If the
+-- release goes out first, recordSignin (src/server/signinStats.ts) falls back
+-- to inserting without the column: sign-in and sign-in statistics keep
+-- working, but first sign-ins in that window are stored without a source and
+-- later sign-ins never fill it in. After deploying, check that a new sign-in
+-- from a public page records signup_source.
 --
 -- Mirrors the Drizzle schema in src/server/db/schema.ts and the self-host
 -- migration docker/migrations/0018_signup_source.sql. The column inherits the
