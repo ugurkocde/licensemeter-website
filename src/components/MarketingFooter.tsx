@@ -43,7 +43,7 @@ const ENGLISH = {
         ["/waste", "Waste patterns"],
         ["/sample-report", "Sample report"],
         ["/roi", "ROI calculator"],
-        ["/compare/m365-admin-center", "vs M365 admin center"],
+        ["/compare", "Compare"],
       ],
     },
     {

@@ -3,14 +3,21 @@ import { connection } from "next/server";
 
 import { siteUrl } from "~/env";
 import { WASTE_EXPLAINERS } from "~/app/(marketing)/waste/content";
+import { templatedCompareSlugs } from "~/lib/compare/registry";
 import { BLOG_POSTS } from "~/lib/blog";
 import { CONNECTOR_GUIDES } from "~/lib/connectorGuides";
 
 /** Legal pages: indexable but low priority, they rarely change. */
 const LOW_PRIORITY = new Set(["/impressum", "/privacy", "/dpa", "/de/dpa"]);
 
+/** Templated compare pages; each has an English and a German edition. */
+const COMPARE_PATHS = [
+  "/compare",
+  ...templatedCompareSlugs().map((slug) => `/compare/${slug}`),
+];
+
 /** Pages with an English and a German edition; both list each other. */
-const LOCALIZED = ["/security", "/trust-center", "/dpa"];
+const LOCALIZED = ["/security", "/trust-center", "/dpa", ...COMPARE_PATHS];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (process.env.SELF_HOSTED === "true") {
@@ -25,6 +32,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/de/pricing",
     "/roi",
     "/sample-report",
+    ...COMPARE_PATHS.flatMap((path) => [path, `/de${path}`]),
     "/compare/powershell-audit",
     "/compare/m365-admin-center",
     "/compare/excel-license-tracking",

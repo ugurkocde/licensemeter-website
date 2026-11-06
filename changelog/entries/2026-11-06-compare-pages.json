@@ -1,0 +1,8 @@
+{
+  "title": "Honest comparisons with CoreView, CIPP, Zylo, Torii and other license tools",
+  "summary": "The new Compare section lines LicenseMeter up against seven other products and five roundups, including the best Microsoft 365 and open-source license tools and how to find unused Copilot licenses. Every page says where the other tool is the better choice, links a source for each claim, and is available in English and German.",
+  "type": "new",
+  "publishedOn": "2026-11-06",
+  "idempotencyKey": "licensemeter:compare-pages-2026-11-06",
+  "sourceUrl": "https://www.licensemeter.com/compare"
+}

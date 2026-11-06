@@ -2,6 +2,7 @@ import { siteUrl } from "~/env";
 import { BLOG_POSTS } from "~/lib/blog";
 import { CONNECTOR_GUIDES } from "~/lib/connectorGuides";
 import { SITE_DEFINITION } from "~/lib/site";
+import { HEAD_TO_HEAD, ROUNDUPS } from "~/lib/compare/registry";
 
 /* Curated site map for LLMs (llms.txt convention): a definition, the facts
  * worth citing, and where the details live. Served as a route handler: a
@@ -31,8 +32,14 @@ Operated by Ugurlabs UG and maintained by Ugur Koc, Microsoft MVP for Intune and
 - [ROI calculator](${base}/roi): estimate the monthly license waste for a tenant by seat count and per-seat cost, computed entirely in the browser
 - [Waste patterns](${base}/waste): explainer per detection rule (disabled accounts still licensed, never active, inactive 90+ days, unassigned seats, unused Copilot, licensed guests) with manual PowerShell detection and how LicenseMeter automates it
 - [Sample report](${base}/sample-report): what a first scan surfaces, walked through on the synthetic demo tenant (clearly labeled; not a customer story)
+- [Compare](${base}/compare): every comparison below, plus head-to-heads with ${HEAD_TO_HEAD()
+    .map((p) => p.name)
+    .join(
+      ", ",
+    )}; each states where the other product is stronger and links a source for every claim (German version at ${base}/de/compare)
+${ROUNDUPS.map((r) => `- [${r.title.en}](${base}/compare/${r.slug}): ${r.description.en}`).join("\n")}
 - [vs PowerShell audit](${base}/compare/powershell-audit): honest comparison of a manual Get-MgUser/Get-MgSubscribedSku audit with continuous joined-signal detection
-- [vs the M365 admin center](${base}/compare/m365-admin-center): what the admin center covers and what it does not (per-seat euro figures, joined activity, offboarding-leak detection)
+- [vs the M365 admin center](${base}/compare/m365-admin-center): what the admin center covers and what it does not (per-seat cost figures, joined activity, offboarding-leak detection)
 - [vs Excel tracking](${base}/compare/excel-license-tracking): why license spreadsheets go stale and what live sync plus activity-joined findings add
 - [Security](${base}/security): granted scopes, stored data, residency, subprocessors, DPA
 - [Trust Center](${base}/trust-center): how data is accessed, where it lives, who processes it, and the documents behind it (German version at ${base}/de/trust-center)
