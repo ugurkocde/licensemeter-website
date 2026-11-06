@@ -38,11 +38,17 @@ describe("recordSignin", () => {
 
   it("keeps counting when the signup_source column does not exist yet", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const { db } = await setup(false);
+    const { client, db } = await setup(false);
     const base = { oid: "o2", tid: "t1", upn: "b@example.test" };
     expect(await recordSignin(db, { ...base, signupSource: "/compare" })).toBe(
       1,
     );
     expect(await recordSignin(db, { ...base, signupSource: null })).toBe(2);
+    const { rows } = await client.query(
+      "select oid, tid, upn, signin_count from seen_signins",
+    );
+    expect(rows).toEqual([
+      { oid: "o2", tid: "t1", upn: "b@example.test", signin_count: 2 },
+    ]);
   });
 });
