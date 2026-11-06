@@ -50,6 +50,7 @@ export const COMPARE_COPY = {
       "Connect read-only and the free scan prices the disabled, inactive and unassigned seats in your tenant. The security overview lists every permission up front.",
     ctaPrimary: "Run my free scan",
     ctaSample: "Open the sample tenant",
+    ctaRequestAccess: "Request scan access",
     ctaNote: "Free, with no time limit. No credit card, read-only access.",
   },
   de: {
@@ -100,6 +101,8 @@ export const COMPARE_COPY = {
       "Verbinden Sie sich nur lesend, und der kostenlose Scan beziffert deaktivierte, inaktive und nicht zugewiesene Lizenzen in Ihrem Tenant. Die Sicherheitsübersicht nennt jede Berechtigung vorab.",
     ctaPrimary: "Kostenlosen Scan starten",
     ctaSample: "Beispiel-Tenant öffnen",
+    /** Same fallback SignInButtons shows in English when sign-in is off. */
+    ctaRequestAccess: "Scan-Zugang anfragen",
     ctaNote:
       "Kostenlos, ohne Zeitlimit. Keine Kreditkarte, nur lesender Zugriff.",
   },

@@ -33,7 +33,7 @@ export const CompareCta = ({ lang }: { lang: Lang }) => {
               href={canSignIn ? signInPath() : "/#get-started"}
               className={buttonClass("primary", "w-full sm:w-auto")}
             >
-              {t.ctaPrimary}
+              {canSignIn ? t.ctaPrimary : t.ctaRequestAccess}
             </a>
             {demo ? (
               <form action="/api/auth/demo" method="post">
