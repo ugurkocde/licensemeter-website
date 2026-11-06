@@ -3,6 +3,10 @@ import Link from "next/link";
 
 import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
 import { SignInButtons } from "~/components/SignInButtons";
+import { ComparisonTable } from "~/components/compare/ComparisonTable";
+import { CorrectionNote } from "~/components/compare/CorrectionNote";
+import { statusQuoSourcePath } from "~/lib/compare";
+import { m365AdminCenter } from "~/lib/compare/status-quo/m365-admin-center";
 
 export const metadata: Metadata = {
   title: "LicenseMeter vs the Microsoft 365 admin center",
@@ -12,87 +16,6 @@ export const metadata: Metadata = {
 };
 
 const BASE = siteUrl();
-
-/*
- * Every admin-center cell is grounded in Microsoft's own documentation
- * (learn.microsoft.com: activity-reports overview, active-users-ww,
- * assign-licenses-to-users, reports-show-anonymous-user-name) and every
- * LicenseMeter cell in the codebase: the rules in ~/lib/rules.ts, the price
- * book, the digest and monthly-report crons, and the CSV/PowerShell exports.
- * No invented numbers.
- */
-const COMPARISON_ROWS = [
-  {
-    dimension: "Cost",
-    adminCenter:
-      "Included with every tenant. The only spend is the admin time it takes to walk the reports.",
-    licensemeter:
-      "Free for every tenant, including continuous monitoring and exports.",
-  },
-  {
-    dimension: "Assignment counts",
-    adminCenter:
-      "Authoritative. Billing > Licenses is the source of truth for assigned and unassigned seats per product.",
-    licensemeter:
-      "Read nightly from the same Graph data. Unassigned paid seats do not just appear in a count: they become priced shelfware findings.",
-  },
-  {
-    dimension: "Activity per user",
-    adminCenter:
-      "Reports > Usage shows last-activity dates per workload, one report at a time. Microsoft documents that you cannot generate a report for a single account listing which services it uses.",
-    licensemeter:
-      "One nightly sync joins directory status, license assignments, sign-in activity and Exchange, OneDrive, SharePoint and Teams usage into a single per-user picture.",
-  },
-  {
-    dimension: "User names in reports",
-    adminCenter:
-      "Concealed by default since September 2021. A Global Administrator can re-enable identifiable names tenant-wide under Org Settings > Reports.",
-    licensemeter:
-      "Reads the same reports, so the same setting applies. With names concealed, usage findings degrade to aggregate counts while directory-based findings stay per user, and the settings page explains the switch.",
-  },
-  {
-    dimension: "Euro figures",
-    adminCenter:
-      "License counts and usage counts, with no cost attached to either. There is no Microsoft API that exposes your negotiated seat prices.",
-    licensemeter:
-      "Every finding carries a monthly euro figure from an editable per-tenant price book, prefilled with list-price estimates.",
-  },
-  {
-    dimension: "Cadence and alerts",
-    adminCenter:
-      "The reports are there when you go and look. Nothing emails you when a new idle seat starts billing.",
-    licensemeter:
-      "Nightly sync, a weekly digest with the waste number and the largest open findings, and a monthly board-ready PDF report.",
-  },
-  {
-    dimension: "Offboarding leaks",
-    adminCenter:
-      "You can filter sign-in-blocked users on the Active users page and check their licenses one by one. Nothing surfaces the pattern for you.",
-    licensemeter:
-      "Disabled accounts still holding paid seats surface automatically as priced findings, including the connected-app seats the same people still hold.",
-  },
-  {
-    dimension: "Finance handoff",
-    adminCenter:
-      "Each usage report exports its own CSV, per workload, anonymous by default and without cost columns.",
-    licensemeter:
-      "One CSV of all findings with owner, rule and monthly euro cost, written for the finance side of the renewal conversation.",
-  },
-  {
-    dimension: "Remediation",
-    adminCenter:
-      "Point and click, seat by seat, or scripts you write and maintain yourself.",
-    licensemeter:
-      "Generates the PowerShell remediation script for the seats you choose. Your IT reviews and runs it; LicenseMeter itself never writes to the tenant.",
-  },
-  {
-    dimension: "Beyond Microsoft 365",
-    adminCenter:
-      "Stops at the Microsoft bill. Adobe, Zoom, Atlassian, Salesforce and the AI consoles each have their own admin pages.",
-    licensemeter:
-      "Connectors cross-check Adobe, Zoom, Atlassian, Salesforce, OpenAI, Anthropic, ChatGPT and Claude seats against Entra ID in the same pass.",
-  },
-] as const;
 
 /* Static breadcrumb; "<" escaped so nothing can terminate the script. */
 const COMPARE_LD = {
@@ -134,53 +57,7 @@ export default function M365AdminCenterComparePage() {
         <h2 className="font-display text-2xl tracking-tight">
           Side by side, dimension by dimension
         </h2>
-        <div className="border-line mt-8 overflow-x-auto border">
-          <table className="w-full min-w-[640px] border-collapse text-sm">
-            <thead>
-              <tr className="border-line bg-card border-b text-left">
-                <th
-                  scope="col"
-                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
-                >
-                  Dimension
-                </th>
-                <th
-                  scope="col"
-                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
-                >
-                  M365 admin center
-                </th>
-                <th
-                  scope="col"
-                  className="text-ink-faint px-4 py-3 text-xs font-medium tracking-[0.18em] uppercase"
-                >
-                  LicenseMeter
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {COMPARISON_ROWS.map((row) => (
-                <tr
-                  key={row.dimension}
-                  className="border-line border-b last:border-b-0"
-                >
-                  <th
-                    scope="row"
-                    className="text-ink px-4 py-4 text-left align-top font-medium whitespace-nowrap"
-                  >
-                    {row.dimension}
-                  </th>
-                  <td className="text-ink-soft px-4 py-4 align-top leading-relaxed">
-                    {row.adminCenter}
-                  </td>
-                  <td className="text-ink-soft bg-card px-4 py-4 align-top leading-relaxed">
-                    {row.licensemeter}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ComparisonTable comparison={m365AdminCenter} />
       </section>
 
       <section className="border-line bg-card mt-14 border px-6 py-6">
@@ -193,7 +70,7 @@ export default function M365AdminCenterComparePage() {
           adoption moved, a tenant small enough to eyeball - the admin center
           does all of that, included and authoritative. Every number
           LicenseMeter shows starts life in the same Graph data the admin center
-          reads. The difference is not the data; it is the join, the euro figure
+          reads. The difference is not the data; it is the join, the cost figure
           and the watching.
         </p>
       </section>
@@ -219,14 +96,15 @@ export default function M365AdminCenterComparePage() {
           </div>
           <div>
             <h3 className="font-display text-xl tracking-tight">
-              A euro figure per wasted seat
+              A cost figure per wasted seat
             </h3>
             <p className="text-ink-soft mt-3 text-sm leading-relaxed">
               Usage reports carry counts, not costs, and no Microsoft API
               exposes the prices your tenant actually pays. LicenseMeter closes
               that gap with an editable per-tenant price book, prefilled with
               list-price estimates and adjustable to your negotiated rates, so
-              every finding arrives as euros per month rather than a row count.
+              every finding arrives as a monthly cost in your currency rather
+              than a row count.
             </p>
           </div>
           <div>
@@ -260,6 +138,8 @@ export default function M365AdminCenterComparePage() {
         </div>
       </section>
 
+      <CorrectionNote repoPath={statusQuoSourcePath(m365AdminCenter.slug)} />
+
       {/* Final CTA band, same pattern as the landing page and /msp. */}
       <section className="border-line mt-14 border-t pt-10">
         <h2 className="font-display text-3xl tracking-tight text-balance">
@@ -267,7 +147,7 @@ export default function M365AdminCenterComparePage() {
         </h2>
         <p className="text-ink-soft mt-3 max-w-xl leading-relaxed">
           Connect read-only and the free scan turns the reports you already have
-          into per-seat findings with a monthly euro figure attached. The{" "}
+          into per-seat findings with a monthly cost attached. The{" "}
           <Link
             href="/security"
             className="text-ink hover:text-brand-text font-medium underline underline-offset-4"
