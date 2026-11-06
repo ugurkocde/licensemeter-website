@@ -18,8 +18,8 @@ export const zyloAlternatives: Roundup = {
       de: "Zylo baut aus Finanzdaten und Integrationen ein zentrales Verzeichnis der Software-Ausgaben. Die Alternativen setzen andere Schwerpunkte: Torii auf Erkennung und Automatisierung, BetterCloud auf Abläufe rund um Konten, Vertice auf Einkauf und Verhandlung, und LicenseMeter auf einen kostenlosen, nur lesenden Blick auf Microsoft 365 und einige weitere Anwendungen.",
     },
     {
-      en: "The SaaS management market moved a lot in 2026: Freshworks agreed to buy Torii, CoreStack bought BetterCloud, and Vertice bought Vendr. Each entry below says where things stood when we checked.",
-      de: "Der Markt für SaaS-Management hat sich 2026 stark bewegt: Freshworks hat die Übernahme von Torii vereinbart, CoreStack hat BetterCloud übernommen, und Vertice hat Vendr gekauft. Jeder Eintrag unten nennt den Stand bei unserer Prüfung.",
+      en: "The SaaS management market moved a lot in 2026: Freshworks agreed to buy Torii, CoreStack announced its acquisition of BetterCloud, and Vertice announced its acquisition of Vendr. Each entry below says where things stood when we checked.",
+      de: "Der Markt für SaaS-Management hat sich 2026 stark bewegt: Freshworks hat die Übernahme von Torii vereinbart, CoreStack hat die Übernahme von BetterCloud bekanntgegeben, und Vertice hat die Übernahme von Vendr bekanntgegeben. Jeder Eintrag unten nennt den Stand bei unserer Prüfung.",
     },
   ],
   criteria: [

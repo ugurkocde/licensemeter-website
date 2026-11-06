@@ -5,8 +5,8 @@ const n = NON_MICROSOFT_CONNECTORS.length;
 
 /** Criteria every roundup applies, so the pages read as one method. */
 export const SOURCED: Localized = {
-  en: "Its own website, documentation or repository says what it does, so every cell links to a source. Where we found nothing, the table says Not stated.",
-  de: "Die eigene Website, Dokumentation oder das Repository beschreibt, was es kann, sodass jede Zelle eine Quelle verlinkt. Wo wir nichts fanden, steht Keine Angabe.",
+  en: "Its own website, documentation or repository says what it does, and cells link to that source where one applies. Where we found nothing, the table says Not stated.",
+  de: "Die eigene Website, Dokumentation oder das Repository beschreibt, was es kann, und Zellen verlinken diese Quelle, wo es eine gibt. Wo wir nichts fanden, steht Keine Angabe.",
 };
 
 export const CURRENT: Localized = {

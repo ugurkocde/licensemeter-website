@@ -65,7 +65,7 @@ export const snipeIt: Product = {
       },
       source: LICENSES,
     },
-    copilotUsage: { value: "no", note: noM365, source: PRODUCT },
+    copilotUsage: { value: "unknown", note: noM365, source: PRODUCT },
     costPerFinding: {
       value: "no",
       note: {

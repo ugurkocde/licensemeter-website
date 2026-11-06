@@ -40,7 +40,7 @@ export const CompareCta = ({ lang }: { lang: Lang }) => {
                 <button
                   className={buttonClass("secondary", "w-full sm:w-auto")}
                 >
-                  Beispiel-Tenant öffnen
+                  {t.ctaSample}
                 </button>
               </form>
             ) : (
@@ -48,10 +48,28 @@ export const CompareCta = ({ lang }: { lang: Lang }) => {
                 href="/#sample-tenant"
                 className={buttonClass("secondary", "w-full sm:w-auto")}
               >
-                Beispiel-Tenant öffnen
+                {t.ctaSample}
               </Link>
             )}
           </div>
+        )}
+        {lang === "de" && canSignIn && (
+          // German counterpart of the notice SignInButtons shows in English.
+          <p className="text-ink-faint mt-3 text-xs">
+            Mit der Anmeldung stimmen Sie den{" "}
+            <Link href="/terms" className="hover:text-ink underline">
+              Nutzungsbedingungen (EN)
+            </Link>{" "}
+            einschließlich des{" "}
+            <Link href="/de/dpa" className="hover:text-ink underline">
+              Auftragsverarbeitungsvertrags
+            </Link>{" "}
+            sowie der{" "}
+            <Link href="/privacy" className="hover:text-ink underline">
+              Datenschutzerklärung (EN)
+            </Link>{" "}
+            zu.
+          </p>
         )}
         <p className="text-ink-faint mt-3 text-xs">{t.ctaNote}</p>
       </div>
