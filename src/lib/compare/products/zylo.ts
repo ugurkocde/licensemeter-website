@@ -2,7 +2,7 @@ import type { Product } from "../types";
 
 const PRICING = "https://zylo.com/pricing";
 const STACK = "https://zylo.com/blog/does-zylo-work-with-your-tech-stack";
-const SAVINGS = "https://zylo.com/product/savings-center/";
+const PRODUCT = "https://zylo.com/product";
 
 export const zylo: Product = {
   slug: "zylo",
@@ -25,8 +25,8 @@ export const zylo: Product = {
       de: "Preis-Benchmarks und ein Verhandlungsservice für Verlängerungen.",
     },
     {
-      en: "Maps licenses to contracts, benchmarks and usage to size and rank savings, with a renewal calendar.",
-      de: "Ordnet Lizenzen Verträgen, Benchmarks und Nutzung zu, um Einsparungen zu beziffern und zu priorisieren, mit Verlängerungskalender.",
+      en: "Starts from actual payments rather than sign-in logs and ranks every upcoming renewal by savings potential, with a renewal calendar.",
+      de: "Geht von tatsächlichen Zahlungen statt Anmeldeprotokollen aus und ordnet jede anstehende Verlängerung nach Sparpotenzial, mit Verlängerungskalender.",
     },
     {
       en: "Acts on findings: removes or downgrades Office 365 licenses inside Zylo and runs reclamation workflows that survey users first.",
@@ -49,8 +49,8 @@ export const zylo: Product = {
       de: "Der Großteil Ihrer Verschwendung liegt in Microsoft 365 und Copilot, und Sie wollen sie heute finden und beziffern, kostenlos.",
     },
     {
-      en: "You need EU hosting, a self-hosted install, or read-only access.",
-      de: "Sie brauchen Hosting in der EU, eine selbst betriebene Installation oder nur lesenden Zugriff.",
+      en: "You want a read-only tool you can self-host, or run free on EU-hosted licensemeter.com.",
+      de: "Sie wollen ein nur lesendes Werkzeug, das Sie selbst betreiben oder kostenlos auf dem in der EU gehosteten licensemeter.com nutzen.",
     },
   ],
   pricing: {
@@ -83,20 +83,20 @@ export const zylo: Product = {
       source: STACK,
     },
     costPerFinding: {
-      value: "yes",
+      value: "partial",
       note: {
-        en: "The Savings Center estimates the financial impact of each savings opportunity.",
-        de: "Das Savings Center schätzt die finanzielle Wirkung jeder Einsparmöglichkeit.",
+        en: "Ranks renewals by savings potential and totals identified savings; a figure on each unused license is not shown.",
+        de: "Ordnet Verlängerungen nach Sparpotenzial und summiert erkannte Einsparungen; eine Zahl je ungenutzter Lizenz wird nicht gezeigt.",
       },
-      source: SAVINGS,
+      source: PRODUCT,
     },
     customPrices: {
       value: "yes",
       note: {
-        en: "Unit costs come from your own contracts, transactions and spend.",
-        de: "Stückkosten stammen aus Ihren eigenen Verträgen, Buchungen und Ausgaben.",
+        en: "Starts from your actual payments rather than list prices, and shows cost per user.",
+        de: "Geht von Ihren tatsächlichen Zahlungen statt von Listenpreisen aus und zeigt Kosten je Person.",
       },
-      source: SAVINGS,
+      source: PRODUCT,
     },
     nonMicrosoftSaas: {
       value: "yes",
@@ -147,10 +147,10 @@ export const zylo: Product = {
       source: "https://zylo.com/blog/optimize-microsoft-office-365-licenses",
     },
     selfHost: {
-      value: "no",
+      value: "unknown",
       note: {
-        en: "Hosted SaaS; no self-hosted edition documented.",
-        de: "Gehostetes SaaS; keine selbst betriebene Edition dokumentiert.",
+        en: "Sold as hosted SaaS; a self-hosted edition is not documented.",
+        de: "Als gehostetes SaaS angeboten; eine selbst betriebene Edition ist nicht dokumentiert.",
       },
       source: PRICING,
     },
@@ -184,10 +184,10 @@ export const zylo: Product = {
       source: PRICING,
     },
     euHosting: {
-      value: "no",
+      value: "unknown",
       note: {
-        en: "Personal data is processed in the United States under the EU-U.S. Data Privacy Framework; no EU region documented.",
-        de: "Personenbezogene Daten werden in den USA unter dem EU-U.S. Data Privacy Framework verarbeitet; keine EU-Region dokumentiert.",
+        en: "Its privacy policy describes US processing of personal data Zylo collects; where customer data is hosted is not stated.",
+        de: "Die Datenschutzerklärung beschreibt die Verarbeitung von Daten, die Zylo erhebt, in den USA; wo Kundendaten gehostet werden, ist nicht angegeben.",
       },
       source: "https://zylo.com/privacy-policy",
     },

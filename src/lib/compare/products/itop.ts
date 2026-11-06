@@ -63,8 +63,11 @@ export const itop: Product = {
       source: GRAPH,
     },
     copilotUsage: {
-      value: "no",
-      note: { en: "Not found.", de: "Nicht gefunden." },
+      value: "unknown",
+      note: {
+        en: "Not found in its documentation.",
+        de: "In der Dokumentation nicht gefunden.",
+      },
       source: GRAPH,
     },
     costPerFinding: {

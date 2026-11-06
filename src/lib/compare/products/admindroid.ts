@@ -97,7 +97,7 @@ export const admindroid: Product = {
       value: "partial",
       note: {
         en: "A separate free PowerShell script estimates monthly savings; the main product's reports were not shown with cost figures.",
-        de: "Ein separates kostenloses PowerShell-Skript schätzt monatliche Einsparungen; die Berichte des Hauptprodukts zeigen keine Kosten.",
+        de: "Ein separates kostenloses PowerShell-Skript schätzt monatliche Einsparungen; für die Berichte des Hauptprodukts haben wir keine Darstellung mit Kostenangaben gefunden.",
       },
       source: SCRIPT,
     },
@@ -126,15 +126,18 @@ export const admindroid: Product = {
       source: PRICING,
     },
     aiApiSpend: {
-      value: "no",
-      note: { en: "Not described.", de: "Nicht beschrieben." },
+      value: "unknown",
+      note: {
+        en: "Not described on its pages.",
+        de: "Auf den Seiten nicht beschrieben.",
+      },
       source: PRICING,
     },
     endpointMetering: {
-      value: "no",
+      value: "unknown",
       note: {
-        en: "A workstation add-on audits security events, not software usage.",
-        de: "Ein Zusatzmodul prüft Sicherheitsereignisse auf Arbeitsplätzen, nicht die Software-Nutzung.",
+        en: "A workstation add-on audits security events; software usage metering is not described.",
+        de: "Ein Zusatzmodul prüft Sicherheitsereignisse auf Arbeitsplätzen; eine Messung der Software-Nutzung ist nicht beschrieben.",
       },
       source: LICENSING_FAQ,
     },

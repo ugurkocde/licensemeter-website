@@ -38,8 +38,8 @@ export const zyloAlternatives: Roundup = {
         de: "Erkennung von Schatten-IT und automatisierte Ein-, Wechsel- und Austritts-Workflows.",
       },
       verdict: {
-        en: "Hundreds of integrations, no-code workflows that reclaim seats, and Copilot reporting per person. Quote-based, with no EU region documented.",
-        de: "Hunderte Integrationen, No-Code-Workflows zum Zurückholen von Lizenzen und Copilot-Berichte je Person. Preise auf Anfrage, keine EU-Region dokumentiert.",
+        en: "Hundreds of integrations, no-code workflows that reclaim seats, and Copilot reporting per person. Quote-based.",
+        de: "Hunderte Integrationen, No-Code-Workflows zum Zurückholen von Lizenzen und Copilot-Berichte je Person. Preise auf Anfrage.",
       },
     },
     {

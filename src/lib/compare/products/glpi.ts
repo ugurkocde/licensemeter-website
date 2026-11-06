@@ -61,7 +61,7 @@ export const glpi: Product = {
       source: ENTRA,
     },
     copilotUsage: {
-      value: "no",
+      value: "unknown",
       note: { en: "Not documented.", de: "Nicht dokumentiert." },
       source: ENTRA,
     },
@@ -82,7 +82,7 @@ export const glpi: Product = {
       source: SOFTWARE,
     },
     nonMicrosoftSaas: {
-      value: "no",
+      value: "unknown",
       note: {
         en: "No SaaS seat connectors documented.",
         de: "Keine Konnektoren für SaaS-Lizenzen dokumentiert.",

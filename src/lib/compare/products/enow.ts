@@ -93,15 +93,18 @@ export const enow: Product = {
       source: HOME,
     },
     aiApiSpend: {
-      value: "no",
-      note: { en: "Not described.", de: "Nicht beschrieben." },
+      value: "unknown",
+      note: {
+        en: "Not described on its pages.",
+        de: "Auf den Seiten nicht beschrieben.",
+      },
       source: HOME,
     },
     endpointMetering: {
-      value: "no",
+      value: "unknown",
       note: {
-        en: "Monitors service performance, not software usage.",
-        de: "Überwacht die Leistung der Dienste, nicht die Software-Nutzung.",
+        en: "Monitors service performance; software usage metering is not described.",
+        de: "Überwacht die Leistung der Dienste; eine Messung der Software-Nutzung ist nicht beschrieben.",
       },
       source: HOME,
     },

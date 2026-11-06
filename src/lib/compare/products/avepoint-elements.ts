@@ -124,15 +124,18 @@ export const avepointElements: Product = {
       source: GUIDE,
     },
     aiApiSpend: {
-      value: "no",
-      note: { en: "Not among the modules.", de: "Nicht unter den Modulen." },
+      value: "unknown",
+      note: {
+        en: "Not described on its pages.",
+        de: "Auf den Seiten nicht beschrieben.",
+      },
       source: ELEMENTS,
     },
     endpointMetering: {
-      value: "no",
+      value: "unknown",
       note: {
-        en: "Device management covers lifecycle and security, not software usage.",
-        de: "Die Geräteverwaltung deckt Lebenszyklus und Sicherheit ab, nicht die Software-Nutzung.",
+        en: "Device management covers lifecycle and security; software usage metering is not described.",
+        de: "Die Geräteverwaltung deckt Lebenszyklus und Sicherheit ab; eine Messung der Software-Nutzung ist nicht beschrieben.",
       },
       source: ELEMENTS,
     },

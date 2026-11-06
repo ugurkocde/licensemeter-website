@@ -103,7 +103,21 @@ export const FeatureMatrix = ({
                       key={p.slug}
                       className={`text-ink-soft px-4 py-3 align-top leading-relaxed ${p.category === "licensemeter" ? "bg-card" : ""}`}
                     >
-                      <Value value={entry?.value ?? "unknown"} lang={lang} />
+                      {!notes && entry?.source ? (
+                        // Compact grid: the value itself links to its source,
+                        // with the note as hover text and accessible name.
+                        <a
+                          href={entry.source}
+                          rel="nofollow noopener"
+                          title={entry.note[lang]}
+                          aria-label={`${t.values[entry.value]}: ${entry.note[lang]} (${t.source})`}
+                          className="rounded-full hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2"
+                        >
+                          <Value value={entry.value} lang={lang} />
+                        </a>
+                      ) : (
+                        <Value value={entry?.value ?? "unknown"} lang={lang} />
+                      )}
                       {notes && entry && (
                         <p className="mt-2 text-[13px]">
                           {entry.note[lang]}

@@ -119,18 +119,18 @@ export const coreview: Product = {
       source: PRICING,
     },
     aiApiSpend: {
-      value: "no",
+      value: "unknown",
       note: {
-        en: "Not listed in any plan or module.",
-        de: "In keinem Tarif oder Modul aufgeführt.",
+        en: "Not described on its pages.",
+        de: "Auf den Seiten nicht beschrieben.",
       },
       source: PRICING,
     },
     endpointMetering: {
-      value: "no",
+      value: "unknown",
       note: {
-        en: "Intune reporting and management, no software usage metering described.",
-        de: "Intune-Berichte und -Verwaltung, keine Messung der Software-Nutzung beschrieben.",
+        en: "Intune reporting and management; software usage metering is not described.",
+        de: "Intune-Berichte und -Verwaltung; eine Messung der Software-Nutzung ist nicht beschrieben.",
       },
       source: PRICING,
     },

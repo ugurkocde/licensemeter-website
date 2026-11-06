@@ -52,8 +52,8 @@ export const torii: Product = {
       de: "Sie wollen Microsoft-365-Verschwendung finden und beziffern, ohne Vertriebsprozess und ohne Plattform-Budget.",
     },
     {
-      en: "You need EU hosting, a self-hosted install, or read-only access.",
-      de: "Sie brauchen Hosting in der EU, eine selbst betriebene Installation oder nur lesenden Zugriff.",
+      en: "You want a read-only tool you can self-host, or run free on EU-hosted licensemeter.com.",
+      de: "Sie wollen ein nur lesendes Werkzeug, das Sie selbst betreiben oder kostenlos auf dem in der EU gehosteten licensemeter.com nutzen.",
     },
   ],
   pricing: {
@@ -189,10 +189,10 @@ export const torii: Product = {
       source: "https://www.toriihq.com/partners",
     },
     euHosting: {
-      value: "no",
+      value: "unknown",
       note: {
-        en: "Data is processed in the United States, Israel, Canada and elsewhere; no EU region documented.",
-        de: "Daten werden in den USA, Israel, Kanada und anderswo verarbeitet; keine EU-Region dokumentiert.",
+        en: "Its privacy notice excludes customer data, and we found no statement on where customer data is hosted.",
+        de: "Die Datenschutzerklärung schließt Kundendaten aus, und wir fanden keine Angabe, wo Kundendaten gehostet werden.",
       },
       source: "https://www.toriihq.com/privacy-notice",
     },

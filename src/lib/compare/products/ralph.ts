@@ -43,7 +43,7 @@ export const ralph: Product = {
   },
   features: {
     m365InactiveUsers: {
-      value: "no",
+      value: "unknown",
       note: {
         en: "No Microsoft 365 integration documented.",
         de: "Keine Microsoft-365-Integration dokumentiert.",
@@ -59,7 +59,7 @@ export const ralph: Product = {
       source: MODEL,
     },
     copilotUsage: {
-      value: "no",
+      value: "unknown",
       note: { en: "Not documented.", de: "Nicht dokumentiert." },
       source: DOCS,
     },
@@ -135,7 +135,7 @@ export const ralph: Product = {
     mspMultiTenant: notReviewed,
     euHosting: notReviewed,
     softwareInventory: {
-      value: "no",
+      value: "unknown",
       note: {
         en: "No discovery agent documented; software is a catalog for licenses.",
         de: "Kein Erkennungs-Agent dokumentiert; Software ist ein Katalog für Lizenzen.",

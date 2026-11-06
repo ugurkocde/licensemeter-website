@@ -123,10 +123,10 @@ export const vertice: Product = {
       source: INTEGRATIONS,
     },
     selfHost: {
-      value: "no",
+      value: "unknown",
       note: {
-        en: "Hosted platform; no self-hosted edition documented.",
-        de: "Gehostete Plattform; keine selbst betriebene Edition dokumentiert.",
+        en: "Sold as a hosted platform; a self-hosted edition is not documented.",
+        de: "Als gehostete Plattform angeboten; eine selbst betriebene Edition ist nicht dokumentiert.",
       },
       source: PRICING,
     },
