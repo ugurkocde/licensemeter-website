@@ -2,6 +2,7 @@ import { requestBaseUrl } from "~/server/auth/requestBaseUrl";
 import { NextResponse } from "next/server";
 
 import { env } from "~/env";
+import { validateSignupSource } from "~/lib/signIn";
 import { auth } from "~/server/auth";
 import {
   getSignInClient,
@@ -20,9 +21,10 @@ import {
 export const GET = async (req: Request) => {
   // Optional in-app destination from marketing links, e.g.
   // ?returnTo=/app/connect/csv. Invalid or absent values mean the default.
-  const returnTo = validateReturnTo(
-    new URL(req.url).searchParams.get("returnTo"),
-  );
+  const params = new URL(req.url).searchParams;
+  const returnTo = validateReturnTo(params.get("returnTo"));
+  // The public page the visitor clicked through from, for sign-up attribution.
+  const from = validateSignupSource(params.get("from"));
 
   // Already signed in: land directly, no Entra round-trip needed.
   const session = await auth();
@@ -55,6 +57,7 @@ export const GET = async (req: Request) => {
       state,
       verifier,
       ...(returnTo ? { returnTo } : {}),
+      ...(from ? { from } : {}),
     }),
     oauthCookieOptions(),
   );

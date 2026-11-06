@@ -834,6 +834,8 @@ export const seenSignins = pgTable("seen_signins", {
     .notNull()
     .defaultNow(),
   signinCount: integer("signin_count").notNull().default(1),
+  /** Public page the first sign-in started from (validateSignupSource). */
+  signupSource: text("signup_source"),
 });
 
 /** Launch-update / security-one-pager requests from the landing page. */

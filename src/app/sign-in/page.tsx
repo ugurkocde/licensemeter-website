@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { BrandMark } from "~/components/BrandMark";
@@ -11,6 +12,8 @@ import {
   passThroughReturnTo,
   signInErrorText,
   signInStartHref,
+  signupSourceFromReferer,
+  validateSignupSource,
 } from "~/lib/signIn";
 import {
   connectorPermissions,
@@ -166,7 +169,16 @@ export default async function SignInPage({
     redirect(target ?? "/app");
   }
 
-  const href = signInStartHref(passThroughReturnTo(sp.returnTo));
+  // Which public page sent the visitor here: an explicit ?from= wins, else
+  // the same-origin Referer. Kept with a first sign-in for attribution.
+  const requestHeaders = await headers();
+  const from =
+    validateSignupSource(sp.from) ??
+    signupSourceFromReferer(
+      requestHeaders.get("referer"),
+      requestHeaders.get("host"),
+    );
+  const href = signInStartHref(passThroughReturnTo(sp.returnTo), from);
   const errorText = signInErrorText(sp.error);
   const canSignIn = signInEnabled();
   const demo = isDemoMode();

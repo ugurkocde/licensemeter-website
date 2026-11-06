@@ -3,6 +3,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
 import { env } from "~/env";
+import { validateSignupSource } from "~/lib/signIn";
 
 /**
  * Cookie-based sessions, MSAL-friendly: a compact HS256 JWT holding only the
@@ -122,6 +123,8 @@ export type OAuthPayload = {
   kind?: OAuthFlowKind;
   /** Validated in-app path to land on after sign-in; absent means default. */
   returnTo?: string;
+  /** Validated public page the sign-in started from; absent means unknown. */
+  from?: string;
 };
 
 /** State + PKCE verifier for the in-flight OAuth redirect, integrity-protected. */
@@ -183,6 +186,7 @@ export const parseOAuthToken = async (
     verifier?: string;
     kind?: string;
     returnTo?: string;
+    from?: string;
   }>(token);
   if (!payload?.state || !payload?.verifier) return null;
   // Re-validate returnTo at consumption time; an invalid value reads as
@@ -191,11 +195,13 @@ export const parseOAuthToken = async (
     typeof payload.returnTo === "string"
       ? validateReturnTo(payload.returnTo)
       : null;
+  const from = validateSignupSource(payload.from);
   return {
     state: payload.state,
     verifier: payload.verifier,
     ...(payload.kind === "scan" ? { kind: "scan" as const } : {}),
     ...(returnTo ? { returnTo } : {}),
+    ...(from ? { from } : {}),
   };
 };
 

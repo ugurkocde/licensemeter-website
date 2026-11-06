@@ -28,7 +28,7 @@ export default function PrivacyPolicyPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 pt-6 pb-24">
       <h1 className="font-display text-4xl tracking-tight">Privacy Policy</h1>
-      <p className="text-ink-faint mt-3 text-xs">Last updated: October 2026</p>
+      <p className="text-ink-faint mt-3 text-xs">Last updated: November 2026</p>
 
       <Section title="1. Controller">
         <p>
@@ -88,6 +88,16 @@ export default function PrivacyPolicyPage() {
           tenant ID. Signing in requires no administrator rights and reads
           nothing in your organization&rsquo;s Microsoft 365. This data is
           required to provide the account (Art. 6(1)(b) GDPR).
+        </p>
+        <p>
+          On your first sign-in we also keep the address of the page on this
+          website you started from, for example the pricing page, without any
+          query parameters. We use it only to see which pages lead people to
+          sign up (Art. 6(1)(f) GDPR, our legitimate interest in improving the
+          website). It travels inside the short-lived lm_oauth cookie that
+          protects the sign-in flow (see the Cookie Policy) and is then stored
+          with the sign-in record; no additional cookie or tracking identifier
+          is set for it.
         </p>
         <p>
           Microsoft is listed as a subprocessor below. Sessions are then

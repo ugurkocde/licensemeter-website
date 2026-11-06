@@ -223,7 +223,13 @@ export const GET = async (req: NextRequest) => {
   try {
     const inserted = await db
       .insert(seenSignins)
-      .values({ oid: claims.oid, tid: claims.tid, upn })
+      .values({
+        oid: claims.oid,
+        tid: claims.tid,
+        upn,
+        // Kept from the first sign-in only: the update below leaves it alone.
+        signupSource: oauth.from ?? null,
+      })
       .onConflictDoUpdate({
         target: seenSignins.oid,
         set: {
@@ -234,7 +240,9 @@ export const GET = async (req: NextRequest) => {
       })
       .returning({ count: seenSignins.signinCount });
     if (inserted[0]?.count === 1) {
-      void notifyOps(`first sign-in: ${upn} (tenant ${claims.tid})`);
+      void notifyOps(
+        `first sign-in: ${upn} (tenant ${claims.tid}), from ${oauth.from ?? "an unknown page"}`,
+      );
     }
   } catch (err) {
     console.error("[auth] sign-in tracking failed", err);

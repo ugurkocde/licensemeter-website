@@ -7,6 +7,8 @@ import {
   SIGN_IN_ERROR_TEXT,
   signInErrorText,
   signInStartHref,
+  signupSourceFromReferer,
+  validateSignupSource,
 } from "./signIn";
 
 describe("passThroughReturnTo", () => {
@@ -69,6 +71,74 @@ describe("signInStartHref", () => {
     expect(
       new URL(href, "https://x.invalid").searchParams.get("returnTo"),
     ).toBe("/marketplace/landing?token=a%2Bb&x=1");
+  });
+
+  it("carries a valid source page and drops an invalid one", () => {
+    expect(signInStartHref(null, "/compare/powershell-audit")).toBe(
+      "/api/auth/signin?from=%2Fcompare%2Fpowershell-audit",
+    );
+    expect(signInStartHref("/app", "/pricing")).toBe(
+      "/api/auth/signin?returnTo=%2Fapp&from=%2Fpricing",
+    );
+    expect(signInStartHref(null, "/app/findings")).toBe("/api/auth/signin");
+  });
+});
+
+describe("validateSignupSource", () => {
+  it("keeps plain public page paths", () => {
+    for (const value of [
+      "/",
+      "/pricing",
+      "/compare/m365-admin-center",
+      "/de/pricing",
+    ]) {
+      expect(validateSignupSource(value)).toBe(value);
+    }
+  });
+
+  it("drops queries, app and auth paths, and anything unusual", () => {
+    for (const value of [
+      undefined,
+      null,
+      "",
+      ["/pricing"],
+      "pricing",
+      "//evil.example",
+      "/pricing?utm_source=x",
+      "/pricing#faq",
+      "/Pricing",
+      "/app",
+      "/app/findings",
+      "/api/auth/signin",
+      "/sign-in",
+      "/auth/x",
+      "/marketplace/landing",
+      `/${"a".repeat(120)}`,
+    ]) {
+      expect(validateSignupSource(value)).toBeNull();
+    }
+  });
+});
+
+describe("signupSourceFromReferer", () => {
+  it("reads the path of a same-origin referer only", () => {
+    expect(
+      signupSourceFromReferer(
+        "https://www.licensemeter.com/compare/powershell-audit?x=1",
+        "www.licensemeter.com",
+      ),
+    ).toBe("/compare/powershell-audit");
+    expect(
+      signupSourceFromReferer(
+        "https://news.example/post",
+        "www.licensemeter.com",
+      ),
+    ).toBeNull();
+    expect(
+      signupSourceFromReferer("not a url", "www.licensemeter.com"),
+    ).toBeNull();
+    expect(signupSourceFromReferer(null, "www.licensemeter.com")).toBeNull();
+    expect(signupSourceFromReferer("https://a.example/", null)).toBeNull();
   });
 });
 
