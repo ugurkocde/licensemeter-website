@@ -43,7 +43,13 @@ const ENGLISH = {
         ["/waste", "Waste patterns"],
         ["/sample-report", "Sample report"],
         ["/roi", "ROI calculator"],
-        ["/compare", "Compare"],
+        ["/compare", "Compare tools"],
+        [
+          "/compare/best-microsoft-365-license-management-tools",
+          "Best M365 license tools",
+        ],
+        ["/compare/coreview-alternatives", "CoreView alternatives"],
+        ["/compare/cipp", "LicenseMeter vs CIPP"],
       ],
     },
     {
@@ -87,6 +93,13 @@ const GERMAN = {
     {
       title: "Informationen",
       links: [
+        ["/de/compare", "Tool-Vergleiche"],
+        [
+          "/de/compare/best-microsoft-365-license-management-tools",
+          "Beste M365-Lizenztools",
+        ],
+        ["/de/compare/coreview-alternatives", "CoreView-Alternativen"],
+        ["/de/compare/cipp", "LicenseMeter vs. CIPP"],
         ["/de/dpa", "Auftragsverarbeitung"],
         ["/status", "Systemstatus (EN)"],
         ["/faq", "FAQ (EN)"],
