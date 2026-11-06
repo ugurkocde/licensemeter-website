@@ -100,7 +100,13 @@ const SetupHint = () => (
 );
 
 /** The permission list and the way around it, under step 3. */
-const ConnectDetails = ({ canSignIn }: { canSignIn: boolean }) => {
+type StepDetailsProps = {
+  canSignIn: boolean;
+  /** Validated source page, carried by every sign-in link on this page. */
+  from: string | null;
+};
+
+const ConnectDetails = ({ canSignIn, from }: StepDetailsProps) => {
   const permissions = connectorPermissions();
   return (
     <>
@@ -136,7 +142,10 @@ const ConnectDetails = ({ canSignIn }: { canSignIn: boolean }) => {
       <p className="text-ink-soft mt-3 text-sm leading-relaxed">
         No admin rights yourself? You can{" "}
         {canSignIn ? (
-          <a href={signInStartHref("/app/connect/csv")} className={TEXT_LINK}>
+          <a
+            href={signInStartHref("/app/connect/csv", from)}
+            className={TEXT_LINK}
+          >
             sign in and upload a license export
           </a>
         ) : (
@@ -149,7 +158,7 @@ const ConnectDetails = ({ canSignIn }: { canSignIn: boolean }) => {
 };
 
 const STEP_DETAILS: Partial<
-  Record<SignInStepId, (props: { canSignIn: boolean }) => React.ReactNode>
+  Record<SignInStepId, (props: StepDetailsProps) => React.ReactNode>
 > = {
   connect: ConnectDetails,
 };
@@ -320,7 +329,9 @@ export default async function SignInPage({
                           <span className="text-ink">{lead}</span>{" "}
                           {rest.join(" ")}
                         </p>
-                        {Details && <Details canSignIn={canSignIn} />}
+                        {Details && (
+                          <Details canSignIn={canSignIn} from={from} />
+                        )}
                       </div>
                     </li>
                   );
