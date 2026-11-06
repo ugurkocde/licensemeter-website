@@ -25,11 +25,10 @@ import {
 import { auth } from "~/server/auth";
 import { WORKSPACE_COOKIE, workspaceCookieOptions } from "~/server/access";
 import { db } from "~/server/db";
-import { seenSignins } from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
+import { recordSignin } from "~/server/signinStats";
 import { resolveScanTenant, runDelegatedScan } from "~/server/scan";
 import { requestDeadline } from "~/server/sync/deadline";
-import { sql } from "drizzle-orm";
 
 /** The delegated instant scan runs inside after() on this route. */
 export const maxDuration = 300;
@@ -221,20 +220,16 @@ export const GET = async (req: NextRequest) => {
 
   // First-time identities are a founder signal; returning ones just update stats.
   try {
-    const inserted = await db
-      .insert(seenSignins)
-      .values({ oid: claims.oid, tid: claims.tid, upn })
-      .onConflictDoUpdate({
-        target: seenSignins.oid,
-        set: {
-          lastSeenAt: new Date(),
-          upn,
-          signinCount: sql`${seenSignins.signinCount} + 1`,
-        },
-      })
-      .returning({ count: seenSignins.signinCount });
-    if (inserted[0]?.count === 1) {
-      void notifyOps(`first sign-in: ${upn} (tenant ${claims.tid})`);
+    const count = await recordSignin(db, {
+      oid: claims.oid,
+      tid: claims.tid,
+      upn,
+      signupSource: oauth.from ?? null,
+    });
+    if (count === 1) {
+      void notifyOps(
+        `first sign-in: ${upn} (tenant ${claims.tid}), from ${oauth.from ?? "an unknown page"}`,
+      );
     }
   } catch (err) {
     console.error("[auth] sign-in tracking failed", err);

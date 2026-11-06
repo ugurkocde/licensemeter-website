@@ -31,11 +31,53 @@ export const passThroughReturnTo = (
   return value;
 };
 
+/**
+ * The public page a sign-in started from, kept with a first sign-in so we can
+ * see which pages lead to sign-ups. Only plain lower-case marketing paths
+ * qualify: no query string (it could carry tokens or campaign IDs), nothing
+ * in the app, the API or the sign-in flow itself. Anything else reads as
+ * unknown. Applied when the link is built, when the OAuth cookie is minted
+ * and again when the callback consumes it.
+ */
+export const validateSignupSource = (
+  value: string | string[] | null | undefined,
+): string | null => {
+  if (typeof value !== "string" || !value || value.length > 120) return null;
+  if (!/^\/[a-z0-9/-]*$/.test(value) || value.startsWith("//")) return null;
+  if (/^\/(app|api|auth|sign-in|marketplace)(\/|$)/.test(value)) return null;
+  return value;
+};
+
+/**
+ * The same-origin path of a Referer header. The site sends
+ * strict-origin-when-cross-origin, so a click from one of our own pages
+ * carries its path; anything cross-origin or missing reads as unknown.
+ */
+export const signupSourceFromReferer = (
+  referer: string | null | undefined,
+  host: string | null | undefined,
+): string | null => {
+  if (!referer || !host) return null;
+  try {
+    const url = new URL(referer);
+    return url.host === host ? validateSignupSource(url.pathname) : null;
+  } catch {
+    return null;
+  }
+};
+
 /** Href of the "Sign in with Microsoft" button. */
-export const signInStartHref = (returnTo?: string | null): string =>
-  returnTo
-    ? `${SIGN_IN_START}?returnTo=${encodeURIComponent(returnTo)}`
-    : SIGN_IN_START;
+export const signInStartHref = (
+  returnTo?: string | null,
+  from?: string | null,
+): string => {
+  const params = new URLSearchParams();
+  if (returnTo) params.set("returnTo", returnTo);
+  const source = validateSignupSource(from);
+  if (source) params.set("from", source);
+  const query = params.toString();
+  return query ? `${SIGN_IN_START}?${query}` : SIGN_IN_START;
+};
 
 /**
  * Messages for the ?error= codes the sign-in callback redirects back with.

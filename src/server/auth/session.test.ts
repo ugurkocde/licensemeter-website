@@ -50,6 +50,23 @@ describe("parseOAuthToken", () => {
     });
   });
 
+  it("re-validates the sign-up source when the cookie is read", async () => {
+    const ok = await createOAuthToken({
+      state: "s6",
+      verifier: "v6",
+      from: "/compare/m365-admin-center",
+    });
+    expect((await parseOAuthToken(ok))?.from).toBe(
+      "/compare/m365-admin-center",
+    );
+    const bad = await createOAuthToken({
+      state: "s7",
+      verifier: "v7",
+      from: "/app/findings",
+    });
+    expect(await parseOAuthToken(bad)).toEqual({ state: "s7", verifier: "v7" });
+  });
+
   it("round-trips a sign-in payload without a kind", async () => {
     const token = await createOAuthToken({ state: "s2", verifier: "v2" });
     expect(await parseOAuthToken(token)).toEqual({

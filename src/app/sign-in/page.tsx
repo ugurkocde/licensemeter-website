@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { BrandMark } from "~/components/BrandMark";
@@ -11,6 +12,8 @@ import {
   passThroughReturnTo,
   signInErrorText,
   signInStartHref,
+  signupSourceFromReferer,
+  validateSignupSource,
 } from "~/lib/signIn";
 import {
   connectorPermissions,
@@ -97,7 +100,13 @@ const SetupHint = () => (
 );
 
 /** The permission list and the way around it, under step 3. */
-const ConnectDetails = ({ canSignIn }: { canSignIn: boolean }) => {
+type StepDetailsProps = {
+  canSignIn: boolean;
+  /** Validated source page, carried by every sign-in link on this page. */
+  from: string | null;
+};
+
+const ConnectDetails = ({ canSignIn, from }: StepDetailsProps) => {
   const permissions = connectorPermissions();
   return (
     <>
@@ -133,7 +142,10 @@ const ConnectDetails = ({ canSignIn }: { canSignIn: boolean }) => {
       <p className="text-ink-soft mt-3 text-sm leading-relaxed">
         No admin rights yourself? You can{" "}
         {canSignIn ? (
-          <a href={signInStartHref("/app/connect/csv")} className={TEXT_LINK}>
+          <a
+            href={signInStartHref("/app/connect/csv", from)}
+            className={TEXT_LINK}
+          >
             sign in and upload a license export
           </a>
         ) : (
@@ -146,7 +158,7 @@ const ConnectDetails = ({ canSignIn }: { canSignIn: boolean }) => {
 };
 
 const STEP_DETAILS: Partial<
-  Record<SignInStepId, (props: { canSignIn: boolean }) => React.ReactNode>
+  Record<SignInStepId, (props: StepDetailsProps) => React.ReactNode>
 > = {
   connect: ConnectDetails,
 };
@@ -166,7 +178,16 @@ export default async function SignInPage({
     redirect(target ?? "/app");
   }
 
-  const href = signInStartHref(passThroughReturnTo(sp.returnTo));
+  // Which public page sent the visitor here: an explicit ?from= wins, else
+  // the same-origin Referer. Kept with a first sign-in for attribution.
+  const requestHeaders = await headers();
+  const from =
+    validateSignupSource(sp.from) ??
+    signupSourceFromReferer(
+      requestHeaders.get("referer"),
+      requestHeaders.get("host"),
+    );
+  const href = signInStartHref(passThroughReturnTo(sp.returnTo), from);
   const errorText = signInErrorText(sp.error);
   const canSignIn = signInEnabled();
   const demo = isDemoMode();
@@ -308,7 +329,9 @@ export default async function SignInPage({
                           <span className="text-ink">{lead}</span>{" "}
                           {rest.join(" ")}
                         </p>
-                        {Details && <Details canSignIn={canSignIn} />}
+                        {Details && (
+                          <Details canSignIn={canSignIn} from={from} />
+                        )}
                       </div>
                     </li>
                   );
