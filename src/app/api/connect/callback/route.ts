@@ -52,6 +52,16 @@ const microsoftCodes = (
   return codes.length > 0 ? codes.join(" ") : null;
 };
 
+// The initiator's address comes from the stored UPN or email, which nothing
+// validates, so it reaches an alert only when it is a plain address and then
+// as inline code, which webhook markdown leaves unformatted. Backticks are
+// outside the allowlist, so the value cannot close the code span.
+const ALERT_ADDRESS_PATTERN = /^[A-Za-z0-9._%+'#-]{1,64}@[A-Za-z0-9.-]{1,253}$/;
+const alertAddress = (address: string): string =>
+  ALERT_ADDRESS_PATTERN.test(address)
+    ? `\`${address}\``
+    : "unrecognized address";
+
 /**
  * Admin-consent return leg. Validates the state nonce, requires the browser
  * session of the user who started the flow, attaches the granted Microsoft
@@ -87,9 +97,10 @@ export const GET = async (req: NextRequest) => {
     const reason = [why, ids, microsoft && `Microsoft: ${microsoft}`]
       .filter(Boolean)
       .join("; ");
-    const workspace = stateRow!.tenantId ?? stateRow!.state;
+    const workspace = stateRow!.tenantId ?? "unknown";
+    const initiator = `${alertAddress(stateRow!.email)}, oid ${stateRow!.oid ?? "none"}`;
     void notifyOps(
-      `consent callback rejected: ${code} for workspace ${stateRow!.tenantId ?? "unknown"} by ${stateRow!.email}${reason ? ` (${reason})` : ""}`,
+      `consent callback rejected: ${code} for workspace ${workspace} by ${initiator}${reason ? ` (${reason})` : ""}`,
       {
         key: `consent-callback:${workspace}:${code}:${why ?? ""}`,
         cooldownMs: STATE_TTL_MS,
