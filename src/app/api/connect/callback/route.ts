@@ -33,14 +33,23 @@ const GUID_PATTERN =
 const fail = (code: string): never =>
   redirect(`/app/connectors/microsoft?error=${code}`);
 
-/** Microsoft's error_description, flattened and capped for a one-line alert. */
-const ALERT_DESCRIPTION_MAX = 300;
-const flatten = (text: string | null): string | null => {
-  const flat = text?.replace(/\s+/g, " ").trim();
-  if (!flat) return null;
-  return flat.length > ALERT_DESCRIPTION_MAX
-    ? `${flat.slice(0, ALERT_DESCRIPTION_MAX)}...`
-    : flat;
+// Microsoft's `error` and `error_description` are caller-controlled once a
+// state is valid, and the ops webhook posts alert text without escaping, so
+// only their machine codes reach an alert: the OAuth error code and the
+// AADSTS number, which is enough to look the cause up.
+const OAUTH_ERROR_PATTERN = /^[a-z_]{1,64}$/;
+const AADSTS_PATTERN = /\bAADSTS\d{1,8}\b/;
+const microsoftCodes = (
+  error: string | null,
+  description: string | null,
+): string | null => {
+  const codes: string[] = [];
+  if (error) {
+    codes.push(OAUTH_ERROR_PATTERN.test(error) ? error : "unrecognized error");
+  }
+  const aadsts = description?.match(AADSTS_PATTERN)?.[0];
+  if (aadsts) codes.push(aadsts);
+  return codes.length > 0 ? codes.join(" ") : null;
 };
 
 /**
@@ -68,18 +77,21 @@ export const GET = async (req: NextRequest) => {
   // From here on a real admin is mid-flow, so every rejection is alerted with
   // its reason: the redirect alone leaves no trace of why a connect failed.
   // Earlier rejections (no or unknown state) are anonymous and stay silent.
-  // The key caps a replayed callback at one alert per workspace and code.
-  const reject = (code: string, why?: string): never => {
-    const microsoft = [error, flatten(params.get("error_description"))]
-      .filter(Boolean)
-      .join(": ");
-    const reason = [why, microsoft && `Microsoft: ${microsoft}`]
+  // `why` is a fixed string per check and part of the dedup key, so distinct
+  // reasons alert separately while a replayed callback alerts once per
+  // workspace, code and reason within the state TTL. `ids` carries validated
+  // GUIDs for the alert text only; keying on them would let a caller cycling
+  // tenant ids bypass the cooldown.
+  const reject = (code: string, why?: string, ids?: string): never => {
+    const microsoft = microsoftCodes(error, params.get("error_description"));
+    const reason = [why, ids, microsoft && `Microsoft: ${microsoft}`]
       .filter(Boolean)
       .join("; ");
+    const workspace = stateRow!.tenantId ?? stateRow!.state;
     void notifyOps(
       `consent callback rejected: ${code} for workspace ${stateRow!.tenantId ?? "unknown"} by ${stateRow!.email}${reason ? ` (${reason})` : ""}`,
       {
-        key: `consent-callback:${stateRow!.tenantId ?? stateRow!.state}:${code}`,
+        key: `consent-callback:${workspace}:${code}:${why ?? ""}`,
         cooldownMs: STATE_TTL_MS,
       },
     );
@@ -117,13 +129,11 @@ export const GET = async (req: NextRequest) => {
   // mismatch does not burn a valid state. A state without an object id (filed
   // before sign-in moved to Entra) can no longer be finished; starting again
   // takes one click.
+  if (!stateRow!.oid || !stateRow!.tenantId) {
+    reject("not_allowed", "state predates Entra sign-in");
+  }
   const session = await auth();
-  if (
-    !stateRow!.oid ||
-    !stateRow!.tenantId ||
-    !session?.user?.oid ||
-    session.user.oid !== stateRow!.oid
-  ) {
+  if (!session?.user?.oid || session.user.oid !== stateRow!.oid) {
     reject(
       "not_allowed",
       "browser session is not the user who started the flow",
@@ -141,7 +151,8 @@ export const GET = async (req: NextRequest) => {
     if (!(await verifyManagedConsent(grantedTid!, deadline))) {
       reject(
         "consent_not_granted",
-        `no app-only token for granted tenant ${grantedTid}`,
+        "no app-only token for the granted tenant",
+        `granted ${grantedTid}`,
       );
     }
   } else if (!stateRow!.tid || stateRow!.tid !== grantedTid) {
@@ -202,14 +213,16 @@ export const GET = async (req: NextRequest) => {
   if (owner && owner.id !== target.id) {
     return reject(
       "tenant_taken",
-      `granted tenant ${grantedTid} belongs to workspace ${owner.id}`,
+      "granted tenant belongs to another workspace",
+      `granted ${grantedTid}, owner ${owner.id}`,
     );
   }
   // Refuse to silently repoint a workspace already bound to another tenant.
   if (target.tid && target.tid !== grantedTid) {
     return reject(
       "already_connected",
-      `workspace is bound to ${target.tid}, granted ${grantedTid}`,
+      "workspace is bound to a different tenant",
+      `bound ${target.tid}, granted ${grantedTid}`,
     );
   }
 

@@ -27,13 +27,18 @@ const verifyManagedConsent = vi.fn();
 const notifyOps = vi.fn<(text: string, opts?: unknown) => Promise<void>>();
 const runSync = vi.fn();
 
-vi.mock("~/env", () => ({
-  env: {
+const env = vi.hoisted(
+  (): {
+    NODE_ENV: string;
+    CONNECTOR_CLIENT_ID: string;
+    CONNECTOR_CLIENT_SECRET: string | undefined;
+  } => ({
     NODE_ENV: "test",
     CONNECTOR_CLIENT_ID: "connector-client-id",
     CONNECTOR_CLIENT_SECRET: "connector-client-secret",
-  },
-}));
+  }),
+);
+vi.mock("~/env", () => ({ env }));
 vi.mock("~/server/db", () => ({
   db: new Proxy(
     {},
@@ -113,6 +118,7 @@ beforeEach(async () => {
   for (const stmt of await schemaDdl()) await client.exec(stmt);
   currentDb = makeDb(client);
   vi.clearAllMocks();
+  env.CONNECTOR_CLIENT_SECRET = "connector-client-secret";
   auth.mockResolvedValue({ user: { oid: OID, tid: HOME_TID, isDemo: false } });
   apiAccess.mockResolvedValue({
     user: { oid: OID, isDemo: false },
@@ -182,6 +188,18 @@ describe("admin-consent callback tenant binding", () => {
 });
 
 describe("admin-consent callback rejection alerts", () => {
+  const OTHER_OID = "66666666-6666-6666-6666-00000000000f";
+  const OTHER_TENANT_ID = "77777777-7777-7777-7777-000000000010";
+  const OTHER_TID = "88888888-8888-8888-8888-000000000011";
+
+  const stateUsed = async () => {
+    const [row] = await currentDb
+      .select()
+      .from(schema.consentStates)
+      .where(eq(schema.consentStates.state, STATE));
+    return row?.usedAt != null;
+  };
+
   it("alerts the code, workspace, initiator and granted tenant", async () => {
     await seedState();
     verifyManagedConsent.mockResolvedValue(false);
@@ -192,23 +210,35 @@ describe("admin-consent callback rejection alerts", () => {
 
     expect(rejectionAlerts()).toHaveLength(1);
     const [text, opts] = rejectionAlerts()[0]!;
-    expect(text).toContain("consent_not_granted");
-    expect(text).toContain(`workspace ${TENANT_ID}`);
-    expect(text).toContain("admin@example.com");
-    expect(text).toContain(VICTIM_TID);
+    expect(text).toBe(
+      `consent callback rejected: consent_not_granted for workspace ${TENANT_ID} by admin@example.com (no app-only token for the granted tenant; granted ${VICTIM_TID})`,
+    );
     expect(opts).toEqual({
-      key: `consent-callback:${TENANT_ID}:consent_not_granted`,
+      key: `consent-callback:${TENANT_ID}:consent_not_granted:no app-only token for the granted tenant`,
       cooldownMs: 15 * 60 * 1000,
     });
+    expect(await stateUsed()).toBe(false);
   });
 
-  it("includes Microsoft's error, flattened and capped", async () => {
+  it("keys a replayed rejection identically so the cooldown holds", async () => {
     await seedState();
-    const description = `AADSTS65004: User declined to consent.\r\nTrace ID: abc ${"x".repeat(400)}`;
+    verifyManagedConsent.mockResolvedValue(false);
+
+    await expect(GET(callback(VICTIM_TID))).rejects.toThrow(/redirect:/);
+    await expect(GET(callback(OTHER_TID))).rejects.toThrow(/redirect:/);
+
+    const keys = rejectionAlerts().map(([, opts]) => opts);
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toEqual(keys[1]);
+  });
+
+  it("reduces Microsoft's error fields to their codes", async () => {
+    await seedState();
     const query = new URLSearchParams({
       state: STATE,
       error: "access_denied",
-      error_description: description,
+      error_description:
+        "AADSTS65004: User declined to consent.\r\n<!channel> <https://evil.example|Reconnect> [x](https://evil.example)",
     });
 
     await expect(GET(callbackWith(query.toString()))).rejects.toThrow(
@@ -217,12 +247,158 @@ describe("admin-consent callback rejection alerts", () => {
 
     expect(rejectionAlerts()).toHaveLength(1);
     const [text] = rejectionAlerts()[0]!;
-    expect(text).toContain(
-      "Microsoft: access_denied: AADSTS65004: User declined to consent. Trace ID: abc",
+    expect(text).toBe(
+      `consent callback rejected: consent_declined for workspace ${TENANT_ID} by admin@example.com (Microsoft: access_denied AADSTS65004)`,
     );
-    expect(text).not.toMatch(/[\r\n]/);
-    expect(text).toContain("...");
-    expect(text.length).toBeLessThan(600);
+    expect(await stateUsed()).toBe(false);
+  });
+
+  it("does not echo an error value that is not an OAuth code", async () => {
+    await seedState();
+    const query = new URLSearchParams({
+      state: STATE,
+      error: `x\n[ops] forged line <!channel> ${"y".repeat(5000)}`,
+    });
+
+    await expect(GET(callbackWith(query.toString()))).rejects.toThrow(
+      /redirect:.*consent_declined/,
+    );
+
+    const [text] = rejectionAlerts()[0]!;
+    expect(text).toContain("(Microsoft: unrecognized error)");
+    expect(text).not.toMatch(/[\r\n<>[\]]/);
+    expect(text).not.toContain("forged");
+  });
+
+  it("alerts an incomplete consent and a malformed tenant", async () => {
+    await seedState();
+
+    await expect(
+      GET(callbackWith(`state=${STATE}&tenant=${VICTIM_TID}`)),
+    ).rejects.toThrow(/redirect:.*consent_incomplete/);
+    await expect(GET(callback("not-a-guid"))).rejects.toThrow(
+      /redirect:.*consent_incomplete/,
+    );
+
+    const texts = rejectionAlerts().map(([text]) => text);
+    expect(texts).toHaveLength(2);
+    expect(texts[0]).toMatch(/consent_incomplete for workspace [^(]*$/);
+    expect(texts[1]).toContain("(granted tenant is not a GUID)");
+    expect(await stateUsed()).toBe(false);
+  });
+
+  // Each not_allowed check gets its own reason and dedup key. The first three
+  // run before the nonce is consumed and must leave it reusable.
+  it.each([
+    {
+      why: "state predates Entra sign-in",
+      consumes: false,
+      setup: async () => {
+        await currentDb
+          .update(schema.consentStates)
+          .set({ oid: null })
+          .where(eq(schema.consentStates.state, STATE));
+      },
+    },
+    {
+      why: "browser session is not the user who started the flow",
+      consumes: false,
+      setup: async () => {
+        auth.mockResolvedValue({ user: { oid: OTHER_OID, isDemo: false } });
+      },
+    },
+    {
+      why: "granted tenant is not the initiator's home tenant",
+      consumes: false,
+      setup: async () => {
+        env.CONNECTOR_CLIENT_SECRET = undefined;
+      },
+    },
+    {
+      why: "not an admin of the active workspace",
+      consumes: true,
+      setup: async () => {
+        apiAccess.mockResolvedValue(null);
+      },
+    },
+    {
+      why: "membership is not the user who started the flow",
+      consumes: true,
+      setup: async () => {
+        apiAccess.mockResolvedValue({
+          user: { oid: OID, isDemo: false },
+          tenant: { id: TENANT_ID, tid: null, isDemo: false },
+          membership: { oid: OTHER_OID, tenantId: TENANT_ID },
+        });
+      },
+    },
+    {
+      why: "active workspace is not the one the flow started from",
+      consumes: true,
+      setup: async () => {
+        apiAccess.mockResolvedValue({
+          user: { oid: OID, isDemo: false },
+          tenant: { id: OTHER_TENANT_ID, tid: null, isDemo: false },
+          membership: { oid: OID, tenantId: OTHER_TENANT_ID },
+        });
+      },
+    },
+  ])("alerts not_allowed: $why", async ({ why, consumes, setup }) => {
+    await seedState();
+    verifyManagedConsent.mockResolvedValue(true);
+    await setup();
+
+    await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
+      /redirect:.*error=not_allowed/,
+    );
+
+    expect(rejectionAlerts()).toHaveLength(1);
+    const [text, opts] = rejectionAlerts()[0]!;
+    expect(text).toBe(
+      `consent callback rejected: not_allowed for workspace ${TENANT_ID} by admin@example.com (${why})`,
+    );
+    expect(opts).toEqual({
+      key: `consent-callback:${TENANT_ID}:not_allowed:${why}`,
+      cooldownMs: 15 * 60 * 1000,
+    });
+    expect(await stateUsed()).toBe(consumes);
+    expect(runSync).not.toHaveBeenCalled();
+  });
+
+  it("alerts a tenant already bound to another workspace", async () => {
+    await seedState();
+    await currentDb
+      .insert(schema.tenants)
+      .values({ id: OTHER_TENANT_ID, name: "Other", tid: VICTIM_TID });
+    verifyManagedConsent.mockResolvedValue(true);
+
+    await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
+      /redirect:.*tenant_taken/,
+    );
+
+    const [text] = rejectionAlerts()[0]!;
+    expect(text).toContain(
+      `(granted tenant belongs to another workspace; granted ${VICTIM_TID}, owner ${OTHER_TENANT_ID})`,
+    );
+  });
+
+  it("alerts a workspace already bound to a different tenant", async () => {
+    await seedState();
+    verifyManagedConsent.mockResolvedValue(true);
+    apiAccess.mockResolvedValue({
+      user: { oid: OID, isDemo: false },
+      tenant: { id: TENANT_ID, tid: OTHER_TID, isDemo: false },
+      membership: { oid: OID, tenantId: TENANT_ID },
+    });
+
+    await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
+      /redirect:.*already_connected/,
+    );
+
+    const [text] = rejectionAlerts()[0]!;
+    expect(text).toContain(
+      `(workspace is bound to a different tenant; bound ${OTHER_TID}, granted ${VICTIM_TID})`,
+    );
   });
 
   it("alerts an expired state", async () => {
@@ -251,5 +427,42 @@ describe("admin-consent callback rejection alerts", () => {
     ).rejects.toThrow(/redirect:.*invalid_state/);
 
     expect(notifyOps).not.toHaveBeenCalled();
+  });
+
+  it("stays silent when a consumed state is replayed", async () => {
+    await seedState();
+    verifyManagedConsent.mockResolvedValue(true);
+
+    await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
+      /redirect:.*status=syncing/,
+    );
+    await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
+      /redirect:.*invalid_state/,
+    );
+
+    expect(rejectionAlerts()).toHaveLength(0);
+  });
+
+  it("stays silent for the loser of a concurrent duplicate callback", async () => {
+    await seedState();
+    // Both callbacks pass every pre-consume check before either consumes.
+    verifyManagedConsent.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(true), 20)),
+    );
+
+    const results = await Promise.allSettled([
+      GET(callback(VICTIM_TID)),
+      GET(callback(VICTIM_TID)),
+    ]);
+
+    const redirects = results
+      .map((r) => (r.status === "rejected" ? String(r.reason) : ""))
+      .sort();
+    expect(redirects).toEqual([
+      expect.stringMatching(/error=invalid_state/),
+      expect.stringMatching(/status=syncing/),
+    ]);
+    expect(verifyManagedConsent).toHaveBeenCalledTimes(2);
+    expect(rejectionAlerts()).toHaveLength(0);
   });
 });
