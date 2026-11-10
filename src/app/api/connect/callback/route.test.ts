@@ -24,7 +24,7 @@ let currentDb: ReturnType<typeof makeDb>;
 const apiAccess = vi.fn();
 const auth = vi.fn();
 const verifyManagedConsent = vi.fn();
-const notifyOps = vi.fn();
+const notifyOps = vi.fn<(text: string, opts?: unknown) => Promise<void>>();
 const runSync = vi.fn();
 
 vi.mock("~/env", () => ({
@@ -83,6 +83,16 @@ const callback = (tid: string) =>
       `http://localhost/api/connect/callback?state=${STATE}&tenant=${tid}&admin_consent=True`,
     ),
   }) as never;
+
+const callbackWith = (query: string) =>
+  ({
+    nextUrl: new URL(`http://localhost/api/connect/callback?${query}`),
+  }) as never;
+
+const rejectionAlerts = () =>
+  notifyOps.mock.calls.filter(([text]) =>
+    text.startsWith("consent callback rejected"),
+  );
 
 const seedState = async () => {
   await currentDb
@@ -157,5 +167,89 @@ describe("admin-consent callback tenant binding", () => {
       .where(eq(schema.msConnections.tenantId, TENANT_ID));
     expect(conns).toHaveLength(1);
     expect(conns[0]?.mode).toBe("managed");
+  });
+
+  it("alerts nothing on the success path", async () => {
+    await seedState();
+    verifyManagedConsent.mockResolvedValue(true);
+
+    await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
+      /redirect:.*status=syncing/,
+    );
+
+    expect(rejectionAlerts()).toHaveLength(0);
+  });
+});
+
+describe("admin-consent callback rejection alerts", () => {
+  it("alerts the code, workspace, initiator and granted tenant", async () => {
+    await seedState();
+    verifyManagedConsent.mockResolvedValue(false);
+
+    await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
+      /redirect:.*consent_not_granted/,
+    );
+
+    expect(rejectionAlerts()).toHaveLength(1);
+    const [text, opts] = rejectionAlerts()[0]!;
+    expect(text).toContain("consent_not_granted");
+    expect(text).toContain(`workspace ${TENANT_ID}`);
+    expect(text).toContain("admin@example.com");
+    expect(text).toContain(VICTIM_TID);
+    expect(opts).toEqual({
+      key: `consent-callback:${TENANT_ID}:consent_not_granted`,
+      cooldownMs: 15 * 60 * 1000,
+    });
+  });
+
+  it("includes Microsoft's error, flattened and capped", async () => {
+    await seedState();
+    const description = `AADSTS65004: User declined to consent.\r\nTrace ID: abc ${"x".repeat(400)}`;
+    const query = new URLSearchParams({
+      state: STATE,
+      error: "access_denied",
+      error_description: description,
+    });
+
+    await expect(GET(callbackWith(query.toString()))).rejects.toThrow(
+      /redirect:.*consent_declined/,
+    );
+
+    expect(rejectionAlerts()).toHaveLength(1);
+    const [text] = rejectionAlerts()[0]!;
+    expect(text).toContain(
+      "Microsoft: access_denied: AADSTS65004: User declined to consent. Trace ID: abc",
+    );
+    expect(text).not.toMatch(/[\r\n]/);
+    expect(text).toContain("...");
+    expect(text.length).toBeLessThan(600);
+  });
+
+  it("alerts an expired state", async () => {
+    await seedState();
+    await currentDb
+      .update(schema.consentStates)
+      .set({ createdAt: new Date(Date.now() - 16 * 60 * 1000) })
+      .where(eq(schema.consentStates.state, STATE));
+
+    await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
+      /redirect:.*expired_state/,
+    );
+
+    expect(rejectionAlerts()).toHaveLength(1);
+    expect(rejectionAlerts()[0]![0]).toContain("expired_state");
+  });
+
+  it("stays silent for a missing or unknown state", async () => {
+    await seedState();
+
+    await expect(GET(callbackWith("tenant=x"))).rejects.toThrow(
+      /redirect:.*missing_state/,
+    );
+    await expect(
+      GET(callbackWith(`state=${crypto.randomUUID()}&admin_consent=True`)),
+    ).rejects.toThrow(/redirect:.*invalid_state/);
+
+    expect(notifyOps).not.toHaveBeenCalled();
   });
 });
