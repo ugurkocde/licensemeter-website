@@ -48,10 +48,16 @@ Entra account state (offboarding leaks).
 ## Technical measures (excerpt; full TOMs in the DPA)
 
 TLS everywhere with HSTS; AES-256 at rest; third-party credentials
-additionally app-layer encrypted (AES-256-GCM); least-privilege database role
-behind row-level security; PKCE + JWKS-verified sign-in; security headers;
-CSRF origin checks; tenant isolation enforced in the application layer on
-every query.
+additionally app-layer encrypted (AES-256-GCM); least-privilege database
+role; PKCE + JWKS-verified sign-in; security headers; CSRF origin checks.
+
+Tenant isolation: customer data is logically separated per workspace in a
+shared database. Isolation is enforced in the application layer: every request
+is authenticated (Microsoft Entra ID sign-in, or a workspace-bound token for
+the MCP API) and authorised against the user's workspace. Row-level security
+is enabled on all tables and enforces per-tenant row policies on the MCP API
+and data export endpoints. The Supabase public Data API has no access to any
+table.
 
 ## Compliance
 
