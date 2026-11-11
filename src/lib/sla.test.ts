@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { TRUST_CONTENT } from "~/app/(marketing)/trust-center/content";
@@ -51,6 +54,16 @@ describe("SLA content", () => {
     }
     expect(en).toContain("Effective 13 November 2026");
     expect(de).toContain("Gültig ab 13. November 2026");
+  });
+
+  it("is the only uptime figure anywhere in the site source", () => {
+    const files = readdirSync("src", { recursive: true, encoding: "utf8" })
+      .filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f))
+      .map((f) => join("src", f));
+    for (const file of files) {
+      const source = readFileSync(file, "utf8");
+      expect(source, file).not.toMatch(/99(\.9%|,9 %)/);
+    }
   });
 
   it("is the only uptime figure on the pricing page", () => {

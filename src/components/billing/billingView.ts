@@ -15,6 +15,7 @@ import {
   type Feature,
 } from "~/server/entitlement";
 import type { EntitlementSource } from "~/server/types";
+import { SLA_TERMS, formatPct } from "~/lib/sla";
 
 /** Pure view logic of the billing page, kept apart so it can be unit tested. */
 
@@ -118,7 +119,9 @@ export type PlanCardLine = { text: string; comingSoon?: boolean };
 /** Support and uptime are part of the plan, but nothing the app switches on. */
 const PRO_SERVICE_LINES: PlanCardLine[] = [
   { text: "Support by email" },
-  { text: "99.9% uptime target, tracked on a public status page" },
+  {
+    text: `${formatPct(SLA_TERMS.availabilityTargetPct, "en")} uptime target, set out in the SLA`,
+  },
 ];
 
 const featureLine = (feature: Feature): PlanCardLine => ({

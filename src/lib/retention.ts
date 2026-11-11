@@ -9,9 +9,10 @@ export const RETENTION_DAYS = {
   /** Sign-in tracking rows (oid, tid, UPN) after the identity last signed in. */
   seenSignins: 90,
   /**
-   * Upper bound for a rate-limit row. Expired windows are deleted daily, and
-   * no window may be longer than this, so no row (some keys carry an IP
-   * address) outlives it.
+   * Upper bound for a rate-limit window. Rows whose window has ended are
+   * deleted by the daily retention job; a key that is used again before that
+   * run starts a new window on the same row, so an active key keeps one
+   * current row.
    */
   rateLimitMaxAge: 7,
   /** Names, UPNs and notes on a resolved finding after its resolution. */

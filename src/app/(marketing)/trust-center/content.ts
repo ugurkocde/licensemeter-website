@@ -193,7 +193,7 @@ const EN: TrustContent = {
       {
         label: "Rate-limit records",
         detail: [
-          `Some contain an IP address. They are deleted when their window ends, at most after ${R.rateLimitMaxAge} days.`,
+          `Some contain an IP address. A rate-limit window lasts at most ${R.rateLimitMaxAge} days, and a record whose window has ended is deleted by the next daily clean-up.`,
         ],
       },
       {
@@ -237,7 +237,7 @@ const EN: TrustContent = {
       {
         label: "Secrets management",
         detail: [
-          "API keys, tokens and certificates are kept only in managed secret stores, such as the hosting provider's encrypted environment variables, and never in source code. GitHub secret scanning with push protection blocks credentials from being committed.",
+          "Production secrets such as API keys, tokens and certificates are held in the hosting provider's encrypted environment variables and never committed to source code; GitHub secret scanning with push protection blocks credentials from being committed. Connector credentials that you provide are stored in the database, additionally encrypted at the application layer (AES-256-GCM), under a dedicated key separate from the sign-in secret.",
         ],
       },
       {
@@ -632,7 +632,7 @@ const DE: TrustContent = {
       {
         label: "Ratenbegrenzungs-Einträge",
         detail: [
-          `Einige enthalten eine IP-Adresse. Sie werden gelöscht, sobald ihr Zeitfenster endet, spätestens nach ${R.rateLimitMaxAge} Tagen.`,
+          `Einige enthalten eine IP-Adresse. Ein Zeitfenster dauert höchstens ${R.rateLimitMaxAge} Tage, und ein Eintrag, dessen Zeitfenster abgelaufen ist, wird bei der nächsten täglichen Bereinigung gelöscht.`,
         ],
       },
       {
@@ -676,7 +676,7 @@ const DE: TrustContent = {
       {
         label: "Verwaltung von Geheimnissen",
         detail: [
-          "API-Schlüssel, Tokens und Zertifikate liegen ausschließlich in verwalteten Secret-Speichern, etwa den verschlüsselten Umgebungsvariablen des Hosting-Anbieters, und nie im Quellcode. GitHub Secret Scanning mit Push-Schutz verhindert, dass Zugangsdaten eingecheckt werden.",
+          "Produktionsgeheimnisse wie API-Schlüssel, Tokens und Zertifikate liegen in den verschlüsselten Umgebungsvariablen des Hosting-Anbieters und werden nie in den Quellcode eingecheckt; GitHub Secret Scanning mit Push-Schutz verhindert, dass Zugangsdaten eingecheckt werden. Connector-Zugangsdaten, die Sie bereitstellen, werden in der Datenbank gespeichert und zusätzlich auf Anwendungsebene verschlüsselt (AES-256-GCM), mit einem eigenen Schlüssel, der vom Anmelde-Geheimnis getrennt ist.",
         ],
       },
       {
