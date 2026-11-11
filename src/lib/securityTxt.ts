@@ -11,6 +11,23 @@ export const SECURITY_TXT_EXPIRES = "2027-11-12T00:00:00.000Z";
 export const VULNERABILITY_POLICY_PATH =
   "/trust-center#vulnerability-management";
 
+/**
+ * Whether `base` may appear in security.txt: RFC 9116 requires https URLs for
+ * Canonical and Policy, so a missing or localhost origin publishes nothing.
+ */
+export const isPublicHttpsOrigin = (base: string): boolean => {
+  try {
+    const url = new URL(base);
+    return (
+      url.protocol === "https:" &&
+      url.hostname !== "localhost" &&
+      !/^(127\.|0\.0\.0\.0$|\[::1\]$)/.test(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+};
+
 /** The RFC 9116 security.txt body for the hosted site at `base`. */
 export const securityTxt = (base: string): string =>
   [

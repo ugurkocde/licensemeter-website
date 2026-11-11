@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   SECURITY_TXT_EXPIRES,
+  isPublicHttpsOrigin,
   VULNERABILITY_POLICY_PATH,
   securityTxt,
 } from "~/lib/securityTxt";
@@ -29,6 +30,15 @@ describe("security.txt", () => {
       Canonical: "https://licensemeter.com/.well-known/security.txt",
       Policy: "https://licensemeter.com/trust-center#vulnerability-management",
     });
+  });
+
+  it("is published only for a public https origin", () => {
+    expect(isPublicHttpsOrigin("https://licensemeter.com")).toBe(true);
+    expect(isPublicHttpsOrigin("http://licensemeter.com")).toBe(false);
+    expect(isPublicHttpsOrigin("http://localhost:3000")).toBe(false);
+    expect(isPublicHttpsOrigin("https://localhost")).toBe(false);
+    expect(isPublicHttpsOrigin("https://127.0.0.1")).toBe(false);
+    expect(isPublicHttpsOrigin("not a url")).toBe(false);
   });
 
   it("expires within a year and is renewed at least 30 days ahead", () => {

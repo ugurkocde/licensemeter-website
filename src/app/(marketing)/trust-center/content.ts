@@ -175,7 +175,7 @@ const EN: TrustContent = {
       {
         label: "Workspace data",
         detail: [
-          "Kept for as long as the workspace exists. Deleting the workspace removes all synchronised data, the activity log and the stored connection credentials immediately and irreversibly.",
+          "Kept for as long as the workspace exists. Deleting the workspace removes all synchronised data, the activity log and the stored connection credentials from the live database immediately and irreversibly. Copies in the database provider's daily backups expire with the backup rotation, after 7 days.",
         ],
       },
       {
@@ -327,7 +327,7 @@ const EN: TrustContent = {
       {
         label: "Backups",
         detail: [
-          "The production database is backed up daily by the database provider, and backups are kept for at least 7 days.",
+          "The production database is backed up daily by the database provider, and each backup is kept for 7 days.",
         ],
       },
       {
@@ -614,7 +614,7 @@ const DE: TrustContent = {
       {
         label: "Daten des Arbeitsbereichs",
         detail: [
-          "Solange der Arbeitsbereich besteht. Das Löschen des Arbeitsbereichs entfernt alle synchronisierten Daten, das Aktivitätsprotokoll und die gespeicherten Verbindungszugangsdaten sofort und unwiderruflich.",
+          "Solange der Arbeitsbereich besteht. Das Löschen des Arbeitsbereichs entfernt alle synchronisierten Daten, das Aktivitätsprotokoll und die gespeicherten Verbindungszugangsdaten sofort und unwiderruflich aus der Live-Datenbank. Kopien in den täglichen Sicherungen des Datenbankanbieters laufen mit der Sicherungsrotation nach 7 Tagen ab.",
         ],
       },
       {
@@ -766,7 +766,7 @@ const DE: TrustContent = {
       {
         label: "Sicherungen",
         detail: [
-          "Die Produktionsdatenbank wird vom Datenbankanbieter täglich gesichert, und die Sicherungen werden mindestens 7 Tage aufbewahrt.",
+          "Die Produktionsdatenbank wird vom Datenbankanbieter täglich gesichert, und jede Sicherung wird 7 Tage aufbewahrt.",
         ],
       },
       {

@@ -102,7 +102,7 @@ const EN: SlaContent = {
       title: "Service credits",
       paragraphs: [
         [
-          `If monthly availability falls below target, the customer receives a credit on the monthly fee for the affected month: ${creditList("en")}. Credits must be requested within ${T.creditClaimDays} days after the end of the affected month via the support address, are applied to the next billing period, and are the sole remedy for availability shortfalls. For Microsoft Marketplace purchases, credits are applied as agreed with the customer.`,
+          `If monthly availability falls below target, the customer receives a credit on the monthly fee for the affected month: ${creditList("en")}. Credits must be requested within ${T.creditClaimDays} days after the end of the affected month via the support address, are applied to the next billing period, and are the sole remedy for availability shortfalls. Only the highest applicable credit applies. For Microsoft Marketplace purchases, credits are applied as agreed with the customer.`,
         ],
       ],
     },
@@ -191,7 +191,7 @@ const DE: SlaContent = {
       title: "Servicegutschriften",
       paragraphs: [
         [
-          `Unterschreitet die monatliche Verfügbarkeit das Ziel, erhält der Kunde eine Gutschrift auf die Monatsgebühr des betroffenen Monats: ${creditList("de")}. Gutschriften sind innerhalb von ${T.creditClaimDays} Tagen nach Ende des betroffenen Monats über die Support-Adresse anzufordern, werden im nächsten Abrechnungszeitraum verrechnet und sind der einzige Anspruch bei Unterschreitung der Verfügbarkeit. Bei Käufen über den Microsoft Marketplace werden Gutschriften so gewährt, wie mit dem Kunden vereinbart.`,
+          `Unterschreitet die monatliche Verfügbarkeit das Ziel, erhält der Kunde eine Gutschrift auf die Monatsgebühr des betroffenen Monats: ${creditList("de")}. Gutschriften sind innerhalb von ${T.creditClaimDays} Tagen nach Ende des betroffenen Monats über die Support-Adresse anzufordern, werden im nächsten Abrechnungszeitraum verrechnet und sind der einzige Anspruch bei Unterschreitung der Verfügbarkeit. Es gilt nur die höchste zutreffende Gutschrift. Bei Käufen über den Microsoft Marketplace werden Gutschriften so gewährt, wie mit dem Kunden vereinbart.`,
         ],
       ],
     },
