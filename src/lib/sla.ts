@@ -182,7 +182,7 @@ const DE: SlaContent = {
       title: "Verfügbarkeit",
       paragraphs: [
         [
-          `Wir streben eine monatliche Verfügbarkeit der LicenseMeter-Webanwendung und -API von ${formatPct(T.availabilityTargetPct, "de")} an. Nicht in die Berechnung einbezogen werden: geplante Wartungsarbeiten, die mindestens ${T.maintenanceNoticeHours} Stunden im Voraus angekündigt und an Werktagen außerhalb von 08:00 bis 18:00 Uhr MEZ/MESZ durchgeführt werden; Ausfälle von Microsoft 365, Microsoft Graph oder Entra ID; Störungen, die durch die Tenant-Konfiguration, eine widerrufene Einwilligung oder das Netzwerk des Kunden verursacht werden; sowie Ereignisse außerhalb unseres zumutbaren Einflussbereichs. Die geplante Datensynchronisierung (in der Regel nächtlich) ist eine Funktion und nicht Teil der Verfügbarkeit.`,
+          `Wir streben eine monatliche Verfügbarkeit der LicenseMeter-Webanwendung und -API von ${formatPct(T.availabilityTargetPct, "de")} an. Nicht in die Berechnung einbezogen werden: geplante Wartungsarbeiten, die mindestens ${T.maintenanceNoticeHours} Stunden im Voraus angekündigt und an Geschäftstagen (Montag bis Freitag) außerhalb von 08:00 bis 18:00 Uhr MEZ/MESZ durchgeführt werden; Ausfälle von Microsoft 365, Microsoft Graph oder Entra ID; Störungen, die durch die Tenant-Konfiguration, eine widerrufene Einwilligung oder das Netzwerk des Kunden verursacht werden; sowie Ereignisse außerhalb unseres zumutbaren Einflussbereichs. Die geplante Datensynchronisierung (in der Regel nächtlich) ist eine Funktion und nicht Teil der Verfügbarkeit.`,
         ],
       ],
     },

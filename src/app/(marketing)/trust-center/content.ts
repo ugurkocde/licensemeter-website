@@ -801,7 +801,7 @@ const DE: TrustContent = {
     title: "Service Level",
     paragraphs: [
       [
-        `Die kostenpflichtigen Tarife sind durch unser Service Level Agreement abgedeckt: ein monatliches Verfügbarkeitsziel von ${formatPct(S.availabilityTargetPct, "de")} mit Servicegutschriften, Support an Werktagen mit Reaktionszeiten nach Schweregrad, Benachrichtigung bei Sicherheitsvorfällen binnen ${S.incidentNoticeHours} Stunden und Wiederherstellungsziele von ${S.rtoHours} Stunden. Lesen Sie das `,
+        `Die kostenpflichtigen Tarife sind durch unser Service Level Agreement abgedeckt: ein monatliches Verfügbarkeitsziel von ${formatPct(S.availabilityTargetPct, "de")} mit Servicegutschriften, Support an Geschäftstagen (Montag bis Freitag) mit Reaktionszeiten nach Schweregrad, Benachrichtigung bei Sicherheitsvorfällen binnen ${S.incidentNoticeHours} Stunden und Wiederherstellungsziele von ${S.rtoHours} Stunden. Lesen Sie das `,
         { text: "Service Level Agreement", href: SLA_PATH.de },
         ".",
       ],
