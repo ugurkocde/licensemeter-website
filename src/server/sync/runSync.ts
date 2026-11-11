@@ -2,6 +2,10 @@ import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 
 import { workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
+import {
+  PSEUDONYMISED_KEY_PREFIX,
+  pseudonymisedDedupeKey,
+} from "~/server/retention";
 import { isUniqueViolation } from "~/server/db/errors";
 import {
   adobeConnections,
@@ -1390,7 +1394,7 @@ export type InsertedFinding = {
  * Returns the rows it inserted, first appearances only, which gives leak
  * alerts natural dedup across syncs (later syncs merely bump lastSeenAt).
  */
-const diffFindings = async (
+export const diffFindings = async (
   tenantId: string,
   newFindings: WasteFinding[],
   now: Date,
@@ -1403,8 +1407,19 @@ const diffFindings = async (
     });
     const existingByKey = new Map(existing.map((f) => [f.dedupeKey, f]));
     const newByKey = new Map(newFindings.map((f) => [f.dedupeKey, f]));
+    // A finding pseudonymised by the retention job stores the hash of a key
+    // that embedded an email address. When that seat shows up again it
+    // reopens the same row (and gets its plain key back below) instead of
+    // inserting a second one.
+    const newByStoredKey = new Map(
+      newFindings.map((f) => [pseudonymisedDedupeKey(f.dedupeKey), f]),
+    );
 
-    const toInsert = newFindings.filter((f) => !existingByKey.has(f.dedupeKey));
+    const toInsert = newFindings.filter(
+      (f) =>
+        !existingByKey.has(f.dedupeKey) &&
+        !existingByKey.has(pseudonymisedDedupeKey(f.dedupeKey)),
+    );
     const inserted: InsertedFinding[] = [];
     for (const batch of chunk(toInsert, 250)) {
       const rows = await tx
@@ -1434,11 +1449,16 @@ const diffFindings = async (
     }
 
     for (const f of existing) {
-      const fresh = newByKey.get(f.dedupeKey);
+      const fresh =
+        newByKey.get(f.dedupeKey) ??
+        (f.dedupeKey.startsWith(PSEUDONYMISED_KEY_PREFIX)
+          ? newByStoredKey.get(f.dedupeKey)
+          : undefined);
       if (fresh) {
         await tx
           .update(findings)
           .set({
+            dedupeKey: fresh.dedupeKey,
             title: fresh.title,
             detail: fresh.detail,
             graphUserId: fresh.graphUserId,

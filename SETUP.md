@@ -96,7 +96,7 @@ For an independently managed PostgreSQL database, provision the schema as the da
 
 The `scripts/db-*.sql` files describe the hosted Supabase deployment: RLS, application-role DML permissions, and denial of Supabase Data API access. Tenant isolation remains in application code. Review these files before applying them, and run `scripts/db-audit-posture.sql` after schema changes. Before setting `BILLING_ENABLED=true`, run `scripts/db-create-entitlements.sql`: with the flag on, every request reads the `entitlements` table. The bundled PostgreSQL service has no Data API and does not need these Supabase-specific scripts.
 
-For Vercel, configure the database, authentication, encryption, `APP_BASE_URL`, and `CRON_SECRET`. On hosted production the database connection is TLS only: without `sslmode` the app requires TLS, and `sslmode=disable`, `allow` or `prefer` stop it at startup. `vercel.json` schedules the sync, digest, and monthly report. `SELF_HOSTED=true` is for instances you operate yourself.
+For Vercel, configure the database, authentication, encryption, `APP_BASE_URL`, and `CRON_SECRET`. On hosted production the database connection is TLS only: without `sslmode` the app requires TLS, and `sslmode=disable`, `allow` or `prefer` stop it at startup. `vercel.json` schedules the sync, digest, monthly report and the daily retention job (`/api/cron/retention`), which deletes stale sign-in and rate-limit rows and pseudonymises old resolved findings. `SELF_HOSTED=true` is for instances you operate yourself.
 
 ## First connection
 

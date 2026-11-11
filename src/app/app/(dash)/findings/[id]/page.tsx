@@ -62,6 +62,8 @@ const TECHNICAL_DETAIL_KEYS = new Set([
   "skuId",
   "skuPartNumber",
   "redundantSkuIds",
+  // Set by the retention job once names and UPNs were removed.
+  "pseudonymised",
 ]);
 
 const formatDetailValue = (key: string, value: unknown) => {
