@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
-import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
 
 import { db } from "~/server/db";
 import { apiTokens, tenants } from "~/server/db/schema";
@@ -14,6 +14,9 @@ import { apiTokens, tenants } from "~/server/db/schema";
 export const TOKEN_PREFIX = "lm_mcp_";
 export const MAX_ACTIVE_TOKENS = 10;
 export const TOKEN_NAME_MAX = 60;
+/** Lifetime of a new token. Matches the column default in schema.ts. */
+export const TOKEN_TTL_DAYS = 90;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const TOKEN_BYTES = 32;
 /** `lm_mcp_` plus the first characters of the random part. */
@@ -28,6 +31,7 @@ export type TokenSummary = {
   tokenPrefix: string;
   createdAt: Date;
   lastUsedAt: Date | null;
+  expiresAt: Date;
 };
 
 export type CreateTokenResult =
@@ -63,18 +67,23 @@ const summaryColumns = {
   tokenPrefix: apiTokens.tokenPrefix,
   createdAt: apiTokens.createdAt,
   lastUsedAt: apiTokens.lastUsedAt,
+  expiresAt: apiTokens.expiresAt,
 };
 
 /**
- * Creates a token for a workspace, refusing beyond MAX_ACTIVE_TOKENS. The
- * workspace row is locked for the count and the insert, so two concurrent
- * requests cannot both pass the cap.
+ * Creates a token for a workspace that expires after TOKEN_TTL_DAYS, refusing
+ * beyond MAX_ACTIVE_TOKENS unexpired tokens. The workspace row is locked for
+ * the count and the insert, so two concurrent requests cannot both pass the
+ * cap.
  */
-export const createToken = async (input: {
-  tenantId: string;
-  name: string;
-  createdByKey: string;
-}): Promise<CreateTokenResult> => {
+export const createToken = async (
+  input: {
+    tenantId: string;
+    name: string;
+    createdByKey: string;
+  },
+  now: Date = new Date(),
+): Promise<CreateTokenResult> => {
   const token = generateToken();
   return db.transaction(async (tx) => {
     await tx
@@ -89,6 +98,7 @@ export const createToken = async (input: {
         and(
           eq(apiTokens.tenantId, input.tenantId),
           isNull(apiTokens.revokedAt),
+          gt(apiTokens.expiresAt, now),
         ),
       );
     if ((active?.count ?? 0) >= MAX_ACTIVE_TOKENS) {
@@ -102,6 +112,7 @@ export const createToken = async (input: {
         tokenHash: hashToken(token),
         tokenPrefix: token.slice(0, DISPLAY_PREFIX_LENGTH),
         createdByKey: input.createdByKey,
+        expiresAt: new Date(now.getTime() + TOKEN_TTL_DAYS * DAY_MS),
       })
       .returning(summaryColumns);
     if (!summary) throw new Error("api token insert returned no row");
@@ -109,7 +120,10 @@ export const createToken = async (input: {
   });
 };
 
-/** Active tokens of one workspace, oldest first. Never returns a hash. */
+/**
+ * Unrevoked tokens of one workspace, oldest first, expired ones included so
+ * they can be shown as expired and revoked. Never returns a hash.
+ */
 export const listTokens = (tenantId: string): Promise<TokenSummary[]> =>
   db
     .select(summaryColumns)
@@ -145,7 +159,7 @@ export const revokeToken = async (
  * Resolves a presented bearer token to its workspace, or null. The row is
  * found by the hash (a unique index), then the stored and presented hashes are
  * compared in constant time; a miss runs the same comparison against a fixed
- * hash. A revoked token never verifies. `lastUsedAt` moves at most once per
+ * hash. A revoked or expired token never verifies. `lastUsedAt` moves at most once per
  * minute, and a failure to write it never fails the request.
  */
 export const verifyToken = async (
@@ -163,12 +177,14 @@ export const verifyToken = async (
           tokenHash: true,
           lastUsedAt: true,
           revokedAt: true,
+          expiresAt: true,
         },
       })
     : undefined;
 
   const matches = hashesEqual(row?.tokenHash ?? ABSENT_HASH, presentedHash);
-  if (!row || !matches || row.revokedAt !== null) return null;
+  if (!row || !matches || row.revokedAt !== null || row.expiresAt <= now)
+    return null;
 
   const cutoff = new Date(now.getTime() - LAST_USED_INTERVAL_MS);
   if (row.lastUsedAt === null || row.lastUsedAt <= cutoff) {

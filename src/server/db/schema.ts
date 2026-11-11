@@ -1080,6 +1080,15 @@ export const apiTokens = pgTable(
       .defaultNow(),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    /**
+     * After this moment the token no longer verifies. The app sets it at
+     * creation (TOKEN_TTL_DAYS); the default gives rows that existed when the
+     * column was added the same lifetime from that moment, not an immediate
+     * expiry.
+     */
+    expiresAt: timestamp("expires_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now() + interval '90 days'`),
   },
   (t) => [
     uniqueIndex("api_tokens_hash_idx").on(t.tokenHash),

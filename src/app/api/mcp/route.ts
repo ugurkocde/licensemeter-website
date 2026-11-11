@@ -49,7 +49,7 @@ const unauthorized = (invalidToken: boolean) =>
       null,
       RPC_ERROR.invalidRequest,
       invalidToken
-        ? "The access token is invalid or revoked"
+        ? "The access token is invalid, expired or revoked"
         : "A bearer token is required in the Authorization header",
     ),
     {

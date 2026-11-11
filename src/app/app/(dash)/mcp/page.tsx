@@ -13,6 +13,7 @@ import {
   listTokens,
   MAX_ACTIVE_TOKENS,
   TOKEN_NAME_MAX,
+  TOKEN_TTL_DAYS,
   type TokenSummary,
 } from "~/server/mcp/tokens";
 
@@ -23,9 +24,11 @@ const MCP_DOCS = "https://docs.licensemeter.com/mcp/";
 const TokenTable = ({
   tokens,
   canManage,
+  now,
 }: {
   tokens: TokenSummary[];
   canManage: boolean;
+  now: number;
 }) => (
   <div className="overflow-x-auto">
     <table className="w-full text-sm">
@@ -43,6 +46,9 @@ const TokenTable = ({
           <th scope="col" className="py-2 pr-4 font-medium">
             Last used
           </th>
+          <th scope="col" className="py-2 pr-4 font-medium">
+            Expires
+          </th>
           {canManage && (
             <th scope="col" className="py-2 text-right font-medium">
               <span className="sr-only">Actions</span>
@@ -58,6 +64,13 @@ const TokenTable = ({
             <td className="text-ink-soft py-2 pr-4">{fmtDate(t.createdAt)}</td>
             <td className="text-ink-soft py-2 pr-4">
               {t.lastUsedAt ? fmtAgo(t.lastUsedAt) : "Never"}
+            </td>
+            <td className="text-ink-soft py-2 pr-4">
+              {t.expiresAt.getTime() <= now ? (
+                <span className="text-danger-text font-medium">Expired</span>
+              ) : (
+                fmtDate(t.expiresAt)
+              )}
             </td>
             {canManage && (
               <td className="py-2 text-right">
@@ -76,6 +89,8 @@ export default async function McpPage() {
   // The shared demo grants every visitor a role, so its tokens stay fixed.
   const canManage = hasRole(ctx, "admin") && !ctx.tenant.isDemo;
   const tokens = await listTokens(ctx.tenant.id);
+  const now = Date.now();
+  const activeCount = tokens.filter((t) => t.expiresAt.getTime() > now).length;
 
   if (!hasFeature(ctx.entitlement, "mcp")) {
     return (
@@ -93,7 +108,7 @@ export default async function McpPage() {
               the MCP server. They work again after an upgrade, unless you
               revoke them.
             </p>
-            <TokenTable tokens={tokens} canManage={canManage} />
+            <TokenTable tokens={tokens} canManage={canManage} now={now} />
           </Card>
         )}
       </div>
@@ -159,10 +174,12 @@ export default async function McpPage() {
           <p className="text-ink-soft mb-3 text-sm">
             Each token reads this workspace with the tools listed below. User
             names and sign-in addresses are left out unless the client asks for
-            them explicitly. Up to {MAX_ACTIVE_TOKENS} tokens can be active.
+            them explicitly. A token expires {TOKEN_TTL_DAYS} days after it is
+            created; revoke one at any time. Up to {MAX_ACTIVE_TOKENS} tokens
+            can be active.
           </p>
           {tokens.length > 0 ? (
-            <TokenTable tokens={tokens} canManage={canManage} />
+            <TokenTable tokens={tokens} canManage={canManage} now={now} />
           ) : (
             <p className="text-ink-soft py-4 text-center text-sm">
               No tokens yet.
@@ -170,7 +187,7 @@ export default async function McpPage() {
           )}
           {canManage ? (
             <CreateTokenForm
-              atLimit={tokens.length >= MAX_ACTIVE_TOKENS}
+              atLimit={activeCount >= MAX_ACTIVE_TOKENS}
               nameMax={TOKEN_NAME_MAX}
             />
           ) : (

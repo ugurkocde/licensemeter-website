@@ -37,6 +37,7 @@ const {
   MAX_ACTIVE_TOKENS,
   revokeToken,
   TOKEN_PREFIX,
+  TOKEN_TTL_DAYS,
   verifyToken,
 } = await import("./tokens");
 
@@ -217,7 +218,79 @@ describe("listTokens", () => {
     const list = await listTokens(a.id);
     expect(list.map((t) => t.name)).toEqual(["Mine"]);
     expect(Object.keys(list[0]!).sort()).toEqual(
-      ["createdAt", "id", "lastUsedAt", "name", "tokenPrefix"].sort(),
+      [
+        "createdAt",
+        "expiresAt",
+        "id",
+        "lastUsedAt",
+        "name",
+        "tokenPrefix",
+      ].sort(),
     );
+  });
+});
+
+describe("token expiry", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  it("gives a new token the default lifetime", async () => {
+    const tenant = await seedTenant(currentDb, 1);
+    const now = new Date("2026-11-11T12:00:00Z");
+    const result = await createToken(
+      { tenantId: tenant.id, name: "Desk", createdByKey: "user_1" },
+      now,
+    );
+    if (!result.ok) throw new Error("cap");
+    expect(result.summary.expiresAt.getTime()).toBe(
+      now.getTime() + TOKEN_TTL_DAYS * DAY,
+    );
+  });
+
+  it("verifies until the expiry and refuses afterwards", async () => {
+    const tenant = await seedTenant(currentDb, 1);
+    const now = new Date();
+    const { token, summary } = await create(tenant.id);
+
+    expect(
+      await verifyToken(
+        token,
+        new Date(now.getTime() + (TOKEN_TTL_DAYS - 1) * DAY),
+      ),
+    ).toMatchObject({ tokenId: summary.id });
+    expect(
+      await verifyToken(
+        token,
+        new Date(now.getTime() + (TOKEN_TTL_DAYS + 1) * DAY),
+      ),
+    ).toBeNull();
+  });
+
+  it("gives rows without an explicit expiry the lifetime from now, not an immediate expiry", async () => {
+    const tenant = await seedTenant(currentDb, 1);
+    const token = generateToken();
+    await currentDb.insert(schema.apiTokens).values({
+      tenantId: tenant.id,
+      name: "Existing",
+      tokenHash: hashToken(token),
+      tokenPrefix: token.slice(0, 13),
+      createdByKey: "user_1",
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+    });
+    const [row] = await storedRows(tenant.id);
+    const remaining = row!.expiresAt.getTime() - Date.now();
+    expect(remaining).toBeGreaterThan((TOKEN_TTL_DAYS - 1) * DAY);
+    expect(await verifyToken(token)).not.toBeNull();
+  });
+
+  it("does not count expired tokens against the cap", async () => {
+    const tenant = await seedTenant(currentDb, 1);
+    for (let i = 0; i < MAX_ACTIVE_TOKENS; i++)
+      await create(tenant.id, `T${i}`);
+    const later = new Date(Date.now() + (TOKEN_TTL_DAYS + 1) * DAY);
+    const result = await createToken(
+      { tenantId: tenant.id, name: "Fresh", createdByKey: "user_1" },
+      later,
+    );
+    expect(result.ok).toBe(true);
   });
 });

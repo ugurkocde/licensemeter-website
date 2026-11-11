@@ -1,0 +1,8 @@
+{
+  "title": "MCP tokens now expire after 90 days",
+  "summary": "New MCP server tokens are valid for 90 days, and the MCP server page shows each token's expiry date. Tokens you already have keep working for 90 days from this update. Create a new token before the old one expires, or revoke a token at any time.",
+  "type": "improved",
+  "publishedOn": "2026-11-11",
+  "idempotencyKey": "licensemeter:mcp-token-expiry-2026-11-11",
+  "sourceUrl": "https://docs.licensemeter.com/mcp/"
+}

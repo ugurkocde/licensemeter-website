@@ -31,7 +31,7 @@ The MCP server is included in the Pro and MSP plans. On the Free plan, **MCP ser
 
 3. ## Copy it now
 
-   The token starts with `lm_mcp_` and is shown once. LicenseMeter stores only a hash of it, so it cannot be displayed again. If you lose it, revoke it and create a new one.
+   The token starts with `lm_mcp_` and is shown once. LicenseMeter stores only a hash of it, so it cannot be displayed again. If you lose it, revoke it and create a new one. A token expires 90 days after it is created; the **Expires** column shows the date.
 
 </Steps>
 
@@ -170,7 +170,7 @@ By default, `list_findings` leaves out user names and sign-in addresses. Finding
 
 | Response | Meaning |
 | --- | --- |
-| 401 | The token is missing, mistyped or revoked. |
+| 401 | The token is missing, mistyped, revoked or expired. |
 | 402 | The workspace plan no longer includes the MCP server. |
 | 429 | More than 120 requests per minute for this token. Wait a minute and try again. |
 
@@ -178,7 +178,7 @@ The server answers each request on its own and keeps no session. It does not str
 
 ## Revoke a token or change plans
 
-An Owner or Admin can revoke a token on the **MCP server** page at any time. The token stops working with the next request.
+An Owner or Admin can revoke a token on the **MCP server** page at any time. The token stops working with the next request. Tokens also expire 90 days after they are created. Tokens that existed before expiry was introduced expire 90 days after that change. Create a new token before the old one expires and update the client configuration.
 
 When a workspace moves to the Free plan, its tokens are refused with 402 but kept. They work again after an upgrade unless you revoke them, and you can still revoke them on the Free plan.
 
