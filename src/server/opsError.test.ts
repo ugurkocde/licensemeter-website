@@ -33,7 +33,9 @@ describe("opsErrorText", () => {
 
     expect(dbErrorFields(err)?.code).toBe("22P02");
     expect(opsErrorText(err)).toBe("Database error 22P02");
-  });
+    // Starts an embedded Postgres (PGlite), whose cold start can exceed the
+    // default 5 s on a busy runner.
+  }, 30_000);
 
   it("keeps allowlisted identifiers and drops anything else", () => {
     expect(

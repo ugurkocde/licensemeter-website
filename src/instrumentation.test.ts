@@ -195,7 +195,9 @@ describe("withoutQueryParams", () => {
     const everything = `${inspect(logged, { depth: 8 })}${JSON.stringify(notifyOps.mock.calls)}`;
     expect(everything).not.toContain("Alex Example");
     expect(everything).toContain("22P02");
-  });
+    // Starts an embedded Postgres (PGlite), whose cold start can exceed the
+    // default 5 s on a busy runner.
+  }, 30_000);
 
   it("keeps names and addresses in provider errors out of logs and alerts", async () => {
     const { GraphHttpError } = await import("~/server/graph/types");
