@@ -44,6 +44,10 @@ describe("security.txt", () => {
     expect(isPublicHttpsOrigin("https://[fd00::1]")).toBe(false);
     expect(isPublicHttpsOrigin("https://intranet")).toBe(false);
     expect(isPublicHttpsOrigin("https://app.corp.internal")).toBe(false);
+    expect(isPublicHttpsOrigin("https://app.corp.internal.")).toBe(false);
+    expect(isPublicHttpsOrigin("https://printer.local.")).toBe(false);
+    expect(isPublicHttpsOrigin("https://app.home.arpa")).toBe(false);
+    expect(isPublicHttpsOrigin("https://localhost.")).toBe(false);
     expect(isPublicHttpsOrigin("https://www.licensemeter.com")).toBe(true);
     expect(isPublicHttpsOrigin("not a url")).toBe(false);
   });

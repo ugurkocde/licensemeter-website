@@ -26,12 +26,17 @@ export const isPublicHttpsOrigin = (base: string): boolean => {
   } catch {
     return false;
   }
-  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  // Brackets of an IPv6 literal and the trailing dot of a fully qualified
+  // name are stripped, so "app.corp.internal." cannot slip past the suffixes.
+  const host = url.hostname
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.+$/, "")
+    .toLowerCase();
   return (
     url.protocol === "https:" &&
     isIP(host) === 0 &&
     host.includes(".") &&
-    !/\.(localhost|local|internal|lan|home|corp|test|invalid|example)$/.test(
+    !/\.(localhost|local|internal|lan|home|corp|test|invalid|example|arpa|onion|alt)$/.test(
       host,
     )
   );
