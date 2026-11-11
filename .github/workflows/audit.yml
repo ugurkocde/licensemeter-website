@@ -1,7 +1,8 @@
 name: Audit
 
-# Weekly production-dependency audit. The CI workflow reports advisories
-# without failing pull requests; this run tracks them in a single issue.
+# Weekly production-dependency audit. CI fails a pull request on high or
+# critical advisories; this run catches advisories published between pull
+# requests and tracks them in a single issue.
 on:
   schedule:
     - cron: "0 6 * * 1"

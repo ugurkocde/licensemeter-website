@@ -49,15 +49,16 @@ jobs:
       - name: Validate documentation links, assets and navigation
         run: node scripts/docs-check.mjs
       - id: audit
-        # Advisory only; the weekly Audit workflow tracks findings in an issue.
-        continue-on-error: true
+        # Blocking: high or critical advisories in production dependencies fail
+        # the build. Dev-only tooling and the undeployed demo-video project
+        # (its own package-lock.json) are not part of this audit.
         run: npm audit --omit=dev --audit-level=high
-      - if: steps.audit.outcome == 'failure'
+      - if: failure() && steps.audit.outcome == 'failure'
         run: |
           {
             echo "## npm audit"
             echo
-            echo "High or critical advisories were reported for production dependencies. See the audit step log."
+            echo "High or critical advisories were reported for production dependencies. Update the affected packages; see the audit step log."
           } >> "$GITHUB_STEP_SUMMARY"
       - run: npm run build
       - run: npx playwright install --with-deps chromium
@@ -85,6 +86,8 @@ jobs:
           cache: npm
           cache-dependency-path: docs-site/package-lock.json
       - run: npm ci
+      # The docs site is deployed, so its production dependencies are gated too.
+      - run: npm audit --omit=dev --audit-level=high
       # The build fails on broken internal links and heading anchors.
       - run: npm run build
 
