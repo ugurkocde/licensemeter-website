@@ -2,17 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   SECURITY_TXT_EXPIRES,
-  isPublicHttpsOrigin,
   VULNERABILITY_POLICY_PATH,
-  securityTxt,
+  securityTxtFor,
 } from "~/lib/securityTxt";
 import { TRUST_CONTENT } from "~/app/(marketing)/trust-center/content";
 
 const DAY = 24 * 60 * 60 * 1000;
 
-describe("security.txt", () => {
-  const body = securityTxt("https://licensemeter.com");
-  const fields = Object.fromEntries(
+const fieldsOf = (body: string) =>
+  Object.fromEntries(
     body
       .trim()
       .split("\n")
@@ -22,8 +20,9 @@ describe("security.txt", () => {
       }),
   );
 
+describe("security.txt", () => {
   it("has the RFC 9116 fields the hosted site publishes", () => {
-    expect(fields).toEqual({
+    expect(fieldsOf(securityTxtFor("https://licensemeter.com") ?? "")).toEqual({
       Contact: "mailto:support@ugurlabs.com",
       Expires: SECURITY_TXT_EXPIRES,
       "Preferred-Languages": "en, de",
@@ -32,24 +31,36 @@ describe("security.txt", () => {
     });
   });
 
-  it("is published only for a public https origin", () => {
-    expect(isPublicHttpsOrigin("https://licensemeter.com")).toBe(true);
-    expect(isPublicHttpsOrigin("http://licensemeter.com")).toBe(false);
-    expect(isPublicHttpsOrigin("http://localhost:3000")).toBe(false);
-    expect(isPublicHttpsOrigin("https://localhost")).toBe(false);
-    expect(isPublicHttpsOrigin("https://127.0.0.1")).toBe(false);
-    expect(isPublicHttpsOrigin("https://10.0.0.1")).toBe(false);
-    expect(isPublicHttpsOrigin("https://192.168.1.10")).toBe(false);
-    expect(isPublicHttpsOrigin("https://[::]")).toBe(false);
-    expect(isPublicHttpsOrigin("https://[fd00::1]")).toBe(false);
-    expect(isPublicHttpsOrigin("https://intranet")).toBe(false);
-    expect(isPublicHttpsOrigin("https://app.corp.internal")).toBe(false);
-    expect(isPublicHttpsOrigin("https://app.corp.internal.")).toBe(false);
-    expect(isPublicHttpsOrigin("https://printer.local.")).toBe(false);
-    expect(isPublicHttpsOrigin("https://app.home.arpa")).toBe(false);
-    expect(isPublicHttpsOrigin("https://localhost.")).toBe(false);
-    expect(isPublicHttpsOrigin("https://www.licensemeter.com")).toBe(true);
-    expect(isPublicHttpsOrigin("not a url")).toBe(false);
+  it("builds its URLs from the origin alone", () => {
+    for (const base of [
+      "https://licensemeter.com/",
+      "https://licensemeter.com/some/path?x=1#y",
+    ]) {
+      expect(fieldsOf(securityTxtFor(base) ?? "").Canonical).toBe(
+        "https://licensemeter.com/.well-known/security.txt",
+      );
+    }
+    expect(
+      fieldsOf(securityTxtFor("https://www.licensemeter.com") ?? "").Policy,
+    ).toBe(
+      "https://www.licensemeter.com/trust-center#vulnerability-management",
+    );
+  });
+
+  it("is published only for the hosted service", () => {
+    for (const base of [
+      "http://licensemeter.com",
+      "https://licensemeter.com:8443",
+      "http://localhost:3000",
+      "https://10.0.0.1",
+      "https://app.localdomain",
+      "https://app.corp.internal.",
+      "https://licensemeter.example.org",
+      "https://licensemeter-git-branch.vercel.app",
+      "not a url",
+    ]) {
+      expect(securityTxtFor(base), base).toBeNull();
+    }
   });
 
   it("expires within a year and is renewed at least 30 days ahead", () => {

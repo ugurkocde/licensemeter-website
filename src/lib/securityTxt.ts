@@ -1,5 +1,3 @@
-import { isIP } from "node:net";
-
 import { SUPPORT_EMAIL } from "~/lib/support";
 
 /**
@@ -14,41 +12,35 @@ export const VULNERABILITY_POLICY_PATH =
   "/trust-center#vulnerability-management";
 
 /**
- * Whether `base` may appear in security.txt: RFC 9116 requires https URLs for
- * Canonical and Policy, and they must name the public site. Only a domain name
- * with a public suffix qualifies; IP literals (private, loopback or not),
- * localhost and internal-only names publish nothing.
+ * The origins of the hosted service. security.txt names our security contact,
+ * so it is published only there: previews, self-hosted instances and any
+ * other origin get no file rather than one pointing reporters at us.
  */
-export const isPublicHttpsOrigin = (base: string): boolean => {
-  let url: URL;
-  try {
-    url = new URL(base);
-  } catch {
-    return false;
-  }
-  // Brackets of an IPv6 literal and the trailing dot of a fully qualified
-  // name are stripped, so "app.corp.internal." cannot slip past the suffixes.
-  const host = url.hostname
-    .replace(/^\[|\]$/g, "")
-    .replace(/\.+$/, "")
-    .toLowerCase();
-  return (
-    url.protocol === "https:" &&
-    isIP(host) === 0 &&
-    host.includes(".") &&
-    !/\.(localhost|local|internal|lan|home|corp|test|invalid|example|arpa|onion|alt)$/.test(
-      host,
-    )
-  );
-};
+export const HOSTED_ORIGINS: ReadonlySet<string> = new Set([
+  "https://licensemeter.com",
+  "https://www.licensemeter.com",
+]);
 
-/** The RFC 9116 security.txt body for the hosted site at `base`. */
-export const securityTxt = (base: string): string =>
-  [
+/**
+ * The RFC 9116 security.txt body for the site at `base`, or null when `base`
+ * is not the hosted service. Canonical and Policy are built from the parsed
+ * origin, so a trailing slash or a path in the configured URL cannot change
+ * them.
+ */
+export const securityTxtFor = (base: string): string | null => {
+  let origin: string;
+  try {
+    origin = new URL(base).origin;
+  } catch {
+    return null;
+  }
+  if (!HOSTED_ORIGINS.has(origin)) return null;
+  return [
     `Contact: mailto:${SUPPORT_EMAIL}`,
     `Expires: ${SECURITY_TXT_EXPIRES}`,
     "Preferred-Languages: en, de",
-    `Canonical: ${base}/.well-known/security.txt`,
-    `Policy: ${base}${VULNERABILITY_POLICY_PATH}`,
+    `Canonical: ${origin}/.well-known/security.txt`,
+    `Policy: ${origin}${VULNERABILITY_POLICY_PATH}`,
     "",
   ].join("\n");
+};

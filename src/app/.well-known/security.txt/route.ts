@@ -1,22 +1,23 @@
 import { connection } from "next/server";
 
 import { siteUrl } from "~/env";
-import { isPublicHttpsOrigin, securityTxt } from "~/lib/securityTxt";
+import { securityTxtFor } from "~/lib/securityTxt";
 
-/* RFC 9116 security.txt for the hosted service. A self-hosted instance is
- * operated by someone else, so it must not point reporters at us; like the
- * sitemap, it decides at request time. Without a public https origin the
- * Canonical and Policy URLs would be wrong, so nothing is served either. */
+/* RFC 9116 security.txt, published only for the hosted service (see
+ * HOSTED_ORIGINS). A self-hosted instance is operated by someone else, so it
+ * must not point reporters at us; like the sitemap, it decides at request
+ * time. */
 export async function GET(): Promise<Response> {
-  const base = siteUrl();
-  if (process.env.SELF_HOSTED === "true" || !isPublicHttpsOrigin(base)) {
+  const body =
+    process.env.SELF_HOSTED === "true" ? null : securityTxtFor(siteUrl());
+  if (body === null) {
     await connection();
     return new Response("Not found\n", {
       status: 404,
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
-  return new Response(securityTxt(base), {
+  return new Response(body, {
     headers: { "content-type": "text/plain; charset=utf-8" },
   });
 }
