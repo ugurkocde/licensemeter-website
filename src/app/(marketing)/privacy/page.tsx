@@ -54,8 +54,8 @@ export default function PrivacyPolicyPage() {
           Contractual Clauses is in place with Vercel.
         </p>
         <p>
-          This website uses session cookies for sign-in and workspace selection,
-          and Crisp cookies to maintain support conversations. See our{" "}
+          This website uses session cookies for sign-in and workspace selection.
+          See our{" "}
           <a
             href="/cookies"
             className="hover:text-ink underline underline-offset-4"
@@ -186,13 +186,8 @@ export default function PrivacyPolicyPage() {
 
       <Section title="6. Support conversations">
         <p>
-          Crisp provides the support chat available across our website and
-          dashboard. Loading the chat connects your browser to Crisp and shares
-          technical connection information, including your IP address and the
-          page URL. Messages and contact details you choose to provide are
-          processed to respond to your request. We do not automatically attach
-          your account profile, connector credentials or scan results to the
-          chat.
+          Messages and contact details you choose to provide through the support
+          form or by email are processed to respond to your request.
         </p>
         <p>
           Resend delivers support form submissions by email. Submission limits
@@ -201,15 +196,8 @@ export default function PrivacyPolicyPage() {
           passwords, access tokens or tenant exports in support messages.
         </p>
         <p>
-          For details about the chat provider, see{" "}
-          <a
-            href="https://crisp.chat/en/privacy/"
-            className="underline underline-offset-4"
-          >
-            Crisp’s privacy policy
-          </a>
-          . Contact {SUPPORT_EMAIL} for questions about or deletion of your
-          support conversation.
+          Contact {SUPPORT_EMAIL} for questions about or deletion of your
+          support request.
         </p>
       </Section>
 

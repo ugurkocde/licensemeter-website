@@ -46,7 +46,7 @@ ${ROUNDUPS.map((r) => `- [${r.title.en}](${base}/compare/${r.slug}): ${r.descrip
 - [DPA](${base}/dpa): pre-signed Art. 28 GDPR data processing agreement, downloadable in English and German (German version at ${base}/de/dpa)
 - [FAQ](${base}/faq): the questions IT and security teams ask before granting admin consent
 - [Connectors](${base}/connectors): step-by-step setup guides for all ${CONNECTOR_GUIDES.length} connectors (${CONNECTOR_GUIDES.map((g) => g.name).join(", ")})
-- [Support](${base}/support): contact the Ugurlabs team by chat or email
+- [Support](${base}/support): contact the Ugurlabs team through the support form or by email
 - [Status](${base}/status): live operational status for LicenseMeter and the infrastructure it relies on
 - [MCP server docs](https://docs.licensemeter.com/mcp/): connect Claude, GitHub Copilot or another MCP client to a Pro or MSP workspace with a read-only token, and the four tools it offers
 `;

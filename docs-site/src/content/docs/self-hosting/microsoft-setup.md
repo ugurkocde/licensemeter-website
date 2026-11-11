@@ -81,11 +81,10 @@ The managed connector requests `User.Read.All`, `AuditLog.Read.All`, `Reports.Re
 | `APP_BASE_URL`                                               | Canonical deployment origin, HTTPS for public access                        |
 | `CRON_SECRET`                                                | Bearer secret for scheduled-job routes                                      |
 | `DEMO_MODE`                                                  | `true` enables credentials-free sample-workspace access                     |
-| `SELF_HOSTED`                                                | `true` enables runtime page configuration and disables hosted chat defaults |
+| `SELF_HOSTED`                                                | `true` enables runtime page configuration                                   |
 | `RESEND_API_KEY`, `EMAIL_FROM`                               | Optional transactional email                                                |
 | `SUPPORT_TO_EMAIL`                                           | Destination for the self-hosted support form                                |
 | `SUPPORT_TURNSTILE_SITE_KEY`, `SUPPORT_TURNSTILE_SECRET_KEY` | Optional spam verification; configure both for your hostname                |
-| `CRISP_WEBSITE_ID`                                           | Optional chat website ID for your instance                                  |
 
 Never commit environment files, database dumps, or private keys. `SKIP_ENV_VALIDATION` is for builds without secrets, not runtime deployment.
 
@@ -97,7 +96,7 @@ For an independently managed PostgreSQL database, provision the schema as the da
 
 The `scripts/db-*.sql` files describe the hosted Supabase deployment: RLS, application-role DML permissions, and denial of Supabase Data API access. Tenant isolation remains in application code. Review these files before applying them, and run `scripts/db-audit-posture.sql` after schema changes. The bundled PostgreSQL service has no Data API and does not need these Supabase-specific scripts.
 
-For Vercel, configure the database, authentication, encryption, `APP_BASE_URL`, and `CRON_SECRET`. `vercel.json` schedules the sync, digest, and monthly report. The hosted deployment retains its Crisp chat behavior; `SELF_HOSTED=true` is for instances you operate yourself.
+For Vercel, configure the database, authentication, encryption, `APP_BASE_URL`, and `CRON_SECRET`. `vercel.json` schedules the sync, digest, and monthly report. `SELF_HOSTED=true` is for instances you operate yourself.
 
 ## First connection
 

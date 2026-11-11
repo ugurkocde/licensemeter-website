@@ -20,9 +20,6 @@ test("sample report walks through the sample metering report", async ({
 test("metering demo: sidebar sections, overview charts, app search and mobile fit", async ({
   page,
 }) => {
-  await page.route("https://client.crisp.chat/l.js", (route) =>
-    route.fulfill({ contentType: "application/javascript", body: "" }),
-  );
   await page.goto("/");
   await page
     .getByRole("button", { name: "Open the sample tenant" })

@@ -72,7 +72,6 @@ A containerized proxy should join the web service's network. Do not publish Post
 
 - Email requires your own `RESEND_API_KEY` and verified `EMAIL_FROM` sender.
 - The support form requires your `SUPPORT_TO_EMAIL`. Self-hosted requests are not sent to the hosted support mailbox by default. Optionally set both Turnstile keys for your hostname.
-- Crisp is disabled unless you configure your own `CRISP_WEBSITE_ID`.
 - Operational alerts optionally use `ALERT_EMAIL` and/or `ALERT_WEBHOOK_URL`. Configure destinations you control.
 - Vercel Analytics is not enabled by the Docker setup.
 

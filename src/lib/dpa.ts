@@ -141,7 +141,9 @@ export type DpaDoc = {
 // The Microsoft 365 connection stays read-only.
 // 2.4: states that the core application is read-only and the optional
 // Software Metering module is the single write exception, including the
-// assignment of its own script and its separate consent.
+// assignment of its own script and its separate consent. Annex IV lists
+// Cloudflare (Turnstile on forms), names Supabase Pte. Ltd. as the contracting
+// entity and states each transfer basis; the chat widget is no longer used.
 export const DPA_VERSION = "2.4";
 const EFFECTIVE_EN = "11 November 2026";
 const EFFECTIVE_DE = "11. November 2026";
@@ -166,59 +168,65 @@ const SUBPROCESSOR_ROWS: Record<DpaLang, DpaSubprocessor[]> = {
   en: [
     {
       name: "Vercel Inc.",
-      purpose: "Application hosting and content delivery",
-      location: "EU (Frankfurt function region)",
-      basis: "EU processing; SCCs for any support access from outside the EU",
+      purpose: "Application hosting and serverless functions",
+      location: "EU (Frankfurt)",
+      basis: "EU-US Data Privacy Framework and SCCs",
     },
     {
-      name: "Supabase Inc.",
-      purpose: "Managed PostgreSQL database (primary data store)",
-      location: "EU (AWS eu-central-1, Frankfurt)",
-      basis: "EU processing; SCCs for any support access from outside the EU",
+      name: "Supabase Pte. Ltd.",
+      purpose: "Database (managed PostgreSQL, primary data store)",
+      location: "EU (Frankfurt, AWS eu-central-1)",
+      basis: "SCCs (Supabase DPA)",
     },
     {
       name: "Microsoft (Microsoft Ireland Operations Ltd. / Microsoft Corporation)",
-      purpose:
-        "Identity platform (sign-in, admin consent) and Microsoft Graph API",
-      location: "EU Data Boundary; US fallback",
-      basis:
-        "EU Standard Contractual Clauses (Microsoft Products and Services DPA)",
+      purpose: "Sign-in (Microsoft Entra ID) and Microsoft Graph API",
+      location: "Customer tenant region",
+      basis: "Microsoft DPA and EU-US Data Privacy Framework",
     },
     {
       name: "Resend Inc.",
-      purpose: "Transactional and notification email delivery",
-      location: "EU (Ireland region)",
-      basis: "EU processing; SCCs where applicable",
+      purpose: "Transactional email",
+      location: "EU (Ireland)",
+      basis: "EU-US Data Privacy Framework and SCCs",
+    },
+    {
+      name: "Cloudflare Inc. (Turnstile)",
+      purpose: "Bot protection on forms",
+      location: "Global edge network",
+      basis: "EU-US Data Privacy Framework and SCCs",
     },
   ],
   de: [
     {
       name: "Vercel Inc.",
-      purpose: "Anwendungs-Hosting und Content Delivery",
-      location: "EU (Funktionsregion Frankfurt)",
-      basis:
-        "Verarbeitung in der EU; SCC für etwaige Support-Zugriffe von außerhalb der EU",
+      purpose: "Anwendungs-Hosting und Serverless-Funktionen",
+      location: "EU (Frankfurt)",
+      basis: "EU-US Data Privacy Framework und SCC",
     },
     {
-      name: "Supabase Inc.",
-      purpose: "Verwaltete PostgreSQL-Datenbank (primärer Datenspeicher)",
-      location: "EU (AWS eu-central-1, Frankfurt)",
-      basis:
-        "Verarbeitung in der EU; SCC für etwaige Support-Zugriffe von außerhalb der EU",
+      name: "Supabase Pte. Ltd.",
+      purpose: "Datenbank (verwaltetes PostgreSQL, primärer Datenspeicher)",
+      location: "EU (Frankfurt, AWS eu-central-1)",
+      basis: "SCC (Supabase-DPA)",
     },
     {
       name: "Microsoft (Microsoft Ireland Operations Ltd. / Microsoft Corporation)",
-      purpose:
-        "Identitätsplattform (Anmeldung, Admin-Consent) und Microsoft Graph API",
-      location: "EU Data Boundary; US als Rückfallebene",
-      basis:
-        "EU-Standardvertragsklauseln (Microsoft Products and Services DPA)",
+      purpose: "Anmeldung (Microsoft Entra ID) und Microsoft Graph API",
+      location: "Region des Kunden-Tenants",
+      basis: "Microsoft-DPA und EU-US Data Privacy Framework",
     },
     {
       name: "Resend Inc.",
-      purpose: "Versand transaktionaler und Benachrichtigungs-E-Mails",
-      location: "EU (Region Irland)",
-      basis: "Verarbeitung in der EU; SCC soweit einschlägig",
+      purpose: "Transaktionale E-Mails",
+      location: "EU (Irland)",
+      basis: "EU-US Data Privacy Framework und SCC",
+    },
+    {
+      name: "Cloudflare Inc. (Turnstile)",
+      purpose: "Bot-Schutz für Formulare",
+      location: "Globales Edge-Netzwerk",
+      basis: "EU-US Data Privacy Framework und SCC",
     },
   ],
 };

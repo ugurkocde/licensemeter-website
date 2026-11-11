@@ -23,9 +23,6 @@ test("self-hosted image uses runtime configuration and opens the sample tenant",
     "href",
     `http://localhost:${process.env.PLAYWRIGHT_PORT ?? "3100"}`,
   );
-  expect(
-    await page.locator('script[src*="crisp.chat"], script#crisp-chat').count(),
-  ).toBe(0);
   await page
     .getByRole("button", { name: "Open the sample tenant" })
     .first()

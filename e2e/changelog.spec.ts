@@ -52,15 +52,6 @@ const bell = (page: Page) =>
 const focusedInsideDialog = (page: Page) =>
   page.evaluate(() => document.activeElement?.closest("dialog[open]") !== null);
 
-test.beforeEach(async ({ page }) => {
-  await page.route("https://client.crisp.chat/l.js", (route) =>
-    route.fulfill({
-      contentType: "application/javascript",
-      body: "/* Isolated chat service for browser tests. */",
-    }),
-  );
-});
-
 test("desktop bell shows unread count, opens a right-side sheet, and marks updates read", async ({
   page,
 }) => {
