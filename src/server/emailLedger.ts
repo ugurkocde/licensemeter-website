@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { and, eq, lt, or, sql } from "drizzle-orm";
 
+import { RETENTION_DAYS, retentionMs } from "~/lib/retention";
 import { db } from "~/server/db";
 import { emailBlocks, emailDeliveries } from "~/server/db/schema";
 import type { EmailJob } from "~/server/emailPeriods";
@@ -19,7 +20,7 @@ export const MAX_ATTEMPTS = 3;
 /** A claim this old belongs to a run that crashed or was cut off mid-send. */
 export const STALE_CLAIM_MS = 15 * 60 * 1000;
 /** Ledger rows older than this are deleted by the monthly report run. */
-export const LEDGER_RETENTION_MS = 400 * 24 * 60 * 60 * 1000;
+export const LEDGER_RETENTION_MS = retentionMs(RETENTION_DAYS.emailDeliveries);
 
 /**
  * Everything the ledger records. A leak alert has no period: its key is the

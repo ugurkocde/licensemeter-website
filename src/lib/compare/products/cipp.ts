@@ -62,8 +62,8 @@ export const cipp: Product = {
       de: `Sie wollen auch ${listJoin(NON_MICROSOFT_CONNECTORS, "und")} mit Entra ID abgleichen oder API-Kosten bei OpenAI und Anthropic verfolgen.`,
     },
     {
-      en: "You want a tool whose access is read-only and cannot change the tenant.",
-      de: "Sie wollen ein Werkzeug mit nur lesendem Zugriff, das den Tenant nicht ändern kann.",
+      en: "You want a tool whose core connector only reads your tenant and that never changes licenses itself.",
+      de: "Sie wollen ein Werkzeug, dessen Kern-Connector Ihren Tenant nur liest und das Lizenzen nie selbst ändert.",
     },
     {
       en: "You do not want to run an Azure subscription to self-host: LicenseMeter runs with Docker Compose anywhere, or free on licensemeter.com.",

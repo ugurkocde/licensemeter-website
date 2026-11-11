@@ -72,7 +72,7 @@ describe("POST /api/cron/sync/tenant", () => {
     await POST(req({ tenantId: TENANT }));
     await deferred[0]!();
     expect(notifyOps).toHaveBeenCalledWith(
-      "sync failed for tenant Contoso: no credential",
+      `sync failed for workspace ${TENANT}: Error`,
       expect.objectContaining({ key: `sync:${TENANT}` }),
     );
   });

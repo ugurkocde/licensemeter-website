@@ -33,7 +33,9 @@ describe("errText", () => {
     expect(text).toBe(
       "Database error: ON CONFLICT DO UPDATE command cannot affect row a second time",
     );
-    expect(log).toHaveBeenCalledWith("[sync]", text);
+    // The log gets the allowlisted ops form: a database error can echo
+    // values, so its message stays out of the log.
+    expect(log).toHaveBeenCalledWith("[sync]", "Database error (query failed)");
     expect(JSON.stringify(log.mock.calls)).not.toContain("secret@example.com");
   });
 

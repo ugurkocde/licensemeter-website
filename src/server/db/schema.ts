@@ -992,9 +992,10 @@ export const billingEvents = pgTable(
 ).enableRLS();
 
 /**
- * Online acceptance of the standard data processing agreement (AVV). Every
- * hosted workspace needs one per document version, Free included, because the
- * hosted service is a processor under GDPR Art. 28 for all of them.
+ * Online acceptance of the standard data processing agreement (AVV), one row
+ * per accepted document version. Every hosted workspace can record one, Free
+ * included, because the hosted service is a processor under GDPR Art. 28 for
+ * all of them. An acceptance carries over to later versions.
  */
 export const dpaAcceptances = pgTable(
   "dpa_acceptances",
@@ -1080,6 +1081,15 @@ export const apiTokens = pgTable(
       .defaultNow(),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    /**
+     * After this moment the token no longer verifies. The app sets it at
+     * creation (TOKEN_TTL_DAYS); the default gives rows that existed when the
+     * column was added the same lifetime from that moment, not an immediate
+     * expiry.
+     */
+    expiresAt: timestamp("expires_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now() + interval '90 days'`),
   },
   (t) => [
     uniqueIndex("api_tokens_hash_idx").on(t.tokenHash),

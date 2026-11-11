@@ -17,6 +17,7 @@ import { entitlements, mspAccounts, tenants } from "~/server/db/schema";
 import { entitlementOf } from "~/server/entitlement";
 import { notifyOps } from "~/server/ops";
 import type { EntitlementStatus, PaidPlan, PlanInterval } from "~/server/types";
+import { alertId, alertLabel, opsErrorText } from "~/server/opsError";
 
 /**
  * Polar (card payments, merchant of record): a small fetch client, the product
@@ -267,14 +268,65 @@ const ownerExists = async (owner: EntitlementOwner): Promise<boolean> => {
  * One of our products that cannot be placed: a customer may be paying without
  * getting the plan, so a person has to look at it.
  */
+const POLAR_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "subscription.created",
+  "subscription.updated",
+  "subscription.active",
+  "subscription.canceled",
+  "subscription.uncanceled",
+  "subscription.revoked",
+  "subscription.past_due",
+  "reconcile",
+]);
+const POLAR_STATUSES: ReadonlySet<string> = new Set([
+  "incomplete",
+  "incomplete_expired",
+  "trialing",
+  "active",
+  "past_due",
+  "canceled",
+  "unpaid",
+]);
+
+/**
+ * Ops alert for a subscription that cannot be placed. Event type, status and
+ * ids come from Polar, so only known values and GUIDs are shown. The reason
+ * is our own enum.
+ */
+export const unplacedPolarAlert = (
+  sub: Pick<PolarSubscription, "id" | "status" | "product_id">,
+  meta: Pick<PolarEventMeta, "type">,
+  reason: PolarIgnoreReason,
+  ownerDeleted = false,
+): string => {
+  const details = [`subscription ${alertId(sub.id)}`];
+  if (reason === "unknownStatus")
+    details.push(`status ${alertLabel(sub.status, POLAR_STATUSES)}`);
+  if (reason === "unknownProduct")
+    details.push(`product ${alertId(sub.product_id)}`);
+  if (ownerDeleted) details.push("owner deleted");
+  return `Polar ${alertLabel(meta.type, POLAR_EVENT_TYPES)} not applied: ${reason} (${details.join(", ")})`;
+};
+
+/** Ops alert when reconciling a Polar subscription throws. */
+export const reconcileFailedAlert = (
+  subscriptionId: string,
+  err: unknown,
+): string =>
+  `billing reconcile failed for Polar subscription ${alertId(subscriptionId)}: ${opsErrorText(err)}`;
+
+/** Ops alert when Polar does not know a subscription an entitlement names. */
+export const reconcileMissingAlert = (subscriptionId: string): string =>
+  `billing reconcile: Polar does not know subscription ${alertId(subscriptionId)}; the entitlement row was left as it is.`;
+
 const reportUnplaced = (
   sub: PolarSubscription,
   meta: PolarEventMeta,
   reason: PolarIgnoreReason,
-  detail: string,
+  ownerDeleted = false,
 ) =>
-  notifyOps(`Polar ${meta.type} not applied: ${reason} (${detail})`, {
-    key: `polar-unplaced:${sub.id}`,
+  notifyOps(unplacedPolarAlert(sub, meta, reason, ownerDeleted), {
+    key: `polar-unplaced:${alertId(sub.id)}`,
     cooldownMs: 24 * 60 * 60 * 1000,
   });
 
@@ -296,7 +348,7 @@ export async function applyPolarSubscription(
       // The Polar organization may sell other products; not an incident.
       console.warn(`[polar] ${meta.type} skipped: product ${mapped.detail}`);
     } else if (mapped.reason !== "incomplete") {
-      await reportUnplaced(sub, meta, mapped.reason, mapped.detail);
+      await reportUnplaced(sub, meta, mapped.reason);
     }
     return { result: "ignored", reason: mapped.reason };
   }
@@ -304,7 +356,7 @@ export async function applyPolarSubscription(
 
   // A deleted workspace would fail the foreign key on every redelivery.
   if (!(await ownerExists(event.owner))) {
-    await reportUnplaced(sub, meta, "unknownOwner", `${sub.id}, owner deleted`);
+    await reportUnplaced(sub, meta, "unknownOwner", true);
     return { result: "ignored", reason: "unknownOwner" };
   }
 

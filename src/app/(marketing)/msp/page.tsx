@@ -50,8 +50,8 @@ const FEATURES = [
 ] as const;
 
 const TRUST_ITEMS = [
-  "Read-only application permissions. No write scope exists.",
-  "Nothing changes in the client tenant unless their IT team reviews and runs the generated script themselves.",
+  "Read-only application permissions for the core connector. The only write permission belongs to the optional, separately consented Software Metering module.",
+  "Licenses never change in the client tenant unless their IT team reviews and runs the generated script themselves.",
   "Data stays in the EU (Postgres, Frankfurt).",
   "Disconnecting a workspace deletes its data immediately.",
 ] as const;

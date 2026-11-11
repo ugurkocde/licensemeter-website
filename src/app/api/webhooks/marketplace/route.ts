@@ -16,11 +16,13 @@ import {
   verifyConfiguredWebhookToken,
   webhookPayloadSchema,
   withOperation,
+  unmappedMarketplaceAlert,
 } from "~/server/billing/marketplace";
 import { db } from "~/server/db";
 import { entitlements } from "~/server/db/schema";
 import { readCapped } from "~/server/httpBody";
 import { notifyOps } from "~/server/ops";
+import { alertId } from "~/server/opsError";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -185,8 +187,15 @@ export const POST = async (req: NextRequest) => {
       return answer({ error: "rejection not acknowledged" }, 502);
     }
     void notifyOps(
-      `Marketplace ${action} could not be mapped (plan "${subscription.planId ?? ""}", status "${subscription.saasSubscriptionStatus}"). The entitlement was left unchanged.`,
-      { key: `marketplace-unmapped-${subscriptionId}`, cooldownMs: 3_600_000 },
+      unmappedMarketplaceAlert({
+        action,
+        planId: subscription.planId,
+        status: subscription.saasSubscriptionStatus,
+      }),
+      {
+        key: `marketplace-unmapped-${alertId(subscriptionId)}`,
+        cooldownMs: 3_600_000,
+      },
     );
     return answer({ received: true, applied: false });
   }
@@ -194,7 +203,7 @@ export const POST = async (req: NextRequest) => {
   if (event.plan === "msp" && "tenantId" in owner) {
     void notifyOps(
       "A Marketplace subscription linked to a single workspace is now on the MSP plan. The workspace gets the MSP features, but client tenants are only covered once the plan is moved to an MSP account.",
-      { key: `marketplace-msp-on-workspace-${subscriptionId}` },
+      { key: `marketplace-msp-on-workspace-${alertId(subscriptionId)}` },
     );
   }
 

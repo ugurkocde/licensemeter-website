@@ -80,7 +80,7 @@ describe("onboardingHtml", () => {
   it("promises nothing about price and stays read-only in tone", () => {
     const html = onboardingHtml(ARGS);
     expect(html).not.toMatch(/free to use|no paid tiers/i);
-    expect(html).toContain("Read-only, always");
+    expect(html).toContain("Read-only core connector");
   });
 
   it("uses no em or en dashes", () => {

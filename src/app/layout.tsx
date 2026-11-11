@@ -1,4 +1,3 @@
-import { CrispChat } from "~/components/CrispChat";
 import "~/styles/globals.css";
 
 import { type Metadata, type Viewport } from "next";
@@ -105,11 +104,6 @@ export default async function RootLayout({
   // Docker images have no deployment secrets at build time. Render from the
   // runtime environment; hosted marketing pages keep their static behavior.
   if (env.SELF_HOSTED === "true") await connection();
-  const crispId =
-    env.CRISP_WEBSITE_ID ??
-    (env.SELF_HOSTED === "true"
-      ? undefined
-      : "d8cf4fcb-0dbe-42ee-b94c-3bbc415d58f4");
   return (
     <html
       lang="en"
@@ -128,7 +122,6 @@ export default async function RootLayout({
       </head>
       <body className="font-sans antialiased">
         {children}
-        {crispId && <CrispChat websiteId={crispId} />}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{

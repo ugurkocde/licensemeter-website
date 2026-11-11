@@ -1,8 +1,12 @@
 import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 
-import { workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
+import {
+  PSEUDONYMISED_KEY_PREFIX,
+  pseudonymisedDedupeKey,
+} from "~/server/retention";
 import { isUniqueViolation } from "~/server/db/errors";
+import { OpsSafeError, opsErrorText } from "~/server/opsError";
 import {
   adobeConnections,
   adobeUsers as adobeUsersTable,
@@ -1211,8 +1215,11 @@ export const runSync = async (
       })
       .where(eq(syncRuns.id, runId));
     void notifyOps(
-      `sync FAILED for tenant ${workspaceLabel(tenant)}: ${message}`,
-      { key: `sync:${tenantId}`, cooldownMs: 30 * 60 * 1000 },
+      `sync FAILED for workspace ${tenantId}: ${opsErrorText(err)}`,
+      {
+        key: `sync:${tenantId}`,
+        cooldownMs: 30 * 60 * 1000,
+      },
     );
     return { runId, status: "failed", steps };
   }
@@ -1390,7 +1397,7 @@ export type InsertedFinding = {
  * Returns the rows it inserted, first appearances only, which gives leak
  * alerts natural dedup across syncs (later syncs merely bump lastSeenAt).
  */
-const diffFindings = async (
+export const diffFindings = async (
   tenantId: string,
   newFindings: WasteFinding[],
   now: Date,
@@ -1403,8 +1410,19 @@ const diffFindings = async (
     });
     const existingByKey = new Map(existing.map((f) => [f.dedupeKey, f]));
     const newByKey = new Map(newFindings.map((f) => [f.dedupeKey, f]));
+    // A finding pseudonymised by the retention job stores the hash of a key
+    // that embedded an email address. When that seat shows up again it
+    // reopens the same row (and gets its plain key back below) instead of
+    // inserting a second one.
+    const newByStoredKey = new Map(
+      newFindings.map((f) => [pseudonymisedDedupeKey(f.dedupeKey), f]),
+    );
 
-    const toInsert = newFindings.filter((f) => !existingByKey.has(f.dedupeKey));
+    const toInsert = newFindings.filter(
+      (f) =>
+        !existingByKey.has(f.dedupeKey) &&
+        !existingByKey.has(pseudonymisedDedupeKey(f.dedupeKey)),
+    );
     const inserted: InsertedFinding[] = [];
     for (const batch of chunk(toInsert, 250)) {
       const rows = await tx
@@ -1434,11 +1452,22 @@ const diffFindings = async (
     }
 
     for (const f of existing) {
-      const fresh = newByKey.get(f.dedupeKey);
+      // A row still holding the plain key takes precedence: the pseudonymised
+      // row of the same key then stays as it is, so the plain key is never
+      // assigned twice (findings_tenant_dedupe_idx).
+      const viaHash = f.dedupeKey.startsWith(PSEUDONYMISED_KEY_PREFIX)
+        ? newByStoredKey.get(f.dedupeKey)
+        : undefined;
+      const fresh =
+        newByKey.get(f.dedupeKey) ??
+        (viaHash && !existingByKey.has(viaHash.dedupeKey)
+          ? viaHash
+          : undefined);
       if (fresh) {
         await tx
           .update(findings)
           .set({
+            dedupeKey: fresh.dedupeKey,
             title: fresh.title,
             detail: fresh.detail,
             graphUserId: fresh.graphUserId,
@@ -1499,11 +1528,11 @@ export const sendLeakAlert = async (
       if (outcome === "failed") failed++;
     }
     if (failed > 0) {
-      throw new Error(`${failed} of ${to.length} message(s) not sent`);
+      throw new OpsSafeError(`${failed} of ${to.length} message(s) not sent`);
     }
   } catch (err) {
     void notifyOps(
-      `leak alert failed for tenant ${workspaceLabel(tenant)}: ${err instanceof Error ? err.message : String(err)}`,
+      `leak alert failed for workspace ${tenant.id}: ${opsErrorText(err)}`,
       { key: `leakAlert:${tenant.id}`, cooldownMs: 60 * 60 * 1000 },
     );
   }

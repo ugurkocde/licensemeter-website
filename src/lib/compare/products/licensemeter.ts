@@ -116,8 +116,8 @@ export const licensemeter: Product = {
     automatedRemediation: {
       value: "no",
       note: {
-        en: "By design: access is read-only. It generates a PowerShell script for the seats you pick, and your IT reviews and runs it.",
-        de: "Bewusst: Der Zugriff ist nur lesend. Für die gewählten Lizenzen entsteht ein PowerShell-Skript, das Ihre IT prüft und ausführt.",
+        en: "By design: LicenseMeter never changes licenses itself. It generates a PowerShell script for the seats you pick, and your IT reviews and runs it.",
+        de: "Bewusst: LicenseMeter ändert Lizenzen nie selbst. Für die gewählten Lizenzen entsteht ein PowerShell-Skript, das Ihre IT prüft und ausführt.",
       },
       source: `${DOCS}/exports/`,
     },

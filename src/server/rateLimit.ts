@@ -2,6 +2,7 @@ import { isIP } from "node:net";
 
 import { sql } from "drizzle-orm";
 
+import { RETENTION_DAYS, retentionMs } from "~/lib/retention";
 import { db } from "~/server/db";
 import { rateLimits } from "~/server/db/schema";
 
@@ -30,7 +31,13 @@ export const rateLimitDurable = async (
   failureMode: "allow" | "deny" | "throw" = "allow",
 ): Promise<boolean> => {
   const now = new Date();
-  const resetAt = new Date(now.getTime() + windowMs);
+  // No window outlives the rate-limit retention bound (some keys carry an IP
+  // address); the daily retention job deletes rows once their window ends.
+  const window = Math.min(
+    windowMs,
+    retentionMs(RETENTION_DAYS.rateLimitMaxAge),
+  );
+  const resetAt = new Date(now.getTime() + window);
   try {
     const [row] = await db
       .insert(rateLimits)

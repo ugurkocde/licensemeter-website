@@ -20,6 +20,9 @@ const {
   polarProductId,
   polarProductOf,
   polarSubscriptionSchema,
+  reconcileFailedAlert,
+  reconcileMissingAlert,
+  unplacedPolarAlert,
   verifyPolarSignature,
 } = await import("./polar");
 type PolarSubscription = Parameters<typeof entitlementEventOf>[0];
@@ -319,5 +322,55 @@ describe("verifyPolarSignature", () => {
       ok: false,
       reason: "missingHeaders",
     });
+  });
+});
+
+describe("unplacedPolarAlert", () => {
+  const ID = "6f1c2b3a-1111-4222-8333-444455556666";
+
+  it("shows known values and GUIDs only", () => {
+    expect(
+      unplacedPolarAlert(
+        { id: ID, status: "active", product_id: ID },
+        { type: "subscription.updated" },
+        "unknownProduct",
+      ),
+    ).toBe(
+      `Polar subscription.updated not applied: unknownProduct (subscription ${ID}, product ${ID})`,
+    );
+  });
+
+  it("never forwards provider text", () => {
+    const text = unplacedPolarAlert(
+      {
+        id: "Alex Example",
+        status: "Alex Example",
+        product_id: "Alex Example",
+      },
+      { type: "Alex Example" },
+      "unknownStatus",
+      true,
+    );
+    expect(text).not.toContain("Alex");
+    expect(text).toBe(
+      "Polar unrecognized not applied: unknownStatus (subscription unrecognized id, status unrecognized, owner deleted)",
+    );
+  });
+});
+
+describe("reconcile alerts", () => {
+  it("never forward a subscription id that is not a GUID", () => {
+    const failed = reconcileFailedAlert(
+      "Alex Example",
+      new Error("Alex Example"),
+    );
+    const missing = reconcileMissingAlert("Alex Example");
+    expect(failed).not.toContain("Alex");
+    expect(missing).not.toContain("Alex");
+    expect(failed).toBe(
+      "billing reconcile failed for Polar subscription unrecognized id: Error",
+    );
+    const id = "6f1c2b3a-1111-4222-8333-444455556666";
+    expect(reconcileMissingAlert(id)).toContain(id);
   });
 });

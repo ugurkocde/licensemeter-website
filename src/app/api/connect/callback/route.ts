@@ -34,10 +34,27 @@ const fail = (code: string): never =>
   redirect(`/app/connectors/microsoft?error=${code}`);
 
 // Microsoft's `error` and `error_description` are caller-controlled once a
-// state is valid, and the ops webhook posts alert text without escaping, so
-// only their machine codes reach an alert: the OAuth error code and the
-// AADSTS number, which is enough to look the cause up.
-const OAUTH_ERROR_PATTERN = /^[a-z_]{1,64}$/;
+// state is valid, so only machine codes reach an alert: an OAuth error code
+// from the fixed list below (OAuth 2.0, OpenID Connect and Microsoft
+// identity platform codes) and the AADSTS number, which is enough to look
+// the cause up. Any other `error` value, however code-like, is reported as
+// unrecognized, so no caller-chosen text can reach an alert.
+const OAUTH_ERROR_CODES: ReadonlySet<string> = new Set([
+  "access_denied",
+  "invalid_request",
+  "invalid_client",
+  "invalid_grant",
+  "invalid_resource",
+  "invalid_scope",
+  "unauthorized_client",
+  "unsupported_response_type",
+  "server_error",
+  "temporarily_unavailable",
+  "consent_required",
+  "interaction_required",
+  "login_required",
+  "account_selection_required",
+]);
 const AADSTS_PATTERN = /\bAADSTS\d{1,8}\b/;
 const microsoftCodes = (
   error: string | null,
@@ -45,22 +62,12 @@ const microsoftCodes = (
 ): string | null => {
   const codes: string[] = [];
   if (error) {
-    codes.push(OAUTH_ERROR_PATTERN.test(error) ? error : "unrecognized error");
+    codes.push(OAUTH_ERROR_CODES.has(error) ? error : "unrecognized error");
   }
   const aadsts = description?.match(AADSTS_PATTERN)?.[0];
   if (aadsts) codes.push(aadsts);
   return codes.length > 0 ? codes.join(" ") : null;
 };
-
-// The initiator's address comes from the stored UPN or email, which nothing
-// validates, so it reaches an alert only when it is a plain address and then
-// as inline code, which webhook markdown leaves unformatted. Backticks are
-// outside the allowlist, so the value cannot close the code span.
-const ALERT_ADDRESS_PATTERN = /^[A-Za-z0-9._%+'#-]{1,64}@[A-Za-z0-9.-]{1,253}$/;
-const alertAddress = (address: string): string =>
-  ALERT_ADDRESS_PATTERN.test(address)
-    ? `\`${address}\``
-    : "unrecognized address";
 
 /**
  * Admin-consent return leg. Validates the state nonce, requires the browser
@@ -97,10 +104,10 @@ export const GET = async (req: NextRequest) => {
     const reason = [why, ids, microsoft && `Microsoft: ${microsoft}`]
       .filter(Boolean)
       .join("; ");
+    // Workspace ID only: alerts never name the person who started the flow.
     const workspace = stateRow!.tenantId ?? "unknown";
-    const initiator = `${alertAddress(stateRow!.email)}, oid ${stateRow!.oid ?? "none"}`;
     void notifyOps(
-      `consent callback rejected: ${code} for workspace ${workspace} by ${initiator}${reason ? ` (${reason})` : ""}`,
+      `consent callback rejected: ${code} for workspace ${workspace}${reason ? ` (${reason})` : ""}`,
       {
         key: `consent-callback:${workspace}:${code}:${why ?? ""}`,
         cooldownMs: STATE_TTL_MS,
@@ -261,7 +268,7 @@ export const GET = async (req: NextRequest) => {
 
   // The single most important founder signal there is.
   void notifyOps(
-    `tenant connected: ${grantedTid} by ${stateRow!.email}, first sync starting`,
+    `workspace ${tenantId} connected its Microsoft tenant, first sync starting`,
   );
 
   // First sync runs after the redirect is sent; the connect page polls status.

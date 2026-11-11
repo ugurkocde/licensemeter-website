@@ -22,7 +22,9 @@ const setup = async (withSource: boolean) => {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("recordSignin", () => {
+// Each test starts an embedded Postgres (PGlite), whose cold start can exceed
+// the default 5 s on a busy runner.
+describe("recordSignin", { timeout: 30_000 }, () => {
   it("keeps the source of the first sign-in only", async () => {
     const { client, db } = await setup(true);
     const base = { oid: "o1", tid: "t1", upn: "a@example.test" };
@@ -50,5 +52,18 @@ describe("recordSignin", () => {
     expect(rows).toEqual([
       { oid: "o2", tid: "t1", upn: "b@example.test", signin_count: 2 },
     ]);
+  });
+});
+
+describe("firstSignInAlert", () => {
+  it("names the Microsoft tenant only, never the page the sign-in came from", async () => {
+    const { firstSignInAlert } = await import("./signinStats");
+    const tid = "11111111-2222-4333-8444-555555555555";
+    expect(firstSignInAlert(tid)).toBe(
+      `first sign-in from Microsoft tenant ${tid}`,
+    );
+    expect(firstSignInAlert("Alex Example")).not.toContain("Alex");
+    // The alert builder cannot take the caller-controlled source at all.
+    expect(firstSignInAlert.length).toBe(1);
   });
 });

@@ -177,3 +177,63 @@ describe("notifyOps delivery", () => {
     }
   });
 });
+
+describe("redactForOps", () => {
+  it("drops multiline parameters from a Drizzle error message and stack", async () => {
+    const { redactForOps } = await import("./ops");
+    const { DrizzleQueryError } = await import("drizzle-orm/errors");
+    const err = new DrizzleQueryError(
+      'update "findings" set "workflow_note" = $1 where "id" = $2',
+      [
+        "Follow up\nAlex Example\nwith HR",
+        "00000000-0000-0000-0000-000000000001",
+      ],
+      new Error("deadlock detected"),
+    );
+    for (const text of [err.message, err.stack ?? ""]) {
+      const out = redactForOps(text);
+      expect(out).toContain("params: <redacted>");
+      expect(out).not.toContain("Alex Example");
+      expect(out).not.toContain("with HR");
+      expect(out).not.toContain("00000000-0000-0000-0000-000000000001");
+      expect(out).toContain('update "findings"');
+    }
+  });
+
+  it("cannot be ended early by a parameter that imitates a stack frame", async () => {
+    const { redactForOps } = await import("./ops");
+    const out = redactForOps(
+      "Failed query: update x\nparams: Follow up\n    at Alex Example\nwith HR,1f0c\n    at execute (/app/query.js:10:1)",
+    );
+    expect(out).toBe("Failed query: update x\nparams: <redacted>");
+  });
+
+  it("replaces email-shaped values, guest UPNs included", async () => {
+    const { redactForOps } = await import("./ops");
+    expect(
+      redactForOps(
+        "send failed for alex.example@contoso.com and jane_contoso.com#EXT#@fabrikam.onmicrosoft.com",
+      ),
+    ).toBe("send failed for <email> and <email>");
+  });
+
+  it("stays linear on long text without an address", async () => {
+    const { redactForOps } = await import("./ops");
+    const long = `${"a".repeat(200_000)} ${"params: x\n".repeat(10_000)}`;
+    const started = performance.now();
+    redactForOps(long);
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(redactForOps(`${"a".repeat(70)}@example.com`)).toBe("<email>");
+  });
+
+  it("drops the bound parameters of a failed query", async () => {
+    const { redactForOps } = await import("./ops");
+    expect(
+      redactForOps(
+        'Failed query: insert into "memberships" values ($1, $2)\nparams: 1f0c,alex@contoso.com',
+      ),
+    ).toBe(
+      'Failed query: insert into "memberships" values ($1, $2)\nparams: <redacted>',
+    );
+  });
+});

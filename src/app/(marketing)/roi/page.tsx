@@ -132,7 +132,7 @@ export default function RoiPage() {
           <p className="text-ink-faint mt-3 text-xs">
             Every finding exports to CSV for finance, and IT gets a generated
             PowerShell remediation script to review and run. LicenseMeter itself
-            never writes to your tenant.
+            never changes licenses in your tenant.
           </p>
         </div>
       </section>

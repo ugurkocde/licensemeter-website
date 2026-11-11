@@ -26,7 +26,7 @@ import { auth } from "~/server/auth";
 import { WORKSPACE_COOKIE, workspaceCookieOptions } from "~/server/access";
 import { db } from "~/server/db";
 import { notifyOps } from "~/server/ops";
-import { recordSignin } from "~/server/signinStats";
+import { firstSignInAlert, recordSignin } from "~/server/signinStats";
 import { resolveScanTenant, runDelegatedScan } from "~/server/scan";
 import { requestDeadline } from "~/server/sync/deadline";
 
@@ -145,7 +145,7 @@ const handleScanCallback = async (
   if (!resolved.ok) return backToConnect(req, resolved.error, "guard matrix");
   const tenantId = resolved.tenantId;
 
-  void notifyOps(`instant scan started: ${upn} (tenant ${claims.tid})`);
+  void notifyOps(`instant scan started for workspace ${tenantId}`);
 
   // The scan runs after the redirect is sent; the connect page polls the
   // sync status exactly like the consent flow's first sync.
@@ -227,9 +227,7 @@ export const GET = async (req: NextRequest) => {
       signupSource: oauth.from ?? null,
     });
     if (count === 1) {
-      void notifyOps(
-        `first sign-in: ${upn} (tenant ${claims.tid}), from ${oauth.from ?? "an unknown page"}`,
-      );
+      void notifyOps(firstSignInAlert(claims.tid));
     }
   } catch (err) {
     console.error("[auth] sign-in tracking failed", err);

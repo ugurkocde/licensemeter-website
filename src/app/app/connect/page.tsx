@@ -65,9 +65,9 @@ export default async function ConnectPage({
         A Global Administrator or Privileged Role Administrator of your
         Microsoft 365 tenant grants LicenseMeter{" "}
         <strong className="text-ink">read-only</strong> application permissions
-        once. That unlocks nightly monitoring, leak alerts and trends. Nothing
-        is ever written to your tenant, and mailbox or file contents are never
-        readable.
+        once. That unlocks nightly monitoring, leak alerts and trends. This
+        connector never writes to your tenant, and mailbox or file contents are
+        never readable.
       </p>
 
       <ul className="border-line bg-card mt-6 border">

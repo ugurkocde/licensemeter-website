@@ -184,8 +184,8 @@ ${emailButton(emailAppLink(args.baseUrl, "/app", UTM), "Open your workspace")}
 ${emailRule()}
 ${STEPS.map(stepBlock).join("")}
 ${emailCallout(
-  "Read-only, always",
-  "LicenseMeter never removes licenses, disables users or changes your tenant. Every finding is a review candidate, and you decide whether to act on it.",
+  "Read-only core connector",
+  "LicenseMeter never removes licenses or disables users. The Microsoft 365 connector only reads; only the optional Software Metering module, if you enable it, writes its own Intune script. Every finding is a review candidate, and you decide whether to act on it.",
 )}
 ${emailEyebrow("When you are ready for more", C.faint)}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px 0">

@@ -10,6 +10,7 @@ export function dueJobs(now) {
   if (now.getUTCMinutes() !== 0) return [];
   const jobs = [];
   if (now.getUTCHours() === 3) jobs.push("sync");
+  if (now.getUTCHours() === 5) jobs.push("retention");
   if (now.getUTCHours() === 6 && now.getUTCDay() === 1) jobs.push("digest");
   if (now.getUTCHours() === 7 && now.getUTCDate() === 1) jobs.push("report");
   return jobs;
@@ -49,7 +50,7 @@ async function runScheduler() {
   // Start on the next tick. Restarting does not backfill missed schedules.
   const timer = setInterval(tick, 30_000);
   console.log(
-    "Scheduler active (UTC): sync daily 03:00, digest Monday 06:00, report day 1 at 07:00.",
+    "Scheduler active (UTC): sync daily 03:00, retention daily 05:00, digest Monday 06:00, report day 1 at 07:00.",
   );
   for (const signal of ["SIGTERM", "SIGINT"])
     process.on(signal, () => {

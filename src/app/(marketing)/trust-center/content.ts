@@ -57,7 +57,7 @@ const EN: TrustContent = {
       {
         label: "Read-only access",
         detail:
-          "Application permissions are read-only without exception. We can never change anything in your tenant.",
+          "The core application uses read-only Microsoft Graph permissions only. The optional Software Metering module uses a separate app registration with one write permission, DeviceManagementScripts.ReadWrite.All, for its own Intune Remediation script. It needs separate admin consent and is inactive unless you enable it.",
       },
       {
         label: "EU data residency",
@@ -105,7 +105,7 @@ const EN: TrustContent = {
   },
   access: {
     title: "How access works",
-    body: "A Global Administrator grants consent once, through Microsoft's standard admin-consent dialog, for application permissions that are read-only without exception. There is no service account, agent or mailbox plugin in your tenant, and you can revoke the application in Entra ID at any time, independently of us. Usage reports are consumed as counts and last-activity dates only: metadata, never content.",
+    body: "A Global Administrator grants consent once, through Microsoft's standard admin-consent dialog, for the core connector's application permissions, which are read-only without exception: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All and ReportSettings.Read.All. The optional Software Metering module needs its own separate consent. There is no service account, agent or mailbox plugin in your tenant, and you can revoke the application in Entra ID at any time, independently of us. Usage reports are consumed as counts and last-activity dates only: metadata, never content.",
     linked: {
       pre: "The ",
       linkText: "Security overview",
@@ -115,7 +115,7 @@ const EN: TrustContent = {
   },
   security: {
     title: "Security measures",
-    body: "Access to a workspace is invite-based and role-based (owner, admin, viewer); sign-in is Microsoft Entra ID over OpenID Connect with PKCE, with a signed, httpOnly session cookie that expires after 30 days. Data is encrypted in transit (TLS, HSTS) and at rest (AES-256), with bring-your-own connector credentials additionally encrypted at the application layer (AES-256-GCM). Tenants are logically separated in the application layer on every query. PostgreSQL row-level security additionally blocks every database role other than the application role. State-changing requests are CSRF-protected and rate-limited, and a per-workspace audit log records exports and administrative actions.",
+    body: "Access to a workspace is invite-based and role-based (owner, admin, viewer); sign-in is Microsoft Entra ID over OpenID Connect with PKCE, with a signed, httpOnly session cookie that expires after 30 days. Data is encrypted in transit (TLS, HSTS) and at rest (AES-256), with bring-your-own connector credentials additionally encrypted at the application layer (AES-256-GCM). Customer data is logically separated per workspace in a shared database. Isolation is enforced in the application layer: every request is authenticated (Microsoft Entra ID sign-in, or a workspace-bound token for the MCP API) and authorised against the user's workspace. Row-level security is enabled on all tables and enforces per-tenant row policies on the MCP API and data export endpoints. The Supabase public Data API has no access to any table. State-changing requests are CSRF-protected and rate-limited, and a per-workspace audit log records exports and administrative actions.",
     linked: {
       pre: "The full technical and organizational measures are ",
       linkText: "Annex 2 of the DPA",
@@ -198,7 +198,7 @@ const DE: TrustContent = {
       {
         label: "Nur-Lese-Zugriff",
         detail:
-          "Die Anwendungsberechtigungen sind ausnahmslos nur lesend. Wir können in Ihrem Tenant nichts verändern.",
+          "Die Kernanwendung nutzt ausschließlich lesende Microsoft-Graph-Berechtigungen. Das optionale Software-Metering-Modul nutzt eine separate App-Registrierung mit einer Schreibberechtigung, DeviceManagementScripts.ReadWrite.All, für sein eigenes Intune-Remediation-Skript. Es erfordert eine separate Administrator-Einwilligung und ist inaktiv, solange Sie es nicht aktivieren.",
       },
       {
         label: "Datenhaltung in der EU",
@@ -246,7 +246,7 @@ const DE: TrustContent = {
   },
   access: {
     title: "So funktioniert der Zugriff",
-    body: "Ein globaler Administrator erteilt die Einwilligung einmalig über den standardmäßigen Administrator-Einwilligungsdialog von Microsoft - für Anwendungsberechtigungen, die ausnahmslos nur lesend sind. Es gibt kein Dienstkonto, keinen Agenten und kein Postfach-Plugin in Ihrem Tenant, und Sie können die Anwendung in Entra ID jederzeit unabhängig von uns widerrufen. Nutzungsberichte werden nur als Zählwerte und Datum der letzten Aktivität verarbeitet: Metadaten, niemals Inhalte.",
+    body: "Ein globaler Administrator erteilt die Einwilligung einmalig über den standardmäßigen Administrator-Einwilligungsdialog von Microsoft, und zwar für die Anwendungsberechtigungen des Kern-Connectors, die ausnahmslos nur lesend sind: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All und ReportSettings.Read.All. Das optionale Software-Metering-Modul erfordert eine eigene, separate Einwilligung. Es gibt kein Dienstkonto, keinen Agenten und kein Postfach-Plugin in Ihrem Tenant, und Sie können die Anwendung in Entra ID jederzeit unabhängig von uns widerrufen. Nutzungsberichte werden nur als Zählwerte und Datum der letzten Aktivität verarbeitet: Metadaten, niemals Inhalte.",
     linked: {
       pre: "Die ",
       linkText: "Sicherheitsübersicht",
@@ -256,7 +256,7 @@ const DE: TrustContent = {
   },
   security: {
     title: "Sicherheitsmaßnahmen",
-    body: "Der Zugang zu einem Workspace erfolgt einladungs- und rollenbasiert (Inhaber, Administrator, Betrachter); die Anmeldung erfolgt über Microsoft Entra ID per OpenID Connect mit PKCE, mit einem signierten httpOnly-Sitzungscookie, das nach 30 Tagen abläuft. Daten werden bei der Übertragung (TLS, HSTS) und im Ruhezustand (AES-256) verschlüsselt; selbst bereitgestellte Connector-Anmeldedaten werden zusätzlich auf Anwendungsebene verschlüsselt (AES-256-GCM). Mandanten werden in der Anwendungsschicht bei jeder Abfrage logisch getrennt. PostgreSQL Row-Level Security blockiert zusätzlich jede Datenbankrolle außer der Anwendungsrolle. Zustandsändernde Anfragen sind CSRF-geschützt und ratenbegrenzt, und ein Audit-Log je Workspace protokolliert Exporte und administrative Aktionen.",
+    body: "Der Zugang zu einem Workspace erfolgt einladungs- und rollenbasiert (Inhaber, Administrator, Betrachter); die Anmeldung erfolgt über Microsoft Entra ID per OpenID Connect mit PKCE, mit einem signierten httpOnly-Sitzungscookie, das nach 30 Tagen abläuft. Daten werden bei der Übertragung (TLS, HSTS) und im Ruhezustand (AES-256) verschlüsselt; selbst bereitgestellte Connector-Anmeldedaten werden zusätzlich auf Anwendungsebene verschlüsselt (AES-256-GCM). Kundendaten werden in einer gemeinsamen Datenbank logisch je Arbeitsbereich getrennt. Die Isolation wird in der Anwendungsschicht durchgesetzt: Jede Anfrage wird authentifiziert (Anmeldung über Microsoft Entra ID oder, für die MCP-API, ein an den Arbeitsbereich gebundenes Token) und gegen den Arbeitsbereich des Nutzers autorisiert. Row-Level-Security ist auf allen Tabellen aktiviert und setzt auf der MCP-API und den Datenexport-Endpunkten Zeilenrichtlinien je Mandant durch. Die öffentliche Data API von Supabase hat auf keine Tabelle Zugriff. Zustandsändernde Anfragen sind CSRF-geschützt und ratenbegrenzt, und ein Audit-Log je Workspace protokolliert Exporte und administrative Aktionen.",
     linked: {
       pre: "Die vollständigen technischen und organisatorischen Maßnahmen finden Sie in ",
       linkText: "Anhang 2 des AVV",

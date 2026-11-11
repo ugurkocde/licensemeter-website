@@ -14,6 +14,7 @@ import type {
   EntitlementOwner,
 } from "~/server/billing/entitlementWrites";
 import type { EntitlementStatus, PaidPlan } from "~/server/types";
+import { alertLabel } from "~/server/opsError";
 
 /**
  * Microsoft Marketplace transactable SaaS offer: SaaS Fulfillment API v2.
@@ -54,6 +55,37 @@ export const marketplacePlanIds = (): Record<PaidPlan, string> => ({
   pro: env.MARKETPLACE_PLAN_PRO ?? "pro",
   msp: env.MARKETPLACE_PLAN_MSP ?? "msp",
 });
+
+const MARKETPLACE_ACTIONS: ReadonlySet<string> = new Set([
+  "Subscribe",
+  "ChangePlan",
+  "ChangeQuantity",
+  "Renew",
+  "Suspend",
+  "Unsubscribe",
+  "Reinstate",
+]);
+const MARKETPLACE_STATUSES: ReadonlySet<string> = new Set([
+  "PendingFulfillmentStart",
+  "Subscribed",
+  "Suspended",
+  "Unsubscribed",
+]);
+
+/**
+ * Ops alert for a webhook that cannot be mapped to a plan. Action, plan and
+ * status come from Microsoft, so only known values are shown; anything else
+ * is reported as unrecognized.
+ */
+export const unmappedMarketplaceAlert = (input: {
+  action: string;
+  planId: string | null | undefined;
+  status: string | null | undefined;
+}): string => {
+  const plan = planForMarketplaceId(input.planId);
+  const planLabel = plan ?? (input.planId ? "unrecognized" : "none");
+  return `Marketplace ${alertLabel(input.action, MARKETPLACE_ACTIONS)} could not be mapped (plan ${planLabel}, status ${alertLabel(input.status, MARKETPLACE_STATUSES)}). The entitlement was left unchanged.`;
+};
 
 /** The paid plan behind a Partner Center plan id, or null for one we do not sell. */
 export const planForMarketplaceId = (

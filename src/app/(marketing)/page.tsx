@@ -25,7 +25,7 @@ const STEPS = [
   {
     Icon: Cable,
     title: "Connect read-only",
-    body: "Link Microsoft 365 and your SaaS apps with admin consent. Read-only scopes, no write access, and you can revoke it at any time.",
+    body: "Link Microsoft 365 and your SaaS apps with admin consent. Read-only scopes for the core connectors, and you can revoke consent at any time.",
   },
   {
     Icon: ScanLine,

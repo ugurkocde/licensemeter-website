@@ -14,6 +14,7 @@ import {
   emailWaste,
 } from "~/lib/emailLayout";
 import { escapeHtml } from "~/lib/html";
+import { OpsSafeError } from "~/server/opsError";
 
 /**
  * Outgoing mail via Resend, entirely env-gated: without RESEND_API_KEY and
@@ -77,11 +78,11 @@ export const sendEmailWithReceipt = async (
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
-    throw new Error(`Resend responded ${res.status}`);
+    throw new OpsSafeError(`Resend responded ${res.status}`);
   }
   const body = (await res.json().catch(() => null)) as { id?: unknown } | null;
   if (typeof body?.id !== "string" || !body.id) {
-    throw new Error("Resend response carried no message id");
+    throw new OpsSafeError("Resend response carried no message id");
   }
   return { id: body.id };
 };

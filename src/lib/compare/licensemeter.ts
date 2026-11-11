@@ -44,7 +44,7 @@ export const LICENSEMETER_CLAIMS = {
   offboarding:
     "Disabled accounts still holding paid seats surface automatically as priced findings, including the connected-app seats the same people still hold.",
   remediation:
-    "Generates the PowerShell remediation script for the seats you choose. Your IT reviews and runs it; LicenseMeter itself never writes to the tenant.",
+    "Generates the PowerShell remediation script for the seats you choose. Your IT reviews and runs it; LicenseMeter itself never changes licenses in the tenant.",
   beyondMicrosoft: `Connectors cross-check ${listJoin(NON_MICROSOFT_CONNECTORS)} seats against Entra ID in the same pass.`,
 } as const;
 

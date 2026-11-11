@@ -137,7 +137,7 @@ export default function PowershellAuditComparePage() {
               >
                 security overview
               </Link>
-              . No write scope exists.
+              . The core connector holds no write scope.
             </p>
           </div>
         </div>

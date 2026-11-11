@@ -69,7 +69,6 @@ A containerized proxy should join the web service's network. Do not publish Post
 
 - Email requires your own `RESEND_API_KEY` and verified `EMAIL_FROM` sender.
 - The support form requires your `SUPPORT_TO_EMAIL`. Self-hosted requests are not sent to the hosted support mailbox by default. Optionally set both Turnstile keys for your hostname.
-- Crisp is disabled unless you configure your own `CRISP_WEBSITE_ID`.
 - Operational alerts optionally use `ALERT_EMAIL` and/or `ALERT_WEBHOOK_URL`. Configure destinations you control. Alerts are only sent when `NODE_ENV=production` (the Docker image sets this); on Vercel, preview deployments additionally stay silent.
 - Vercel Analytics is not enabled by the Docker setup.
 
@@ -90,11 +89,12 @@ Marketing/legal content, contact details, and the external provider-status page 
 
 Schedules use UTC, matching `vercel.json`:
 
-| Job                          | Schedule                  |
-| ---------------------------- | ------------------------- |
-| Directory and connector sync | Daily 03:00               |
-| Digest email                 | Monday 06:00              |
-| Monthly report               | Day 1 of the month, 07:00 |
+| Job                           | Schedule                  |
+| ----------------------------- | ------------------------- |
+| Directory and connector sync  | Daily 03:00               |
+| Retention (data minimisation) | Daily 05:00               |
+| Digest email                  | Monday 06:00              |
+| Monthly report                | Day 1 of the month, 07:00 |
 
 Run one scheduler. It does not backfill missed times. The digest and report jobs are safe to invoke again: every recipient's email for the week or the reported month is recorded in a delivery ledger before it is sent, so a restart within the scheduled minute, a manual re-trigger or a second run never sends the same email twice. Each job stops starting new workspaces after 240 seconds and returns JSON totals (`sent`, `skippedAlreadySent`, `skippedOptedOut`, `skippedBlocked`, `failed`, `unprocessedTenants`). `skippedBlocked` counts addresses left out because the mail provider reported a permanent failure (see Email delivery tracking). If `unprocessedTenants` or `failed` is above zero, call the same route again to finish the remainder; a failed recipient is retried up to three times per period. Inspect scheduler logs after operational changes. You can replace it with an external scheduler calling the same routes with `Authorization: Bearer <CRON_SECRET>`; disable the bundled service to avoid duplicate scheduling.
 

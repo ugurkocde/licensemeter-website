@@ -6,6 +6,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 import { env } from "~/env";
 import * as schema from "./schema";
+import { enforceDatabaseTls, resolvePostgresSsl } from "./ssl";
 import { createTenantDb } from "./tenant";
 
 export type Db = PostgresJsDatabase<typeof schema>;
@@ -17,11 +18,20 @@ export type Db = PostgresJsDatabase<typeof schema>;
  */
 const createDb = (): Db => {
   if (env.DATABASE_URL) {
+    // Hosted production refuses a plaintext connection: the URL's TLS setting
+    // is validated (a weak, empty, unknown or repeated one fails at startup)
+    // and passed as the explicit ssl option, which overrides the URL. Outside
+    // hosted production the key is omitted, not set to undefined, so the URL
+    // keeps deciding.
+    const ssl = resolvePostgresSsl(env.DATABASE_URL, {
+      enforce: enforceDatabaseTls(env.NODE_ENV, env.SELF_HOSTED),
+    });
     const client = postgres(env.DATABASE_URL, {
       prepare: false,
       max: 5,
       idle_timeout: 20,
       connect_timeout: 10,
+      ...(ssl ? { ssl } : {}),
     });
     return drizzlePostgres(client, { schema });
   }

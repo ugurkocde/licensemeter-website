@@ -317,7 +317,7 @@ const en: PricingContent = {
       items: [
         {
           text: "Read-only Microsoft 365 scan",
-          detail: "Admin consent, no write scope",
+          detail: "Admin consent, read-only core connector",
         },
         { text: "Every finding priced in euros per month" },
         { text: "Nightly sync and weekly email digest" },
@@ -643,7 +643,7 @@ const de: PricingContent = {
       items: [
         {
           text: "Nur lesender Microsoft-365-Scan",
-          detail: "Administrator-Einwilligung, keine Schreibberechtigung",
+          detail: "Administrator-Einwilligung, nur lesender Kern-Connector",
         },
         { text: "Jedes Ergebnis in Euro pro Monat beziffert" },
         {

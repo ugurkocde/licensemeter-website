@@ -363,9 +363,9 @@ export default function SampleReportPage() {
               For the seats you decide to reclaim, LicenseMeter generates the
               PowerShell remediation script - the same Graph cmdlets your team
               would write by hand, scoped to exactly the chosen findings. Your
-              IT reads it, edits it if they like, and runs it themselves.
-              LicenseMeter holds no write permission and never changes the
-              tenant.
+              IT reads it, edits it if they like, and runs it themselves. The
+              LicenseMeter connector holds no write permission and never changes
+              licenses in the tenant.
             </p>
           </div>
           <div>

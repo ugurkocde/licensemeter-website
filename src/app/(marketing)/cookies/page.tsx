@@ -26,16 +26,13 @@ export default function CookiesPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 pt-6 pb-24">
       <h1 className="font-display text-4xl tracking-tight">Cookie Policy</h1>
-      <p className="text-ink-faint mt-3 text-xs">
-        Last updated: September 2026
-      </p>
+      <p className="text-ink-faint mt-3 text-xs">Last updated: November 2026</p>
 
       <Section title="In short">
         <p>
-          LicenseMeter uses cookies for sign-in, workspace selection and support
-          chat. Crisp keeps your support conversation available as you move
-          between pages. We use cookieless Vercel Web Analytics for reach
-          measurement and do not embed advertising pixels.
+          LicenseMeter uses cookies only for sign-in and workspace selection. We
+          use cookieless Vercel Web Analytics for reach measurement and do not
+          embed advertising pixels.
         </p>
       </Section>
 
@@ -45,8 +42,7 @@ export default function CookiesPage() {
           website. Among other things, they let an authenticated session persist
           across page loads. Cookies set by the website you are visiting are
           first-party cookies; cookies from other providers are third-party
-          cookies. Our support provider Crisp also uses cookies to maintain chat
-          sessions.
+          cookies. LicenseMeter sets first-party cookies only.
         </p>
       </Section>
 
@@ -111,22 +107,9 @@ export default function CookiesPage() {
 
       <Section title="3. Functionality cookies">
         <p>
-          Crisp uses a session cookie (whose name starts with{" "}
-          <code>crisp-client/session/</code>) to restore your conversation when
-          you navigate between pages or return later. Crisp documents a default
-          session-cookie lifetime of six months. See{" "}
-          <a
-            href="https://help.crisp.chat/en/article/crisp-cookie-policy-1147xor/"
-            className="underline underline-offset-4"
-          >
-            Crisp’s cookie policy
-          </a>{" "}
-          for its cookie names and purposes.
-        </p>
-        <p>
-          Where additional spam verification is enabled, Cloudflare Turnstile
-          also processes browser information to verify that submissions are
-          legitimate.
+          We set no functionality cookies. Where additional spam verification is
+          enabled, Cloudflare Turnstile also processes browser information to
+          verify that submissions are legitimate.
         </p>
       </Section>
 
@@ -150,8 +133,7 @@ export default function CookiesPage() {
         <p>
           You can view, restrict or delete cookies at any time in your browser
           settings. Deleting the necessary cookies means you will have to sign
-          in again and your workspace selection is reset. Deleting Crisp cookies
-          can prevent the chat from restoring a previous conversation.
+          in again and your workspace selection is reset.
         </p>
       </Section>
 

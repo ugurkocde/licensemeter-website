@@ -1,12 +1,6 @@
 import { expect, test } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
-  await page.route("https://client.crisp.chat/l.js", (route) =>
-    route.fulfill({
-      contentType: "application/javascript",
-      body: "/* Isolated chat service for browser tests. */",
-    }),
-  );
   await page.route(
     "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit",
     (route) =>
@@ -348,20 +342,26 @@ test("light mode persists under a dark system preference across public and dashb
   ).toBeVisible();
 });
 
-test("Crisp loads once across navigation and remains separate from the support form", async ({
+test("support runs through the form and no third-party chat widget loads", async ({
   page,
+  baseURL,
 }) => {
-  let loads = 0;
-  await page.route("https://client.crisp.chat/l.js", async (route) => {
-    loads++;
-    await route.fulfill({
-      contentType: "application/javascript",
-      body: "/* Mock the remote chat service. */",
-    });
+  // Only the site itself and the services named in the CSP may be contacted.
+  const allowedHosts = new Set([
+    "challenges.cloudflare.com",
+    "changelog.ugurlabs.com",
+    "va.vercel-scripts.com",
+  ]);
+  const siteHost = new URL(baseURL ?? "http://localhost").host;
+  const foreign: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (!["http:", "https:", "ws:", "wss:"].includes(url.protocol)) return;
+    if (url.host !== siteHost && !allowedHosts.has(url.hostname)) {
+      foreign.push(url.origin);
+    }
   });
   await page.goto("/");
-  await expect(page.locator("#crisp-sdk")).toHaveCount(1);
-  await expect.poll(() => loads).toBe(1);
   await page
     .getByRole("navigation", { name: "Main", exact: true })
     .getByRole("link", { name: "Support", exact: true })
@@ -373,13 +373,7 @@ test("Crisp loads once across navigation and remains separate from the support f
   await expect(
     page.getByRole("button", { name: "Open support chat", exact: true }),
   ).toHaveCount(0);
-  const config = await page.evaluate(() => ({
-    id: window.CRISP_WEBSITE_ID,
-    queue: window.$crisp,
-  }));
-  expect(config.id).toBe("d8cf4fcb-0dbe-42ee-b94c-3bbc415d58f4");
-  expect(config.queue).toContainEqual(["config", "color:mode", ["light"]]);
-  expect(loads).toBe(1);
+  expect(foreign).toEqual([]);
   await page.setViewportSize({ width: 320, height: 568 });
   expect(
     await page.evaluate(

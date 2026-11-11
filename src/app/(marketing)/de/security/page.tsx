@@ -12,7 +12,7 @@ import { SecurityView } from "../../security/SecurityView";
 export const metadata: Metadata = {
   title: "Sicherheit",
   description:
-    "Wie LicenseMeter auf Microsoft-365-Tenants zugreift: ausnahmslos nur lesende Anwendungsberechtigungen, Datenhaltung in der EU, Löschung bei Trennung, benannte Unterauftragsverarbeiter.",
+    "Wie LicenseMeter auf Microsoft-365-Tenants zugreift: nur lesende Graph-Berechtigungen für die Kernanwendung, eine separat genehmigte Schreibberechtigung für das optionale Software Metering, Datenhaltung in der EU, Löschung bei Trennung, benannte Unterauftragsverarbeiter.",
   alternates: {
     canonical: "/de/security",
     languages: {

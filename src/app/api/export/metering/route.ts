@@ -5,6 +5,7 @@ import { audit } from "~/server/audit";
 import { csvResponse, toCsv } from "~/server/csv";
 import { db } from "~/server/db";
 import { meteringConnections } from "~/server/db/schema";
+import { withTenant } from "~/server/db/tenant";
 import { hasFeature } from "~/server/entitlement";
 import { meteringErrorText } from "~/server/metering/graph";
 import { readMetering } from "~/server/metering/live";
@@ -23,9 +24,14 @@ export async function GET(req: Request) {
     return new Response("Software Metering is included in the Pro plan.", {
       status: 402,
     });
-  const connection = await db.query.meteringConnections.findFirst({
-    where: eq(meteringConnections.tenantId, ctx.tenant.id),
-  });
+  // Database reads and writes run under the tenant row policies. The live
+  // Intune read stays outside the transaction so a slow Graph call never holds
+  // a pooled connection.
+  const connection = await withTenant(db, ctx.tenant.id, () =>
+    db.query.meteringConnections.findFirst({
+      where: eq(meteringConnections.tenantId, ctx.tenant.id),
+    }),
+  );
   if (
     !connection?.consentedAt ||
     connection.tid.toLowerCase() !== ctx.tenant.tid?.toLowerCase()
@@ -91,6 +97,8 @@ export async function GET(req: Request) {
     ],
     ...rows,
   ]);
-  await audit(ctx, "export_metering_csv", { rows: rows.length });
+  await withTenant(db, ctx.tenant.id, () =>
+    audit(ctx, "export_metering_csv", { rows: rows.length }),
+  );
   return csvResponse("licensemeter-software-metering.csv", csv);
 }

@@ -150,7 +150,7 @@ ${CONNECTOR_SCOPES.map(
 ).join("\n")}
 </table>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-${fact("No write access, ever.", "Remediation ships as PowerShell scripts your admins review and run themselves.")}
+${fact("No write access in the core connector.", "Remediation ships as PowerShell scripts your admins review and run themselves. Only the optional Software Metering module, if you enable it, writes its own Intune script.")}
 ${fact("Never content.", "License assignments, sign-in activity and usage metadata only. No mailboxes, no files, no messages.")}
 ${fact("EU data residency.", "Hosted in Frankfurt; disconnecting deletes all synced data immediately.")}
 </table>

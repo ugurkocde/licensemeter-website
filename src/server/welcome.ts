@@ -8,6 +8,7 @@ import { emailEnabled, sendEmail } from "~/server/email";
 import { notifyOps } from "~/server/ops";
 import { makeUnsubToken } from "~/server/unsubToken";
 import { welcomeHtml, welcomeSubject } from "~/server/welcomeEmail";
+import { opsErrorText } from "~/server/opsError";
 
 /** Token-signed unsubscribe link; the email rides along base64url-encoded. */
 export const unsubscribeUrl = (email: string): string => {
@@ -62,9 +63,9 @@ export const maybeSendWelcome = async (email: string): Promise<void> => {
         .where(eq(emailSignups.email, email));
     }
   } catch (err) {
-    void notifyOps(
-      `welcome email failed for ${email}: ${err instanceof Error ? err.message : String(err)}`,
-      { key: `welcome:${email}`, cooldownMs: 60 * 60 * 1000 },
-    );
+    void notifyOps(`welcome email failed: ${opsErrorText(err)}`, {
+      key: "welcome",
+      cooldownMs: 60 * 60 * 1000,
+    });
   }
 };

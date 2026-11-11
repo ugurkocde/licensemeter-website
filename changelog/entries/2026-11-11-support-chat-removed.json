@@ -1,0 +1,8 @@
+{
+  "title": "Support now runs through the support form and email",
+  "summary": "The chat bubble is gone from the website and the dashboard, so no third-party chat script loads in your browser anymore. To reach the team, use the support form or write to us by email.",
+  "type": "improved",
+  "publishedOn": "2026-11-11",
+  "idempotencyKey": "licensemeter:support-chat-removed-2026-11-11",
+  "sourceUrl": "https://www.licensemeter.com/support"
+}
