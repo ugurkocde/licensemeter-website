@@ -7,6 +7,7 @@ import { tenants } from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
 import { requestDeadline } from "~/server/sync/deadline";
 import { runSync } from "~/server/sync/runSync";
+import { opsErrorText } from "~/server/opsError";
 
 // The sync runs in after() and shares this budget.
 export const maxDuration = 300;
@@ -47,7 +48,7 @@ export const POST = async (req: NextRequest) => {
       // runSync records and alerts on failures it catches; this covers what
       // still throws (credential resolution, lock bookkeeping).
       void notifyOps(
-        `sync failed for tenant ${tenant.name ?? tenant.tid}: ${err instanceof Error ? err.message : String(err)}`,
+        `sync failed for workspace ${tenant.id}: ${opsErrorText(err)}`,
         { key: `sync:${tenant.id}`, cooldownMs: 60 * 60 * 1000 },
       );
     }

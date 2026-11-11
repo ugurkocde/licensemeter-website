@@ -1,12 +1,12 @@
 import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 
-import { workspaceLabel } from "~/lib/format";
 import { db } from "~/server/db";
 import {
   PSEUDONYMISED_KEY_PREFIX,
   pseudonymisedDedupeKey,
 } from "~/server/retention";
 import { isUniqueViolation } from "~/server/db/errors";
+import { OpsSafeError, opsErrorText } from "~/server/opsError";
 import {
   adobeConnections,
   adobeUsers as adobeUsersTable,
@@ -1215,8 +1215,11 @@ export const runSync = async (
       })
       .where(eq(syncRuns.id, runId));
     void notifyOps(
-      `sync FAILED for tenant ${workspaceLabel(tenant)}: ${message}`,
-      { key: `sync:${tenantId}`, cooldownMs: 30 * 60 * 1000 },
+      `sync FAILED for workspace ${tenantId}: ${opsErrorText(err)}`,
+      {
+        key: `sync:${tenantId}`,
+        cooldownMs: 30 * 60 * 1000,
+      },
     );
     return { runId, status: "failed", steps };
   }
@@ -1519,11 +1522,11 @@ export const sendLeakAlert = async (
       if (outcome === "failed") failed++;
     }
     if (failed > 0) {
-      throw new Error(`${failed} of ${to.length} message(s) not sent`);
+      throw new OpsSafeError(`${failed} of ${to.length} message(s) not sent`);
     }
   } catch (err) {
     void notifyOps(
-      `leak alert failed for tenant ${workspaceLabel(tenant)}: ${err instanceof Error ? err.message : String(err)}`,
+      `leak alert failed for workspace ${tenant.id}: ${opsErrorText(err)}`,
       { key: `leakAlert:${tenant.id}`, cooldownMs: 60 * 60 * 1000 },
     );
   }

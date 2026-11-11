@@ -389,6 +389,27 @@ describe("runSync concurrency lock (sync_runs_one_running_idx)", () => {
   });
 });
 
+describe("runSync failure alerts", () => {
+  it("never forwards a value that a database error echoes", async () => {
+    await seedTenant();
+    const client = makeGraphClient({
+      listUsers: vi.fn(async () => {
+        // Postgres echoes the rejected value in its message.
+        await currentDb.execute(sql`select ${"Alex Example"}::integer`);
+        return [GRAPH_USER];
+      }),
+    });
+
+    const result = await runSync(TENANT_ID, { client });
+
+    expect(result.status).toBe("failed");
+    const alerts = JSON.stringify(notifyOpsMock.mock.calls);
+    expect(alerts).toContain("sync FAILED for workspace");
+    expect(alerts).toContain("Database error 22P02");
+    expect(alerts).not.toContain("Alex Example");
+  });
+});
+
 describe("runSync against a deleted tenant", () => {
   it("an unknown tenant id rejects with a clean error and writes nothing", async () => {
     await expect(runSync(UNKNOWN_TENANT_ID)).rejects.toThrow(/Unknown tenant/);

@@ -6,6 +6,30 @@ import { db } from "~/server/db";
 import { opsAlerts } from "~/server/db/schema";
 import { emailEnabled, sendEmail } from "~/server/email";
 
+/**
+ * Ops alerts carry workspace IDs and counts, never personal data. Call sites
+ * do not pass names, emails or UPNs; this is the backstop for text they do
+ * not control (provider error messages, crash messages): email-shaped values
+ * (UPNs included) and the bound parameters Drizzle appends to a failed query
+ * are replaced before anything is logged, posted or emailed.
+ */
+// The lookbehind anchors a match at the start of a run of address characters,
+// which keeps the scan linear on long text without an "@".
+const EMAIL_PATTERN =
+  /(?<![A-Za-z0-9._%+'#-])[A-Za-z0-9._%+'#-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
+/**
+ * Drizzle's "params:" line holds the bound values verbatim, and a value can
+ * span lines and imitate anything, a stack frame included. No boundary after
+ * it can be trusted, so everything from "params:" to the end of the text goes
+ * (fail closed). The crash handler keeps stack frames by rebuilding query
+ * errors from their structured fields first (instrumentation.ts).
+ */
+const QUERY_PARAMS_PATTERN = /(^|\n)([ \t]*params:)[\s\S]*$/i;
+export const redactForOps = (s: string): string =>
+  s
+    .replace(QUERY_PARAMS_PATTERN, "$1$2 <redacted>")
+    .replace(EMAIL_PATTERN, "<email>");
+
 const escapeHtml = (s: string): string =>
   s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
@@ -31,7 +55,13 @@ export const notifyOps = (
   text: string,
   opts: NotifyOptions = {},
 ): Promise<void> => {
-  const delivery = deliver(text, opts);
+  const delivery = deliver(redactForOps(text), {
+    ...opts,
+    key: opts.key === undefined ? undefined : redactForOps(opts.key),
+    detail: opts.detail === undefined ? undefined : redactForOps(opts.detail),
+    subject:
+      opts.subject === undefined ? undefined : redactForOps(opts.subject),
+  });
   // Most callers fire and forget. Once the response is sent the platform
   // suspends the function, so a bare promise dies mid-flight (Resend and the
   // dedup query then time out). after() keeps the invocation alive until the

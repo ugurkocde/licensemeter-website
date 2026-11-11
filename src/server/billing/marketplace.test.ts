@@ -29,6 +29,7 @@ const {
   resetMarketplaceTokenCache,
   resolveSubscription,
   subscriptionToEvent,
+  unmappedMarketplaceAlert,
   verifyWebhookToken,
   withOperation,
 } = await import("./marketplace");
@@ -448,5 +449,31 @@ describe("fulfillment client", () => {
     await expect(
       acknowledgeOperation(SUB_ID, "op-1", "Failure"),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("unmappedMarketplaceAlert", () => {
+  it("shows known actions, plans and statuses", () => {
+    expect(
+      unmappedMarketplaceAlert({
+        action: "ChangePlan",
+        planId: null,
+        status: "Subscribed",
+      }),
+    ).toBe(
+      "Marketplace ChangePlan could not be mapped (plan none, status Subscribed). The entitlement was left unchanged.",
+    );
+  });
+
+  it("never forwards provider text", () => {
+    const text = unmappedMarketplaceAlert({
+      action: "Alex Example",
+      planId: "alex-example-plan",
+      status: "Alex Example",
+    });
+    expect(text.toLowerCase()).not.toContain("alex");
+    expect(text).toBe(
+      "Marketplace unrecognized could not be mapped (plan unrecognized, status unrecognized). The entitlement was left unchanged.",
+    );
   });
 });

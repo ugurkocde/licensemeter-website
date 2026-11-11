@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { OpsSafeError } from "~/server/opsError";
 
 const state = { enabled: true, selfHosted: undefined as string | undefined };
 const sendEmail = vi.fn((_mail: unknown) => Promise.resolve(true));
@@ -62,7 +63,7 @@ describe("sendOnboardingEmail", () => {
   });
 
   it("never throws: a failed send alerts ops instead", async () => {
-    sendEmail.mockRejectedValueOnce(new Error("Resend responded 500"));
+    sendEmail.mockRejectedValueOnce(new OpsSafeError("Resend responded 500"));
     await expect(sendOnboardingEmail(WHO)).resolves.toBeUndefined();
     expect(notifyOps).toHaveBeenCalledTimes(1);
     expect(notifyOps.mock.calls[0]![0]).toContain("Resend responded 500");

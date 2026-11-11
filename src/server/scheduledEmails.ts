@@ -33,6 +33,7 @@ import { notifyOps } from "~/server/ops";
 import { getBranding } from "~/server/billing/branding";
 import { loadEntitlement } from "~/server/entitlementStore";
 import { renderWasteReportPdf } from "~/server/report/renderReport";
+import { opsErrorText } from "~/server/opsError";
 import {
   makeMembershipUnsubToken,
   makeSharedUnsubToken,
@@ -202,7 +203,7 @@ const runJob = async (
       await perTenant(tenant, now, periodKey, totals);
     } catch (err) {
       void notifyOps(
-        `${job === "digest" ? "digest" : "monthly report"} failed for tenant ${workspaceLabel(tenant)}: ${err instanceof Error ? err.message : String(err)}`,
+        `${job === "digest" ? "digest" : "monthly report"} failed for workspace ${tenant.id}: ${opsErrorText(err)}`,
         { key: `${job}:${tenant.id}`, cooldownMs: 60 * 60 * 1000 },
       );
     }

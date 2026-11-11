@@ -200,7 +200,7 @@ describe("admin-consent callback rejection alerts", () => {
     return row?.usedAt != null;
   };
 
-  it("alerts the code, workspace, initiator and granted tenant", async () => {
+  it("alerts the code, workspace and granted tenant without naming the initiator", async () => {
     await seedState();
     verifyManagedConsent.mockResolvedValue(false);
 
@@ -211,7 +211,7 @@ describe("admin-consent callback rejection alerts", () => {
     expect(rejectionAlerts()).toHaveLength(1);
     const [text, opts] = rejectionAlerts()[0]!;
     expect(text).toBe(
-      `consent callback rejected: consent_not_granted for workspace ${TENANT_ID} by \`admin@example.com\`, oid ${OID} (no app-only token for the granted tenant; granted ${VICTIM_TID})`,
+      `consent callback rejected: consent_not_granted for workspace ${TENANT_ID} (no app-only token for the granted tenant; granted ${VICTIM_TID})`,
     );
     expect(opts).toEqual({
       key: `consent-callback:${TENANT_ID}:consent_not_granted:no app-only token for the granted tenant`,
@@ -248,7 +248,7 @@ describe("admin-consent callback rejection alerts", () => {
     expect(rejectionAlerts()).toHaveLength(1);
     const [text] = rejectionAlerts()[0]!;
     expect(text).toBe(
-      `consent callback rejected: consent_declined for workspace ${TENANT_ID} by \`admin@example.com\`, oid ${OID} (Microsoft: access_denied AADSTS65004)`,
+      `consent callback rejected: consent_declined for workspace ${TENANT_ID} (Microsoft: access_denied AADSTS65004)`,
     );
     expect(await stateUsed()).toBe(false);
   });
@@ -268,6 +268,18 @@ describe("admin-consent callback rejection alerts", () => {
     expect(text).toContain("(Microsoft: unrecognized error)");
     expect(text).not.toMatch(/[\r\n<>[\]]/);
     expect(text).not.toContain("forged");
+  });
+
+  it("reports a code-like error outside the known codes as unrecognized", async () => {
+    await seedState();
+
+    await expect(
+      GET(callbackWith(`state=${STATE}&error=alex_example`)),
+    ).rejects.toThrow(/redirect:.*consent_declined/);
+
+    const [text] = rejectionAlerts()[0]!;
+    expect(text).toContain("(Microsoft: unrecognized error)");
+    expect(JSON.stringify(rejectionAlerts())).not.toContain("alex");
   });
 
   it("keeps an AADSTS code when Microsoft sends no error code", async () => {
@@ -290,27 +302,20 @@ describe("admin-consent callback rejection alerts", () => {
     "a\nb@example.com",
     `${"a".repeat(65)}@example.com`,
     "[click](https://evil.example)",
-  ])("does not echo an initiator address like %j", async (email) => {
+    "jane_contoso.com#EXT#@fabrikam.onmicrosoft.com",
+  ])("never names the initiator, even as %j", async (email) => {
     await seedState(email);
 
     await expect(
       GET(callbackWith(`state=${STATE}&error=access_denied`)),
     ).rejects.toThrow(/redirect:.*consent_declined/);
 
-    const [text] = rejectionAlerts()[0]!;
-    expect(text).toContain(`by unrecognized address, oid ${OID}`);
+    const [text, opts] = rejectionAlerts()[0]!;
+    expect(text).not.toContain(email);
+    expect(text).not.toContain(OID);
+    expect(text).not.toContain(" by ");
+    expect(JSON.stringify(opts)).not.toContain(email);
     expect(text).not.toMatch(/[\r\n<>[\]`]/);
-  });
-
-  it("shows a guest UPN as inline code", async () => {
-    const guest = "jane_contoso.com#EXT#@fabrikam.onmicrosoft.com";
-    await seedState(guest);
-
-    await expect(
-      GET(callbackWith(`state=${STATE}&error=access_denied`)),
-    ).rejects.toThrow(/redirect:.*consent_declined/);
-
-    expect(rejectionAlerts()[0]![0]).toContain(`by \`${guest}\`, oid ${OID}`);
   });
 
   it("alerts a state without a workspace under a literal key", async () => {
@@ -325,7 +330,7 @@ describe("admin-consent callback rejection alerts", () => {
     );
 
     const [text, opts] = rejectionAlerts()[0]!;
-    expect(text).toContain("for workspace unknown by");
+    expect(text).toContain("for workspace unknown (");
     expect(opts).toEqual({
       key: "consent-callback:unknown:not_allowed:state predates Entra sign-in",
       cooldownMs: 15 * 60 * 1000,
@@ -417,9 +422,8 @@ describe("admin-consent callback rejection alerts", () => {
 
     expect(rejectionAlerts()).toHaveLength(1);
     const [text, opts] = rejectionAlerts()[0]!;
-    const oid = why === "state predates Entra sign-in" ? "none" : OID;
     expect(text).toBe(
-      `consent callback rejected: not_allowed for workspace ${TENANT_ID} by \`admin@example.com\`, oid ${oid} (${why})`,
+      `consent callback rejected: not_allowed for workspace ${TENANT_ID} (${why})`,
     );
     expect(opts).toEqual({
       key: `consent-callback:${TENANT_ID}:not_allowed:${why}`,
@@ -479,7 +483,7 @@ describe("admin-consent callback rejection alerts", () => {
     expect(rejectionAlerts()).toHaveLength(1);
     const [text, opts] = rejectionAlerts()[0]!;
     expect(text).toBe(
-      `consent callback rejected: expired_state for workspace ${TENANT_ID} by \`admin@example.com\`, oid ${OID}`,
+      `consent callback rejected: expired_state for workspace ${TENANT_ID}`,
     );
     expect(opts).toEqual({
       key: `consent-callback:${TENANT_ID}:expired_state:`,

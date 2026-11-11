@@ -8,12 +8,15 @@ import {
   applyPolarSubscription,
   getPolarSubscription,
   listPolarSubscriptions,
+  reconcileFailedAlert,
+  reconcileMissingAlert,
   type PolarSubscription,
 } from "~/server/billing/polar";
 import { requireCronAuth } from "~/server/cronAuth";
 import { db } from "~/server/db";
 import { entitlements } from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
+import { alertId } from "~/server/opsError";
 
 export const maxDuration = 300;
 
@@ -68,10 +71,10 @@ export const GET = async (req: NextRequest) => {
       count(outcome.result);
     } catch (err) {
       count("failed");
-      void notifyOps(
-        `billing reconcile failed for Polar subscription ${sub.id}: ${err instanceof Error ? err.message : String(err)}`,
-        { key: `billing-reconcile:${sub.id}`, cooldownMs: 24 * 60 * 60 * 1000 },
-      );
+      void notifyOps(reconcileFailedAlert(sub.id, err), {
+        key: `billing-reconcile:${alertId(sub.id)}`,
+        cooldownMs: 24 * 60 * 60 * 1000,
+      });
     }
   };
 
@@ -84,13 +87,10 @@ export const GET = async (req: NextRequest) => {
     if (sub === undefined) continue;
     if (sub === null) {
       count("missing");
-      void notifyOps(
-        `billing reconcile: Polar does not know subscription ${subscriptionId}; the entitlement row was left as it is.`,
-        {
-          key: `billing-reconcile-missing:${subscriptionId}`,
-          cooldownMs: 24 * 60 * 60 * 1000,
-        },
-      );
+      void notifyOps(reconcileMissingAlert(subscriptionId), {
+        key: `billing-reconcile-missing:${alertId(subscriptionId)}`,
+        cooldownMs: 24 * 60 * 60 * 1000,
+      });
       continue;
     }
     await reconcile(sub);

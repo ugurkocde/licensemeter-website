@@ -3,6 +3,7 @@ import { SUPPORT_EMAIL } from "~/lib/support";
 import { emailEnabled, sendEmail } from "~/server/email";
 import { ONBOARDING_SUBJECT, onboardingHtml } from "~/server/onboardingEmail";
 import { notifyOps } from "~/server/ops";
+import { opsErrorText } from "~/server/opsError";
 
 /**
  * Onboarding email for the person whose first sign-in just created their own
@@ -37,9 +38,9 @@ export const sendOnboardingEmail = async (who: {
       idempotencyKey: `onboarding:${who.oid}`,
     });
   } catch (err) {
-    void notifyOps(
-      `onboarding email failed for ${who.email}: ${err instanceof Error ? err.message : String(err)}`,
-      { key: `onboarding:${who.email}`, cooldownMs: 60 * 60 * 1000 },
-    );
+    void notifyOps(`onboarding email failed: ${opsErrorText(err)}`, {
+      key: "onboarding",
+      cooldownMs: 60 * 60 * 1000,
+    });
   }
 };

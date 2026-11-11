@@ -52,3 +52,16 @@ describe("recordSignin", () => {
     ]);
   });
 });
+
+describe("firstSignInAlert", () => {
+  it("names the Microsoft tenant only, never the page the sign-in came from", async () => {
+    const { firstSignInAlert } = await import("./signinStats");
+    const tid = "11111111-2222-4333-8444-555555555555";
+    expect(firstSignInAlert(tid)).toBe(
+      `first sign-in from Microsoft tenant ${tid}`,
+    );
+    expect(firstSignInAlert("Alex Example")).not.toContain("Alex");
+    // The alert builder cannot take the caller-controlled source at all.
+    expect(firstSignInAlert.length).toBe(1);
+  });
+});

@@ -4,6 +4,7 @@ import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import type { Db } from "~/server/db";
 import { isUndefinedColumn } from "~/server/db/errors";
 import { seenSignins } from "~/server/db/schema";
+import { alertId } from "~/server/opsError";
 
 /**
  * seen_signins as it was before signup_source. Drizzle names every schema
@@ -78,3 +79,12 @@ export const recordSignin = async (
     return rows[0]?.count;
   }
 };
+
+/**
+ * Ops alert for an identity's first sign-in. It takes the Microsoft tenant
+ * ID only: the page the sign-in started from is caller-controlled text (any
+ * path that passes validateSignupSource), so it is stored for statistics but
+ * never sent in an alert.
+ */
+export const firstSignInAlert = (tid: string): string =>
+  `first sign-in from Microsoft tenant ${alertId(tid)}`;

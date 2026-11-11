@@ -9,6 +9,7 @@ import { requestDeadline } from "~/server/sync/deadline";
 import { dispatchTenantSyncs } from "~/server/sync/dispatch";
 import { runSync } from "~/server/sync/runSync";
 import { requireCronAuth } from "~/server/cronAuth";
+import { opsErrorText } from "~/server/opsError";
 
 export const maxDuration = 300;
 
@@ -103,7 +104,7 @@ export const GET = async (req: NextRequest) => {
         results.push({ tenantId: tenant.id, status: result.status });
       } catch (err) {
         void notifyOps(
-          `sync failed for tenant ${tenant.name ?? tenant.tid}: ${err instanceof Error ? err.message : String(err)}`,
+          `sync failed for workspace ${tenant.id}: ${opsErrorText(err)}`,
           { key: `sync:${tenant.id}`, cooldownMs: 60 * 60 * 1000 },
         );
         results.push({ tenantId: tenant.id, status: "failed" });

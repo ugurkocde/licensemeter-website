@@ -1925,7 +1925,7 @@ export const captureEmail = async (
     })
     .returning({ inserted: sql<boolean>`(xmax = 0)` });
   if (row?.inserted) {
-    void notifyOps(`new email signup from the landing page: ${email}`);
+    void notifyOps("new email signup from the landing page");
   }
   // Duplicates go through the same send path: the welcomeSentAt stamp makes
   // it a no-op once delivered, so resubmitting the form is the natural retry
@@ -1962,9 +1962,7 @@ export const disconnectTenant = async (): Promise<ActionResult> => {
   // Durable audit: the in-table auditLog row cascade-deletes WITH the tenant
   // (schema FK onDelete:"cascade"), so an audit() row would be wiped and is
   // useless here. notifyOps is the durable, off-table signal of the deletion.
-  void notifyOps(
-    `workspace deleted: ${ctx.tenant.id} "${workspaceLabel(ctx.tenant)}" by ${actor}`,
-  );
+  void notifyOps(`workspace deleted: ${ctx.tenant.id}`);
 
   await db.delete(tenants).where(eq(tenants.id, ctx.tenant.id));
   revalidatePath("/", "layout");
