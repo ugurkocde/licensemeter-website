@@ -22,10 +22,9 @@ export const HOSTED_ORIGINS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The RFC 9116 security.txt body for the site at `base`, or null when `base`
- * is not the hosted service. Canonical and Policy are built from the parsed
- * origin, so a trailing slash or a path in the configured URL cannot change
- * them.
+ * The RFC 9116 security.txt body for the origin at `base`, or null when it is
+ * not a hosted origin. Canonical and Policy are built from the parsed origin,
+ * so a trailing slash or a path cannot change them.
  */
 export const securityTxtFor = (base: string): string | null => {
   let origin: string;
