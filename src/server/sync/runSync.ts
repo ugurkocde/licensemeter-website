@@ -1452,10 +1452,16 @@ export const diffFindings = async (
     }
 
     for (const f of existing) {
+      // A row still holding the plain key takes precedence: the pseudonymised
+      // row of the same key then stays as it is, so the plain key is never
+      // assigned twice (findings_tenant_dedupe_idx).
+      const viaHash = f.dedupeKey.startsWith(PSEUDONYMISED_KEY_PREFIX)
+        ? newByStoredKey.get(f.dedupeKey)
+        : undefined;
       const fresh =
         newByKey.get(f.dedupeKey) ??
-        (f.dedupeKey.startsWith(PSEUDONYMISED_KEY_PREFIX)
-          ? newByStoredKey.get(f.dedupeKey)
+        (viaHash && !existingByKey.has(viaHash.dedupeKey)
+          ? viaHash
           : undefined);
       if (fresh) {
         await tx

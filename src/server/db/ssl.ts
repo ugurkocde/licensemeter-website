@@ -9,11 +9,12 @@
  * - no TLS setting: "require" (encrypted; the server certificate is not
  *   verified, like libpq's sslmode=require)
  * - sslmode=require, ssl=true: "require"
- * - sslmode=verify-ca or verify-full, sslrootcert=system: "verify-full"
- *   (postgres.js verifies the certificate and host name for both)
+ * - sslmode=verify-ca or verify-full: "verify-full" (postgres.js verifies the
+ *   certificate and host name for both)
  * - anything else throws: disable, allow, prefer, an empty or unknown value,
- *   a repeated parameter, sslmode together with ssl, or a certificate file
- *   path the driver would ignore
+ *   a repeated parameter, sslmode together with ssl, or any sslrootcert
+ *   (postgres.js 3.x forwards it to the server as a startup parameter, which
+ *   the server rejects; use sslmode=verify-full instead)
  * - localhost: undefined (a local socket or tunnel; the URL decides)
  *
  * Without `enforce` (development, tests, self-hosted Docker with its internal
@@ -58,15 +59,12 @@ export const resolvePostgresSsl = (
   const ssl = params.get("ssl");
   const rootcert = params.get("sslrootcert");
   if (sslmode !== null && ssl !== null) refuse("sets both sslmode and ssl");
-  if (rootcert !== null && rootcert !== "system")
-    refuse("sets sslrootcert to a file, which the driver does not read");
+  if (rootcert !== null)
+    refuse(
+      "sets sslrootcert, which the driver sends to the server as an unknown setting; use sslmode=verify-full",
+    );
 
   const mode = sslmode ?? (ssl === "true" ? "require" : ssl);
-  if (rootcert === "system") {
-    if (mode !== null && mode !== "verify-full")
-      refuse("combines sslrootcert=system with another mode");
-    return "verify-full";
-  }
   if (mode === null) return "require";
   if (mode === "") refuse("sets an empty TLS mode");
   if (!ACCEPTED.has(mode)) refuse(`sets sslmode=${mode.slice(0, 20)}`);

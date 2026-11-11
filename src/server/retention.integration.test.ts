@@ -237,6 +237,7 @@ describe("clearResolvedFindingNotes", () => {
         firstSeenAt: daysAgo(300),
         lastSeenAt: daysAgo(200),
         workflowNote: "Agreed with Alex Example",
+        ticketUrl: "https://tickets.example/?user=alex@example.com",
       },
       {
         tenantId,
@@ -265,13 +266,31 @@ describe("clearResolvedFindingNotes", () => {
         firstSeenAt: daysAgo(300),
         lastSeenAt: daysAgo(200),
         workflowNote: "Recent note",
+        ticketUrl: "https://tickets.example/recent",
+      },
+      {
+        tenantId,
+        dedupeKey: "never_active|g-r|-",
+        rule: "never_active",
+        graphUserId: "g-r",
+        title: RULE_META.never_active.label,
+        detail: { pseudonymised: true },
+        monthlyImpactCents: 100,
+        status: "resolved",
+        resolvedAt: daysAgo(limit + 2),
+        firstSeenAt: daysAgo(300),
+        lastSeenAt: daysAgo(200),
+        ticketUrl: "https://tickets.example/?user=riley@example.com",
       },
     ]);
-    expect(await clearResolvedFindingNotes(NOW)).toBe(2);
-    const notes = (await currentDb.select().from(schema.findings)).map(
-      (f) => f.workflowNote,
-    );
-    expect(notes.filter((n) => n !== null)).toEqual(["Recent note"]);
+    expect(await clearResolvedFindingNotes(NOW)).toBe(3);
+    const all = await currentDb.select().from(schema.findings);
+    expect(all.map((f) => f.workflowNote).filter((n) => n !== null)).toEqual([
+      "Recent note",
+    ]);
+    expect(all.map((f) => f.ticketUrl).filter((n) => n !== null)).toEqual([
+      "https://tickets.example/recent",
+    ]);
   });
 });
 
@@ -328,7 +347,7 @@ describe("pseudonymised findings across syncs", () => {
     expect(JSON.stringify(all[0])).not.toContain(email);
   });
 
-  it("skips a row whose hashed key another row already holds", async () => {
+  it("pseudonymises a row whose hashed key another row already holds, under a distinct key", async () => {
     const limit = RETENTION_DAYS.resolvedFindingPersonData;
     const key = "saas_orphaned|zoom:dup@example.com|-";
     await currentDb.insert(schema.findings).values([
@@ -359,6 +378,55 @@ describe("pseudonymised findings across syncs", () => {
         lastSeenAt: daysAgo(100),
       },
     ]);
-    await expect(pseudonymiseResolvedFindings(NOW)).resolves.toBe(0);
+    await expect(pseudonymiseResolvedFindings(NOW)).resolves.toBe(1);
+    const all = await rows();
+    expect(JSON.stringify(all)).not.toContain("dup@example.com");
+    const keys = all.map((r) => r.dedupeKey).sort();
+    const hashed = pseudonymisedDedupeKey(key);
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toBe(hashed);
+    expect(keys[1]).toMatch(new RegExp(`^${hashed}:[0-9a-f-]{36}$`));
+
+    // The seat comes back: exactly one row reopens with the plain key.
+    await diffFindings(tenantId, [seat("dup@example.com")], NOW);
+    const after = await rows();
+    expect(after.filter((r) => r.dedupeKey === key)).toHaveLength(1);
+    expect(after.filter((r) => r.status === "open")).toHaveLength(1);
+  });
+
+  it("restores the plain key once when both the plain and the hashed row exist", async () => {
+    const key = "saas_orphaned|zoom:both@example.com|-";
+    const base = {
+      tenantId,
+      rule: "saas_orphaned" as const,
+      graphUserId: null,
+      monthlyImpactCents: 100,
+      status: "resolved" as const,
+      resolvedAt: daysAgo(10),
+      firstSeenAt: daysAgo(400),
+      lastSeenAt: daysAgo(300),
+    };
+    await currentDb.insert(schema.findings).values([
+      {
+        ...base,
+        dedupeKey: pseudonymisedDedupeKey(key),
+        title: RULE_META.saas_orphaned.label,
+        detail: { pseudonymised: true },
+      },
+      {
+        ...base,
+        dedupeKey: key,
+        title: "Zoom seat without Entra account: both@example.com",
+        detail: { upn: "both@example.com" },
+      },
+    ]);
+    await diffFindings(tenantId, [seat("both@example.com")], NOW);
+    const all = await rows();
+    expect(all).toHaveLength(2);
+    expect(all.filter((r) => r.dedupeKey === key)).toHaveLength(1);
+    expect(all.find((r) => r.dedupeKey === key)!.status).toBe("open");
+    expect(
+      all.find((r) => r.dedupeKey === pseudonymisedDedupeKey(key))!.status,
+    ).toBe("resolved");
   });
 });

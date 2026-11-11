@@ -35,9 +35,6 @@ describe("resolvePostgresSsl", () => {
       expect(driverSsl(url(`?sslmode=${mode}`))).toBe(effective);
     }
     expect(resolvePostgresSsl(url("?ssl=true"), enforce)).toBe("require");
-    expect(resolvePostgresSsl(url("?sslrootcert=system"), enforce)).toBe(
-      "verify-full",
-    );
   });
 
   it("overrides a weaker value the driver would otherwise read last", () => {
@@ -60,7 +57,9 @@ describe("resolvePostgresSsl", () => {
       "?sslmode=require&ssl=true",
       "?ssl=true&ssl=false",
       "?sslrootcert=/etc/ssl/ca.pem",
+      "?sslrootcert=system",
       "?sslrootcert=system&sslmode=require",
+      "?sslrootcert=system&sslmode=verify-full",
     ]) {
       expect(() => resolvePostgresSsl(url(q), enforce), q).toThrow(
         /requires TLS/,

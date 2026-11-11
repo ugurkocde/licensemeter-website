@@ -22,7 +22,9 @@ const setup = async (withSource: boolean) => {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("recordSignin", () => {
+// Each test starts an embedded Postgres (PGlite), whose cold start can exceed
+// the default 5 s on a busy runner.
+describe("recordSignin", { timeout: 30_000 }, () => {
   it("keeps the source of the first sign-in only", async () => {
     const { client, db } = await setup(true);
     const base = { oid: "o1", tid: "t1", upn: "a@example.test" };

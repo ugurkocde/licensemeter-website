@@ -189,7 +189,25 @@ const KNOWN_CODES: ReadonlySet<string> = new Set([
   "UND_ERR_ABORTED",
 ]);
 /** Error class names: "Error" or a PascalCase name ending in "Error". */
-const NAME = /^(?:[A-Z][A-Za-z0-9]{0,60})?Error$/;
+const NAME: ReadonlySet<string> = new Set([
+  // Built-in and platform errors.
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "ReferenceError",
+  "AggregateError",
+  "AbortError",
+  "TimeoutError",
+  // This codebase's error classes (src/server/**).
+  "GraphHttpError",
+  "MarketplaceApiError",
+  "MspAccountError",
+  "PolarApiError",
+  "PremiumLicenseRequiredError",
+  "RateLimitUnavailableError",
+  "ZodError",
+]);
 
 const codeOf = (value: unknown, key: string): string | null => {
   if (!value || typeof value !== "object") return null;
@@ -209,7 +227,7 @@ export const opsErrorText = (err: unknown): string => {
   if (err instanceof OpsSafeError) return err.message.slice(0, 300);
   if (!(err instanceof Error)) return "Non-error value thrown";
   const fields = err as unknown as Record<string, unknown>;
-  const parts = [NAME.test(err.name) ? err.name : "Error"];
+  const parts = [NAME.has(err.name) ? err.name : "Error"];
   if (
     typeof fields.status === "number" &&
     Number.isInteger(fields.status) &&

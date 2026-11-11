@@ -110,7 +110,7 @@ describe("OpsSafeError", () => {
 });
 
 describe("opsErrorText with code-shaped personal data", () => {
-  it("shows only known codes and conventional class names", async () => {
+  it("shows only known codes and allowlisted class names", async () => {
     const { GraphHttpError } = await import("~/server/graph/types");
     for (const code of ["Alex.Example", "alex_example", "ALEX_EXAMPLE"]) {
       expect(opsErrorText(new GraphHttpError(403, code, "x"))).toBe(
@@ -125,9 +125,12 @@ describe("opsErrorText with code-shaped personal data", () => {
         ),
       ).toBe("Error");
     }
-    const renamed = new Error("x");
-    renamed.name = "AlexExample";
-    expect(opsErrorText(renamed)).toBe("Error");
+    for (const name of ["AlexExample", "AlexExampleError"]) {
+      const renamed = new Error("x");
+      renamed.name = name;
+      expect(opsErrorText(renamed)).toBe("Error");
+    }
+    expect(opsErrorText(new TypeError("x"))).toBe("TypeError");
   });
 });
 

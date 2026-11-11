@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { and, eq, isNotNull, lt, lte, sql } from "drizzle-orm";
+import { and, eq, isNotNull, lt, lte, or, sql } from "drizzle-orm";
 
 import { RETENTION_DAYS, retentionMs } from "~/lib/retention";
 import { RULE_META } from "~/lib/rules";
@@ -89,7 +89,11 @@ export const pseudonymiseResolvedFindings = async (
       .set({
         title: meta.label,
         detail: sql`(${findings.detail} - ${personKeysArray}) || '{"pseudonymised":true}'::jsonb`,
-        dedupeKey: hashedKeySql,
+        // A row that another row's hashed key would collide with keeps a
+        // distinct, still non-identifying key: the hash plus its own id. The
+        // sync never reopens it; the row holding the plain hash stays the
+        // one it matches.
+        dedupeKey: sql`case when exists (select 1 from ${findings} as other where other.tenant_id = ${findings.tenantId} and other.id <> ${findings.id} and other.dedupe_key = ${hashedKeySql}) then ${hashedKeySql} || ':' || ${findings.id}::text else ${hashedKeySql} end`,
       })
       .where(
         and(
@@ -98,8 +102,6 @@ export const pseudonymiseResolvedFindings = async (
           lt(findings.resolvedAt, cutoff),
           sql`(${findings.graphUserId} is not null or ${findings.detail} ?| ${personKeysArray} or position('@' in ${findings.dedupeKey}) > 0)`,
           sql`coalesce((${findings.detail} ->> 'pseudonymised')::boolean, false) = false`,
-          // Never collide with a row that already holds the hashed key.
-          sql`not exists (select 1 from ${findings} as other where other.tenant_id = ${findings.tenantId} and other.id <> ${findings.id} and other.dedupe_key = ${hashedKeySql})`,
         ),
       )
       .returning({ id: findings.id });
@@ -109,9 +111,10 @@ export const pseudonymiseResolvedFindings = async (
 };
 
 /**
- * Clears the free-text workflow note of every finding resolved longer ago
- * than the period, aggregate findings and notes added after an earlier
- * pseudonymisation included: a note may name anyone.
+ * Clears the free-text workflow note and the ticket link of every finding
+ * resolved longer ago than the period, aggregate findings and values added
+ * after an earlier pseudonymisation included: a note may name anyone, and a
+ * ticket URL can carry an address in its path or query.
  */
 export const clearResolvedFindingNotes = async (
   now = new Date(),
@@ -121,12 +124,12 @@ export const clearResolvedFindingNotes = async (
   );
   const rows = await db
     .update(findings)
-    .set({ workflowNote: null })
+    .set({ workflowNote: null, ticketUrl: null })
     .where(
       and(
         eq(findings.status, "resolved"),
         lt(findings.resolvedAt, cutoff),
-        isNotNull(findings.workflowNote),
+        or(isNotNull(findings.workflowNote), isNotNull(findings.ticketUrl)),
       ),
     )
     .returning({ id: findings.id });
