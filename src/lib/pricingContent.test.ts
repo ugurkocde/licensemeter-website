@@ -117,8 +117,8 @@ describe("pricing content", () => {
       ["em-dash", /\u2014/],
       ["en-dash", /\u2013/],
       ["spaced hyphen", / - /],
-      ["SLA", /\bSLA\b/i],
-      ["service credit", /service credit/i],
+      // The SLA and its service credits are published at /sla and may be
+      // named; promises the plans do not make stay banned.
       ["priority support", /priority support/i],
       ["Azure credit", /azure credit/i],
     ];

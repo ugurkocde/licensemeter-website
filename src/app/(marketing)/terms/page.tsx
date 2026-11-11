@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { SUPPORT_EMAIL } from "~/lib/support";
 
@@ -130,9 +131,15 @@ export default function TermsPage() {
           level). Maintenance, ongoing development and disruptions outside the
           Provider&rsquo;s control (in particular at third parties such as
           Microsoft or the connected source systems) may temporarily limit use.
-          Support by email at {SUPPORT_EMAIL} is included in the Pro and MSP
-          plans. The Free plan comes without support; messages from Free
-          workspaces are answered as time allows, without any commitment.
+          For the paid plans, the{" "}
+          <Link href="/sla" className="underline underline-offset-4">
+            Service Level Agreement
+          </Link>{" "}
+          is such a separate agreement: it sets out the availability target,
+          service credits, support hours and response times. Support by email at{" "}
+          {SUPPORT_EMAIL} is included in the Pro and MSP plans. The Free plan
+          comes without support; messages from Free workspaces are answered as
+          time allows, without any commitment.
         </p>
       </Section>
 

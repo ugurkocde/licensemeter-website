@@ -12,7 +12,7 @@ import { TrustCenterView } from "../../trust-center/TrustCenterView";
 export const metadata: Metadata = {
   title: "Trust Center",
   description:
-    "Wie LicenseMeter mit Ihren Daten umgeht, an einem Ort: Nur-Lese-Zugriff, EU-Datenhaltung, benannte Unterauftragsverarbeiter mit Verarbeitungsorten, Verschlüsselung, Aufbewahrung und der vorunterzeichnete DSGVO-AVV.",
+    "Wie LicenseMeter mit Ihren Daten umgeht, an einem Ort: Nur-Lese-Zugriff, EU-Datenhaltung, benannte Unterauftragsverarbeiter und ihre Zertifizierungen, Aufbewahrung, Umgang mit Schwachstellen, Reaktion auf Sicherheitsvorfälle, Geschäftskontinuität, das SLA und der vorunterzeichnete DSGVO-AVV.",
   alternates: {
     canonical: "/de/trust-center",
     languages: {

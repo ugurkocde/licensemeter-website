@@ -8,7 +8,14 @@ import { BLOG_POSTS } from "~/lib/blog";
 import { CONNECTOR_GUIDES } from "~/lib/connectorGuides";
 
 /** Legal pages: indexable but low priority, they rarely change. */
-const LOW_PRIORITY = new Set(["/impressum", "/privacy", "/dpa", "/de/dpa"]);
+const LOW_PRIORITY = new Set([
+  "/impressum",
+  "/privacy",
+  "/dpa",
+  "/de/dpa",
+  "/sla",
+  "/de/sla",
+]);
 
 /** Templated compare pages; each has an English and a German edition. */
 const COMPARE_PATHS = [
@@ -17,7 +24,13 @@ const COMPARE_PATHS = [
 ];
 
 /** Pages with an English and a German edition; both list each other. */
-const LOCALIZED = ["/security", "/trust-center", "/dpa", ...COMPARE_PATHS];
+const LOCALIZED = [
+  "/security",
+  "/trust-center",
+  "/dpa",
+  "/sla",
+  ...COMPARE_PATHS,
+];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (process.env.SELF_HOSTED === "true") {
@@ -53,6 +66,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/privacy",
     "/dpa",
     "/de/dpa",
+    "/sla",
+    "/de/sla",
   ].map((path) => {
     const englishPath = path.startsWith("/de/") ? path.slice(3) : path;
     const localized = LOCALIZED.includes(englishPath);

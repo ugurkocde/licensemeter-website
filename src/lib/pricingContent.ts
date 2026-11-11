@@ -5,6 +5,11 @@ import {
   TRIAL_DAYS,
   type BillingInterval,
 } from "~/lib/pricing";
+import { SLA_PATH, SLA_TERMS, formatPct } from "~/lib/sla";
+
+/** The SLA's availability target, so pricing and the SLA cannot drift. */
+const UPTIME_EN = formatPct(SLA_TERMS.availabilityTargetPct, "en");
+const UPTIME_DE = formatPct(SLA_TERMS.availabilityTargetPct, "de");
 
 /**
  * Bilingual content for /pricing and /de/pricing, following the single-source
@@ -264,7 +269,7 @@ const msp = PLAN_PRICES.msp;
 const en: PricingContent = {
   meta: {
     title: "Pricing",
-    description: `LicenseMeter pricing: the Free plan finds and prices Microsoft 365 license waste at no cost. Pro (${formatEuro(pro.month, "en")} per month) adds Windows Software Metering through Intune, support by email, a 99.9% uptime target, a signed DPA (AVV), an MCP server, white-label PDF reports and 24 months of history. MSP (${formatEuro(msp.month, "en")} per month) covers ${MSP_INCLUDED_TENANTS} client tenants with everything in Pro.`,
+    description: `LicenseMeter pricing: the Free plan finds and prices Microsoft 365 license waste at no cost. Pro (${formatEuro(pro.month, "en")} per month) adds Windows Software Metering through Intune, support by email, a ${UPTIME_EN} uptime target under an SLA, a signed DPA (AVV), an MCP server, white-label PDF reports and 24 months of history. MSP (${formatEuro(msp.month, "en")} per month) covers ${MSP_INCLUDED_TENANTS} client tenants with everything in Pro.`,
   },
   breadcrumb: { home: "Home", page: "Pricing" },
   toggleLabel: "Language",
@@ -335,7 +340,7 @@ const en: PricingContent = {
       audience: "For teams that want support",
       highlights: [
         "Everything in Free for one tenant",
-        "Email support and a 99.9% uptime target",
+        `Email support and a ${UPTIME_EN} uptime target`,
         "Signed DPA and MCP server",
         "24 months of waste history",
       ],
@@ -355,8 +360,8 @@ const en: PricingContent = {
         },
         { text: "Support", detail: "By email" },
         {
-          text: "99.9% uptime target",
-          detail: "Tracked on a public status page",
+          text: `${UPTIME_EN} uptime target`,
+          detail: "Backed by the SLA with service credits",
         },
         {
           text: "Signed data processing agreement",
@@ -501,22 +506,28 @@ const en: PricingContent = {
       tenTenantsPlus: `${MSP_INCLUDED_TENANTS}+`,
       noSupport: "No support",
       email: "Email",
-      uptime: "99.9%",
+      uptime: UPTIME_EN,
       planned: "Planned",
     },
   },
   facts: {
     eyebrow: "What Pro and MSP add",
-    h2: "A target we publish, not a promise we cannot keep.",
+    h2: "A target we publish and back with service credits.",
     sub: [
-      "The uptime target covers the hosted service at licensemeter.com and is tracked on the public ",
+      "The uptime target covers the hosted service at licensemeter.com and is set out, with service credits, support hours and response times, in our ",
+      { text: "Service Level Agreement", href: SLA_PATH.en },
+      ". Current status is on the public ",
       { text: "status page", href: "/status" },
-      ". It is a target, not a contractual guarantee. The ",
+      ". The ",
       { text: "data processing agreement", href: "/dpa" },
       " is public, so you can read it before you connect anything.",
     ],
     items: [
-      { label: "Uptime target", value: "99.9%", detail: "Measured monthly" },
+      {
+        label: "Uptime target",
+        value: UPTIME_EN,
+        detail: "Monthly, under the SLA",
+      },
       {
         label: "Status",
         value: "Public",
@@ -586,7 +597,7 @@ const en: PricingContent = {
 const de: PricingContent = {
   meta: {
     title: "Preise",
-    description: `Preise von LicenseMeter: Der Free-Tarif findet und beziffert Lizenzverschwendung in Microsoft 365 kostenlos. Pro (${formatEuro(pro.month, "de")} pro Monat) ergänzt Windows Software Metering über Intune, Support per E-Mail, ein Verfügbarkeitsziel von 99,9 %, einen unterzeichneten Auftragsverarbeitungsvertrag (AVV), einen MCP-Server, White-Label-PDF-Berichte und 24 Monate Verlauf. MSP (${formatEuro(msp.month, "de")} pro Monat) deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants mit allem aus Pro ab.`,
+    description: `Preise von LicenseMeter: Der Free-Tarif findet und beziffert Lizenzverschwendung in Microsoft 365 kostenlos. Pro (${formatEuro(pro.month, "de")} pro Monat) ergänzt Windows Software Metering über Intune, Support per E-Mail, ein Verfügbarkeitsziel von ${UPTIME_DE} gemäß SLA, einen unterzeichneten Auftragsverarbeitungsvertrag (AVV), einen MCP-Server, White-Label-PDF-Berichte und 24 Monate Verlauf. MSP (${formatEuro(msp.month, "de")} pro Monat) deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants mit allem aus Pro ab.`,
   },
   breadcrumb: { home: "Startseite", page: "Preise" },
   toggleLabel: "Sprache",
@@ -663,7 +674,7 @@ const de: PricingContent = {
       audience: "Für Teams, die Support brauchen",
       highlights: [
         "Alles aus Free für einen Tenant",
-        "E-Mail-Support und 99,9 % Verfügbarkeitsziel",
+        `E-Mail-Support und ${UPTIME_DE} Verfügbarkeitsziel`,
         "Unterzeichneter AVV und MCP-Server",
         "24 Monate Verlaufsdaten",
       ],
@@ -683,8 +694,8 @@ const de: PricingContent = {
         },
         { text: "Support", detail: "Per E-Mail" },
         {
-          text: "Verfügbarkeitsziel von 99,9 %",
-          detail: "Nachvollziehbar auf einer öffentlichen Statusseite",
+          text: `Verfügbarkeitsziel von ${UPTIME_DE}`,
+          detail: "Im SLA mit Servicegutschriften abgesichert",
         },
         {
           text: "Unterzeichneter Auftragsverarbeitungsvertrag",
@@ -833,25 +844,27 @@ const de: PricingContent = {
       tenTenantsPlus: `${MSP_INCLUDED_TENANTS}+`,
       noSupport: "Kein Support",
       email: "E-Mail",
-      uptime: "99,9 %",
+      uptime: UPTIME_DE,
       planned: "Geplant",
     },
   },
   facts: {
     eyebrow: "Was Pro und MSP ergänzen",
-    h2: "Ein Ziel, das wir veröffentlichen, statt eines Versprechens, das wir nicht halten können.",
+    h2: "Ein Ziel, das wir veröffentlichen und mit Servicegutschriften absichern.",
     sub: [
-      "Das Verfügbarkeitsziel gilt für den gehosteten Dienst unter licensemeter.com und ist auf der öffentlichen ",
+      "Das Verfügbarkeitsziel gilt für den gehosteten Dienst unter licensemeter.com und ist zusammen mit Servicegutschriften, Supportzeiten und Reaktionszeiten in unserem ",
+      { text: "Service Level Agreement", href: SLA_PATH.de },
+      " geregelt. Den aktuellen Status zeigt die öffentliche ",
       { text: "Statusseite (EN)", href: "/status" },
-      " nachvollziehbar. Es ist ein Ziel, keine vertragliche Garantie. Der ",
+      ". Der ",
       { text: "Auftragsverarbeitungsvertrag (AVV)", href: "/de/dpa" },
       " ist öffentlich einsehbar, bevor Sie etwas verbinden.",
     ],
     items: [
       {
         label: "Verfügbarkeitsziel",
-        value: "99,9 %",
-        detail: "Monatlich gemessen",
+        value: UPTIME_DE,
+        detail: "Monatlich, gemäß SLA",
       },
       {
         label: "Status",

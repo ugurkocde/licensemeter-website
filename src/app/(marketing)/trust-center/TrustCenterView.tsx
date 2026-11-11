@@ -2,9 +2,8 @@ import Link from "next/link";
 
 import { Pill } from "~/components/ui";
 import { type DpaLang, subprocessorRows } from "~/lib/dpa";
-import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "~/lib/support";
 
-import { TRUST_CONTENT } from "./content";
+import { type Part, type RichSection, TRUST_CONTENT } from "./content";
 
 /**
  * Renders the Trust Center from the bilingual structure in ./content and the
@@ -23,6 +22,35 @@ const EN_ROWS = subprocessorRows("en");
 const isUsTouching = (location: string) =>
   /\bUS\b|United States|fallback/i.test(location);
 
+const linkClass =
+  "text-ink hover:text-brand-text font-medium underline underline-offset-4";
+
+/** Running text with internal (Next) and external links. */
+const Parts = ({ parts }: { parts: Part[] }) => (
+  <>
+    {parts.map((part, i) =>
+      typeof part === "string" ? (
+        <span key={i}>{part}</span>
+      ) : part.href.startsWith("/") ? (
+        <Link key={i} href={part.href} className={linkClass}>
+          {part.text}
+        </Link>
+      ) : (
+        <a
+          key={i}
+          href={part.href}
+          className={linkClass}
+          {...(part.href.startsWith("http")
+            ? { target: "_blank", rel: "noopener noreferrer" }
+            : {})}
+        >
+          {part.text}
+        </a>
+      ),
+    )}
+  </>
+);
+
 const Section = ({
   id,
   title,
@@ -38,12 +66,74 @@ const Section = ({
   </section>
 );
 
+/** Lead paragraph, labelled items and closing paragraphs of a section. */
+const Rich = ({ section }: { section: RichSection }) => {
+  const List = section.ordered ? "ol" : "ul";
+  return (
+    <Section id={section.id} title={section.title}>
+      {section.intro && (
+        <p>
+          <Parts parts={section.intro} />
+        </p>
+      )}
+      {section.items && (
+        <List className="border-line bg-card mt-4 overflow-hidden rounded-2xl border first:mt-0">
+          {section.items.map((item, i) => (
+            <li
+              key={item.label}
+              className="border-line flex gap-3 border-b px-5 py-4 last:border-b-0"
+            >
+              {section.ordered && (
+                <span
+                  aria-hidden="true"
+                  className="text-brand-text font-display w-5 shrink-0 tabular-nums"
+                >
+                  {i + 1}
+                </span>
+              )}
+              <div className="min-w-0">
+                <p className="text-ink font-medium">{item.label}</p>
+                <p className="text-ink-soft mt-1 text-xs leading-relaxed">
+                  <Parts parts={item.detail} />
+                </p>
+              </div>
+            </li>
+          ))}
+        </List>
+      )}
+      {section.paragraphs?.map((parts, i) => (
+        <p key={i} className="mt-4 first:mt-0">
+          <Parts parts={parts} />
+        </p>
+      ))}
+    </Section>
+  );
+};
+
 export const TrustCenterView = ({ lang }: { lang: DpaLang }) => {
   const c = TRUST_CONTENT[lang];
   const rows = subprocessorRows(lang);
   const langs: { id: DpaLang; label: string; href: string }[] = [
     { id: "en", label: "English", href: "/trust-center" },
     { id: "de", label: "Deutsch", href: "/de/trust-center" },
+  ];
+  const toc: { id: string; title: string }[] = [
+    { id: "at-a-glance", title: c.atAGlance.title },
+    { id: "subprocessors", title: c.where.title },
+    { id: "access", title: c.access.title },
+    { id: "security-measures", title: c.security.title },
+    { id: "data-lifecycle", title: c.lifecycle.title },
+    ...[
+      c.retention,
+      c.program,
+      c.vulnerability,
+      c.incident,
+      c.continuity,
+      c.sla,
+      c.compliance,
+    ].map(({ id, title }) => ({ id, title })),
+    { id: "documents", title: c.documents.title },
+    { id: c.contact.id, title: c.contact.title },
   ];
 
   return (
@@ -81,7 +171,28 @@ export const TrustCenterView = ({ lang }: { lang: DpaLang }) => {
         </div>
       </div>
 
-      <Section title={c.atAGlance.title}>
+      <nav
+        aria-label={c.tocLabel}
+        className="border-line bg-card mt-8 rounded-2xl border px-5 py-4"
+      >
+        <p className="text-ink-faint text-xs font-medium tracking-[0.15em] uppercase">
+          {c.tocLabel}
+        </p>
+        <ul className="mt-3 gap-x-6 text-sm sm:columns-2">
+          {toc.map((entry) => (
+            <li key={entry.id} className="mb-1.5 break-inside-avoid">
+              <a
+                href={`#${entry.id}`}
+                className="text-ink-soft hover:text-ink underline-offset-4 hover:underline"
+              >
+                {entry.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <Section id="at-a-glance" title={c.atAGlance.title}>
         <div className="border-line bg-line mt-2 grid gap-px overflow-hidden rounded-2xl border sm:grid-cols-2">
           {c.atAGlance.items.map((item) => (
             <div key={item.label} className="bg-card px-5 py-4">
@@ -141,7 +252,7 @@ export const TrustCenterView = ({ lang }: { lang: DpaLang }) => {
         </p>
       </Section>
 
-      <Section title={c.access.title}>
+      <Section id="access" title={c.access.title}>
         <p>{c.access.body}</p>
         <p className="mt-4">
           {c.access.linked.pre}
@@ -155,7 +266,7 @@ export const TrustCenterView = ({ lang }: { lang: DpaLang }) => {
         </p>
       </Section>
 
-      <Section title={c.security.title}>
+      <Section id="security-measures" title={c.security.title}>
         <p>{c.security.body}</p>
         <p className="mt-4">
           {c.security.linked.pre}
@@ -169,7 +280,7 @@ export const TrustCenterView = ({ lang }: { lang: DpaLang }) => {
         </p>
       </Section>
 
-      <Section title={c.lifecycle.title}>
+      <Section id="data-lifecycle" title={c.lifecycle.title}>
         <p>
           {c.lifecycle.linked.pre}
           <Link
@@ -182,12 +293,15 @@ export const TrustCenterView = ({ lang }: { lang: DpaLang }) => {
         </p>
       </Section>
 
-      <Section title={c.certs.title}>
-        <p>{c.certs.body1}</p>
-        <p className="mt-4">{c.certs.body2}</p>
-      </Section>
+      <Rich section={c.retention} />
+      <Rich section={c.program} />
+      <Rich section={c.vulnerability} />
+      <Rich section={c.incident} />
+      <Rich section={c.continuity} />
+      <Rich section={c.sla} />
+      <Rich section={c.compliance} />
 
-      <Section title={c.documents.title}>
+      <Section id="documents" title={c.documents.title}>
         <div className="border-line bg-line mt-2 grid gap-px overflow-hidden rounded-2xl border sm:grid-cols-2">
           {c.documents.items.map((doc) => (
             <Link
@@ -206,18 +320,7 @@ export const TrustCenterView = ({ lang }: { lang: DpaLang }) => {
         </div>
       </Section>
 
-      <Section title={c.questions.title}>
-        <p>
-          {c.questions.body}
-          <a
-            href={SUPPORT_MAILTO}
-            className="text-ink hover:text-brand-text font-medium underline underline-offset-4"
-          >
-            {SUPPORT_EMAIL}
-          </a>
-          .
-        </p>
-      </Section>
+      <Rich section={c.contact} />
     </main>
   );
 };

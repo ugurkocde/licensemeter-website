@@ -17,7 +17,7 @@ export function GET(): Response {
 
 Operated by Ugurlabs UG and maintained by Ugur Koc, Microsoft MVP for Intune and Security Copilot. Key facts:
 
-- Read-only by design: the Microsoft 365 connector app holds no write scopes; remediation ships as generated PowerShell scripts that admins review and run themselves. The optional Software Metering app is separate and can only create or update LicenseMeter's own Intune collector package, after an Admin confirms.
+- Read-only by design: the Microsoft 365 connector app holds no write scopes; remediation ships as generated PowerShell scripts that admins review and run themselves. The optional Software Metering app is separate and can only create, assign or update LicenseMeter's own Intune collector package, after an Admin confirms.
 - Never reads content: no mailboxes, files or messages. License assignments, sign-in activity and usage metadata only.
 - EU data residency (Postgres, Frankfurt); disconnecting a workspace deletes all synced data immediately.
 - Free for every workspace: all connectors, waste rules, continuous monitoring, reports and exports, with no time limit. MSP portfolios are free too. The optional Pro and MSP plans add support by email, a signed DPA (AVV), an MCP server, Windows Software Metering through Intune and 24 months of waste history.
@@ -42,7 +42,8 @@ ${ROUNDUPS.map((r) => `- [${r.title.en}](${base}/compare/${r.slug}): ${r.descrip
 - [vs the M365 admin center](${base}/compare/m365-admin-center): what the admin center covers and what it does not (per-seat cost figures, joined activity, offboarding-leak detection)
 - [vs Excel tracking](${base}/compare/excel-license-tracking): why license spreadsheets go stale and what live sync plus activity-joined findings add
 - [Security](${base}/security): granted scopes, stored data, residency, subprocessors, DPA
-- [Trust Center](${base}/trust-center): how data is accessed, where it lives, who processes it, and the documents behind it (German version at ${base}/de/trust-center)
+- [Trust Center](${base}/trust-center): how data is accessed, where it lives, who processes it, retention, the security program, vulnerability management, incident response, business continuity, sub-processor certifications and the documents behind it (German version at ${base}/de/trust-center)
+- [Service Level Agreement](${base}/sla): availability target, service credits, support hours and response times for paid plans (German version at ${base}/de/sla)
 - [DPA](${base}/dpa): pre-signed Art. 28 GDPR data processing agreement, downloadable in English and German (German version at ${base}/de/dpa)
 - [FAQ](${base}/faq): the questions IT and security teams ask before granting admin consent
 - [Connectors](${base}/connectors): step-by-step setup guides for all ${CONNECTOR_GUIDES.length} connectors (${CONNECTOR_GUIDES.map((g) => g.name).join(", ")})
