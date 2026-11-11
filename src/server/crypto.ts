@@ -19,7 +19,9 @@ export { secretAad };
  *
  * The earlier scheme derived the key from AUTH_SECRET. That key is used only
  * outside production, or in production while ENCRYPTION_LEGACY_FALLBACK=true
- * during the one-time migration (scripts/reencrypt-connector-secrets.ts).
+ * until the daily retention job has re-encrypted the old secrets
+ * (src/server/secretMigration.ts; scripts/reencrypt-connector-secrets.ts does
+ * the same from a trusted machine).
  *
  * Each ciphertext is bound to its context via AES-GCM Additional Authenticated
  * Data (AAD), `${tenantId}:${provider}:${column}` (see secretAad), so a secret

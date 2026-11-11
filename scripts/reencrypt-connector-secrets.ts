@@ -15,28 +15,17 @@
  *     npx tsx scripts/reencrypt-connector-secrets.ts --dry-run
  *
  * Without --dry-run the changes are committed. Exit code 0 on success (or a
- * clean dry run), 1 on any error or rollback.
+ * clean dry run), 1 on any error or rollback. The hosted service runs the same
+ * migration in its daily retention job (src/server/secretMigration.ts), so the
+ * script is for installs that cannot wait for it or run without that job.
  */
+import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import { deriveKey } from "../src/server/cryptoCore";
+import type { Db } from "../src/server/db";
 import { resolvePostgresSsl } from "../src/server/db/ssl";
-import {
-  SECRET_COLUMNS,
-  planReencryption,
-  readableWithKey,
-  type SecretColumn,
-  type StoredSecret,
-} from "../src/server/secretReencryption";
-
-class DryRun extends Error {}
-
-type Counts = {
-  total: number;
-  current: number;
-  migrate: number;
-  unreadable: number;
-};
+import { reencryptSecrets } from "../src/server/secretReencryption";
 
 const required = (name: string): string => {
   const value = process.env[name];
@@ -54,117 +43,31 @@ const main = async (): Promise<void> => {
   if (dataKey === authSecret)
     throw new Error("DATA_ENCRYPTION_KEY must differ from AUTH_SECRET");
 
-  const oldKey = deriveKey(authSecret);
-  const newKey = deriveKey(dataKey);
   // TLS is required unless SELF_HOSTED=true (a self-hosted install's bundled
   // database has no TLS); localhost is always allowed.
   const ssl = resolvePostgresSsl(databaseUrl, {
     enforce: process.env.SELF_HOSTED !== "true",
   });
-  const sql = postgres(databaseUrl, {
+  const client = postgres(databaseUrl, {
     max: 1,
     prepare: false,
     ...(ssl ? { ssl } : {}),
   });
 
-  const readRows = async (
-    tx: postgres.TransactionSql,
-    column: SecretColumn,
-    lock: boolean,
-  ): Promise<StoredSecret[]> => {
-    const providerColumn =
-      typeof column.provider === "string" ? null : column.provider.fromColumn;
-    const rows = await tx<
-      { tenant_id: string; provider: string | null; value: string }[]
-    >`
-      select tenant_id::text as tenant_id,
-             ${providerColumn ? tx(providerColumn) : tx`null`}::text as provider,
-             ${tx(column.column)} as value
-        from ${tx(column.table)}
-       where ${tx(column.column)} is not null
-       ${lock ? tx`for update` : tx``}
-    `;
-    return rows.map((r) => ({
-      tenantId: r.tenant_id,
-      provider:
-        typeof column.provider === "string" ? column.provider : r.provider!,
-      value: r.value,
-    }));
-  };
-
-  const report: Record<string, Counts> = {};
   try {
-    await sql.begin(async (tx) => {
-      const updates: {
-        column: SecretColumn;
-        row: StoredSecret;
-        value: string;
-      }[] = [];
-      const unreadable: string[] = [];
-
-      for (const column of SECRET_COLUMNS) {
-        const counts: Counts = {
-          total: 0,
-          current: 0,
-          migrate: 0,
-          unreadable: 0,
-        };
-        for (const row of await readRows(tx, column, true)) {
-          counts.total++;
-          const plan = planReencryption(column, row, oldKey, newKey);
-          counts[plan.status]++;
-          if (plan.status === "migrate")
-            updates.push({ column, row, value: plan.value });
-          if (plan.status === "unreadable")
-            unreadable.push(`${column.table} tenant ${row.tenantId}`);
-        }
-        report[`${column.table}.${column.column}`] = counts;
-      }
-
-      console.table(report);
-      if (unreadable.length > 0) {
-        throw new Error(
-          `Aborted: ${unreadable.length} secret(s) decrypt with neither key (${unreadable.join(", ")}). Nothing was changed.`,
-        );
-      }
-      if (dryRun) throw new DryRun();
-
-      for (const { column, row, value } of updates) {
-        const result = await tx`
-          update ${tx(column.table)}
-             set ${tx(column.column)} = ${value}
-           where tenant_id = ${row.tenantId}::uuid
-             ${(column.keyColumns as readonly string[]).includes("provider") ? tx`and provider = ${row.provider}` : tx``}
-             and ${tx(column.column)} = ${row.value}
-        `;
-        if (result.count !== 1)
-          throw new Error(
-            `Aborted: expected one updated row in ${column.table} for tenant ${row.tenantId}, got ${result.count}. Nothing was changed.`,
-          );
-      }
-
-      // Verify before COMMIT: every stored secret must now decrypt with the
-      // new key alone.
-      for (const column of SECRET_COLUMNS) {
-        for (const row of await readRows(tx, column, false)) {
-          if (!readableWithKey(column, row, newKey))
-            throw new Error(
-              `Aborted: ${column.table} tenant ${row.tenantId} does not decrypt with DATA_ENCRYPTION_KEY after re-encryption. Nothing was changed.`,
-            );
-        }
-      }
-      console.log(
-        `Verified every stored secret with DATA_ENCRYPTION_KEY. Re-encrypted ${updates.length}; committing.`,
-      );
-    });
-  } catch (err) {
-    if (err instanceof DryRun) {
-      console.log("Dry run: no changes were made.");
-      return;
-    }
-    throw err;
+    const result = await reencryptSecrets(
+      drizzle(client) as unknown as Db,
+      { oldKey: deriveKey(authSecret), newKey: deriveKey(dataKey) },
+      { dryRun },
+    );
+    console.table(result.columns);
+    console.log(
+      result.dryRun
+        ? "Dry run: no changes were made."
+        : `Verified every stored secret with DATA_ENCRYPTION_KEY. Re-encrypted ${result.reencrypted}; committed.`,
+    );
   } finally {
-    await sql.end({ timeout: 5 });
+    await client.end({ timeout: 5 });
   }
 };
 

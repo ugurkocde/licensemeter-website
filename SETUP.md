@@ -84,7 +84,7 @@ The managed connector requests `User.Read.All`, `AuditLog.Read.All`, `Reports.Re
 | `MS_BYO_ENABLED`                                             | `false` hides the bring-your-own app registration option; on by default         |
 | `BILLING_ENABLED`                                            | Hosted paid plans only; unset gives every workspace every feature               |
 
-`DATA_ENCRYPTION_KEY` is required in production and must differ from `AUTH_SECRET`; the app does not start without it. Keep it fixed once connectors are stored: their secrets are encrypted with the key that was active when they were saved, and a new key cannot decrypt them. If the key must change, disconnect and reconnect every connector afterward. Installations that stored secrets before the key was required (encrypted with a key derived from `AUTH_SECRET`) migrate them with `scripts/reencrypt-connector-secrets.ts`; see `docs/encryption-key-rollout.md`.
+`DATA_ENCRYPTION_KEY` is required in production and must differ from `AUTH_SECRET`; the app does not start without it. Keep it fixed once connectors are stored: their secrets are encrypted with the key that was active when they were saved, and a new key cannot decrypt them. If the key must change, disconnect and reconnect every connector afterward. Installations that stored secrets before the key was required (encrypted with a key derived from `AUTH_SECRET`) set `ENCRYPTION_LEGACY_FALLBACK=true` until the daily retention job has re-encrypted them, or run `scripts/reencrypt-connector-secrets.ts`; see `docs/encryption-key-rollout.md`.
 
 Never commit environment files, database dumps, or private keys. `SKIP_ENV_VALIDATION` is for builds without secrets, not runtime deployment.
 

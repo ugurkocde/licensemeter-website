@@ -4,97 +4,74 @@ Connector secrets (Microsoft bring-your-own, Adobe, Zoom, Atlassian,
 Salesforce, OpenAI, Anthropic) are stored AES-256-GCM encrypted. Production
 used to derive that key from `AUTH_SECRET` because `DATA_ENCRYPTION_KEY` was
 not set. After this change production requires a distinct
-`DATA_ENCRYPTION_KEY`, and the `AUTH_SECRET` key is only accepted while
-`ENCRYPTION_LEGACY_FALLBACK=true`.
+`DATA_ENCRYPTION_KEY`, and the app's own reads accept the `AUTH_SECRET` key
+only while `ENCRYPTION_LEGACY_FALLBACK=true`.
 
-Run the steps in this order. Merging the pull request is the last step,
-because a production build without `DATA_ENCRYPTION_KEY` fails.
+The daily retention job (`/api/cron/retention`) re-encrypts every secret
+still on the `AUTH_SECRET` key, using the values the deployment already holds
+(`src/server/secretMigration.ts`). Nobody has to read `DATABASE_URL` or
+`AUTH_SECRET` out of Vercel. The run is one transaction with the rows locked;
+before COMMIT it decrypts every stored secret again with the new key alone,
+and it changes nothing if any secret decrypts with neither key. Once every
+secret is current it is a no-op.
 
-## Before you start
-
-- A checkout of the branch with `npm ci` done, on a trusted machine.
-- The production values of `DATABASE_URL` and `AUTH_SECRET`. Both are
-  sensitive in Vercel and cannot be pulled; take them from where you keep
-  them. If `AUTH_SECRET` is not available outside Vercel, see "Without
-  AUTH_SECRET" below.
-- Type values with `read -rs` so they stay out of shell history and the
-  terminal.
-
-## 1. Generate the key
+## 1. Generate the key and set it in Vercel
 
 ```sh
 openssl rand -base64 48
-```
-
-Store it in your password manager. It must never equal `AUTH_SECRET`.
-
-## 2. Set it in Vercel
-
-```sh
 npx vercel@65 env add DATA_ENCRYPTION_KEY production --sensitive
 npx vercel@65 env add DATA_ENCRYPTION_KEY preview --sensitive
 ```
 
-Each command prompts for the value. Preview builds also run with
-`NODE_ENV=production` and need a key. Use the production key for Preview only
-if Preview deployments use the production database; otherwise generate a
-separate one.
+Store the key in your password manager. It must never equal `AUTH_SECRET`.
+Preview builds also run with `NODE_ENV=production` and need a key; use a
+separate one unless Preview uses the production database.
 
-## 3. Redeploy the current production build
+## 2. Redeploy the current production build
 
-Redeploy the deployment that is live now (Vercel dashboard, Deployments, the
-current production deployment, Redeploy). The code on `main` before this
-change already writes new secrets with `DATA_ENCRYPTION_KEY` and still
-decrypts the old ones with the `AUTH_SECRET` key, so nothing breaks in
-between.
+Redeploy the deployment that is live now. The code before this change already
+writes new secrets with `DATA_ENCRYPTION_KEY` and still decrypts the old ones
+with the `AUTH_SECRET` key, so nothing breaks in between.
 
-## 4. Dry run
+## 3. Bridge the deploy
 
 ```sh
-read -rs DATABASE_URL && export DATABASE_URL
-read -rs AUTH_SECRET && export AUTH_SECRET
-read -rs DATA_ENCRYPTION_KEY && export DATA_ENCRYPTION_KEY
-npx tsx scripts/reencrypt-connector-secrets.ts --dry-run
+npx vercel@65 env add ENCRYPTION_LEGACY_FALLBACK production
 ```
 
-The table lists per column how many secrets exist, how many already use the
-new key (`current`), how many will be re-encrypted (`migrate`) and how many
-decrypt with neither key (`unreadable`). `unreadable` must be 0. The script
-prints counts and tenant ids only, never secret values.
+Value `true`. It keeps the old secrets readable between the deploy and the
+first retention run.
 
-## 5. Run
+## 4. Merge, then run the retention job once
 
 ```sh
-npx tsx scripts/reencrypt-connector-secrets.ts
-npx tsx scripts/reencrypt-connector-secrets.ts --dry-run
-unset DATABASE_URL AUTH_SECRET DATA_ENCRYPTION_KEY
+npx vercel@65 crons run /api/cron/retention
 ```
 
-The run happens in one transaction with the rows locked. Before COMMIT it
-decrypts every stored secret again with the new key alone and rolls back if
-any fails. The second dry run must show every secret as `current`.
+The response's `secrets` field lists per column how many secrets exist, how
+many already use the new key (`current`), how many were re-encrypted
+(`migrate`) and how many decrypt with neither key (`unreadable`, which aborts
+the run). Run it again: every secret must be `current`.
 
-## 6. Merge and deploy the fail-fast change
+## 5. Remove the bridge
 
-Merge the pull request. After the deployment:
+```sh
+npx vercel@65 env rm ENCRYPTION_LEGACY_FALLBACK production
+```
 
-- The production deployment builds and starts (a missing or reused key fails
-  the build, and Vercel keeps the previous deployment live).
-- Start a sync in a workspace with an Adobe or SaaS connector, or wait for
-  the nightly sync, and check the Vercel logs for decryption errors.
+Redeploy production, then start a sync in a workspace with an Adobe or SaaS
+connector and check the logs for decryption errors.
 
 ## Rollback
 
-- Build fails on `DATA_ENCRYPTION_KEY`: set the key (step 2) and redeploy.
-- Decryption errors after the merge: set `ENCRYPTION_LEGACY_FALLBACK=true` in
-  Production and redeploy. The `AUTH_SECRET` key is accepted again. Rerun
-  steps 4 and 5, then remove the flag and redeploy.
+- Build fails on `DATA_ENCRYPTION_KEY`: set the key (step 1) and redeploy.
+- Decryption errors: set `ENCRYPTION_LEGACY_FALLBACK=true` and redeploy. Check
+  the retention job's `secrets` result and its function log.
 
-## Without AUTH_SECRET
+## Without the retention job
 
-If the production `AUTH_SECRET` is not available outside Vercel, skip steps 4
-and 5. After step 3 the live app decrypts the old secrets and writes new ones
-with `DATA_ENCRYPTION_KEY`, so an admin of each affected workspace can save
-the connector credentials again on its connector page. Until every connector
-has been saved again, merge only with `ENCRYPTION_LEGACY_FALLBACK=true` set in
-Production, and remove the flag afterwards.
+`scripts/reencrypt-connector-secrets.ts` runs the same migration from a
+trusted machine, for installs that do not run the job or cannot wait for it.
+It needs `DATABASE_URL`, `AUTH_SECRET` and `DATA_ENCRYPTION_KEY` in the
+environment (type them with `read -rs`). `--dry-run` counts and changes
+nothing. It prints counts and tenant ids only, never secret values.

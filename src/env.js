@@ -37,7 +37,8 @@ export const env = createEnv({
      * ENCRYPTION_LEGACY_FALLBACK=true relaxes this for the one-time migration
      * of ciphertext written under the earlier AUTH_SECRET-derived key: the key
      * becomes optional and the old key is accepted for decryption. Remove the
-     * flag once scripts/reencrypt-connector-secrets.ts has run.
+     * flag once the retention job (or scripts/reencrypt-connector-secrets.ts)
+     * has re-encrypted them.
      */
     DATA_ENCRYPTION_KEY:
       process.env.NODE_ENV !== "production"
