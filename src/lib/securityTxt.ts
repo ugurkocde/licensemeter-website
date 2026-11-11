@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 import { SUPPORT_EMAIL } from "~/lib/support";
 
 /**
@@ -13,19 +15,26 @@ export const VULNERABILITY_POLICY_PATH =
 
 /**
  * Whether `base` may appear in security.txt: RFC 9116 requires https URLs for
- * Canonical and Policy, so a missing or localhost origin publishes nothing.
+ * Canonical and Policy, and they must name the public site. Only a domain name
+ * with a public suffix qualifies; IP literals (private, loopback or not),
+ * localhost and internal-only names publish nothing.
  */
 export const isPublicHttpsOrigin = (base: string): boolean => {
+  let url: URL;
   try {
-    const url = new URL(base);
-    return (
-      url.protocol === "https:" &&
-      url.hostname !== "localhost" &&
-      !/^(127\.|0\.0\.0\.0$|\[::1\]$)/.test(url.hostname)
-    );
+    url = new URL(base);
   } catch {
     return false;
   }
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return (
+    url.protocol === "https:" &&
+    isIP(host) === 0 &&
+    host.includes(".") &&
+    !/\.(localhost|local|internal|lan|home|corp|test|invalid|example)$/.test(
+      host,
+    )
+  );
 };
 
 /** The RFC 9116 security.txt body for the hosted site at `base`. */

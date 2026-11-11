@@ -100,7 +100,7 @@ const EN: TrustContent = {
       {
         label: "Delete on disconnect",
         detail:
-          "Disconnecting a workspace deletes all synced data immediately and irreversibly.",
+          "Disconnecting a workspace deletes all synced data from the live database immediately and irreversibly; backup copies expire after 7 days.",
       },
       {
         label: "GDPR DPA, pre-signed",
@@ -159,7 +159,7 @@ const EN: TrustContent = {
   lifecycle: {
     title: "Data lifecycle",
     linked: {
-      pre: "Data is collected only by the read-only sync, retained only while your tenant is connected, and deleted on disconnect. Disconnecting a workspace (Settings → Danger zone) deletes all synced data immediately and irreversibly: users, findings, prices, history and the audit log. Revoking the enterprise application in your Entra ID additionally cuts our access at the source. See the ",
+      pre: "Data is collected only by the read-only sync, retained only while your tenant is connected, and deleted on disconnect. Disconnecting a workspace (Settings → Danger zone) deletes all synced data from the live database immediately and irreversibly: users, findings, prices, history and the audit log. Copies in the database provider's daily backups expire with the backup rotation, after 7 days. Revoking the enterprise application in your Entra ID additionally cuts our access at the source. See the ",
       linkText: "Privacy Policy",
       href: "/privacy",
       post: " for retention detail and your data subject rights.",
@@ -539,7 +539,7 @@ const DE: TrustContent = {
       {
         label: "Löschung bei Trennung",
         detail:
-          "Das Trennen eines Workspace löscht alle synchronisierten Daten sofort und unwiderruflich.",
+          "Das Trennen eines Workspace löscht alle synchronisierten Daten sofort und unwiderruflich aus der Live-Datenbank; Kopien in Sicherungen laufen nach 7 Tagen ab.",
       },
       {
         label: "DSGVO-AVV, vorunterzeichnet",
@@ -598,7 +598,7 @@ const DE: TrustContent = {
   lifecycle: {
     title: "Datenlebenszyklus",
     linked: {
-      pre: "Daten werden ausschließlich durch die nur lesende Synchronisierung erhoben, nur gespeichert, solange Ihr Tenant verbunden ist, und bei der Trennung gelöscht. Das Trennen eines Workspace (Einstellungen → Gefahrenzone) löscht alle synchronisierten Daten sofort und unwiderruflich: Benutzer, Ergebnisse, Preise, Verlauf und das Audit-Log. Das Widerrufen der Unternehmensanwendung in Ihrem Entra ID unterbindet unseren Zugriff zusätzlich an der Quelle. Einzelheiten zur Aufbewahrung und Ihre Betroffenenrechte finden Sie in der ",
+      pre: "Daten werden ausschließlich durch die nur lesende Synchronisierung erhoben, nur gespeichert, solange Ihr Tenant verbunden ist, und bei der Trennung gelöscht. Das Trennen eines Workspace (Einstellungen → Gefahrenzone) löscht alle synchronisierten Daten sofort und unwiderruflich aus der Live-Datenbank: Benutzer, Ergebnisse, Preise, Verlauf und das Audit-Log. Kopien in den täglichen Sicherungen des Datenbankanbieters laufen mit der Sicherungsrotation nach 7 Tagen ab. Das Widerrufen der Unternehmensanwendung in Ihrem Entra ID unterbindet unseren Zugriff zusätzlich an der Quelle. Einzelheiten zur Aufbewahrung und Ihre Betroffenenrechte finden Sie in der ",
       linkText: "Datenschutzerklärung",
       href: "/privacy",
       post: ".",
