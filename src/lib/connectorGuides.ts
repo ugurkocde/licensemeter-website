@@ -45,7 +45,7 @@ export const CONNECTOR_GUIDES: ConnectorGuide[] = [
     steps: [
       {
         title: "Managed (recommended): one-click admin consent",
-        body: "On the Microsoft connector page, choose Grant admin consent. A Global Administrator approves LicenseMeter's read-only application permissions for your tenant in the Microsoft dialog. Nothing is stored on your side and nothing is ever written to your tenant. This is the default and needs no app registration.",
+        body: "On the Microsoft connector page, choose Grant admin consent. A Global Administrator approves LicenseMeter's read-only application permissions for your tenant in the Microsoft dialog. Nothing is stored on your side and this connector never writes to your tenant. This is the default and needs no app registration.",
       },
       {
         title: "BYO (advanced): create your own app registration",
@@ -76,7 +76,7 @@ export const CONNECTOR_GUIDES: ConnectorGuide[] = [
     ],
     neverReads: [
       "Mailbox, calendar, Teams, OneDrive or SharePoint content: no content scopes are requested",
-      "Anything writable: every permission is read-only (*.Read.All)",
+      "Anything writable: every permission of this connector is read-only (*.Read.All)",
     ],
     detects: MICROSOFT_CONNECTOR.detects.slice(),
     settingsPath: "/app/connectors/microsoft",

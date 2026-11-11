@@ -480,9 +480,9 @@ export default async function MicrosoftConnectorPage({
             ))}
           </ul>
           <p className="text-ink-faint mt-3 text-xs">
-            Read-only application permissions only. Nothing is ever written to
-            your tenant, and mailbox or file contents are never readable. Full
-            details for your security team:{" "}
+            Read-only application permissions only. This connector never writes
+            to your tenant, and mailbox or file contents are never readable.
+            Full details for your security team:{" "}
             <Link
               href="/security"
               className="hover:text-ink underline underline-offset-4"

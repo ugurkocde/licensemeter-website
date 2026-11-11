@@ -68,7 +68,7 @@ export const SIGN_IN_STEPS: SignInStep[] = [
     sentences: [
       "One read-only admin consent, given by a Global Administrator or a Privileged Role Administrator.",
       "It is a second Microsoft dialog, for a separate app called LicenseMeter Connector: signing in alone never grants access to your tenant.",
-      "LicenseMeter cannot change anything in your tenant: every permission below only reads. You can revoke the consent at any time in Entra, under Enterprise applications.",
+      "This connector cannot change anything in your tenant: every permission below only reads. You can revoke the consent at any time in Entra, under Enterprise applications.",
     ],
   },
   {

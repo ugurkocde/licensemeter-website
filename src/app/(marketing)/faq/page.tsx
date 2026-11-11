@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 const FAQS = [
   {
     q: "Can LicenseMeter change anything in our tenant?",
-    a: "No. The connector app holds exclusively read-only application permissions. There is no write scope to misuse. Remediation happens through PowerShell scripts we generate for your admins to review and run themselves.",
+    a: "Not through the core application. The Microsoft 365 connector holds read-only application permissions only: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All and ReportSettings.Read.All. The optional Software Metering module uses a separate app registration with DeviceManagementScripts.ReadWrite.All, used solely to create, assign and update LicenseMeter's own Intune Remediation script for software usage metering. It requires separate admin consent and is inactive unless you enable it. No other write permissions are used. License remediation happens through PowerShell scripts we generate for your admins to review and run themselves.",
   },
   {
     q: "Can you read our email, files or Teams messages?",

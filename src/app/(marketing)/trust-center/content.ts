@@ -57,7 +57,7 @@ const EN: TrustContent = {
       {
         label: "Read-only access",
         detail:
-          "Application permissions are read-only without exception. We can never change anything in your tenant.",
+          "The core application uses read-only Microsoft Graph permissions only. The optional Software Metering module uses a separate app registration with one write permission, DeviceManagementScripts.ReadWrite.All, for its own Intune Remediation script. It needs separate admin consent and is inactive unless you enable it.",
       },
       {
         label: "EU data residency",
@@ -105,7 +105,7 @@ const EN: TrustContent = {
   },
   access: {
     title: "How access works",
-    body: "A Global Administrator grants consent once, through Microsoft's standard admin-consent dialog, for application permissions that are read-only without exception. There is no service account, agent or mailbox plugin in your tenant, and you can revoke the application in Entra ID at any time, independently of us. Usage reports are consumed as counts and last-activity dates only: metadata, never content.",
+    body: "A Global Administrator grants consent once, through Microsoft's standard admin-consent dialog, for the core connector's application permissions, which are read-only without exception: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All and ReportSettings.Read.All. The optional Software Metering module needs its own separate consent. There is no service account, agent or mailbox plugin in your tenant, and you can revoke the application in Entra ID at any time, independently of us. Usage reports are consumed as counts and last-activity dates only: metadata, never content.",
     linked: {
       pre: "The ",
       linkText: "Security overview",
@@ -198,7 +198,7 @@ const DE: TrustContent = {
       {
         label: "Nur-Lese-Zugriff",
         detail:
-          "Die Anwendungsberechtigungen sind ausnahmslos nur lesend. Wir können in Ihrem Tenant nichts verändern.",
+          "Die Kernanwendung nutzt ausschließlich lesende Microsoft-Graph-Berechtigungen. Das optionale Software-Metering-Modul nutzt eine separate App-Registrierung mit einer Schreibberechtigung, DeviceManagementScripts.ReadWrite.All, für sein eigenes Intune-Remediation-Skript. Es erfordert eine separate Administrator-Einwilligung und ist inaktiv, solange Sie es nicht aktivieren.",
       },
       {
         label: "Datenhaltung in der EU",
@@ -246,7 +246,7 @@ const DE: TrustContent = {
   },
   access: {
     title: "So funktioniert der Zugriff",
-    body: "Ein globaler Administrator erteilt die Einwilligung einmalig über den standardmäßigen Administrator-Einwilligungsdialog von Microsoft - für Anwendungsberechtigungen, die ausnahmslos nur lesend sind. Es gibt kein Dienstkonto, keinen Agenten und kein Postfach-Plugin in Ihrem Tenant, und Sie können die Anwendung in Entra ID jederzeit unabhängig von uns widerrufen. Nutzungsberichte werden nur als Zählwerte und Datum der letzten Aktivität verarbeitet: Metadaten, niemals Inhalte.",
+    body: "Ein globaler Administrator erteilt die Einwilligung einmalig über den standardmäßigen Administrator-Einwilligungsdialog von Microsoft, und zwar für die Anwendungsberechtigungen des Kern-Connectors, die ausnahmslos nur lesend sind: User.Read.All, AuditLog.Read.All, Reports.Read.All, LicenseAssignment.Read.All und ReportSettings.Read.All. Das optionale Software-Metering-Modul erfordert eine eigene, separate Einwilligung. Es gibt kein Dienstkonto, keinen Agenten und kein Postfach-Plugin in Ihrem Tenant, und Sie können die Anwendung in Entra ID jederzeit unabhängig von uns widerrufen. Nutzungsberichte werden nur als Zählwerte und Datum der letzten Aktivität verarbeitet: Metadaten, niemals Inhalte.",
     linked: {
       pre: "Die ",
       linkText: "Sicherheitsübersicht",

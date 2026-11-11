@@ -120,8 +120,11 @@ export default function PrivacyPolicyPage() {
           organization&rsquo;s behalf (Art. 28 GDPR): display name, UPN, account
           status, user type, creation date, license assignments, last sign-in
           timestamp and the last activity date per service. Mailbox, file or
-          message content is never read; access is technically limited to
-          read-only permissions.
+          message content is never read; the core application is technically
+          limited to read-only permissions. The optional Software Metering
+          module, if the organization enables it, uses a separate application
+          with one write permission, used solely for LicenseMeter&rsquo;s own
+          Intune Remediation script.
         </p>
         <p>
           If the organization additionally connects optional connectors,

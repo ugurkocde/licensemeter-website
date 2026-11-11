@@ -234,7 +234,7 @@ export const MICROSOFT_CONNECTOR = {
   label: "Microsoft 365",
   seatNoun: "Microsoft 365 licenses",
   managedHint:
-    "Recommended. A Global Administrator grants LicenseMeter read-only application permissions once. No credentials are stored on your side, and nothing is ever written to your tenant.",
+    "Recommended. A Global Administrator grants LicenseMeter read-only application permissions once. No credentials are stored on your side, and this connector never writes to your tenant.",
   byoHint:
     "Advanced. Create your own Entra app registration with exactly the read-only permissions below, then paste its credentials. They are stored encrypted and used only for the nightly read-only sync.",
   detects: [

@@ -86,7 +86,7 @@ describe("welcomeHtml", () => {
   it("quotes the demo figure and the read-only promise", () => {
     expect(html).toContain(`€ ${demoEuros(DEMO_FIGURES.monthlyWasteCents)}`);
     expect(html).toContain(`${DEMO_FIGURES.users}-person tenant`);
-    expect(html).toContain("No write access, ever.");
+    expect(html).toContain("No write access in the core connector.");
   });
 
   it("names the accurate consent role and links the CSV import", () => {

@@ -28,9 +28,7 @@ export default function TermsPage() {
       <h1 className="font-display text-4xl tracking-tight">
         Terms and Conditions
       </h1>
-      <p className="text-ink-faint mt-3 text-xs">
-        Last updated: September 2026
-      </p>
+      <p className="text-ink-faint mt-3 text-xs">Last updated: November 2026</p>
 
       <Section title="1. Scope and provider">
         <p>
@@ -98,7 +96,10 @@ export default function TermsPage() {
           event of a conflict regarding data processing, the DPA prevails over
           these Terms. On the Pro and MSP plans the Provider also signs the DPA
           with the Customer named as a party. Mailbox, file or message content
-          is not read; access is technically limited to read-only permissions.
+          is not read; the core Service is technically limited to read-only
+          permissions. The optional Software Metering module, if the Customer
+          enables it, uses a separate application with one write permission,
+          used solely for the Service&rsquo;s own Intune Remediation script.
         </p>
       </Section>
 

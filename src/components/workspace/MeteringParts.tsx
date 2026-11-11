@@ -190,7 +190,7 @@ export function SetupProgress({ step }: { step: SetupStep }) {
 export function FinishSetup({ view }: { view: MeteringView }) {
   const text: Record<Exclude<SetupStep, "done" | "unavailable">, string> = {
     connect:
-      "Connect the separate, read-only Software Metering app to your Microsoft tenant.",
+      "Connect the separate Software Metering app to your Microsoft tenant.",
     deploy:
       "Download the collector and add it to Intune as a Remediations script. LicenseMeter finds it automatically.",
     choose:

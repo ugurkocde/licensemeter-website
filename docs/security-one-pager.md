@@ -15,11 +15,17 @@ Entra account state (offboarding leaks).
 
 ## Access model
 
-- One-time admin consent for application permissions that are **read-only
-  without exception**: `User.Read.All`, `AuditLog.Read.All`,
-  `Reports.Read.All`, `LicenseAssignment.Read.All`, `ReportSettings.Read.All`
+- The core LicenseMeter application uses read-only Microsoft Graph
+  permissions, granted by one-time admin consent: `User.Read.All`,
+  `AuditLog.Read.All`, `Reports.Read.All`, `LicenseAssignment.Read.All`,
+  `ReportSettings.Read.All`
+- The optional Software Metering module uses a separate app registration with
+  `DeviceManagementScripts.ReadWrite.All`, used solely to create, assign and
+  update LicenseMeter's own Intune Remediation script for software usage
+  metering. It requires separate admin consent and is inactive unless the
+  customer enables it. No other write permissions are used
 - **Never accessible**: mailbox content, files, Teams messages, credentials.
-  The granted scopes cannot read content, and no write scope exists
+  The granted scopes cannot read content
 - Sign-in is a separate app with only `openid profile email`
 - Revocable any time in Entra ID > Enterprise applications, independent of us
 
