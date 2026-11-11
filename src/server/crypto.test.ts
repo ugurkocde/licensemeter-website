@@ -8,6 +8,8 @@ const aad = secretAad("tenant-1", "adobe", "clientSecretEnc");
 const cryptoWithEnv = async (envValues: {
   AUTH_SECRET: string;
   DATA_ENCRYPTION_KEY?: string;
+  NODE_ENV?: string;
+  ENCRYPTION_LEGACY_FALLBACK?: string;
 }) => {
   vi.resetModules();
   vi.doMock("~/env", () => ({ env: envValues }));
@@ -90,5 +92,44 @@ describe("DATA_ENCRYPTION_KEY rotation", () => {
     expect(newOnly.decryptSecret(newEnc, aad)).toBe("new-write");
     const legacyOnly = await cryptoWithEnv({ AUTH_SECRET: OLD });
     expect(() => legacyOnly.decryptSecret(newEnc, aad)).toThrow();
+  });
+});
+
+describe("production key requirement", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("~/env");
+  });
+
+  it("refuses to encrypt in production without DATA_ENCRYPTION_KEY", async () => {
+    const prod = await cryptoWithEnv({
+      AUTH_SECRET: OLD,
+      NODE_ENV: "production",
+    });
+    expect(() => prod.encryptSecret("x", aad)).toThrow(/DATA_ENCRYPTION_KEY/);
+  });
+
+  it("no longer accepts the AUTH_SECRET key in production", async () => {
+    const before = await cryptoWithEnv({ AUTH_SECRET: OLD });
+    const legacyEnc = before.encryptSecret("legacy", aad);
+    const prod = await cryptoWithEnv({
+      AUTH_SECRET: OLD,
+      DATA_ENCRYPTION_KEY: NEW,
+      NODE_ENV: "production",
+    });
+    expect(() => prod.decryptSecret(legacyEnc, aad)).toThrow();
+    expect(prod.decryptSecret(prod.encryptSecret("new", aad), aad)).toBe("new");
+  });
+
+  it("accepts the AUTH_SECRET key in production only behind the migration flag", async () => {
+    const before = await cryptoWithEnv({ AUTH_SECRET: OLD });
+    const legacyEnc = before.encryptSecret("legacy", aad);
+    const migrating = await cryptoWithEnv({
+      AUTH_SECRET: OLD,
+      DATA_ENCRYPTION_KEY: NEW,
+      NODE_ENV: "production",
+      ENCRYPTION_LEGACY_FALLBACK: "true",
+    });
+    expect(migrating.decryptSecret(legacyEnc, aad)).toBe("legacy");
   });
 });

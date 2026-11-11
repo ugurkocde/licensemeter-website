@@ -28,19 +28,29 @@ export const env = createEnv({
         : z.string().min(10),
 
     /**
-     * Dedicated key for encrypting stored connector credentials at rest
-     * (crypto.ts). Optional: when unset the encryption key falls back to
-     * AUTH_SECRET so existing deployments and ciphertext keep working with no
-     * migration. Set a DISTINCT value to separate the data-at-rest key from the
-     * session/token signing secret, so a leak of one no longer compromises the
-     * other and AUTH_SECRET can be rotated without invalidating stored secrets.
-     * Rotating to a new distinct value requires re-encrypting existing rows;
-     * crypto.ts keeps an AUTH_SECRET decrypt fallback to make that lazy.
+     * Key for encrypting stored connector credentials at rest (crypto.ts).
+     * Required in production (Vercel preview builds included, which run with
+     * NODE_ENV=production) and must differ from AUTH_SECRET, so a leak of the
+     * session signing secret does not expose stored credentials. Local dev
+     * may leave it unset and falls back to AUTH_SECRET.
+     *
+     * ENCRYPTION_LEGACY_FALLBACK=true relaxes this for the one-time migration
+     * of ciphertext written under the earlier AUTH_SECRET-derived key: the key
+     * becomes optional and the old key is accepted for decryption. Remove the
+     * flag once scripts/reencrypt-connector-secrets.ts has run.
      */
     DATA_ENCRYPTION_KEY:
-      process.env.NODE_ENV === "production"
-        ? z.string().min(32).optional()
-        : z.string().min(10).optional(),
+      process.env.NODE_ENV !== "production"
+        ? z.string().min(10).optional()
+        : process.env.ENCRYPTION_LEGACY_FALLBACK === "true"
+          ? z.string().min(32).optional()
+          : z
+              .string()
+              .min(32)
+              .refine((v) => v !== process.env.AUTH_SECRET, {
+                message: "DATA_ENCRYPTION_KEY must differ from AUTH_SECRET",
+              }),
+    ENCRYPTION_LEGACY_FALLBACK: z.enum(["true", "false"]).optional(),
 
     /**
      * Sign-in app registration (delegated, multi-tenant, openid/profile/email only).
@@ -156,6 +166,7 @@ export const env = createEnv({
     DATABASE_URL: process.env.DATABASE_URL,
     AUTH_SECRET: process.env.AUTH_SECRET,
     DATA_ENCRYPTION_KEY: process.env.DATA_ENCRYPTION_KEY,
+    ENCRYPTION_LEGACY_FALLBACK: process.env.ENCRYPTION_LEGACY_FALLBACK,
     AUTH_MICROSOFT_ENTRA_ID_ID: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
     AUTH_MICROSOFT_ENTRA_ID_SECRET: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
     CONNECTOR_CLIENT_ID: process.env.CONNECTOR_CLIENT_ID,

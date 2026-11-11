@@ -20,6 +20,7 @@ jobs:
       # Build-time env validation runs with NODE_ENV=production; these are
       # CI-only values, never used at runtime.
       AUTH_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
+      DATA_ENCRYPTION_KEY: ci-only-data-key-0123456789abcdef0123456789abcdef
       DEMO_MODE: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
