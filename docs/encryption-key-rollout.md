@@ -7,9 +7,11 @@ not set. After this change production requires a distinct
 `DATA_ENCRYPTION_KEY`, and the app's own reads accept the `AUTH_SECRET` key
 only while `ENCRYPTION_LEGACY_FALLBACK=true`.
 
-The daily retention job (`/api/cron/retention`) re-encrypts every secret
-still on the `AUTH_SECRET` key, using the values the deployment already holds
-(`src/server/secretMigration.ts`). Nobody has to read `DATABASE_URL` or
+While `ENCRYPTION_LEGACY_FALLBACK=true` is set, the daily retention job
+(`/api/cron/retention`) re-encrypts every secret still on the `AUTH_SECRET`
+key, using the values the deployment already holds
+(`src/server/secretMigration.ts`). Without the flag it does not use the old
+key either. Nobody has to read `DATABASE_URL` or
 `AUTH_SECRET` out of Vercel. The run is one transaction with the rows locked;
 before COMMIT it decrypts every stored secret again with the new key alone,
 and it changes nothing if any secret decrypts with neither key. Once every
@@ -40,7 +42,7 @@ npx vercel@65 env add ENCRYPTION_LEGACY_FALLBACK production
 ```
 
 Value `true`. It keeps the old secrets readable between the deploy and the
-first retention run.
+first retention run, and lets that run use the old key.
 
 ## 4. Merge, then run the retention job once
 
@@ -59,7 +61,8 @@ the run). Run it again: every secret must be `current`.
 npx vercel@65 env rm ENCRYPTION_LEGACY_FALLBACK production
 ```
 
-Redeploy production, then start a sync in a workspace with an Adobe or SaaS
+Redeploy production. From then on neither the app nor the retention job uses
+the `AUTH_SECRET` key. Start a sync in a workspace with an Adobe or SaaS
 connector and check the logs for decryption errors.
 
 ## Rollback
