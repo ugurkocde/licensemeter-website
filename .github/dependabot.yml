@@ -1,4 +1,8 @@
 version: 2
+# Weekly version updates, minor and patch grouped per ecosystem. Security
+# updates are enabled separately in the repository settings and are not
+# limited by this schedule. demo-video is a local render tool that is never
+# deployed and is deliberately not tracked here.
 updates:
   - package-ecosystem: npm
     directory: /
@@ -35,6 +39,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      github-actions-minor-and-patch:
+        update-types: [minor, patch]
   - package-ecosystem: docker
     directory: /
     schedule:
