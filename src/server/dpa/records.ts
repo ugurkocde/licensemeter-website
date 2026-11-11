@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -59,25 +59,31 @@ const isDemo = (ctx: AccessContext) => ctx.tenant.isDemo || ctx.user.isDemo;
 export const availableKinds = (ctx: AccessContext): DpaAgreementKind[] =>
   ctx.entitlement.plan === "msp" ? [...DPA_KINDS] : ["controller"];
 
-/** The acceptance of the current version, or null. */
+/**
+ * The workspace's acceptance, or null. An acceptance carries over to later
+ * versions, so a workspace that accepted an earlier version does not accept
+ * again: the row returned is the current version's if one exists, otherwise
+ * the most recent earlier one, which keeps its own version and date.
+ */
 export const getAcceptance = async (
   tenantId: string,
 ): Promise<AcceptanceRow | null> => {
   const [row] = await db
     .select()
     .from(dpaAcceptances)
-    .where(
-      and(
-        eq(dpaAcceptances.tenantId, tenantId),
-        eq(dpaAcceptances.version, DPA_VERSION),
-      ),
+    .where(eq(dpaAcceptances.tenantId, tenantId))
+    .orderBy(
+      desc(sql`${dpaAcceptances.version} = ${DPA_VERSION}`),
+      desc(dpaAcceptances.acceptedAt),
     )
     .limit(1);
   return row ?? null;
 };
 
 /**
- * Records the caller's acceptance of the current version. The unique index on
+ * Records the caller's acceptance of the current version. The page offers it
+ * only to a workspace without any acceptance, since an earlier one carries
+ * over. The unique index on
  * (tenant, version) makes a concurrent second submission a no-op, and the row
  * that won is returned either way.
  */

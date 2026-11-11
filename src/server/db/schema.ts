@@ -992,9 +992,10 @@ export const billingEvents = pgTable(
 ).enableRLS();
 
 /**
- * Online acceptance of the standard data processing agreement (AVV). Every
- * hosted workspace needs one per document version, Free included, because the
- * hosted service is a processor under GDPR Art. 28 for all of them.
+ * Online acceptance of the standard data processing agreement (AVV), one row
+ * per accepted document version. Every hosted workspace can record one, Free
+ * included, because the hosted service is a processor under GDPR Art. 28 for
+ * all of them. An acceptance carries over to later versions.
  */
 export const dpaAcceptances = pgTable(
   "dpa_acceptances",

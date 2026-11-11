@@ -587,7 +587,7 @@ const STRINGS: Record<DpaLang, Strings> = {
         "LicenseMeter processes directory and license metadata on your behalf, so a data processing agreement under Art. 28 GDPR comes with every workspace. It is the European Commission's standard contractual clauses, unchanged, with our annexes. The full text is below; download the pre-signed PDF in English or German for your records and procurement checklist.",
       howToTitle: "How to put this agreement in place",
       howToSteps: [
-        "Every workspace accepts it online: an owner or admin accepts the current version once in the LicenseMeter portal, and the acceptance is recorded.",
+        "Every workspace accepts it online: an owner or admin accepts it once in the LicenseMeter portal, and the acceptance is recorded. It carries over to later versions, so it is not repeated.",
         "On Pro and MSP an owner can also sign it with the company named as a party, and download the PDF signed by both sides.",
         "LicenseMeter signs its own agreement. Customer templates are not negotiated on Pro.",
       ],
@@ -673,7 +673,7 @@ const STRINGS: Record<DpaLang, Strings> = {
         "LicenseMeter verarbeitet Verzeichnis- und Lizenzmetadaten in Ihrem Auftrag, daher gehört zu jedem Arbeitsbereich ein Auftragsverarbeitungsvertrag nach Art. 28 DSGVO. Er besteht aus den Standardvertragsklauseln der Europäischen Kommission, unverändert, mit unseren Anhängen. Der vollständige Text steht unten; laden Sie das vorunterzeichnete PDF auf Deutsch oder Englisch für Ihre Unterlagen und Ihre Beschaffungs-Checkliste herunter.",
       howToTitle: "So kommt diese Vereinbarung zustande",
       howToSteps: [
-        "Jeder Arbeitsbereich nimmt sie online an: Ein Owner oder Admin nimmt die aktuelle Version einmal im LicenseMeter-Portal an, und die Annahme wird aufgezeichnet.",
+        "Jeder Arbeitsbereich nimmt sie online an: Ein Owner oder Admin nimmt sie einmal im LicenseMeter-Portal an, und die Annahme wird aufgezeichnet. Sie gilt für spätere Versionen fort und wird nicht wiederholt.",
         "In Pro und MSP kann ein Owner sie zusätzlich mit dem Unternehmen als benannter Partei unterzeichnen und das von beiden Seiten unterzeichnete PDF herunterladen.",
         "LicenseMeter unterzeichnet die eigene Vereinbarung. Kundenvorlagen werden in Pro nicht verhandelt.",
       ],

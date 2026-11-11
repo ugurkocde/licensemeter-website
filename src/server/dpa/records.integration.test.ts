@@ -220,6 +220,52 @@ describe("recordAcceptance", () => {
     expect(await getAcceptance(tenant.id)).toBeNull();
   });
 
+  it("carries an earlier version's acceptance over to the current one", async () => {
+    await currentDb.insert(schema.dpaAcceptances).values([
+      {
+        tenantId: tenant.id,
+        version: "2.1",
+        language: "en",
+        acceptedByKey: "user_1",
+        acceptedByEmail: "owner@contoso.example",
+        acceptedAt: new Date("2026-09-20T10:00:00Z"),
+      },
+      {
+        tenantId: tenant.id,
+        version: "2.3",
+        language: "de",
+        acceptedByKey: "user_2",
+        acceptedByEmail: "admin@contoso.example",
+        acceptedAt: new Date("2026-10-20T10:00:00Z"),
+      },
+    ]);
+    expect(await getAcceptance(tenant.id)).toMatchObject({
+      version: "2.3",
+      acceptedByEmail: "admin@contoso.example",
+    });
+
+    // An explicit acceptance of the current version still wins once recorded.
+    const result = await recordAcceptance(
+      context({ role: "owner", plan: "free" }),
+      "en",
+    );
+    if (!result.ok) throw new Error(result.error);
+    expect(result.created).toBe(true);
+    expect(await getAcceptance(tenant.id)).toMatchObject({
+      id: result.record.id,
+      version: DPA_VERSION,
+    });
+
+    // A repeat submission returns the current row, not the earlier ones.
+    const repeat = await recordAcceptance(
+      context({ role: "admin", plan: "free", oid: "user_2" }),
+      "de",
+    );
+    if (!repeat.ok) throw new Error(repeat.error);
+    expect(repeat.created).toBe(false);
+    expect(repeat.record.id).toBe(result.record.id);
+  });
+
   it("is scoped to the workspace", async () => {
     await recordAcceptance(context({ role: "owner", plan: "free" }), "en");
     const other = await seedTenant(2);
