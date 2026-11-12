@@ -453,6 +453,54 @@ describe("runSync against a deleted tenant", () => {
   });
 });
 
+describe("runSync when Microsoft is disconnected mid-flight", () => {
+  it("writes nothing for Microsoft and leaves a CSV import made in between intact", async () => {
+    await seedTenant({ tid: TID });
+    const { purgeMicrosoftSource } = await import("~/server/connectorPurge");
+    // The owner disconnects Microsoft and an admin imports a CSV directory
+    // right after the run has loaded the tenant row (tid still set), before
+    // it reads anything else.
+    const findTenant = currentDb.query.tenants.findFirst.bind(
+      currentDb.query.tenants,
+    );
+    vi.spyOn(currentDb.query.tenants, "findFirst").mockImplementationOnce(
+      (async (...args: Parameters<typeof findTenant>) => {
+        const row = await findTenant(...args);
+        await purgeMicrosoftSource(TENANT_ID);
+        await currentDb.insert(schema.tenantSkus).values({
+          tenantId: TENANT_ID,
+          skuId: "sku-csv",
+          skuPartNumber: "SPE_E5",
+        });
+        await currentDb.insert(schema.tenantUsers).values({
+          tenantId: TENANT_ID,
+          graphId: "csv-user-1",
+          upn: "csv@contoso.test",
+        });
+        return row;
+      }) as unknown as typeof findTenant,
+    );
+    const client = makeGraphClient();
+
+    await runSync(TENANT_ID, { client });
+
+    const skus = await currentDb.select().from(schema.tenantSkus);
+    const users = await currentDb.select().from(schema.tenantUsers);
+    expect(skus.map((r) => r.skuId)).toEqual(["sku-csv"]);
+    expect(users.map((r) => r.graphId)).toEqual(["csv-user-1"]);
+    expect(await countRows(schema.snapshots)).toBe(0);
+    const tenant = await currentDb.query.tenants.findFirst({
+      where: eq(schema.tenants.id, TENANT_ID),
+    });
+    expect(tenant?.tid).toBeNull();
+    expect(tenant?.activitySignal).toBeNull();
+    const findingRows = await currentDb.select().from(schema.findings);
+    expect(findingRows.some((f) => f.graphUserId === GRAPH_USER.id)).toBe(
+      false,
+    );
+  });
+});
+
 describe("runSync without a Microsoft connection", () => {
   it("rolls back earlier seat batches when a later batch fails", async () => {
     await seedTenant({ tid: null, consentedAt: null });
