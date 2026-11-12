@@ -237,7 +237,7 @@ const EN: TrustContent = {
       {
         label: "Work devices",
         detail: [
-          "Work devices are managed with Microsoft Intune. Compliance policies require BitLocker disk encryption on Windows and FileVault on macOS. Every work device is onboarded to Microsoft Defender for Endpoint, with automated investigation and response turned on.",
+          "Work devices are managed with Microsoft Intune. Compliance policies require BitLocker disk encryption on Windows and FileVault on macOS. Every work device is onboarded to Microsoft Defender for Endpoint, and automated investigation and response is turned on for Windows devices.",
         ],
       },
       {
@@ -688,7 +688,7 @@ const DE: TrustContent = {
       {
         label: "Arbeitsgeräte",
         detail: [
-          "Arbeitsgeräte werden mit Microsoft Intune verwaltet. Compliance-Richtlinien verlangen die Festplattenverschlüsselung BitLocker unter Windows und FileVault unter macOS. Jedes Arbeitsgerät ist in Microsoft Defender for Endpoint eingebunden, mit aktivierter automatischer Untersuchung und Reaktion.",
+          "Arbeitsgeräte werden mit Microsoft Intune verwaltet. Compliance-Richtlinien verlangen die Festplattenverschlüsselung BitLocker unter Windows und FileVault unter macOS. Jedes Arbeitsgerät ist in Microsoft Defender for Endpoint eingebunden; für Windows-Geräte ist die automatische Untersuchung und Reaktion aktiviert.",
         ],
       },
       {
