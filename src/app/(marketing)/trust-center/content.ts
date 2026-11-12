@@ -229,6 +229,18 @@ const EN: TrustContent = {
         ],
       },
       {
+        label: "Staff sign-in",
+        detail: [
+          "Every staff account in the company's Microsoft Entra tenant requires multi-factor authentication, and the Microsoft admin portals, including the Azure portal, can only be opened from a compliant, managed device. The accounts at the hosting, database, email and code providers (Vercel, Supabase, Resend and GitHub) require multi-factor authentication as well.",
+        ],
+      },
+      {
+        label: "Work devices",
+        detail: [
+          "Work devices are managed with Microsoft Intune. Compliance policies require BitLocker disk encryption on Windows and FileVault on macOS. Every work device is onboarded to Microsoft Defender for Endpoint, with automated investigation and response turned on.",
+        ],
+      },
+      {
         label: "Customer sign-in",
         detail: [
           "Customers sign in with Microsoft Entra ID only, so multi-factor authentication and other sign-in controls follow your own tenant's policies.",
@@ -665,6 +677,18 @@ const DE: TrustContent = {
         label: "Minimale Berechtigungen",
         detail: [
           "Zugriff auf Produktionssysteme und Kundendaten hat nur der Geschäftsführer. Andere erhalten Zugriff nur, wenn ihre Aufgabe es erfordert; Zugriffe werden mindestens alle sechs Monate überprüft und am letzten Arbeitstag einer Person entzogen.",
+        ],
+      },
+      {
+        label: "Anmeldung der Mitarbeitenden",
+        detail: [
+          "Jedes Mitarbeiterkonto im Microsoft-Entra-Tenant des Unternehmens erfordert Multi-Faktor-Authentifizierung, und die Microsoft-Verwaltungsportale, darunter das Azure-Portal, lassen sich nur von einem konformen, verwalteten Gerät aus öffnen. Auch die Konten bei den Anbietern für Hosting, Datenbank, E-Mail und Quellcode (Vercel, Supabase, Resend und GitHub) erfordern Multi-Faktor-Authentifizierung.",
+        ],
+      },
+      {
+        label: "Arbeitsgeräte",
+        detail: [
+          "Arbeitsgeräte werden mit Microsoft Intune verwaltet. Compliance-Richtlinien verlangen die Festplattenverschlüsselung BitLocker unter Windows und FileVault unter macOS. Jedes Arbeitsgerät ist in Microsoft Defender for Endpoint eingebunden, mit aktivierter automatischer Untersuchung und Reaktion.",
         ],
       },
       {
