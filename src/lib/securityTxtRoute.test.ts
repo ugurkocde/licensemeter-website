@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { NextRequest } from "next/server";
+
 import { GET } from "~/app/.well-known/security.txt/route";
+import middleware from "~/middleware";
 
 const get = (host: string | null) =>
   GET(
@@ -49,5 +52,21 @@ describe("GET /.well-known/security.txt", () => {
     vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("SELF_HOSTED", "true");
     expect(get("www.licensemeter.com").status).toBe(404);
+  });
+
+  it("is reached from the status subdomain through its redirect to the main site", () => {
+    // The status host is ours; the middleware sends every path but "/" to
+    // the canonical site, where the file lists the URL it was fetched from.
+    vi.stubEnv("APP_BASE_URL", "https://licensemeter.com");
+    const res = middleware(
+      new NextRequest(
+        "https://status.licensemeter.com/.well-known/security.txt",
+        { headers: { host: "status.licensemeter.com" } },
+      ),
+    );
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe(
+      "https://licensemeter.com/.well-known/security.txt",
+    );
   });
 });
