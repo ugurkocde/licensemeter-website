@@ -33,6 +33,15 @@ export const formatPct = (value: number, lang: DpaLang): string =>
     ? `${value.toFixed(1).replace(".", ",")} %`
     : `${value.toFixed(1)}%`;
 
+/** The search description of /sla and /de/sla, built from SLA_TERMS. */
+export const slaDescription = (lang: DpaLang): string => {
+  const t = SLA_TERMS;
+  const target = formatPct(t.availabilityTargetPct, lang);
+  return lang === "de"
+    ? `Das SLA von LicenseMeter für kostenpflichtige Tarife: Verfügbarkeitsziel von ${target} pro Monat, Servicegutschriften, Supportzeiten und Reaktionszeiten, Benachrichtigung bei Sicherheitsvorfällen binnen ${t.incidentNoticeHours} Stunden, RTO von ${t.rtoHours} Stunden und RPO von ${t.rpoHours} Stunden.`
+    : `LicenseMeter's SLA for paid plans: ${target} monthly availability target, service credits, support hours and response times, incident notification within ${t.incidentNoticeHours} hours, an RTO of ${t.rtoHours} hours and an RPO of ${t.rpoHours} hours.`;
+};
+
 /** Whole-number percentages for credits ("5%", "5 %"). */
 const creditPct = (value: number, lang: DpaLang): string =>
   lang === "de" ? `${value} %` : `${value}%`;

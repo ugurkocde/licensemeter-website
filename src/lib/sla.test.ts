@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { TRUST_CONTENT } from "~/app/(marketing)/trust-center/content";
 import { PRICING_CONTENT } from "~/lib/pricingContent";
 import { RETENTION_DAYS } from "~/lib/retention";
-import { SLA_CONTENT, SLA_TERMS, formatPct } from "~/lib/sla";
+import { SLA_CONTENT, SLA_TERMS, formatPct, slaDescription } from "~/lib/sla";
 
 /** Every string reachable inside a value, for copy-wide checks. */
 const strings = (value: unknown): string[] => {
@@ -24,6 +24,18 @@ describe("SLA content", () => {
     expect(formatPct(99.5, "en")).toBe("99.5%");
     expect(formatPct(99.5, "de")).toBe("99,5 %");
     expect(formatPct(95, "de")).toBe("95,0 %");
+  });
+
+  it("builds the search descriptions from the shared terms", () => {
+    expect(slaDescription("en")).toContain(
+      formatPct(SLA_TERMS.availabilityTargetPct, "en"),
+    );
+    expect(slaDescription("de")).toContain(
+      formatPct(SLA_TERMS.availabilityTargetPct, "de"),
+    );
+    for (const lang of ["en", "de"] as const) {
+      expect(slaDescription(lang)).not.toMatch(/[\u2013\u2014]| - /);
+    }
   });
 
   it("has the same sections in English and German", () => {

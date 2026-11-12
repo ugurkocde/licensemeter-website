@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { slaDescription } from "~/lib/sla";
+
 import { SlaView } from "./SlaView";
 
 /*
@@ -8,8 +10,7 @@ import { SlaView } from "./SlaView";
  */
 export const metadata: Metadata = {
   title: "Service Level Agreement",
-  description:
-    "LicenseMeter's SLA for paid plans: 99.5% monthly availability target, service credits, support hours and response times, incident notification within 48 hours, and RTO and RPO of 24 hours.",
+  description: slaDescription("en"),
   alternates: {
     canonical: "/sla",
     languages: { en: "/sla", de: "/de/sla", "x-default": "/sla" },

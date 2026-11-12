@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { slaDescription } from "~/lib/sla";
+
 import { SlaView } from "../../sla/SlaView";
 
 /*
@@ -8,8 +10,7 @@ import { SlaView } from "../../sla/SlaView";
  */
 export const metadata: Metadata = {
   title: "Service Level Agreement",
-  description:
-    "Das SLA von LicenseMeter für kostenpflichtige Tarife: Verfügbarkeitsziel von 99,5 % pro Monat, Servicegutschriften, Supportzeiten und Reaktionszeiten, Benachrichtigung bei Sicherheitsvorfällen binnen 48 Stunden sowie RTO und RPO von 24 Stunden.",
+  description: slaDescription("de"),
   alternates: {
     canonical: "/de/sla",
     languages: { en: "/sla", de: "/de/sla", "x-default": "/sla" },
