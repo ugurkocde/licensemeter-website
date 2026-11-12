@@ -9,7 +9,7 @@ LicenseMeter uses three workspace roles. These govern what a person can do insid
 | --- | --- |
 | Viewer (finance) | Read dashboards, findings and exports. Cannot make changes. |
 | Admin | Run syncs, edit prices, change settings, manage connectors and invite people. |
-| Owner | Admin capabilities, plus managing owners, changing who can join and disconnecting the workspace. |
+| Owner | Admin capabilities, plus managing owners, changing who can join and deleting the workspace. |
 
 Follow [Invite colleagues and manage access](/workspace/members/) for the exact **Settings > Members** workflow, invitation expiry, approval requests and company-domain policies. Use Viewer for people who only need reports and cost visibility. Assign Admin when the person needs to maintain the workspace. Reserve Owner for people responsible for its access and lifecycle.
 

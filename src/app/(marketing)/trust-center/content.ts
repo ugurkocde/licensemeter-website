@@ -1,5 +1,5 @@
-import { DPA_VERSION, type DpaLang } from "~/lib/dpa";
-import { RETENTION_DAYS } from "~/lib/retention";
+import { DPA_VERSION, type DpaLang, type SubprocessorRegion } from "~/lib/dpa";
+import { BACKUP_RETENTION_DAYS, RETENTION_DAYS } from "~/lib/retention";
 import { SLA_PATH, SLA_TERMS, formatPct } from "~/lib/sla";
 import { SUPPORT_EMAIL } from "~/lib/support";
 
@@ -52,8 +52,8 @@ export type TrustContent = {
     intro: string;
     locationLabel: string;
     transferLabel: string;
-    euLabel: string;
-    usLabel: string;
+    /** Badge per derived region (see subprocessorRegion in ~/lib/dpa). */
+    regionLabels: Record<SubprocessorRegion, string>;
     note: {
       pre: string;
       bold: string;
@@ -98,9 +98,8 @@ const EN: TrustContent = {
           "Customer data is stored in the EU, in a Supabase Postgres database on AWS eu-central-1 (Frankfurt).",
       },
       {
-        label: "Delete on disconnect",
-        detail:
-          "Disconnecting a workspace deletes all synced data from the live database immediately and irreversibly; backup copies expire after 7 days.",
+        label: "Delete anytime",
+        detail: `Deleting the workspace removes all synced data from the live database immediately; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days.`,
       },
       {
         label: "GDPR DPA, pre-signed",
@@ -125,14 +124,18 @@ const EN: TrustContent = {
       "These are the sub-processors LicenseMeter engages, with their processing location and the transfer mechanism that covers it. The list is rendered from the binding Data Processing Agreement, so it is always the same list you sign.",
     locationLabel: "Location",
     transferLabel: "Transfer",
-    euLabel: "EU",
-    usLabel: "EU + US",
+    regionLabels: {
+      eu: "EU",
+      "eu-us": "EU + US",
+      global: "Global",
+      customer: "Customer region",
+    },
     note: {
       pre: "Optional source systems you connect (Adobe, Zoom, Atlassian, Salesforce, OpenAI, Anthropic) and any CSV member lists you import (ChatGPT, Claude) are ",
       bold: "data sources, not sub-processors",
       mid: ": we read from them on your behalf and disclose no personal data to them beyond the authenticated read request. The definitive list is ",
-      linkText: "Annex 3 of the DPA",
-      href: "/dpa#annex-3",
+      linkText: "Annex IV of the DPA",
+      href: "/dpa#annex-iv",
       post: ".",
     },
   },
@@ -151,15 +154,15 @@ const EN: TrustContent = {
     body: "Access to a workspace is invite-based and role-based (owner, admin, viewer); sign-in is Microsoft Entra ID over OpenID Connect with PKCE, with a signed, httpOnly session cookie that expires after 30 days. Data is encrypted in transit (TLS, HSTS) and at rest (AES-256), with bring-your-own connector credentials additionally encrypted at the application layer (AES-256-GCM). Customer data is logically separated per workspace in a shared database. Isolation is enforced in the application layer: every request is authenticated (Microsoft Entra ID sign-in, or a workspace-bound token for the MCP API) and authorised against the user's workspace. Row-level security is enabled on all tables and enforces per-tenant row policies on the MCP API and data export endpoints. The Supabase public Data API has no access to any table. State-changing requests are CSRF-protected and rate-limited, and a per-workspace audit log records exports and administrative actions.",
     linked: {
       pre: "The full technical and organizational measures are ",
-      linkText: "Annex 2 of the DPA",
-      href: "/dpa#annex-2",
+      linkText: "Annex III of the DPA",
+      href: "/dpa#annex-iii",
       post: ".",
     },
   },
   lifecycle: {
     title: "Data lifecycle",
     linked: {
-      pre: "Data is collected only by the read-only sync, retained only while your tenant is connected, and deleted on disconnect. Disconnecting a workspace (Settings → Danger zone) deletes all synced data from the live database immediately and irreversibly: users, findings, prices, history and the audit log. Copies in the database provider's daily backups expire with the backup rotation, after 7 days. Revoking the enterprise application in your Entra ID additionally cuts our access at the source. See the ",
+      pre: `Data is collected only by the read-only sync and kept for as long as the workspace exists, including after a paid plan lapses, subject to the retention periods below. Deleting the workspace (Settings → Danger zone → Delete workspace) removes all synced data from the live database immediately: users, findings, prices, history and the audit log. Copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days. Disconnecting a single connector in LicenseMeter deletes the records synced from it. Revoking the enterprise application in your Entra ID cuts our access at the source but deletes nothing: the data stays until you delete the workspace. See the `,
       linkText: "Privacy Policy",
       href: "/privacy",
       post: " for retention detail and your data subject rights.",
@@ -175,7 +178,7 @@ const EN: TrustContent = {
       {
         label: "Workspace data",
         detail: [
-          "Kept for as long as the workspace exists. Deleting the workspace removes all synchronised data, the activity log and the stored connection credentials from the live database immediately and irreversibly. Copies in the database provider's daily backups expire with the backup rotation, after 7 days.",
+          `Kept for as long as the workspace exists, including after a paid plan lapses. Deleting the workspace removes all synchronised data, the activity log and the stored connection credentials from the live database immediately; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days. Revoking the enterprise application in Entra ID stops our access and deletes nothing.`,
         ],
       },
       {
@@ -339,7 +342,7 @@ const EN: TrustContent = {
       {
         label: "Backups",
         detail: [
-          "The production database is backed up daily by the database provider, and each backup is kept for 7 days.",
+          `The production database is backed up daily by the database provider, and each backup is kept for ${BACKUP_RETENTION_DAYS} days.`,
         ],
       },
       {
@@ -357,9 +360,7 @@ const EN: TrustContent = {
       {
         label: "Outage communication",
         detail: [
-          "If an outage lasts longer than 4 hours, affected customers are informed by email, with status updates until it is resolved. Current status is on the ",
-          { text: "status page", href: "/status" },
-          ".",
+          "If an outage lasts longer than 4 hours, affected customers are informed by email, with status updates until it is resolved.",
         ],
       },
     ],
@@ -471,7 +472,7 @@ const EN: TrustContent = {
         href: "/security",
         label: "Security overview",
         detail:
-          "Exactly what is granted, stored and how to leave. Read-only scopes, delegated consent, deletion.",
+          "Exactly what is granted and stored, and how to revoke access or delete your data. Read-only scopes, delegated consent, deletion.",
       },
       {
         href: "/dpa",
@@ -549,9 +550,8 @@ const DE: TrustContent = {
           "Kundendaten werden in der EU gespeichert, in einer Supabase-Postgres-Datenbank auf AWS eu-central-1 (Frankfurt).",
       },
       {
-        label: "Löschung bei Trennung",
-        detail:
-          "Das Trennen eines Workspace löscht alle synchronisierten Daten sofort und unwiderruflich aus der Live-Datenbank; Kopien in Sicherungen laufen nach 7 Tagen ab.",
+        label: "Jederzeit löschbar",
+        detail: `Das Löschen des Workspace entfernt alle synchronisierten Daten sofort aus der Live-Datenbank; Kopien in den täglichen Sicherungen des Datenbankanbieters laufen nach ${BACKUP_RETENTION_DAYS} Tagen ab.`,
       },
       {
         label: "DSGVO-AVV, vorunterzeichnet",
@@ -576,14 +576,18 @@ const DE: TrustContent = {
       "Dies sind die Unterauftragsverarbeiter, die LicenseMeter einsetzt, mit ihrem Verarbeitungsort und dem jeweils einschlägigen Übermittlungsmechanismus. Die Liste wird aus dem verbindlichen Auftragsverarbeitungsvertrag erzeugt und entspricht somit stets der Liste, die Sie unterzeichnen.",
     locationLabel: "Standort",
     transferLabel: "Übermittlung",
-    euLabel: "EU",
-    usLabel: "EU + USA",
+    regionLabels: {
+      eu: "EU",
+      "eu-us": "EU + USA",
+      global: "Global",
+      customer: "Kundenregion",
+    },
     note: {
       pre: "Optionale Quellsysteme, die Sie anbinden (Adobe, Zoom, Atlassian, Salesforce, OpenAI, Anthropic), und per CSV importierte Mitgliederlisten (ChatGPT, Claude) sind ",
       bold: "Datenquellen, keine Unterauftragsverarbeiter",
       mid: ": Wir lesen in Ihrem Auftrag aus ihnen und geben keine personenbezogenen Daten an sie weiter, die über die authentifizierte Leseanfrage hinausgehen. Die maßgebliche Liste ist ",
-      linkText: "Anhang 3 des AVV",
-      href: "/de/dpa#annex-3",
+      linkText: "Anhang IV des AVV",
+      href: "/de/dpa#annex-iv",
       post: ".",
     },
   },
@@ -602,15 +606,15 @@ const DE: TrustContent = {
     body: "Der Zugang zu einem Workspace erfolgt einladungs- und rollenbasiert (Inhaber, Administrator, Betrachter); die Anmeldung erfolgt über Microsoft Entra ID per OpenID Connect mit PKCE, mit einem signierten httpOnly-Sitzungscookie, das nach 30 Tagen abläuft. Daten werden bei der Übertragung (TLS, HSTS) und im Ruhezustand (AES-256) verschlüsselt; selbst bereitgestellte Connector-Anmeldedaten werden zusätzlich auf Anwendungsebene verschlüsselt (AES-256-GCM). Kundendaten werden in einer gemeinsamen Datenbank logisch je Arbeitsbereich getrennt. Die Isolation wird in der Anwendungsschicht durchgesetzt: Jede Anfrage wird authentifiziert (Anmeldung über Microsoft Entra ID oder, für die MCP-API, ein an den Arbeitsbereich gebundenes Token) und gegen den Arbeitsbereich des Nutzers autorisiert. Row-Level-Security ist auf allen Tabellen aktiviert und setzt auf der MCP-API und den Datenexport-Endpunkten Zeilenrichtlinien je Mandant durch. Die öffentliche Data API von Supabase hat auf keine Tabelle Zugriff. Zustandsändernde Anfragen sind CSRF-geschützt und ratenbegrenzt, und ein Audit-Log je Workspace protokolliert Exporte und administrative Aktionen.",
     linked: {
       pre: "Die vollständigen technischen und organisatorischen Maßnahmen finden Sie in ",
-      linkText: "Anhang 2 des AVV",
-      href: "/de/dpa#annex-2",
+      linkText: "Anhang III des AVV",
+      href: "/de/dpa#annex-iii",
       post: ".",
     },
   },
   lifecycle: {
     title: "Datenlebenszyklus",
     linked: {
-      pre: "Daten werden ausschließlich durch die nur lesende Synchronisierung erhoben, nur gespeichert, solange Ihr Tenant verbunden ist, und bei der Trennung gelöscht. Das Trennen eines Workspace (Einstellungen → Gefahrenzone) löscht alle synchronisierten Daten sofort und unwiderruflich aus der Live-Datenbank: Benutzer, Ergebnisse, Preise, Verlauf und das Audit-Log. Kopien in den täglichen Sicherungen des Datenbankanbieters laufen mit der Sicherungsrotation nach 7 Tagen ab. Das Widerrufen der Unternehmensanwendung in Ihrem Entra ID unterbindet unseren Zugriff zusätzlich an der Quelle. Einzelheiten zur Aufbewahrung und Ihre Betroffenenrechte finden Sie in der ",
+      pre: `Daten werden ausschließlich durch die nur lesende Synchronisierung erhoben und gespeichert, solange der Workspace besteht, auch nach dem Ende eines bezahlten Tarifs, vorbehaltlich der unten genannten Aufbewahrungsfristen. Das Löschen des Workspace (Settings → Danger zone → Delete workspace) entfernt alle synchronisierten Daten sofort aus der Live-Datenbank: Benutzer, Ergebnisse, Preise, Verlauf und das Audit-Log. Kopien in den täglichen Sicherungen des Datenbankanbieters laufen nach ${BACKUP_RETENTION_DAYS} Tagen ab. Das Trennen eines einzelnen Connectors in LicenseMeter löscht die daraus synchronisierten Datensätze. Das Widerrufen der Unternehmensanwendung in Ihrem Entra ID unterbindet unseren Zugriff an der Quelle, löscht aber nichts: Die Daten bleiben erhalten, bis Sie den Workspace löschen. Einzelheiten zur Aufbewahrung und Ihre Betroffenenrechte finden Sie in der `,
       linkText: "Datenschutzerklärung",
       href: "/privacy",
       post: ".",
@@ -626,7 +630,7 @@ const DE: TrustContent = {
       {
         label: "Daten des Arbeitsbereichs",
         detail: [
-          "Solange der Arbeitsbereich besteht. Das Löschen des Arbeitsbereichs entfernt alle synchronisierten Daten, das Aktivitätsprotokoll und die gespeicherten Verbindungszugangsdaten sofort und unwiderruflich aus der Live-Datenbank. Kopien in den täglichen Sicherungen des Datenbankanbieters laufen mit der Sicherungsrotation nach 7 Tagen ab.",
+          `Solange der Arbeitsbereich besteht, auch nach dem Ende eines bezahlten Tarifs. Das Löschen des Arbeitsbereichs entfernt alle synchronisierten Daten, das Aktivitätsprotokoll und die gespeicherten Verbindungszugangsdaten sofort aus der Live-Datenbank; Kopien in den täglichen Sicherungen des Datenbankanbieters laufen nach ${BACKUP_RETENTION_DAYS} Tagen ab. Das Widerrufen der Unternehmensanwendung in Entra ID beendet unseren Zugriff und löscht nichts.`,
         ],
       },
       {
@@ -790,7 +794,7 @@ const DE: TrustContent = {
       {
         label: "Sicherungen",
         detail: [
-          "Die Produktionsdatenbank wird vom Datenbankanbieter täglich gesichert, und jede Sicherung wird 7 Tage aufbewahrt.",
+          `Die Produktionsdatenbank wird vom Datenbankanbieter täglich gesichert, und jede Sicherung wird ${BACKUP_RETENTION_DAYS} Tage aufbewahrt.`,
         ],
       },
       {
@@ -808,9 +812,7 @@ const DE: TrustContent = {
       {
         label: "Kommunikation bei Ausfällen",
         detail: [
-          "Dauert ein Ausfall länger als 4 Stunden, informieren wir betroffene Kunden per E-Mail und halten sie bis zur Behebung auf dem Laufenden. Den aktuellen Status zeigt die ",
-          { text: "Statusseite (EN)", href: "/status" },
-          ".",
+          "Dauert ein Ausfall länger als 4 Stunden, informieren wir betroffene Kunden per E-Mail und halten sie bis zur Behebung auf dem Laufenden.",
         ],
       },
     ],
@@ -922,7 +924,7 @@ const DE: TrustContent = {
         href: "/de/security",
         label: "Sicherheitsübersicht",
         detail:
-          "Genau, was gewährt und gespeichert wird und wie Sie sich trennen. Nur-Lese-Berechtigungen, delegierte Einwilligung, Löschung.",
+          "Genau, was gewährt und gespeichert wird und wie Sie den Zugriff widerrufen oder Ihre Daten löschen. Nur-Lese-Berechtigungen, delegierte Einwilligung, Löschung.",
       },
       {
         href: "/de/dpa",

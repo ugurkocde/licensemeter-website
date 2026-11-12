@@ -4,8 +4,12 @@ import Link from "next/link";
 import { EXTERNAL_STATUS_LINKS, type StatusLevel } from "~/lib/statusProviders";
 import { getStatusOverview } from "~/server/status";
 
+/* Not linked from the site and kept out of search: it probes from inside the
+ * app and keeps no history, so it is not a measure of availability. The SLA
+ * and Trust Center do not refer to it. */
 export const metadata: Metadata = {
   title: "System status",
+  robots: { index: false, follow: false },
   description:
     "Live operational status for LicenseMeter and the infrastructure it relies on: Vercel, Supabase, Microsoft Entra ID and Resend.",
 };

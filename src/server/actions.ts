@@ -1942,8 +1942,7 @@ export const captureEmail = async (
 export const disconnectTenant = async (): Promise<ActionResult> => {
   const ctx = await apiAccess("owner");
   if (!ctx) return fail("Not allowed");
-  if (ctx.tenant.isDemo)
-    return fail("The demo workspace cannot be disconnected");
+  if (ctx.tenant.isDemo) return fail("The demo workspace cannot be deleted");
 
   const actor = ctx.membership.name ?? ctx.membership.email;
   // Resolve the OTHER admins/owners NOW, while the memberships still exist (they

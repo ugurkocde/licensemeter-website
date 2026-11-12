@@ -15,5 +15,5 @@ export const ROLE_DESCRIPTION: Record<MembershipRole, string> = {
   admin:
     "Run syncs, edit prices, change settings, manage connectors and invite people.",
   owner:
-    "Everything an admin can do, plus manage owners and disconnect the workspace.",
+    "Everything an admin can do, plus manage owners and delete the workspace.",
 };

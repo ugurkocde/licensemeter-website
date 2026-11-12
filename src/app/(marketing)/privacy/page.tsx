@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { SUBPROCESSORS } from "~/lib/dpa";
+import { BACKUP_RETENTION_DAYS } from "~/lib/retention";
 import { SUPPORT_EMAIL } from "~/lib/support";
 
 export const metadata: Metadata = {
@@ -136,13 +137,15 @@ export default function PrivacyPolicyPage() {
         </p>
         <p>
           The data is stored in a Postgres database in the EU (Frankfurt region)
-          and is deleted immediately and in full when the workspace is
-          disconnected. Where the organization connects its Microsoft tenant
-          using its own application registration (&ldquo;bring your own&rdquo;),
-          the credentials it supplies are stored encrypted (AES-256-GCM) and
-          used solely for the read-only sync; they are never logged or
-          disclosed. A data processing agreement (DPA) is provided to each
-          organization before production use.
+          and is kept for as long as the workspace exists. When the workspace is
+          deleted, the data is removed from the live database immediately;
+          copies in the database provider&rsquo;s daily backups expire after{" "}
+          {BACKUP_RETENTION_DAYS} days. Where the organization connects its
+          Microsoft tenant using its own application registration (&ldquo;bring
+          your own&rdquo;), the credentials it supplies are stored encrypted
+          (AES-256-GCM) and used solely for the read-only sync; they are never
+          logged or disclosed. A data processing agreement (DPA) is provided to
+          each organization before production use.
         </p>
       </Section>
 
@@ -241,12 +244,14 @@ export default function PrivacyPolicyPage() {
 
       <Section title="8. Retention">
         <p>
-          Account and product data is stored for as long as the workspace is
-          connected. On disconnect, all synchronized data is deleted; remaining
-          copies in routine encrypted backups are overwritten within the backup
-          rotation window (currently around seven days). The hosting
-          provider&rsquo;s server logs are subject to that provider&rsquo;s
-          deletion periods.
+          Account and product data is stored for as long as the workspace
+          exists, including after a paid plan lapses. When the workspace is
+          deleted, all synchronized data is removed from the live database
+          immediately; copies in the database provider&rsquo;s daily backups
+          expire after {BACKUP_RETENTION_DAYS} days. Revoking the enterprise
+          application in Microsoft Entra ID stops our access but deletes no
+          data. The hosting provider&rsquo;s server logs are subject to that
+          provider&rsquo;s deletion periods.
         </p>
       </Section>
 

@@ -50,7 +50,7 @@ export default async function CsvImportPage() {
         <p className="mt-2">
           The files are read once and stored like synced workspace data: EU
           residency, never written back anywhere, no mailbox or file contents.
-          Disconnecting the workspace in Settings deletes everything.
+          Deleting the workspace in Settings deletes everything.
         </p>
       </div>
 

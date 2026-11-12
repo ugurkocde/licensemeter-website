@@ -14,6 +14,7 @@ import {
   emailWaste,
 } from "~/lib/emailLayout";
 import { escapeHtml } from "~/lib/html";
+import { BACKUP_RETENTION_DAYS } from "~/lib/retention";
 import { OpsSafeError } from "~/server/opsError";
 
 /**
@@ -492,7 +493,8 @@ export const workspaceDeletedHtml = (args: {
     body: `${emailHeading(`Workspace deleted: ${escapeHtml(args.tenantName)}`)}
 ${emailText(`The LicenseMeter workspace ${emailStrong(args.tenantName)} was
 deleted by ${emailStrong(args.actor)}. Every synced record (users, findings,
-prices, history) has been permanently removed and this cannot be undone.`)}
+prices, history) has been removed from the live database. Copies in the
+database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days.`)}
 ${emailText("If this was not expected, reply to this email and we will help.")}`,
     footer: "A required notice about your workspace. Not a marketing email.",
   });

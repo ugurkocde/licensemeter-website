@@ -516,8 +516,6 @@ const en: PricingContent = {
     sub: [
       "The uptime target covers the hosted service at licensemeter.com and is set out, with service credits, support hours and response times, in our ",
       { text: "Service Level Agreement", href: SLA_PATH.en },
-      ". Current status is on the public ",
-      { text: "status page", href: "/status" },
       ". The ",
       { text: "data processing agreement", href: "/dpa" },
       " is public, so you can read it before you connect anything.",
@@ -527,11 +525,6 @@ const en: PricingContent = {
         label: "Uptime target",
         value: UPTIME_EN,
         detail: "Monthly, under the SLA",
-      },
-      {
-        label: "Status",
-        value: "Public",
-        detail: "Live status page for the service and its infrastructure",
       },
       {
         label: "Support",
@@ -854,9 +847,7 @@ const de: PricingContent = {
     sub: [
       "Das Verfügbarkeitsziel gilt für den gehosteten Dienst unter licensemeter.com und ist zusammen mit Servicegutschriften, Supportzeiten und Reaktionszeiten in unserem ",
       { text: "Service Level Agreement", href: SLA_PATH.de },
-      " geregelt. Den aktuellen Status zeigt die öffentliche ",
-      { text: "Statusseite (EN)", href: "/status" },
-      ". Der ",
+      " geregelt. Der ",
       { text: "Auftragsverarbeitungsvertrag (AVV)", href: "/de/dpa" },
       " ist öffentlich einsehbar, bevor Sie etwas verbinden.",
     ],
@@ -865,11 +856,6 @@ const de: PricingContent = {
         label: "Verfügbarkeitsziel",
         value: UPTIME_DE,
         detail: "Monatlich, gemäß SLA",
-      },
-      {
-        label: "Status",
-        value: "Öffentlich",
-        detail: "Live-Statusseite für den Dienst und seine Infrastruktur",
       },
       {
         label: "Support",

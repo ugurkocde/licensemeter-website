@@ -1,7 +1,12 @@
 import Link from "next/link";
 
-import { Pill } from "~/components/ui";
-import { type DpaLang, subprocessorRows } from "~/lib/dpa";
+import { Pill, type PillTone } from "~/components/ui";
+import {
+  type DpaLang,
+  type SubprocessorRegion,
+  subprocessorRegion,
+  subprocessorRows,
+} from "~/lib/dpa";
 
 import { type Part, type RichSection, TRUST_CONTENT } from "./content";
 
@@ -13,14 +18,18 @@ import { type Part, type RichSection, TRUST_CONTENT } from "./content";
  */
 
 /**
- * EU vs US emphasis for the residency table. A row counts as US-touching when
- * the ENGLISH location names the US in any form, so the pill is stable across
- * languages (German uses "USA"/"Rückfallebene"); the localized row is what we
- * display.
+ * The residency badge is derived from the ENGLISH location of the same row
+ * (rows are parallel across languages), so it is stable across languages and
+ * can only say "EU" where the DPA names an EU location; the localized row is
+ * what we display.
  */
 const EN_ROWS = subprocessorRows("en");
-const isUsTouching = (location: string) =>
-  /\bUS\b|United States|fallback/i.test(location);
+const REGION_TONE: Record<SubprocessorRegion, PillTone> = {
+  eu: "good",
+  "eu-us": "gold",
+  global: "outline",
+  customer: "outline",
+};
 
 const linkClass =
   "text-ink hover:text-brand-text font-medium underline underline-offset-4";
@@ -209,7 +218,9 @@ export const TrustCenterView = ({ lang }: { lang: DpaLang }) => {
         <p>{c.where.intro}</p>
         <div className="border-line bg-card mt-5 overflow-hidden rounded-2xl border">
           {rows.map((sp, i) => {
-            const us = isUsTouching(EN_ROWS[i]?.location ?? sp.location);
+            const region = subprocessorRegion(
+              EN_ROWS[i]?.location ?? sp.location,
+            );
             return (
               <div
                 key={sp.name}
@@ -217,9 +228,11 @@ export const TrustCenterView = ({ lang }: { lang: DpaLang }) => {
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                   <span className="text-ink font-medium">{sp.name}</span>
-                  <Pill tone={us ? "gold" : "good"}>
-                    {us ? c.where.usLabel : c.where.euLabel}
-                  </Pill>
+                  {region && (
+                    <Pill tone={REGION_TONE[region]}>
+                      {c.where.regionLabels[region]}
+                    </Pill>
+                  )}
                 </div>
                 <p className="text-ink-soft mt-1.5 text-xs leading-relaxed">
                   {sp.purpose}

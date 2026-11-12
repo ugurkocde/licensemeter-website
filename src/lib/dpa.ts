@@ -5,7 +5,7 @@ import {
   type SccClause,
   type SccSection,
 } from "~/lib/dpaClauses";
-import { RETENTION_DAYS } from "~/lib/retention";
+import { BACKUP_RETENTION_DAYS, RETENTION_DAYS } from "~/lib/retention";
 import { SUPPORT_EMAIL } from "~/lib/support";
 
 /**
@@ -147,9 +147,13 @@ export type DpaDoc = {
 // entity and states each transfer basis; the chat widget is no longer used.
 // Annex II states where the per-tenant row policies apply. Annex I states the
 // retention of person data on resolved findings and of sign-in records.
-export const DPA_VERSION = "2.4";
-const EFFECTIVE_EN = "11 November 2026";
-const EFFECTIVE_DE = "11. November 2026";
+// 2.5: deletion of the workspace removes the data from the live database
+// immediately, and copies in the database provider's daily backups expire
+// after BACKUP_RETENTION_DAYS (Annex II retention, Annex III measures 14 and
+// 16, summary). The sub-processors in Annex IV are unchanged.
+export const DPA_VERSION = "2.5";
+const EFFECTIVE_EN = "12 November 2026";
+const EFFECTIVE_DE = "12. November 2026";
 
 const PROCESSOR_NAME = "Ugurlabs UG (haftungsbeschränkt)";
 const PROCESSOR_REGISTER: Record<DpaLang, string> = {
@@ -242,6 +246,31 @@ const SUBPROCESSOR_ROWS: Record<DpaLang, DpaSubprocessor[]> = {
 export const subprocessorRows = (lang: DpaLang): DpaSubprocessor[] =>
   SUBPROCESSOR_ROWS[lang];
 
+/**
+ * Where a sub-processor stores or processes the data, derived from its English
+ * location so the badge on the Trust Center can never contradict the DPA:
+ * - "eu": the location is an EU place and names nothing outside it;
+ * - "eu-us": an EU location with a US fallback;
+ * - "global": a global network, such as an edge network;
+ * - "customer": the region of the customer's own tenant;
+ * - null: anything else, shown without a badge.
+ */
+export type SubprocessorRegion = "eu" | "eu-us" | "global" | "customer";
+
+export const subprocessorRegion = (
+  englishLocation: string,
+): SubprocessorRegion | null => {
+  const loc = englishLocation.trim();
+  const nonEu =
+    /\bUS\b|\bUSA\b|United States|fallback|global|worldwide|customer/i;
+  if (/^EU\b/.test(loc) && !nonEu.test(loc)) return "eu";
+  if (/^EU\b/.test(loc) && /\bUS\b|United States|fallback/i.test(loc))
+    return "eu-us";
+  if (/^global\b/i.test(loc)) return "global";
+  if (/^customer\b/i.test(loc)) return "customer";
+  return null;
+};
+
 /** English sub-processor rows; the canonical list for English-only surfaces. */
 export const SUBPROCESSORS: DpaSubprocessor[] = subprocessorRows("en");
 
@@ -288,7 +317,7 @@ const ANNEX_II: Record<DpaLang, string[]> = {
     "None. The Service is not intended for special categories of personal data (Art. 9 GDPR). Mailbox, file and message content is never accessed: the permissions the core Service requests in the Microsoft 365 tenant are read-only and cover directory, license, sign-in activity and usage report data. The optional Software Metering module, when the controller enables it, additionally reads device metadata and bounded metering aggregates and holds one write permission (DeviceManagementScripts.ReadWrite.All), used solely for the Service's own Intune Remediation script.",
     "Collection (read-only in the core Service), storage, aggregation and analysis of license, directory and activity metadata, and the generation of reports and exports from it. When the controller enables the optional Software Metering module, the Service also creates, assigns and updates its own Intune Remediation script for software usage metering. Synchronization runs on a schedule (typically nightly) and on demand when a user of the controller starts it.",
     "Solely to identify unused, oversized and misaligned license assignments and their cost, and to report them to the controller. The processor does not use the personal data to monitor or evaluate the performance or behavior of individual employees of the controller, does not create profiles for such purposes, and does not provide the Service as a tool for performance or behavior monitoring. Activity metadata is processed solely to determine whether a paid license seat is used, unused or oversized.",
-    `For as long as the workspace exists. The owner can delete the workspace at any time, which deletes all synchronized data, the activity log and the stored connection credentials immediately and irreversibly. Names, user principal names, workflow notes and ticket links are removed from findings ${RETENTION_DAYS.resolvedFindingPersonData} days after they were resolved, and the record of a user's sign-ins to the Service is deleted ${RETENTION_DAYS.seenSignins} days after the last sign-in. Optional Software Metering results (device names and identifiers and metering aggregates) are not stored. They are read from Intune when a user views or exports them and held only in server memory for at most five minutes. Disabling Software Metering deletes its stored settings and pending consent.`,
+    `For as long as the workspace exists. The owner can delete the workspace at any time, which removes all synchronized data, the activity log and the stored connection credentials from the live database immediately; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days. Names, user principal names, workflow notes and ticket links are removed from findings ${RETENTION_DAYS.resolvedFindingPersonData} days after they were resolved, and the record of a user's sign-ins to the Service is deleted ${RETENTION_DAYS.seenSignins} days after the last sign-in. Optional Software Metering results (device names and identifiers and metering aggregates) are not stored. They are read from Intune when a user views or exports them and held only in server memory for at most five minutes. Disabling Software Metering deletes its stored settings and pending consent.`,
     "The sub-processors in Annex IV host the application, store the data, provide sign-in, deliver email and protect forms against bots, each for the purpose named there and for the duration of this agreement.",
   ],
   de: [
@@ -297,7 +326,7 @@ const ANNEX_II: Record<DpaLang, string[]> = {
     "Keine. Der Dienst ist nicht für besondere Kategorien personenbezogener Daten (Art. 9 DSGVO) bestimmt. Auf Postfach-, Datei- und Nachrichteninhalte wird zu keinem Zeitpunkt zugegriffen: Die Berechtigungen, die der Kerndienst im Microsoft-365-Tenant anfordert, sind ausschließlich lesend und umfassen Verzeichnis-, Lizenz-, Anmeldeaktivitäts- und Nutzungsberichtsdaten. Das optionale Software-Metering-Modul liest, sofern der Verantwortliche es aktiviert, zusätzlich Gerätemetadaten und begrenzte Metering-Aggregate und besitzt eine Schreibberechtigung (DeviceManagementScripts.ReadWrite.All), die ausschließlich für das eigene Intune-Remediation-Skript des Dienstes genutzt wird.",
     "Erhebung (im Kerndienst ausschließlich lesend), Speicherung, Aggregation und Analyse von Lizenz-, Verzeichnis- und Aktivitätsmetadaten sowie die Erstellung von Berichten und Exporten daraus. Aktiviert der Verantwortliche das optionale Software-Metering-Modul, legt der Dienst zudem sein eigenes Intune-Remediation-Skript zur Messung der Softwarenutzung an, weist es zu und aktualisiert es. Die Synchronisierung läuft nach Zeitplan (in der Regel nächtlich) und auf Anforderung, wenn ein Nutzer des Verantwortlichen sie startet.",
     "Ausschließlich zur Ermittlung ungenutzter, überdimensionierter und fehlerhaft zugewiesener Lizenzen und der damit verbundenen Kosten sowie zur Berichterstattung darüber an den Verantwortlichen. Der Auftragsverarbeiter verwendet die personenbezogenen Daten nicht zur Überwachung oder Bewertung der Leistung oder des Verhaltens einzelner Beschäftigter des Verantwortlichen, erstellt keine Profile zu solchen Zwecken und stellt den Dienst nicht als Instrument zur Leistungs- oder Verhaltenskontrolle bereit. Aktivitätsmetadaten werden allein verarbeitet, um festzustellen, ob ein bezahlter Lizenzplatz genutzt, ungenutzt oder überdimensioniert ist.",
-    `Solange der Arbeitsbereich besteht. Der Owner kann den Arbeitsbereich jederzeit löschen; dadurch werden alle synchronisierten Daten, das Aktivitätsprotokoll und die gespeicherten Verbindungszugangsdaten unmittelbar und unwiderruflich gelöscht. Namen, User Principal Names, Workflow-Notizen und Ticket-Links werden ${RETENTION_DAYS.resolvedFindingPersonData} Tage nach der Erledigung eines Befunds aus diesem entfernt, und die Aufzeichnung der Anmeldungen eines Nutzers am Dienst wird ${RETENTION_DAYS.seenSignins} Tage nach der letzten Anmeldung gelöscht. Ergebnisse des optionalen Software Metering (Gerätenamen und Gerätekennungen sowie Metering-Aggregate) werden nicht gespeichert. Sie werden beim Anzeigen oder Exportieren aus Intune gelesen und höchstens fünf Minuten im Arbeitsspeicher des Servers gehalten. Das Deaktivieren von Software Metering löscht dessen gespeicherte Einstellungen und offene Zustimmungen.`,
+    `Solange der Arbeitsbereich besteht. Der Owner kann den Arbeitsbereich jederzeit löschen; dadurch werden alle synchronisierten Daten, das Aktivitätsprotokoll und die gespeicherten Verbindungszugangsdaten sofort aus der Live-Datenbank entfernt; Kopien in den täglichen Sicherungen des Datenbankanbieters laufen nach ${BACKUP_RETENTION_DAYS} Tagen ab. Namen, User Principal Names, Workflow-Notizen und Ticket-Links werden ${RETENTION_DAYS.resolvedFindingPersonData} Tage nach der Erledigung eines Befunds aus diesem entfernt, und die Aufzeichnung der Anmeldungen eines Nutzers am Dienst wird ${RETENTION_DAYS.seenSignins} Tage nach der letzten Anmeldung gelöscht. Ergebnisse des optionalen Software Metering (Gerätenamen und Gerätekennungen sowie Metering-Aggregate) werden nicht gespeichert. Sie werden beim Anzeigen oder Exportieren aus Intune gelesen und höchstens fünf Minuten im Arbeitsspeicher des Servers gehalten. Das Deaktivieren von Software Metering löscht dessen gespeicherte Einstellungen und offene Zustimmungen.`,
     "Die Unterauftragsverarbeiter in Anhang IV hosten die Anwendung, speichern die Daten, stellen die Anmeldung bereit, versenden E-Mails und schützen Formulare vor Bots, jeweils zu dem dort genannten Zweck und für die Dauer dieser Vereinbarung.",
   ],
 };
@@ -383,7 +412,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
     ],
     // src/server/db/schema.ts (onDelete cascade), src/server/access.ts
     14: [
-      "Data is kept only while the workspace exists. Deleting the workspace removes every record that belongs to it through cascading deletes, including the activity log.",
+      `Data is kept only while the workspace exists. Deleting the workspace removes every record that belongs to it from the live database through cascading deletes, including the activity log; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days.`,
     ],
     // src/server/db/schema.ts (dpaAcceptances, dpaAgreements)
     15: [
@@ -392,7 +421,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
     // src/app/api/export/**, src/server/actions.ts
     16: [
       "Findings, licenses, the price book, remediation plans and the activity log can be exported as CSV, and the waste report as PDF.",
-      "An owner can delete the workspace in the settings at any time. The deletion is immediate and cannot be undone.",
+      `An owner can delete the workspace in the settings at any time. It is removed from the live database immediately; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days.`,
     ],
   },
   de: {
@@ -441,14 +470,14 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
       "Jede Synchronisierung liest die Daten erneut aus dem Quellsystem, sodass eine Korrektur an der Quelle mit dem nächsten Lauf im Dienst ankommt.",
     ],
     14: [
-      "Daten werden nur gespeichert, solange der Arbeitsbereich besteht. Das Löschen des Arbeitsbereichs entfernt über kaskadierende Löschungen jeden zugehörigen Datensatz, einschließlich des Aktivitätsprotokolls.",
+      `Daten werden nur gespeichert, solange der Arbeitsbereich besteht. Das Löschen des Arbeitsbereichs entfernt über kaskadierende Löschungen jeden zugehörigen Datensatz aus der Live-Datenbank, einschließlich des Aktivitätsprotokolls; Kopien in den täglichen Sicherungen des Datenbankanbieters laufen nach ${BACKUP_RETENTION_DAYS} Tagen ab.`,
     ],
     15: [
       "Die Annahme dieser Vereinbarung wird je Arbeitsbereich mit annehmendem Nutzer, Zeitpunkt, Sprache und Dokumentversion aufgezeichnet. Mit einem benannten Unternehmen unterzeichnete Vereinbarungen werden ebenso aufgezeichnet.",
     ],
     16: [
       "Funde, Lizenzen, das Preisbuch, Bereinigungspläne und das Aktivitätsprotokoll lassen sich als CSV exportieren, der Bericht als PDF.",
-      "Ein Owner kann den Arbeitsbereich jederzeit in den Einstellungen löschen. Die Löschung erfolgt sofort und kann nicht rückgängig gemacht werden.",
+      `Ein Owner kann den Arbeitsbereich jederzeit in den Einstellungen löschen. Er wird sofort aus der Live-Datenbank entfernt; Kopien in den täglichen Sicherungen des Datenbankanbieters laufen nach ${BACKUP_RETENTION_DAYS} Tagen ab.`,
     ],
   },
 };
@@ -578,7 +607,7 @@ const STRINGS: Record<DpaLang, Strings> = {
       "The agreement is the European Commission's standard contractual clauses for processors, unchanged. Only the annexes are ours.",
       "The data is used only to find unused and oversized licenses, never to evaluate the performance or behavior of individual employees.",
       `Sub-processors are listed in Annex IV. You are told about a change at least ${DPA_CHOICES.noticePeriod.en} in advance and can object.`,
-      "Deleting the workspace deletes all synchronized data immediately.",
+      `Deleting the workspace removes all synchronized data from the live database immediately; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days.`,
     ],
     ui: {
       eyebrow: "Data protection",
@@ -664,7 +693,7 @@ const STRINGS: Record<DpaLang, Strings> = {
       "Der Vertrag besteht aus den Standardvertragsklauseln der Europäischen Kommission für Auftragsverarbeiter, unverändert. Nur die Anhänge stammen von uns.",
       "Die Daten dienen allein dazu, ungenutzte und überdimensionierte Lizenzen zu finden, nie zur Bewertung der Leistung oder des Verhaltens einzelner Beschäftigter.",
       `Die Unterauftragsverarbeiter stehen in Anhang IV. Über eine Änderung werden Sie mindestens ${DPA_CHOICES.noticePeriod.de} im Voraus informiert und können widersprechen.`,
-      "Das Löschen des Arbeitsbereichs löscht alle synchronisierten Daten sofort.",
+      `Das Löschen des Arbeitsbereichs entfernt alle synchronisierten Daten sofort aus der Live-Datenbank; Kopien in den täglichen Sicherungen des Datenbankanbieters laufen nach ${BACKUP_RETENTION_DAYS} Tagen ab.`,
     ],
     ui: {
       eyebrow: "Datenschutz",

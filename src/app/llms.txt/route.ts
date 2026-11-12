@@ -1,6 +1,7 @@
 import { siteUrl } from "~/env";
 import { BLOG_POSTS } from "~/lib/blog";
 import { CONNECTOR_GUIDES } from "~/lib/connectorGuides";
+import { BACKUP_RETENTION_DAYS } from "~/lib/retention";
 import { SITE_DEFINITION } from "~/lib/site";
 import { HEAD_TO_HEAD, ROUNDUPS } from "~/lib/compare/registry";
 
@@ -19,7 +20,7 @@ Operated by Ugurlabs UG and maintained by Ugur Koc, Microsoft MVP for Intune and
 
 - Read-only by design: the Microsoft 365 connector app holds no write scopes; remediation ships as generated PowerShell scripts that admins review and run themselves. The optional Software Metering app is separate and can only create, assign or update LicenseMeter's own Intune collector package, after an Admin confirms.
 - Never reads content: no mailboxes, files or messages. License assignments, sign-in activity and usage metadata only.
-- EU data residency (Postgres, Frankfurt); disconnecting a workspace deletes all synced data immediately.
+- EU data residency (Postgres, Frankfurt); deleting a workspace removes all synced data from the live database immediately, and copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days.
 - Free for every workspace: all connectors, waste rules, continuous monitoring, reports and exports, with no time limit. MSP portfolios are free too. The optional Pro and MSP plans add support by email, a signed DPA (AVV), an MCP server, Windows Software Metering through Intune and 24 months of waste history.
 - Works with and without Entra ID P1: detection falls back to Microsoft 365 usage reports when precise sign-in timestamps are unavailable.
 
@@ -48,7 +49,6 @@ ${ROUNDUPS.map((r) => `- [${r.title.en}](${base}/compare/${r.slug}): ${r.descrip
 - [FAQ](${base}/faq): the questions IT and security teams ask before granting admin consent
 - [Connectors](${base}/connectors): step-by-step setup guides for all ${CONNECTOR_GUIDES.length} connectors (${CONNECTOR_GUIDES.map((g) => g.name).join(", ")})
 - [Support](${base}/support): contact the Ugurlabs team through the support form or by email
-- [Status](${base}/status): live operational status for LicenseMeter and the infrastructure it relies on
 - [MCP server docs](https://docs.licensemeter.com/mcp/): connect Claude, GitHub Copilot or another MCP client to a Pro or MSP workspace with a read-only token, and the four tools it offers
 `;
   return new Response(body, {
