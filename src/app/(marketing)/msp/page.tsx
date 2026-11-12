@@ -4,6 +4,7 @@ import Link from "next/link";
 import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
 import { buttonClass } from "~/components/ui";
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
+import { BACKUP_RETENTION_DAYS } from "~/lib/retention";
 import { DEMO_BOOKING_URL, SUPPORT_MAILTO } from "~/lib/support";
 
 export const metadata: Metadata = {
@@ -53,7 +54,7 @@ const TRUST_ITEMS = [
   "Read-only application permissions for the core connector. The only write permission belongs to the optional, separately consented Software Metering module.",
   "Licenses never change in the client tenant unless their IT team reviews and runs the generated script themselves.",
   "Data stays in the EU (Postgres, Frankfurt).",
-  "Disconnecting a workspace deletes its data immediately.",
+  `Deleting a workspace removes its data from the live database immediately; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days.`,
 ] as const;
 
 const BASE = siteUrl();

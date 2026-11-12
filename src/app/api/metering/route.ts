@@ -8,7 +8,8 @@ import { audit } from "~/server/audit";
 import { isSameOrigin } from "~/server/auth/origin";
 import { db } from "~/server/db";
 import { hasFeature } from "~/server/entitlement";
-import { meteringConnections } from "~/server/db/schema";
+import { meteringConnections, tenants } from "~/server/db/schema";
+import { withSourceLock } from "~/server/connectorPurge";
 import {
   meteringClient,
   meteringConfigured,
@@ -146,10 +147,13 @@ export async function POST(req: Request) {
   if (data.action === "disable") {
     // Cascades include pending consent. Device results are never stored, so
     // only the short-lived read cache remains to clear.
-    const [removed] = await db
-      .delete(meteringConnections)
-      .where(where)
-      .returning({ id: meteringConnections.id });
+    // Under the source lock, serialised with the consent callback.
+    const [removed] = await withSourceLock(ctx.tenant.id, (tx) =>
+      tx
+        .delete(meteringConnections)
+        .where(where)
+        .returning({ id: meteringConnections.id }),
+    );
     if (removed) forgetMetering(removed.id);
     await audit(ctx, "connector_disconnected", {
       provider: "windows_metering",
@@ -166,16 +170,36 @@ export async function POST(req: Request) {
         "Ask the operator to configure the separate Software Metering application.",
         503,
       );
-    const existing = await db.query.meteringConnections.findFirst({ where });
-    if (existing && existing.tid.toLowerCase() !== ctx.tenant.tid.toLowerCase())
+    const tid = ctx.tenant.tid;
+    // Under the source lock, re-reading the Microsoft binding: a disconnect
+    // that landed after ctx was loaded must not get a metering connection
+    // recreated for the tenant it just removed (see connectorPurge).
+    const outcome = await withSourceLock(ctx.tenant.id, async (tx) => {
+      const current = await tx.query.tenants.findFirst({
+        where: eq(tenants.id, ctx.tenant.id),
+        columns: { tid: true, consentedAt: true },
+      });
+      if (
+        current?.tid?.toLowerCase() !== tid.toLowerCase() ||
+        !current.consentedAt
+      )
+        return "disconnected" as const;
+      const existing = await tx.query.meteringConnections.findFirst({ where });
+      if (existing && existing.tid.toLowerCase() !== tid.toLowerCase())
+        return "other-tenant" as const;
+      await tx
+        .insert(meteringConnections)
+        .values({ tenantId: ctx.tenant.id, tid })
+        .onConflictDoNothing();
+      return "enabled" as const;
+    });
+    if (outcome === "disconnected")
+      return fail("Connect Microsoft 365 before enabling metering.", 409);
+    if (outcome === "other-tenant")
       return fail(
         "Disable the previous metering connection before enabling it for this tenant.",
         409,
       );
-    await db
-      .insert(meteringConnections)
-      .values({ tenantId: ctx.tenant.id, tid: ctx.tenant.tid })
-      .onConflictDoNothing();
     await audit(ctx, "connector_connected", {
       provider: "windows_metering",
       stage: "enabled_without_consent",

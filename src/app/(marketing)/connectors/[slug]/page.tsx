@@ -188,7 +188,7 @@ export default async function ConnectorGuidePage({
 
       <p className="text-ink-soft mt-8 text-sm leading-relaxed">
         {guide.kind === "api"
-          ? "Credentials are validated against the vendor before anything is stored, encrypted at rest (AES-256-GCM), used read-only and deleted the moment you disconnect."
+          ? "Credentials are validated against the vendor before anything is stored, encrypted at rest (AES-256-GCM), used read-only and removed from the live database the moment you disconnect the connector."
           : "Nothing leaves the pasted table: the member list is stored like any other connector seat snapshot and deleted the moment you clear it."}{" "}
         Data lives in the EU (Postgres, Frankfurt). The{" "}
         <Link

@@ -36,8 +36,10 @@ Entra account state (offboarding leaks).
   and daily API spend totals
 - Residency: PostgreSQL in the EU (AWS Frankfurt); application functions
   pinned to Frankfurt
-- Retention: only while connected. Disconnecting deletes everything
-  immediately (cascade); backups rotate out within 7 days
+- Retention: for as long as the workspace exists. Deleting the workspace
+  removes all workspace data from the live database immediately (cascade); copies in
+  the database provider's daily backups expire after 7 days. Revoking the
+  Entra app stops access and deletes nothing
 - Access: invite-only per workspace with roles (read-only viewer for
   finance); same-tenant sign-in alone grants nothing. Colleagues on the
   workspace's verified company email domain can ask to join; an owner or
