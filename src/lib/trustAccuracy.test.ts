@@ -127,18 +127,15 @@ describe("deletion wording", () => {
     for (const lang of LANGS) {
       for (const text of strings(DPA[lang])) {
         expect(text).not.toMatch(
-          /remove the data by disconnecting|indem sie das Quellsystem trennen|can still write|kann ihre Daten noch schreiben/,
+          /remove the data by disconnecting|indem sie das Quellsystem trennen/,
         );
       }
     }
     expect(TRUST_CONTENT.en.lifecycle.linked.pre).toMatch(
-      /the records synced from it and the findings raised from them; if a sync is running at that moment, what it writes for that connector is deleted when it finishes/,
+      /the records synced from it and the findings raised from them\. A sync that is already running at that moment can still write its results; to remove all synced data, delete the workspace\./,
     );
     expect(TRUST_CONTENT.de.lifecycle.linked.pre).toMatch(
-      /die daraus synchronisierten Datensätze und die daraus erstellten Ergebnisse/,
-    );
-    expect(TRUST_CONTENT.en.lifecycle.linked.pre).not.toMatch(
-      /can still write|can remain/,
+      /die daraus erstellten Ergebnisse\. Eine Synchronisierung, die in diesem Moment bereits läuft, kann ihre Daten noch schreiben/,
     );
   });
 

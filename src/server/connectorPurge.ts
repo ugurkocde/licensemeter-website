@@ -19,7 +19,8 @@ import {
 import type { SaasProvider, WasteRuleId } from "~/server/types";
 
 /**
- * Disconnecting a connector leaves nothing of it behind.
+ * What disconnecting a connector removes, and the lock that keeps a sync or
+ * an analysis from writing a disconnected source's data back.
  *
  * What a disconnect removes is defined once, per source:
  * - Microsoft: the connection, the metering connection, the synced users,
@@ -36,9 +37,14 @@ import type { SaasProvider, WasteRuleId } from "~/server/types";
  * synced source data and every analysis runs in a transaction that holds a
  * per-workspace advisory lock, and a sync writes a source's data only if the
  * source is still connected with the same identity it read from (its token).
- * Under the lock these steps are serialised: a write either lands before the
- * disconnect, which then deletes it, or after it, when the token no longer
- * matches and the write is dropped.
+ *
+ * Known gaps, disclosed in the public texts ("a sync already running can
+ * still write its results"): the token is derived from the connection's
+ * identity, not from a stored generation, so a disconnect and reconnect of
+ * the same organisation (or of any OpenAI/Anthropic account, whose orgRef is
+ * fixed) looks unchanged; a sync that loaded the tenant before a Microsoft
+ * disconnect can still build a client from it; and the connect and metering
+ * flows do not take the lock. A persisted connection generation closes these.
  */
 
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -120,21 +126,10 @@ export const SAAS_RULES: WasteRuleId[] = ALL_RULES.filter((rule) =>
 
 export const purgeMicrosoftSource = (tenantId: string): Promise<void> =>
   withSourceLock(tenantId, async (tx) => {
-    // Release the tid binding first: the managed fallback in
-    // resolveMsCredential would otherwise silently re-enable sync on a
-    // partial delete. The usage signals and aggregates are Microsoft data
-    // too; left behind, an analysis would raise aggregate findings from them.
-    await tx
-      .update(tenants)
-      .set({
-        tid: null,
-        consentedAt: null,
-        activitySignal: null,
-        copilotSignal: null,
-        usageAggregate: null,
-        copilotAggregate: null,
-      })
-      .where(eq(tenants.id, tenantId));
+    // msConnections before tenants, the same row order as the connect flows,
+    // so the two cannot deadlock. All of it is one transaction, so the tid
+    // binding is never released without the rest (a partial delete that left
+    // tenants.tid set would let the managed fallback re-enable sync).
     await tx.delete(msConnections).where(eq(msConnections.tenantId, tenantId));
     await tx
       .delete(meteringConnections)
@@ -150,6 +145,19 @@ export const purgeMicrosoftSource = (tenantId: string): Promise<void> =>
     await tx.delete(tenantUsers).where(eq(tenantUsers.tenantId, tenantId));
     await tx.delete(tenantSkus).where(eq(tenantSkus.tenantId, tenantId));
     await tx.delete(snapshots).where(eq(snapshots.tenantId, tenantId));
+    // The usage signals and aggregates are Microsoft data too; left behind,
+    // an analysis would raise aggregate findings from them.
+    await tx
+      .update(tenants)
+      .set({
+        tid: null,
+        consentedAt: null,
+        activitySignal: null,
+        copilotSignal: null,
+        usageAggregate: null,
+        copilotAggregate: null,
+      })
+      .where(eq(tenants.id, tenantId));
   });
 
 export const purgeAdobeSource = (tenantId: string): Promise<void> =>
