@@ -255,7 +255,7 @@ export const runSync = async (
       tenant.tid,
       await db.query.msConnections.findFirst({
         where: eq(msConnections.tenantId, tenantId),
-        columns: { mode: true, tid: true },
+        columns: { mode: true, tid: true, generation: true },
       }),
     ),
     adobe: null,
@@ -997,108 +997,123 @@ export const runSync = async (
       });
     }
 
-    // Prefill missing price book rows from the static catalog.
-    const existingPrices = await db.query.priceBook.findMany({
-      where: eq(priceBook.tenantId, tenantId),
-    });
-    const known = new Set(existingPrices.map((p) => p.skuId));
-    // Catalog prices added after a row was prefilled: a row still on the
-    // catalog's old fallback of 0 picks up the new list price. Only rows the
-    // customer never touched (source "default") qualify; any edited price
-    // is "custom" and is never overwritten.
-    const skuIds = new Set(skus.map((s) => s.skuId));
-    for (const p of existingPrices) {
-      if (
-        p.source !== "default" ||
-        p.monthlyPriceCents !== 0 ||
-        !skuIds.has(p.skuId)
-      ) {
-        continue;
-      }
-      const price = skuDefaultPriceCents(p.skuId, tenant.currencyRatePpm);
-      if (price === 0) continue;
-      await db
-        .update(priceBook)
-        .set({ monthlyPriceCents: price, updatedAt: now })
-        .where(
-          and(
-            eq(priceBook.tenantId, tenantId),
-            eq(priceBook.skuId, p.skuId),
-            eq(priceBook.source, "default"),
-            eq(priceBook.monthlyPriceCents, 0),
-          ),
-        );
-    }
-    const missing = skus.filter((s) => !known.has(s.skuId));
-    if (missing.length > 0) {
-      for (const batch of chunk(missing, 250)) {
-        await db.insert(priceBook).values(
-          batch.map((s) => ({
-            tenantId,
-            skuId: s.skuId,
-            monthlyPriceCents: skuDefaultPriceCents(
-              s.skuId,
-              tenant.currencyRatePpm,
+    // Price rows for the products a source returned are written under the
+    // source lock, and only for sources still connected as read.
+    await withSourceLock(tenantId, async (tx) => {
+      const current = await readSourceTokens(tx, tenantId);
+      const microsoftOk =
+        microsoftCurrent && current.microsoft === readWith.microsoft;
+      const adobeOk = current.adobe === readWith.adobe;
+      // Prefill missing price book rows from the static catalog.
+      const existingPrices = await tx.query.priceBook.findMany({
+        where: eq(priceBook.tenantId, tenantId),
+      });
+      const known = new Set(existingPrices.map((p) => p.skuId));
+      // Catalog prices added after a row was prefilled: a row still on the
+      // catalog's old fallback of 0 picks up the new list price. Only rows the
+      // customer never touched (source "default") qualify; any edited price
+      // is "custom" and is never overwritten.
+      const skuIds = new Set(microsoftOk ? skus.map((s) => s.skuId) : []);
+      for (const p of existingPrices) {
+        if (
+          p.source !== "default" ||
+          p.monthlyPriceCents !== 0 ||
+          !skuIds.has(p.skuId)
+        ) {
+          continue;
+        }
+        const price = skuDefaultPriceCents(p.skuId, tenant.currencyRatePpm);
+        if (price === 0) continue;
+        await tx
+          .update(priceBook)
+          .set({ monthlyPriceCents: price, updatedAt: now })
+          .where(
+            and(
+              eq(priceBook.tenantId, tenantId),
+              eq(priceBook.skuId, p.skuId),
+              eq(priceBook.source, "default"),
+              eq(priceBook.monthlyPriceCents, 0),
             ),
-            source: "default" as const,
-          })),
-        );
+          );
       }
-    }
-
-    // Prefill Adobe product prices (demo gets plausible list estimates).
-    const DEMO_ADOBE_PRICES: Record<string, number> = {
-      "Creative Cloud All Apps": 7100,
-      "Acrobat Pro": 2000,
-      Photoshop: 2400,
-    };
-    const adobeProducts = [...new Set(adobeRows.flatMap((u) => u.products))];
-    const missingAdobe = adobeProducts
-      .map(adobePriceKey)
-      .filter((id) => !known.has(id));
-    if (missingAdobe.length > 0) {
-      for (const batch of chunk(missingAdobe, 250)) {
-        await db
-          .insert(priceBook)
-          .values(
-            batch.map((id) => ({
+      const missing = microsoftOk
+        ? skus.filter((s) => !known.has(s.skuId))
+        : [];
+      if (missing.length > 0) {
+        for (const batch of chunk(missing, 250)) {
+          await tx.insert(priceBook).values(
+            batch.map((s) => ({
               tenantId,
-              skuId: id,
-              monthlyPriceCents: tenant.isDemo
-                ? (DEMO_ADOBE_PRICES[id.slice("adobe:".length)] ?? 0)
-                : 0,
+              skuId: s.skuId,
+              monthlyPriceCents: skuDefaultPriceCents(
+                s.skuId,
+                tenant.currencyRatePpm,
+              ),
               source: "default" as const,
             })),
-          )
-          .onConflictDoNothing();
+          );
+        }
       }
-    }
 
-    // Prefill SaaS connector prices (demo gets plausible list estimates).
-    const missingSaas = [...saasRows.entries()]
-      .flatMap(([provider, seats]) =>
-        [...new Set(seats.flatMap((s) => s.products))].map((p) =>
-          saasPriceKey(provider, p),
-        ),
-      )
-      .filter((id) => !known.has(id));
-    if (missingSaas.length > 0) {
-      for (const batch of chunk(missingSaas, 250)) {
-        await db
-          .insert(priceBook)
-          .values(
-            batch.map((id) => ({
-              tenantId,
-              skuId: id,
-              monthlyPriceCents: tenant.isDemo
-                ? (DEMO_SAAS_PRICES[id] ?? 0)
-                : 0,
-              source: "default" as const,
-            })),
-          )
-          .onConflictDoNothing();
+      // Prefill Adobe product prices (demo gets plausible list estimates).
+      const DEMO_ADOBE_PRICES: Record<string, number> = {
+        "Creative Cloud All Apps": 7100,
+        "Acrobat Pro": 2000,
+        Photoshop: 2400,
+      };
+      const adobeProducts = adobeOk
+        ? [...new Set(adobeRows.flatMap((u) => u.products))]
+        : [];
+      const missingAdobe = adobeProducts
+        .map(adobePriceKey)
+        .filter((id) => !known.has(id));
+      if (missingAdobe.length > 0) {
+        for (const batch of chunk(missingAdobe, 250)) {
+          await tx
+            .insert(priceBook)
+            .values(
+              batch.map((id) => ({
+                tenantId,
+                skuId: id,
+                monthlyPriceCents: tenant.isDemo
+                  ? (DEMO_ADOBE_PRICES[id.slice("adobe:".length)] ?? 0)
+                  : 0,
+                source: "default" as const,
+              })),
+            )
+            .onConflictDoNothing();
+        }
       }
-    }
+
+      // Prefill SaaS connector prices (demo gets plausible list estimates).
+      const missingSaas = [...saasRows.entries()]
+        .filter(
+          ([provider]) => current.saas[provider] === readWith.saas[provider],
+        )
+        .flatMap(([provider, seats]) =>
+          [...new Set(seats.flatMap((s) => s.products))].map((p) =>
+            saasPriceKey(provider, p),
+          ),
+        )
+        .filter((id) => !known.has(id));
+      if (missingSaas.length > 0) {
+        for (const batch of chunk(missingSaas, 250)) {
+          await tx
+            .insert(priceBook)
+            .values(
+              batch.map((id) => ({
+                tenantId,
+                skuId: id,
+                monthlyPriceCents: tenant.isDemo
+                  ? (DEMO_SAAS_PRICES[id] ?? 0)
+                  : 0,
+                source: "default" as const,
+              })),
+            )
+            .onConflictDoNothing();
+        }
+      }
+    });
     const prices = Object.fromEntries(
       (
         await db.query.priceBook.findMany({

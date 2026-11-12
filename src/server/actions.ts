@@ -1313,24 +1313,29 @@ export const connectAdobe = async (
   }
 
   const adobeAad = secretAad(ctx.tenant.id, "adobe", "clientSecretEnc");
-  await db
-    .insert(adobeConnections)
-    .values({
-      tenantId: ctx.tenant.id,
-      orgId,
-      clientId,
-      clientSecretEnc: encryptSecret(clientSecret, adobeAad),
-    })
-    .onConflictDoUpdate({
-      target: adobeConnections.tenantId,
-      set: {
+  // Under the source lock with a new generation: data a running sync read
+  // under the previous credentials is then never written (see connectorPurge).
+  await withSourceLock(ctx.tenant.id, (tx) =>
+    tx
+      .insert(adobeConnections)
+      .values({
+        tenantId: ctx.tenant.id,
         orgId,
         clientId,
         clientSecretEnc: encryptSecret(clientSecret, adobeAad),
-        lastSyncStatus: null,
-        lastSyncAt: null,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: adobeConnections.tenantId,
+        set: {
+          orgId,
+          clientId,
+          clientSecretEnc: encryptSecret(clientSecret, adobeAad),
+          lastSyncStatus: null,
+          lastSyncAt: null,
+          generation: sql`gen_random_uuid()`,
+        },
+      }),
+  );
   await audit(ctx, "adobe_connected", { orgId });
   // Sync after the response, not inline; see connectSaasConnector.
   after(() => runSync(ctx.tenant.id, { deadline: requestDeadline() }));
@@ -1411,25 +1416,29 @@ export const connectSaasConnector = async (
   }
 
   const saasAad = secretAad(ctx.tenant.id, provider, "secretEnc");
-  await db
-    .insert(saasConnections)
-    .values({
-      tenantId: ctx.tenant.id,
-      provider,
-      orgRef,
-      clientId,
-      secretEnc: encryptSecret(secret, saasAad),
-    })
-    .onConflictDoUpdate({
-      target: [saasConnections.tenantId, saasConnections.provider],
-      set: {
+  // Under the source lock with a new generation (see connectAdobe).
+  await withSourceLock(ctx.tenant.id, (tx) =>
+    tx
+      .insert(saasConnections)
+      .values({
+        tenantId: ctx.tenant.id,
+        provider,
         orgRef,
         clientId,
         secretEnc: encryptSecret(secret, saasAad),
-        lastSyncStatus: null,
-        lastSyncAt: null,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [saasConnections.tenantId, saasConnections.provider],
+        set: {
+          orgRef,
+          clientId,
+          secretEnc: encryptSecret(secret, saasAad),
+          lastSyncStatus: null,
+          lastSyncAt: null,
+          generation: sql`gen_random_uuid()`,
+        },
+      }),
+  );
   await audit(ctx, "connector_connected", { provider, orgRef });
   // Credentials were validated above; the first sync (a full Graph pull plus
   // every connector) runs after the response rather than blocking it, so the
@@ -1615,7 +1624,8 @@ export const connectMicrosoftByo = async (
   // application-level steal guard above (a concurrent connect to the same tid
   // loses the race here rather than corrupting state).
   try {
-    await db.transaction(async (tx) => {
+    // Under the source lock with a new generation (see connectAdobe).
+    await withSourceLock(ctx.tenant.id, async (tx) => {
       await tx
         .insert(msConnections)
         .values({
@@ -1642,6 +1652,7 @@ export const connectMicrosoftByo = async (
             secretExpiresAt,
             lastVerifiedAt: now,
             lastVerifyError: null,
+            generation: sql`gen_random_uuid()`,
           },
         });
 

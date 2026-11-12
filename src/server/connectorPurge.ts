@@ -38,13 +38,8 @@ import type { SaasProvider, WasteRuleId } from "~/server/types";
  * per-workspace advisory lock, and a sync writes a source's data only if the
  * source is still connected with the same identity it read from (its token).
  *
- * Known gaps, disclosed in the public texts ("a sync already running can
- * still write its results"): the token is derived from the connection's
- * identity, not from a stored generation, so a disconnect and reconnect of
- * the same organisation (or of any OpenAI/Anthropic account, whose orgRef is
- * fixed) looks unchanged; a sync that loaded the tenant before a Microsoft
- * disconnect can still build a client from it; and the connect and metering
- * flows do not take the lock. A persisted connection generation closes these.
+ * Connecting a source (every connect flow and the metering enable route) takes
+ * the same lock and regenerates the connection's generation.
  */
 
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -69,8 +64,9 @@ export const withSourceLock = <T>(
 
 /**
  * The identity of each connected source; null (Microsoft, Adobe) or absent
- * (SaaS) when it is not connected. A reconnect to another tenant, organisation
- * or account changes the token.
+ * (SaaS) when it is not connected. It includes the connection's generation,
+ * which every connect and credential replacement regenerates, so any
+ * disconnect and reconnect changes it, even to the same organisation.
  */
 export type SourceTokens = {
   microsoft: string | null;
@@ -78,17 +74,23 @@ export type SourceTokens = {
   saas: Partial<Record<SaasProvider, string>>;
 };
 
+/** A legacy managed tenant has a tid but no connection row (and no generation). */
 export const microsoftToken = (
   tid: string | null,
-  conn: { mode: string; tid: string } | undefined,
+  conn: { mode: string; tid: string; generation: string } | undefined,
 ): string | null =>
-  conn ? `${conn.mode}:${conn.tid}` : tid ? `managed:${tid}` : null;
+  conn
+    ? `${conn.mode}:${conn.tid}:${conn.generation}`
+    : tid
+      ? `managed:${tid}`
+      : null;
 
 export const adobeToken = (
-  conn: { orgId: string; clientId: string } | undefined,
-): string | null => (conn ? `${conn.orgId}:${conn.clientId}` : null);
+  conn: { generation: string } | undefined,
+): string | null => (conn ? conn.generation : null);
 
-export const saasToken = (conn: { orgRef: string }): string => conn.orgRef;
+export const saasToken = (conn: { generation: string }): string =>
+  conn.generation;
 
 export const readSourceTokens = async (
   q: Queryable,
@@ -100,15 +102,15 @@ export const readSourceTokens = async (
   });
   const ms = await q.query.msConnections.findFirst({
     where: eq(msConnections.tenantId, tenantId),
-    columns: { mode: true, tid: true },
+    columns: { mode: true, tid: true, generation: true },
   });
   const adobe = await q.query.adobeConnections.findFirst({
     where: eq(adobeConnections.tenantId, tenantId),
-    columns: { orgId: true, clientId: true },
+    columns: { generation: true },
   });
   const saas = await q.query.saasConnections.findMany({
     where: eq(saasConnections.tenantId, tenantId),
-    columns: { provider: true, orgRef: true },
+    columns: { provider: true, generation: true },
   });
   return {
     microsoft: microsoftToken(tenant?.tid ?? null, ms),
