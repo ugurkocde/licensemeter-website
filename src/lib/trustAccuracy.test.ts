@@ -132,11 +132,21 @@ describe("deletion wording", () => {
       }
     }
     expect(TRUST_CONTENT.en.lifecycle.linked.pre).toMatch(
-      /the records synced from it and the findings raised from them\. A sync that is already running at that moment can still write its results; to remove all synced data, delete the workspace\./,
+      /the records synced from it and the findings raised from them; a sync running at that moment does not write what it read from that connector\./,
     );
     expect(TRUST_CONTENT.de.lifecycle.linked.pre).toMatch(
-      /die daraus erstellten Ergebnisse\. Eine Synchronisierung, die in diesem Moment bereits läuft, kann ihre Daten noch schreiben/,
+      /schreibt nicht mehr, was sie aus diesem Connector gelesen hat/,
     );
+    for (const lang of LANGS) {
+      for (const text of [
+        ...strings(TRUST_CONTENT[lang]),
+        ...strings(DPA[lang]),
+      ]) {
+        expect(text).not.toMatch(
+          /can still write|kann ihre Daten noch schreiben/,
+        );
+      }
+    }
   });
 
   it("names the backup expiry wherever the live database deletion is stated", () => {

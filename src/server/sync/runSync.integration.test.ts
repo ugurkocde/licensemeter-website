@@ -501,6 +501,48 @@ describe("runSync when Microsoft is disconnected mid-flight", () => {
   });
 });
 
+describe("runSync when a connector is reconnected mid-flight", () => {
+  it("does not write what it read under the previous connection", async () => {
+    await seedTenant({ tid: null, consentedAt: null });
+    const { purgeSaasSource } = await import("~/server/connectorPurge");
+    const zoom = {
+      tenantId: TENANT_ID,
+      provider: "zoom" as const,
+      orgRef: "acct-1",
+      clientId: "client",
+      secretEnc: "enc",
+    };
+    await currentDb.insert(schema.saasConnections).values(zoom);
+    // While the run reads Zoom, the admin disconnects it and connects the
+    // same account again: same orgRef, new generation.
+    const getSeats = vi.fn(async () => {
+      await purgeSaasSource(TENANT_ID, "zoom");
+      await currentDb.insert(schema.saasConnections).values(zoom);
+      return [
+        {
+          email: "zoe@contoso.test",
+          displayName: "Zoe",
+          status: "active",
+          products: ["Licensed"],
+          lastActiveAt: new Date(Date.now() - 200 * 24 * 60 * 60 * 1000),
+        },
+      ];
+    });
+    buildSaasClientMock.mockImplementation(() => Promise.resolve({ getSeats }));
+
+    await runSync(TENANT_ID);
+
+    expect(await countRows(schema.saasSeats)).toBe(0);
+    expect(await countRows(schema.findings)).toBe(0);
+    const prices = await currentDb.select().from(schema.priceBook);
+    expect(prices.some((p) => p.skuId.startsWith("zoom:"))).toBe(false);
+    // The new connection itself is kept, and the old run does not stamp it.
+    const conns = await currentDb.select().from(schema.saasConnections);
+    expect(conns).toHaveLength(1);
+    expect(conns[0]!.lastSyncStatus).toBeNull();
+  });
+});
+
 describe("runSync without a Microsoft connection", () => {
   it("rolls back earlier seat batches when a later batch fails", async () => {
     await seedTenant({ tid: null, consentedAt: null });

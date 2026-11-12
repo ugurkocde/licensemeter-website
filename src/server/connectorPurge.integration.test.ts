@@ -1,5 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -178,24 +178,59 @@ beforeEach(async () => {
   await writeEverySource();
 });
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 describe("source tokens", () => {
-  it("name each connected source, not imported ones", async () => {
+  it("name each connected source by its generation, not imported ones", async () => {
     const read = await tokens();
+    // A legacy managed tenant without a connection row.
     expect(read.microsoft).toBe("managed:tid-1");
-    expect(read.adobe).toBe("org:client");
-    expect(read.saas).toEqual({ zoom: "acct", openai: "org" });
+    expect(read.adobe).toMatch(UUID);
+    expect(Object.keys(read.saas).sort()).toEqual(["openai", "zoom"]);
+    expect(read.saas.zoom).toMatch(UUID);
   });
 
-  it("change when a source is disconnected or reconnected elsewhere", async () => {
+  it("change on any disconnect and reconnect, even to the same account", async () => {
+    const before = await tokens();
     await purgeAdobeSource(tenantId);
+    await purgeSaasSource(tenantId, "openai");
     expect((await tokens()).adobe).toBeNull();
     await currentDb.insert(schema.adobeConnections).values({
       tenantId,
-      orgId: "other-org",
+      orgId: "org",
       clientId: "client",
       clientSecretEnc: "enc",
     });
-    expect((await tokens()).adobe).toBe("other-org:client");
+    // OpenAI always stores the same orgRef ("admin" in the connect flow).
+    await currentDb.insert(schema.saasConnections).values({
+      tenantId,
+      provider: "openai",
+      orgRef: "org",
+      secretEnc: "enc",
+    });
+    const after = await tokens();
+    expect(after.adobe).toMatch(UUID);
+    expect(after.adobe).not.toBe(before.adobe);
+    expect(after.saas.openai).not.toBe(before.saas.openai);
+    expect(after.saas.zoom).toBe(before.saas.zoom);
+  });
+
+  it("change when the credentials are replaced in place", async () => {
+    const before = await tokens();
+    await currentDb
+      .update(schema.adobeConnections)
+      .set({ clientSecretEnc: "enc-2", generation: sql`gen_random_uuid()` })
+      .where(eq(schema.adobeConnections.tenantId, tenantId));
+    expect((await tokens()).adobe).not.toBe(before.adobe);
+  });
+
+  it("name a Microsoft connection row by mode, tenant and generation", async () => {
+    await currentDb.insert(schema.msConnections).values({
+      tenantId,
+      mode: "managed",
+      tid: "tid-1",
+    });
+    expect((await tokens()).microsoft).toMatch(/^managed:tid-1:[0-9a-f-]{36}$/);
   });
 });
 
@@ -217,6 +252,34 @@ describe("disconnect purges", () => {
     ]);
     await purgeSaasSource(tenantId, "openai");
     expect(await count(schema.aiSpendDaily)).toBe(0);
+  });
+
+  it("removes connector findings matched against the directory with Microsoft", async () => {
+    await currentDb.insert(schema.findings).values([
+      {
+        ...finding(
+          "adobe_disabled_in_entra",
+          "adobe_disabled_in_entra|bob@example.com|-",
+        ),
+        graphUserId: "g2",
+      },
+      {
+        ...finding("saas_inactive", "saas_inactive|zoom:bob@example.com|-", {
+          provider: "zoom",
+        }),
+        graphUserId: "g2",
+      },
+    ]);
+    await purgeMicrosoftSource(tenantId);
+    const left = await currentDb
+      .select({
+        rule: schema.findings.rule,
+        graphUserId: schema.findings.graphUserId,
+      })
+      .from(schema.findings)
+      .where(eq(schema.findings.tenantId, tenantId));
+    // Only the imported ChatGPT finding, which names no directory user, stays.
+    expect(left).toEqual([{ rule: "saas_inactive", graphUserId: null }]);
   });
 
   it("removes the Microsoft data and signals and keeps the price book", async () => {
@@ -337,7 +400,32 @@ describe("writes of a run that read before a disconnect", () => {
         saas: { zoom: "acct", openai: "org" },
       }),
     );
-    expect(keep({ rule: "never_active", detail: {} })).toBe(false);
+    // Every finding was computed against that directory: none is written.
+    expect(keep).toBeNull();
+  });
+
+  it("write no connector finding matched against a directory that is gone", async () => {
+    const readWith = await tokens();
+    await purgeMicrosoftSource(tenantId);
+    // Adobe is unchanged, but its "disabled in Entra" finding names the
+    // Microsoft user it was matched against.
+    await diffFindings(
+      tenantId,
+      [
+        {
+          dedupeKey: "adobe_disabled_in_entra|ann@example.com|-",
+          rule: "adobe_disabled_in_entra",
+          graphUserId: "g1",
+          skuId: null,
+          title: "Adobe seat, user disabled in Entra: Ann",
+          detail: {},
+          monthlyImpactCents: 0,
+        },
+      ],
+      new Date(),
+      { keep: (tx) => currentFindingFilter(tx, tenantId, readWith) },
+    );
+    expect(await rules()).not.toContain("adobe_disabled_in_entra");
   });
 
   it("keep the findings of sources that are still connected", async () => {
@@ -345,9 +433,10 @@ describe("writes of a run that read before a disconnect", () => {
     const keep = await withSourceLock(tenantId, (tx) =>
       currentFindingFilter(tx, tenantId, readWith),
     );
-    expect(keep({ rule: "never_active", detail: {} })).toBe(true);
-    expect(keep({ rule: "adobe_orphaned", detail: {} })).toBe(true);
-    expect(keep({ rule: "saas_orphaned", detail: { provider: "zoom" } })).toBe(
+    expect(keep).not.toBeNull();
+    expect(keep!({ rule: "never_active", detail: {} })).toBe(true);
+    expect(keep!({ rule: "adobe_orphaned", detail: {} })).toBe(true);
+    expect(keep!({ rule: "saas_orphaned", detail: { provider: "zoom" } })).toBe(
       true,
     );
   });
@@ -361,7 +450,7 @@ describe("writes of a run that read before a disconnect", () => {
       currentFindingFilter(tx, tenantId, readWith),
     );
     expect(
-      keep({ rule: "saas_inactive", detail: { provider: "chatgpt" } }),
+      keep!({ rule: "saas_inactive", detail: { provider: "chatgpt" } }),
     ).toBe(false);
   });
 });

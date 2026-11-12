@@ -250,14 +250,12 @@ export const runSync = async (
   // Microsoft's token comes from the same tenant row the Graph client is
   // built from (the managed fallback uses tenant.tid), so a disconnect after
   // that read still counts as a change and the run's writes are dropped.
+  const msConnAtRead = await db.query.msConnections.findFirst({
+    where: eq(msConnections.tenantId, tenantId),
+    columns: { mode: true, tid: true, generation: true },
+  });
   const readWith: SourceTokens = {
-    microsoft: microsoftToken(
-      tenant.tid,
-      await db.query.msConnections.findFirst({
-        where: eq(msConnections.tenantId, tenantId),
-        columns: { mode: true, tid: true },
-      }),
-    ),
+    microsoft: microsoftToken(tenant.tid, msConnAtRead),
     adobe: null,
     saas: {},
   };
@@ -586,7 +584,12 @@ export const runSync = async (
           await db
             .update(adobeConnections)
             .set({ lastSyncAt: now, lastSyncStatus: "ok" })
-            .where(eq(adobeConnections.tenantId, tenantId));
+            .where(
+              and(
+                eq(adobeConnections.tenantId, tenantId),
+                eq(adobeConnections.generation, adobeConn.generation),
+              ),
+            );
         }
       } catch (err) {
         // adobeActive=false skips persistence/pruning; the stored snapshot is
@@ -612,7 +615,12 @@ export const runSync = async (
           await db
             .update(adobeConnections)
             .set({ lastSyncAt: now, lastSyncStatus: "failed" })
-            .where(eq(adobeConnections.tenantId, tenantId));
+            .where(
+              and(
+                eq(adobeConnections.tenantId, tenantId),
+                eq(adobeConnections.generation, adobeConn.generation),
+              ),
+            );
         }
       }
     }
@@ -667,6 +675,7 @@ export const runSync = async (
               and(
                 eq(saasConnections.tenantId, tenantId),
                 eq(saasConnections.provider, provider),
+                eq(saasConnections.generation, conn.generation),
               ),
             );
         }
@@ -712,6 +721,7 @@ export const runSync = async (
               and(
                 eq(saasConnections.tenantId, tenantId),
                 eq(saasConnections.provider, provider),
+                eq(saasConnections.generation, conn.generation),
               ),
             );
         }
@@ -997,108 +1007,123 @@ export const runSync = async (
       });
     }
 
-    // Prefill missing price book rows from the static catalog.
-    const existingPrices = await db.query.priceBook.findMany({
-      where: eq(priceBook.tenantId, tenantId),
-    });
-    const known = new Set(existingPrices.map((p) => p.skuId));
-    // Catalog prices added after a row was prefilled: a row still on the
-    // catalog's old fallback of 0 picks up the new list price. Only rows the
-    // customer never touched (source "default") qualify; any edited price
-    // is "custom" and is never overwritten.
-    const skuIds = new Set(skus.map((s) => s.skuId));
-    for (const p of existingPrices) {
-      if (
-        p.source !== "default" ||
-        p.monthlyPriceCents !== 0 ||
-        !skuIds.has(p.skuId)
-      ) {
-        continue;
-      }
-      const price = skuDefaultPriceCents(p.skuId, tenant.currencyRatePpm);
-      if (price === 0) continue;
-      await db
-        .update(priceBook)
-        .set({ monthlyPriceCents: price, updatedAt: now })
-        .where(
-          and(
-            eq(priceBook.tenantId, tenantId),
-            eq(priceBook.skuId, p.skuId),
-            eq(priceBook.source, "default"),
-            eq(priceBook.monthlyPriceCents, 0),
-          ),
-        );
-    }
-    const missing = skus.filter((s) => !known.has(s.skuId));
-    if (missing.length > 0) {
-      for (const batch of chunk(missing, 250)) {
-        await db.insert(priceBook).values(
-          batch.map((s) => ({
-            tenantId,
-            skuId: s.skuId,
-            monthlyPriceCents: skuDefaultPriceCents(
-              s.skuId,
-              tenant.currencyRatePpm,
+    // Price rows for the products a source returned are written under the
+    // source lock, and only for sources still connected as read.
+    await withSourceLock(tenantId, async (tx) => {
+      const current = await readSourceTokens(tx, tenantId);
+      const microsoftOk =
+        microsoftCurrent && current.microsoft === readWith.microsoft;
+      const adobeOk = current.adobe === readWith.adobe;
+      // Prefill missing price book rows from the static catalog.
+      const existingPrices = await tx.query.priceBook.findMany({
+        where: eq(priceBook.tenantId, tenantId),
+      });
+      const known = new Set(existingPrices.map((p) => p.skuId));
+      // Catalog prices added after a row was prefilled: a row still on the
+      // catalog's old fallback of 0 picks up the new list price. Only rows the
+      // customer never touched (source "default") qualify; any edited price
+      // is "custom" and is never overwritten.
+      const skuIds = new Set(microsoftOk ? skus.map((s) => s.skuId) : []);
+      for (const p of existingPrices) {
+        if (
+          p.source !== "default" ||
+          p.monthlyPriceCents !== 0 ||
+          !skuIds.has(p.skuId)
+        ) {
+          continue;
+        }
+        const price = skuDefaultPriceCents(p.skuId, tenant.currencyRatePpm);
+        if (price === 0) continue;
+        await tx
+          .update(priceBook)
+          .set({ monthlyPriceCents: price, updatedAt: now })
+          .where(
+            and(
+              eq(priceBook.tenantId, tenantId),
+              eq(priceBook.skuId, p.skuId),
+              eq(priceBook.source, "default"),
+              eq(priceBook.monthlyPriceCents, 0),
             ),
-            source: "default" as const,
-          })),
-        );
+          );
       }
-    }
-
-    // Prefill Adobe product prices (demo gets plausible list estimates).
-    const DEMO_ADOBE_PRICES: Record<string, number> = {
-      "Creative Cloud All Apps": 7100,
-      "Acrobat Pro": 2000,
-      Photoshop: 2400,
-    };
-    const adobeProducts = [...new Set(adobeRows.flatMap((u) => u.products))];
-    const missingAdobe = adobeProducts
-      .map(adobePriceKey)
-      .filter((id) => !known.has(id));
-    if (missingAdobe.length > 0) {
-      for (const batch of chunk(missingAdobe, 250)) {
-        await db
-          .insert(priceBook)
-          .values(
-            batch.map((id) => ({
+      const missing = microsoftOk
+        ? skus.filter((s) => !known.has(s.skuId))
+        : [];
+      if (missing.length > 0) {
+        for (const batch of chunk(missing, 250)) {
+          await tx.insert(priceBook).values(
+            batch.map((s) => ({
               tenantId,
-              skuId: id,
-              monthlyPriceCents: tenant.isDemo
-                ? (DEMO_ADOBE_PRICES[id.slice("adobe:".length)] ?? 0)
-                : 0,
+              skuId: s.skuId,
+              monthlyPriceCents: skuDefaultPriceCents(
+                s.skuId,
+                tenant.currencyRatePpm,
+              ),
               source: "default" as const,
             })),
-          )
-          .onConflictDoNothing();
+          );
+        }
       }
-    }
 
-    // Prefill SaaS connector prices (demo gets plausible list estimates).
-    const missingSaas = [...saasRows.entries()]
-      .flatMap(([provider, seats]) =>
-        [...new Set(seats.flatMap((s) => s.products))].map((p) =>
-          saasPriceKey(provider, p),
-        ),
-      )
-      .filter((id) => !known.has(id));
-    if (missingSaas.length > 0) {
-      for (const batch of chunk(missingSaas, 250)) {
-        await db
-          .insert(priceBook)
-          .values(
-            batch.map((id) => ({
-              tenantId,
-              skuId: id,
-              monthlyPriceCents: tenant.isDemo
-                ? (DEMO_SAAS_PRICES[id] ?? 0)
-                : 0,
-              source: "default" as const,
-            })),
-          )
-          .onConflictDoNothing();
+      // Prefill Adobe product prices (demo gets plausible list estimates).
+      const DEMO_ADOBE_PRICES: Record<string, number> = {
+        "Creative Cloud All Apps": 7100,
+        "Acrobat Pro": 2000,
+        Photoshop: 2400,
+      };
+      const adobeProducts = adobeOk
+        ? [...new Set(adobeRows.flatMap((u) => u.products))]
+        : [];
+      const missingAdobe = adobeProducts
+        .map(adobePriceKey)
+        .filter((id) => !known.has(id));
+      if (missingAdobe.length > 0) {
+        for (const batch of chunk(missingAdobe, 250)) {
+          await tx
+            .insert(priceBook)
+            .values(
+              batch.map((id) => ({
+                tenantId,
+                skuId: id,
+                monthlyPriceCents: tenant.isDemo
+                  ? (DEMO_ADOBE_PRICES[id.slice("adobe:".length)] ?? 0)
+                  : 0,
+                source: "default" as const,
+              })),
+            )
+            .onConflictDoNothing();
+        }
       }
-    }
+
+      // Prefill SaaS connector prices (demo gets plausible list estimates).
+      const missingSaas = [...saasRows.entries()]
+        .filter(
+          ([provider]) => current.saas[provider] === readWith.saas[provider],
+        )
+        .flatMap(([provider, seats]) =>
+          [...new Set(seats.flatMap((s) => s.products))].map((p) =>
+            saasPriceKey(provider, p),
+          ),
+        )
+        .filter((id) => !known.has(id));
+      if (missingSaas.length > 0) {
+        for (const batch of chunk(missingSaas, 250)) {
+          await tx
+            .insert(priceBook)
+            .values(
+              batch.map((id) => ({
+                tenantId,
+                skuId: id,
+                monthlyPriceCents: tenant.isDemo
+                  ? (DEMO_SAAS_PRICES[id] ?? 0)
+                  : 0,
+                source: "default" as const,
+              })),
+            )
+            .onConflictDoNothing();
+        }
+      }
+    });
     const prices = Object.fromEntries(
       (
         await db.query.priceBook.findMany({
@@ -1251,11 +1276,17 @@ export const runSync = async (
     // The Microsoft connection authenticated and pulled data: clear any prior
     // credential error and stamp the verification time (no-op for tenants
     // without an msConnections row).
-    if (client && !tenant.isDemo) {
+    // Only the connection this run read: a replacement keeps its own state.
+    if (client && !tenant.isDemo && msConnAtRead) {
       await db
         .update(msConnections)
         .set({ lastVerifiedAt: new Date(), lastVerifyError: null })
-        .where(eq(msConnections.tenantId, tenantId));
+        .where(
+          and(
+            eq(msConnections.tenantId, tenantId),
+            eq(msConnections.generation, msConnAtRead.generation),
+          ),
+        );
     }
     return { runId, status, steps };
   } catch (err) {
@@ -1264,14 +1295,19 @@ export const runSync = async (
     // managed re-consent needed): record a clean, non-leaking marker on the
     // connection so the dashboard can prompt a re-enter, without crashing the
     // run. The nightly cron catches per-tenant and continues.
-    if (!tenant.isDemo && isAppAuthError(message)) {
+    if (!tenant.isDemo && msConnAtRead && isAppAuthError(message)) {
       await db
         .update(msConnections)
         .set({
           lastVerifyError:
             "Microsoft rejected the stored credential (it may be expired or revoked). Re-enter it on the Microsoft connector page.",
         })
-        .where(eq(msConnections.tenantId, tenantId));
+        .where(
+          and(
+            eq(msConnections.tenantId, tenantId),
+            eq(msConnections.generation, msConnAtRead.generation),
+          ),
+        );
     }
     await log.settled();
     await db
@@ -1483,8 +1519,11 @@ export const diffFindings = async (
   }: {
     /** Run inside this transaction, which already holds the source lock. */
     tx?: Tx;
-    /** Under the lock: which computed findings may still be written. */
-    keep?: (tx: Tx) => Promise<(f: WasteFinding) => boolean>;
+    /**
+     * Under the lock: which computed findings may still be written; null
+     * writes none and leaves the stored findings untouched.
+     */
+    keep?: (tx: Tx) => Promise<((f: WasteFinding) => boolean) | null>;
   } = {},
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
@@ -1492,7 +1531,9 @@ export const diffFindings = async (
   // the source lock, so findings of a disconnected source are not written
   // back (see connectorPurge).
   const run = async (tx: Tx): Promise<InsertedFinding[]> => {
-    const newFindings = keep ? computed.filter(await keep(tx)) : computed;
+    const filter = keep ? await keep(tx) : (f: WasteFinding) => Boolean(f);
+    if (filter === null) return [];
+    const newFindings = computed.filter(filter);
     const existing = await tx.query.findings.findMany({
       where: eq(findings.tenantId, tenantId),
     });
