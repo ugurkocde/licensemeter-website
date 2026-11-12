@@ -2,6 +2,10 @@ import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 
 import { db } from "~/server/db";
 import {
+  connectedSources,
+  purgeDisconnectedSources,
+} from "~/server/connectorPurge";
+import {
   PSEUDONYMISED_KEY_PREFIX,
   pseudonymisedDedupeKey,
 } from "~/server/retention";
@@ -223,6 +227,11 @@ export const runSync = async (
     where: eq(tenants.id, tenantId),
   });
   if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
+
+  // The sources connected as the run starts. Anything disconnected while the
+  // run is reading is purged again once its writes are done.
+  const startedSources = await connectedSources(tenant);
+  if (clientOverride) startedSources.microsoft = false;
 
   /** True once the request budget is spent: optional sources are skipped. */
   const outOfTime = (): boolean =>
@@ -1171,6 +1180,8 @@ export const runSync = async (
         .where(eq(tenants.id, tenantId));
     }
 
+    await purgeDisconnectedSources(tenantId, startedSources);
+
     const status: SyncRunStatus = steps.some((s) => s.status === "failed")
       ? "partial"
       : "success";
@@ -1191,6 +1202,9 @@ export const runSync = async (
     return { runId, status, steps };
   } catch (err) {
     const message = errText(err);
+    // A failed run may still have written part of a source that was
+    // disconnected meanwhile.
+    await purgeDisconnectedSources(tenantId, startedSources).catch(() => null);
     // App-only auth failure (expired/revoked BYO secret or certificate, or
     // managed re-consent needed): record a clean, non-leaking marker on the
     // connection so the dashboard can prompt a re-enter, without crashing the
@@ -1235,6 +1249,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     where: eq(tenants.id, tenantId),
   });
   if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
+  const startedSources = await connectedSources(tenant);
 
   const [skuRows, userRows, priceRows, adobeRows, saasSeatRows] =
     await Promise.all([
@@ -1380,6 +1395,9 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
         bySku: bySkuOf(skuRows),
       },
     });
+  // A source disconnected while this analysis read it must not keep the
+  // findings computed from that read.
+  await purgeDisconnectedSources(tenantId, startedSources);
 };
 
 /** A finding row genuinely inserted by diffFindings (first appearance, not a reopen/update). */

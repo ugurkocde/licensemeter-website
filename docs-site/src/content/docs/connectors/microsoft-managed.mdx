@@ -11,7 +11,7 @@ Use this path when **Grant admin consent** is available. You do not create or pa
 
 You need Admin or Owner membership in the intended LicenseMeter workspace. The Microsoft approval must be completed by an administrator authorized to grant the requested Graph application permissions, such as a Global Administrator or Privileged Role Administrator. [Microsoft documents the consent roles here](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/grant-admin-consent).
 
-Consent enables ongoing tenant-wide reads of the [listed directory, license and reporting data](/connectors/microsoft/). It grants no connector write permission. To undo future access, disconnect the connector and revoke that application's permissions in Entra. Disconnecting Microsoft in LicenseMeter deletes the data it synced from Microsoft, although a sync already running at that moment can still write its results; revoking the permissions in Entra alone deletes nothing.
+Consent enables ongoing tenant-wide reads of the [listed directory, license and reporting data](/connectors/microsoft/). It grants no connector write permission. To undo future access, disconnect the connector and revoke that application's permissions in Entra. Disconnecting Microsoft in LicenseMeter deletes the data it synced from Microsoft, including what a sync running at that moment writes; revoking the permissions in Entra alone deletes nothing.
 
 If another person must approve, coordinate with that administrator and ensure they have the required workspace access before starting their own flow. Do not share your LicenseMeter session or credentials. Confirm the workspace and Microsoft tenant together.
 

@@ -123,19 +123,22 @@ describe("deletion wording", () => {
     }
   });
 
-  it("does not claim a connector disconnect deletes the findings", () => {
+  it("says a connector disconnect deletes its records and findings", () => {
     for (const lang of LANGS) {
       for (const text of strings(DPA[lang])) {
         expect(text).not.toMatch(
-          /remove the data by disconnecting|indem sie das Quellsystem trennen/,
+          /remove the data by disconnecting|indem sie das Quellsystem trennen|can still write|kann ihre Daten noch schreiben/,
         );
       }
     }
     expect(TRUST_CONTENT.en.lifecycle.linked.pre).toMatch(
-      /findings already raised from them can remain/,
+      /the records synced from it and the findings raised from them; if a sync is running at that moment, what it writes for that connector is deleted when it finishes/,
     );
     expect(TRUST_CONTENT.de.lifecycle.linked.pre).toMatch(
-      /Ergebnisse können im Workspace verbleiben/,
+      /die daraus synchronisierten Datensätze und die daraus erstellten Ergebnisse/,
+    );
+    expect(TRUST_CONTENT.en.lifecycle.linked.pre).not.toMatch(
+      /can still write|can remain/,
     );
   });
 
