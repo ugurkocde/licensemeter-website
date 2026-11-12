@@ -39,6 +39,10 @@ describe("sub-processor residency badge", () => {
       "EU (Frankfurt, Singapore)",
       "EU (Zurich)",
       "EU (London)",
+      "EU (AWS eu-west-2)",
+      "EU (AWS eu-central-2)",
+      "EU (Frankfurt, AWS eu-central-2)",
+      "EU (Frankfurt, AWS eu-west-2); US fallback",
       "EU",
       "Europe",
       "",
@@ -120,6 +124,13 @@ describe("deletion wording", () => {
   });
 
   it("does not claim a connector disconnect deletes the findings", () => {
+    for (const lang of LANGS) {
+      for (const text of strings(DPA[lang])) {
+        expect(text).not.toMatch(
+          /remove the data by disconnecting|indem sie das Quellsystem trennen/,
+        );
+      }
+    }
     expect(TRUST_CONTENT.en.lifecycle.linked.pre).toMatch(
       /findings already raised from them can remain/,
     );

@@ -150,7 +150,8 @@ export type DpaDoc = {
 // 2.5: deletion of the workspace removes the data from the live database
 // immediately, and copies in the database provider's daily backups expire
 // after BACKUP_RETENTION_DAYS (Annex II retention, Annex III measures 14 and
-// 16, summary). The sub-processors in Annex IV are unchanged.
+// 16, summary). Assistance with data subject requests distinguishes
+// disconnecting a source system from deleting the workspace. The sub-processors in Annex IV are unchanged.
 export const DPA_VERSION = "2.5";
 const EFFECTIVE_EN = "12 November 2026";
 const EFFECTIVE_DE = "12. November 2026";
@@ -265,13 +266,24 @@ const EU_PLACES = new Set([
   "Paris",
   "Stockholm",
 ]);
-const AWS_EU_REGION = /^AWS eu-(central|west|north|south)-\d$/;
+/* AWS regions inside the EU. eu-west-2 (London) and eu-central-2 (Zurich)
+ * carry the "eu" prefix but are outside the EU, so they are not listed. */
+const AWS_EU_REGIONS = new Set([
+  "eu-central-1",
+  "eu-north-1",
+  "eu-south-1",
+  "eu-south-2",
+  "eu-west-1",
+  "eu-west-3",
+]);
 
 const isEuPlaces = (inner: string): boolean =>
   inner
     .split(",")
     .map((p) => p.trim())
-    .every((p) => EU_PLACES.has(p) || AWS_EU_REGION.test(p));
+    .every(
+      (p) => EU_PLACES.has(p) || AWS_EU_REGIONS.has(p.replace(/^AWS /, "")),
+    );
 
 export type SubprocessorRegion = "eu" | "eu-us" | "global" | "customer";
 
@@ -509,11 +521,11 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
  */
 const ANNEX_III_ASSISTANCE: Record<DpaLang, string[]> = {
   en: [
-    "Requests from data subjects: owners and admins can look up every user record in the portal, export the findings about it as CSV, and remove the data by disconnecting the source system or deleting the workspace. Requests that reach LicenseMeter directly are forwarded to the controller under Clause 8(a).",
+    `Requests from data subjects: owners and admins can look up every user record in the portal and export the findings about it as CSV. Disconnecting a source system in the portal deletes its stored credentials and the user and seat records synced from it; findings already raised from them can remain in the workspace and follow the retention periods in Annex II. Deleting the workspace removes all synchronized data from the live database immediately; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days. Requests that reach LicenseMeter directly are forwarded to the controller under Clause 8(a).`,
     `Personal data breaches: notifications under Clause 9.2 are sent by email to the owners and admins of the affected workspace. The contact point for more information is ${SUPPORT_EMAIL}.`,
   ],
   de: [
-    "Anträge betroffener Personen: Owner und Admins können jeden Nutzerdatensatz im Portal nachschlagen, die zugehörigen Funde als CSV exportieren und die Daten entfernen, indem sie das Quellsystem trennen oder den Arbeitsbereich löschen. Anträge, die LicenseMeter unmittelbar erreichen, werden gemäß Klausel 8 Buchstabe a an den Verantwortlichen weitergeleitet.",
+    `Anträge betroffener Personen: Owner und Admins können jeden Nutzerdatensatz im Portal nachschlagen und die zugehörigen Funde als CSV exportieren. Das Trennen eines Quellsystems im Portal löscht dessen gespeicherte Zugangsdaten und die daraus synchronisierten Nutzer- und Lizenzplatzdaten; bereits daraus erstellte Funde können im Arbeitsbereich verbleiben und unterliegen den Aufbewahrungsfristen in Anhang II. Das Löschen des Arbeitsbereichs entfernt alle synchronisierten Daten sofort aus der Live-Datenbank; Kopien in den täglichen Sicherungen des Datenbankanbieters laufen nach ${BACKUP_RETENTION_DAYS} Tagen ab. Anträge, die LicenseMeter unmittelbar erreichen, werden gemäß Klausel 8 Buchstabe a an den Verantwortlichen weitergeleitet.`,
     `Verletzungen des Schutzes personenbezogener Daten: Meldungen gemäß Klausel 9.2 werden per E-Mail an die Owner und Admins des betroffenen Arbeitsbereichs gesendet. Anlaufstelle für weitere Informationen ist ${SUPPORT_EMAIL}.`,
   ],
 };
