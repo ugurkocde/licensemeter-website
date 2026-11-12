@@ -248,26 +248,43 @@ export const subprocessorRows = (lang: DpaLang): DpaSubprocessor[] =>
 
 /**
  * Where a sub-processor stores or processes the data, derived from its English
- * location so the badge on the Trust Center can never contradict the DPA:
- * - "eu": the location is an EU place and names nothing outside it;
- * - "eu-us": an EU location with a US fallback;
- * - "global": a global network, such as an edge network;
- * - "customer": the region of the customer's own tenant;
- * - null: anything else, shown without a badge.
+ * location so the badge on the Trust Center can never contradict the DPA.
+ * Only known formats are recognised; anything else gets no badge:
+ * - "eu": "EU (<places>)" where every place is a listed EU city or an AWS EU
+ *   region, e.g. "EU (Frankfurt, AWS eu-central-1)";
+ * - "eu-us": the same followed by "; US fallback";
+ * - "global": "Global edge network";
+ * - "customer": "Customer tenant region".
  */
+const EU_PLACES = new Set([
+  "Amsterdam",
+  "Dublin",
+  "Frankfurt",
+  "Ireland",
+  "Milan",
+  "Paris",
+  "Stockholm",
+]);
+const AWS_EU_REGION = /^AWS eu-(central|west|north|south)-\d$/;
+
+const isEuPlaces = (inner: string): boolean =>
+  inner
+    .split(",")
+    .map((p) => p.trim())
+    .every((p) => EU_PLACES.has(p) || AWS_EU_REGION.test(p));
+
 export type SubprocessorRegion = "eu" | "eu-us" | "global" | "customer";
 
 export const subprocessorRegion = (
   englishLocation: string,
 ): SubprocessorRegion | null => {
   const loc = englishLocation.trim();
-  const nonEu =
-    /\bUS\b|\bUSA\b|United States|fallback|global|worldwide|customer/i;
-  if (/^EU\b/.test(loc) && !nonEu.test(loc)) return "eu";
-  if (/^EU\b/.test(loc) && /\bUS\b|United States|fallback/i.test(loc))
-    return "eu-us";
-  if (/^global\b/i.test(loc)) return "global";
-  if (/^customer\b/i.test(loc)) return "customer";
+  const eu = /^EU \(([^()]+)\)$/.exec(loc);
+  if (eu && isEuPlaces(eu[1]!)) return "eu";
+  const euUs = /^EU \(([^()]+)\); US fallback$/.exec(loc);
+  if (euUs && isEuPlaces(euUs[1]!)) return "eu-us";
+  if (loc === "Global edge network") return "global";
+  if (loc === "Customer tenant region") return "customer";
   return null;
 };
 
@@ -412,7 +429,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
     ],
     // src/server/db/schema.ts (onDelete cascade), src/server/access.ts
     14: [
-      `Data is kept only while the workspace exists. Deleting the workspace removes every record that belongs to it from the live database through cascading deletes, including the activity log; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days.`,
+      `Data is kept only while the workspace exists. Deleting the workspace removes every record that belongs to it from the live database through cascading deletes, including the activity log; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days. The record of a user's sign-ins to the Service is not part of the workspace and is deleted ${RETENTION_DAYS.seenSignins} days after the last sign-in.`,
     ],
     // src/server/db/schema.ts (dpaAcceptances, dpaAgreements)
     15: [
@@ -470,7 +487,7 @@ const ANNEX_III: Record<DpaLang, Record<number, string[]>> = {
       "Jede Synchronisierung liest die Daten erneut aus dem Quellsystem, sodass eine Korrektur an der Quelle mit dem nächsten Lauf im Dienst ankommt.",
     ],
     14: [
-      `Daten werden nur gespeichert, solange der Arbeitsbereich besteht. Das Löschen des Arbeitsbereichs entfernt über kaskadierende Löschungen jeden zugehörigen Datensatz aus der Live-Datenbank, einschließlich des Aktivitätsprotokolls; Kopien in den täglichen Sicherungen des Datenbankanbieters laufen nach ${BACKUP_RETENTION_DAYS} Tagen ab.`,
+      `Daten werden nur gespeichert, solange der Arbeitsbereich besteht. Das Löschen des Arbeitsbereichs entfernt über kaskadierende Löschungen jeden zugehörigen Datensatz aus der Live-Datenbank, einschließlich des Aktivitätsprotokolls; Kopien in den täglichen Sicherungen des Datenbankanbieters laufen nach ${BACKUP_RETENTION_DAYS} Tagen ab. Die Aufzeichnung der Anmeldungen eines Nutzers am Dienst gehört nicht zum Arbeitsbereich und wird ${RETENTION_DAYS.seenSignins} Tage nach der letzten Anmeldung gelöscht.`,
     ],
     15: [
       "Die Annahme dieser Vereinbarung wird je Arbeitsbereich mit annehmendem Nutzer, Zeitpunkt, Sprache und Dokumentversion aufgezeichnet. Mit einem benannten Unternehmen unterzeichnete Vereinbarungen werden ebenso aufgezeichnet.",

@@ -34,6 +34,13 @@ describe("sub-processor residency badge", () => {
       "US (Virginia)",
       "Worldwide",
       "EU and global edge network",
+      "EU (Frankfurt); Singapore processing",
+      "EU and Canada",
+      "EU (Frankfurt, Singapore)",
+      "EU (Zurich)",
+      "EU (London)",
+      "EU",
+      "Europe",
       "",
     ]) {
       expect(subprocessorRegion(location), location).not.toBe("eu");
@@ -43,6 +50,8 @@ describe("sub-processor residency badge", () => {
   it("says 'EU' for EU locations only", () => {
     expect(subprocessorRegion("EU (Frankfurt)")).toBe("eu");
     expect(subprocessorRegion("EU (Ireland)")).toBe("eu");
+    expect(subprocessorRegion("EU (Frankfurt, AWS eu-central-1)")).toBe("eu");
+    expect(subprocessorRegion("EU (Frankfurt, AWS us-east-1)")).toBeNull();
     expect(subprocessorRegion("EU (Frankfurt); US fallback")).toBe("eu-us");
     expect(subprocessorRegion("Global edge network")).toBe("global");
     expect(subprocessorRegion("Customer tenant region")).toBe("customer");
@@ -108,6 +117,15 @@ describe("deletion wording", () => {
         expect(banned.test(text), `${lang}: "${text}"`).toBe(false);
       }
     }
+  });
+
+  it("does not claim a connector disconnect deletes the findings", () => {
+    expect(TRUST_CONTENT.en.lifecycle.linked.pre).toMatch(
+      /findings already raised from them can remain/,
+    );
+    expect(TRUST_CONTENT.de.lifecycle.linked.pre).toMatch(
+      /Ergebnisse können im Workspace verbleiben/,
+    );
   });
 
   it("names the backup expiry wherever the live database deletion is stated", () => {

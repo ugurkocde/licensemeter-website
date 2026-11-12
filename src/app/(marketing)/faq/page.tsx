@@ -23,7 +23,7 @@ const FAQS = [
   },
   {
     q: "Where is our data stored, and for how long?",
-    a: `In Postgres in the EU (Frankfurt). Data is kept for as long as the workspace exists, including after a paid plan lapses. Deleting the workspace in Settings removes everything from the live database immediately; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days. You can also revoke the enterprise application in Entra ID at any time: that stops our access but deletes nothing.`,
+    a: `In Postgres in the EU (Frankfurt). Data is kept for as long as the workspace exists, including after a paid plan lapses. Deleting the workspace in Settings removes all synced data from the live database immediately; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days. You can also revoke the enterprise application in Entra ID at any time: that stops our access but deletes nothing.`,
   },
   {
     q: "How are the Adobe, Zoom, Atlassian, Salesforce, OpenAI and Anthropic credentials stored?",
