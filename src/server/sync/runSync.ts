@@ -1607,7 +1607,10 @@ export const diffFindings = async (
               : {}),
           })
           .where(eq(findings.id, f.id));
-      } else if (f.status !== "resolved") {
+      } else if (f.status !== "resolved" && filter(f)) {
+        // A finding of a source that failed the check (its credentials were
+        // replaced during the run, say) is left as it is: this run did not
+        // read that source under its current connection.
         await tx
           .update(findings)
           .set({ status: "resolved", resolvedAt: now })

@@ -543,6 +543,47 @@ describe("runSync when a connector is reconnected mid-flight", () => {
   });
 });
 
+describe("runSync when credentials are replaced mid-flight", () => {
+  it("leaves the connector's existing findings open", async () => {
+    await seedTenant({ tid: null, consentedAt: null });
+    await currentDb.insert(schema.saasConnections).values({
+      tenantId: TENANT_ID,
+      provider: "zoom",
+      orgRef: "acct-1",
+      clientId: "client",
+      secretEnc: "enc",
+    });
+    await currentDb.insert(schema.saasSeats).values({
+      tenantId: TENANT_ID,
+      provider: "zoom",
+      email: "zoe@contoso.test",
+    });
+    await currentDb.insert(schema.findings).values({
+      tenantId: TENANT_ID,
+      dedupeKey: "saas_inactive|zoom:zoe@contoso.test|-",
+      rule: "saas_inactive",
+      title: "Zoom seat unused",
+      detail: { provider: "zoom" },
+    });
+    // The admin replaces the Zoom credentials while the run reads Zoom; the
+    // run then sees no seats at all.
+    const getSeats = vi.fn(async () => {
+      await currentDb
+        .update(schema.saasConnections)
+        .set({ secretEnc: "enc-2", generation: sql`gen_random_uuid()` })
+        .where(eq(schema.saasConnections.tenantId, TENANT_ID));
+      return [];
+    });
+    buildSaasClientMock.mockImplementation(() => Promise.resolve({ getSeats }));
+
+    await runSync(TENANT_ID);
+
+    const [kept] = await currentDb.select().from(schema.findings);
+    expect(kept?.status).toBe("open");
+    expect(await countRows(schema.saasSeats)).toBe(1);
+  });
+});
+
 describe("runSync without a Microsoft connection", () => {
   it("rolls back earlier seat batches when a later batch fails", async () => {
     await seedTenant({ tid: null, consentedAt: null });
