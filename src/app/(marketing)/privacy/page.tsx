@@ -250,8 +250,11 @@ export default function PrivacyPolicyPage() {
           immediately; copies in the database provider&rsquo;s daily backups
           expire after {BACKUP_RETENTION_DAYS} days. Revoking the enterprise
           application in Microsoft Entra ID stops our access but deletes no
-          data. The hosting provider&rsquo;s server logs are subject to that
-          provider&rsquo;s deletion periods.
+          data. An MSP account (its name, the owner&rsquo;s Microsoft Entra
+          object ID and its report branding) spans several workspaces and is not
+          deleted with any one of them; it is kept until the MSP asks us to
+          delete it. The hosting provider&rsquo;s server logs are subject to
+          that provider&rsquo;s deletion periods.
         </p>
       </Section>
 
