@@ -147,10 +147,13 @@ export async function POST(req: Request) {
   if (data.action === "disable") {
     // Cascades include pending consent. Device results are never stored, so
     // only the short-lived read cache remains to clear.
-    const [removed] = await db
-      .delete(meteringConnections)
-      .where(where)
-      .returning({ id: meteringConnections.id });
+    // Under the source lock, serialised with the consent callback.
+    const [removed] = await withSourceLock(ctx.tenant.id, (tx) =>
+      tx
+        .delete(meteringConnections)
+        .where(where)
+        .returning({ id: meteringConnections.id }),
+    );
     if (removed) forgetMetering(removed.id);
     await audit(ctx, "connector_disconnected", {
       provider: "windows_metering",

@@ -254,6 +254,34 @@ describe("disconnect purges", () => {
     expect(await count(schema.aiSpendDaily)).toBe(0);
   });
 
+  it("removes connector findings matched against the directory with Microsoft", async () => {
+    await currentDb.insert(schema.findings).values([
+      {
+        ...finding(
+          "adobe_disabled_in_entra",
+          "adobe_disabled_in_entra|bob@example.com|-",
+        ),
+        graphUserId: "g2",
+      },
+      {
+        ...finding("saas_inactive", "saas_inactive|zoom:bob@example.com|-", {
+          provider: "zoom",
+        }),
+        graphUserId: "g2",
+      },
+    ]);
+    await purgeMicrosoftSource(tenantId);
+    const left = await currentDb
+      .select({
+        rule: schema.findings.rule,
+        graphUserId: schema.findings.graphUserId,
+      })
+      .from(schema.findings)
+      .where(eq(schema.findings.tenantId, tenantId));
+    // Only the imported ChatGPT finding, which names no directory user, stays.
+    expect(left).toEqual([{ rule: "saas_inactive", graphUserId: null }]);
+  });
+
   it("removes the Microsoft data and signals and keeps the price book", async () => {
     await currentDb
       .update(schema.tenants)
@@ -372,7 +400,32 @@ describe("writes of a run that read before a disconnect", () => {
         saas: { zoom: "acct", openai: "org" },
       }),
     );
-    expect(keep({ rule: "never_active", detail: {} })).toBe(false);
+    // Every finding was computed against that directory: none is written.
+    expect(keep).toBeNull();
+  });
+
+  it("write no connector finding matched against a directory that is gone", async () => {
+    const readWith = await tokens();
+    await purgeMicrosoftSource(tenantId);
+    // Adobe is unchanged, but its "disabled in Entra" finding names the
+    // Microsoft user it was matched against.
+    await diffFindings(
+      tenantId,
+      [
+        {
+          dedupeKey: "adobe_disabled_in_entra|ann@example.com|-",
+          rule: "adobe_disabled_in_entra",
+          graphUserId: "g1",
+          skuId: null,
+          title: "Adobe seat, user disabled in Entra: Ann",
+          detail: {},
+          monthlyImpactCents: 0,
+        },
+      ],
+      new Date(),
+      { keep: (tx) => currentFindingFilter(tx, tenantId, readWith) },
+    );
+    expect(await rules()).not.toContain("adobe_disabled_in_entra");
   });
 
   it("keep the findings of sources that are still connected", async () => {
@@ -380,9 +433,10 @@ describe("writes of a run that read before a disconnect", () => {
     const keep = await withSourceLock(tenantId, (tx) =>
       currentFindingFilter(tx, tenantId, readWith),
     );
-    expect(keep({ rule: "never_active", detail: {} })).toBe(true);
-    expect(keep({ rule: "adobe_orphaned", detail: {} })).toBe(true);
-    expect(keep({ rule: "saas_orphaned", detail: { provider: "zoom" } })).toBe(
+    expect(keep).not.toBeNull();
+    expect(keep!({ rule: "never_active", detail: {} })).toBe(true);
+    expect(keep!({ rule: "adobe_orphaned", detail: {} })).toBe(true);
+    expect(keep!({ rule: "saas_orphaned", detail: { provider: "zoom" } })).toBe(
       true,
     );
   });
@@ -396,7 +450,7 @@ describe("writes of a run that read before a disconnect", () => {
       currentFindingFilter(tx, tenantId, readWith),
     );
     expect(
-      keep({ rule: "saas_inactive", detail: { provider: "chatgpt" } }),
+      keep!({ rule: "saas_inactive", detail: { provider: "chatgpt" } }),
     ).toBe(false);
   });
 });

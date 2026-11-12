@@ -1498,8 +1498,11 @@ export const diffFindings = async (
   }: {
     /** Run inside this transaction, which already holds the source lock. */
     tx?: Tx;
-    /** Under the lock: which computed findings may still be written. */
-    keep?: (tx: Tx) => Promise<(f: WasteFinding) => boolean>;
+    /**
+     * Under the lock: which computed findings may still be written; null
+     * writes none and leaves the stored findings untouched.
+     */
+    keep?: (tx: Tx) => Promise<((f: WasteFinding) => boolean) | null>;
   } = {},
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
@@ -1507,7 +1510,9 @@ export const diffFindings = async (
   // the source lock, so findings of a disconnected source are not written
   // back (see connectorPurge).
   const run = async (tx: Tx): Promise<InsertedFinding[]> => {
-    const newFindings = keep ? computed.filter(await keep(tx)) : computed;
+    const filter = keep ? await keep(tx) : (f: WasteFinding) => Boolean(f);
+    if (filter === null) return [];
+    const newFindings = computed.filter(filter);
     const existing = await tx.query.findings.findMany({
       where: eq(findings.tenantId, tenantId),
     });

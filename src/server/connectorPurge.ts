@@ -1,4 +1,4 @@
-import { and, eq, inArray, like, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, like, or, sql } from "drizzle-orm";
 
 import { ALL_RULES, MICROSOFT_RULES } from "~/lib/rules";
 import { db } from "~/server/db";
@@ -25,8 +25,10 @@ import type { SaasProvider, WasteRuleId } from "~/server/types";
  * What a disconnect removes is defined once, per source:
  * - Microsoft: the connection, the metering connection, the synced users,
  *   licenses and history snapshots, the usage signals and aggregates stored on
- *   the workspace, and the findings of the Microsoft rules. Customer-entered
- *   prices stay.
+ *   the workspace, the findings of the Microsoft rules, and every Adobe or
+ *   SaaS finding that was matched against the directory (it carries the
+ *   directory user's ID and name, or exists only because the user was not
+ *   found there). Customer-entered prices stay.
  * - Adobe: the connection, the synced users and the Adobe findings.
  * - A SaaS provider: the connection, its seats and daily spend, and the
  *   findings raised from its seats.
@@ -126,6 +128,14 @@ export const SAAS_RULES: WasteRuleId[] = ALL_RULES.filter((rule) =>
   rule.startsWith("saas_"),
 );
 
+/** Connector rules decided by matching a seat against the directory. */
+const DIRECTORY_MATCH_RULES: WasteRuleId[] = [
+  "adobe_disabled_in_entra",
+  "adobe_orphaned",
+  "saas_disabled_in_entra",
+  "saas_orphaned",
+];
+
 export const purgeMicrosoftSource = (tenantId: string): Promise<void> =>
   withSourceLock(tenantId, async (tx) => {
     // msConnections before tenants, the same row order as the connect flows,
@@ -141,7 +151,13 @@ export const purgeMicrosoftSource = (tenantId: string): Promise<void> =>
       .where(
         and(
           eq(findings.tenantId, tenantId),
-          inArray(findings.rule, MICROSOFT_RULES),
+          or(
+            inArray(findings.rule, [
+              ...MICROSOFT_RULES,
+              ...DIRECTORY_MATCH_RULES,
+            ]),
+            isNotNull(findings.graphUserId),
+          ),
         ),
       );
     await tx.delete(tenantUsers).where(eq(tenantUsers.tenantId, tenantId));
@@ -222,16 +238,20 @@ export const purgeSaasSource = (
 
 /**
  * For the end of a sync, under the lock: which of the findings it computed may
- * still be written, given the tokens each source was read with. A source read
- * from an import (no connection) keeps its findings only while its imported
- * seats still exist.
+ * still be written, given the tokens each source was read with. Null when
+ * Microsoft changed since the read: every finding was computed against that
+ * directory (the connector rules match seats against it), so the run writes
+ * no findings at all and leaves the stored ones alone. A source read from an
+ * import (no connection) keeps its findings only while its imported seats
+ * still exist.
  */
 export const currentFindingFilter = async (
   tx: Tx,
   tenantId: string,
   readWith: SourceTokens,
 ): Promise<
-  (f: { rule: WasteRuleId; detail: Record<string, unknown> }) => boolean
+  | ((f: { rule: WasteRuleId; detail: Record<string, unknown> }) => boolean)
+  | null
 > => {
   const now = await readSourceTokens(tx, tenantId);
   const seatProviders = new Set(
@@ -242,10 +262,10 @@ export const currentFindingFilter = async (
         .where(eq(saasSeats.tenantId, tenantId))
     ).map((r) => r.provider),
   );
-  const microsoftOk = now.microsoft === readWith.microsoft;
+  if (now.microsoft !== readWith.microsoft) return null;
   const adobeOk = now.adobe === readWith.adobe;
   return (f) => {
-    if (MICROSOFT_RULES.includes(f.rule)) return microsoftOk;
+    if (MICROSOFT_RULES.includes(f.rule)) return true;
     if (ADOBE_RULES.includes(f.rule)) return adobeOk;
     const provider = f.detail.provider as SaasProvider | undefined;
     if (!provider) return true;
