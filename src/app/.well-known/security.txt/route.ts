@@ -13,10 +13,11 @@ const NOT_FOUND = () =>
  * operated or reached differently and must not point reporters at us. Reading
  * the request keeps the handler dynamic. */
 export function GET(request: Request): Response {
+  // Only the production deployment on Vercel publishes it (VERCEL_ENV is
+  // exposed at runtime); local, preview and unset environments do not.
   if (
-    process.env.SELF_HOSTED === "true" ||
-    process.env.VERCEL_ENV === "preview" ||
-    process.env.VERCEL_ENV === "development"
+    process.env.VERCEL_ENV !== "production" ||
+    process.env.SELF_HOSTED === "true"
   ) {
     return NOT_FOUND();
   }

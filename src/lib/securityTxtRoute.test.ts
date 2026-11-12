@@ -38,8 +38,13 @@ describe("GET /.well-known/security.txt", () => {
     }
   });
 
-  it("returns 404 for previews and self-hosted instances on a hosted host", () => {
-    vi.stubEnv("VERCEL_ENV", "preview");
+  it("returns 404 outside the production deployment, even on a hosted host", () => {
+    for (const env of ["preview", "development", ""]) {
+      vi.stubEnv("VERCEL_ENV", env);
+      expect(get("www.licensemeter.com").status, env || "unset").toBe(404);
+    }
+    vi.stubEnv("VERCEL_ENV", undefined);
+    vi.stubEnv("NODE_ENV", "development");
     expect(get("www.licensemeter.com").status).toBe(404);
     vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("SELF_HOSTED", "true");
