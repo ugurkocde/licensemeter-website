@@ -250,14 +250,12 @@ export const runSync = async (
   // Microsoft's token comes from the same tenant row the Graph client is
   // built from (the managed fallback uses tenant.tid), so a disconnect after
   // that read still counts as a change and the run's writes are dropped.
+  const msConnAtRead = await db.query.msConnections.findFirst({
+    where: eq(msConnections.tenantId, tenantId),
+    columns: { mode: true, tid: true, generation: true },
+  });
   const readWith: SourceTokens = {
-    microsoft: microsoftToken(
-      tenant.tid,
-      await db.query.msConnections.findFirst({
-        where: eq(msConnections.tenantId, tenantId),
-        columns: { mode: true, tid: true, generation: true },
-      }),
-    ),
+    microsoft: microsoftToken(tenant.tid, msConnAtRead),
     adobe: null,
     saas: {},
   };
@@ -586,7 +584,12 @@ export const runSync = async (
           await db
             .update(adobeConnections)
             .set({ lastSyncAt: now, lastSyncStatus: "ok" })
-            .where(eq(adobeConnections.tenantId, tenantId));
+            .where(
+              and(
+                eq(adobeConnections.tenantId, tenantId),
+                eq(adobeConnections.generation, adobeConn.generation),
+              ),
+            );
         }
       } catch (err) {
         // adobeActive=false skips persistence/pruning; the stored snapshot is
@@ -612,7 +615,12 @@ export const runSync = async (
           await db
             .update(adobeConnections)
             .set({ lastSyncAt: now, lastSyncStatus: "failed" })
-            .where(eq(adobeConnections.tenantId, tenantId));
+            .where(
+              and(
+                eq(adobeConnections.tenantId, tenantId),
+                eq(adobeConnections.generation, adobeConn.generation),
+              ),
+            );
         }
       }
     }
@@ -667,6 +675,7 @@ export const runSync = async (
               and(
                 eq(saasConnections.tenantId, tenantId),
                 eq(saasConnections.provider, provider),
+                eq(saasConnections.generation, conn.generation),
               ),
             );
         }
@@ -712,6 +721,7 @@ export const runSync = async (
               and(
                 eq(saasConnections.tenantId, tenantId),
                 eq(saasConnections.provider, provider),
+                eq(saasConnections.generation, conn.generation),
               ),
             );
         }
@@ -1266,11 +1276,17 @@ export const runSync = async (
     // The Microsoft connection authenticated and pulled data: clear any prior
     // credential error and stamp the verification time (no-op for tenants
     // without an msConnections row).
-    if (client && !tenant.isDemo) {
+    // Only the connection this run read: a replacement keeps its own state.
+    if (client && !tenant.isDemo && msConnAtRead) {
       await db
         .update(msConnections)
         .set({ lastVerifiedAt: new Date(), lastVerifyError: null })
-        .where(eq(msConnections.tenantId, tenantId));
+        .where(
+          and(
+            eq(msConnections.tenantId, tenantId),
+            eq(msConnections.generation, msConnAtRead.generation),
+          ),
+        );
     }
     return { runId, status, steps };
   } catch (err) {
@@ -1279,14 +1295,19 @@ export const runSync = async (
     // managed re-consent needed): record a clean, non-leaking marker on the
     // connection so the dashboard can prompt a re-enter, without crashing the
     // run. The nightly cron catches per-tenant and continues.
-    if (!tenant.isDemo && isAppAuthError(message)) {
+    if (!tenant.isDemo && msConnAtRead && isAppAuthError(message)) {
       await db
         .update(msConnections)
         .set({
           lastVerifyError:
             "Microsoft rejected the stored credential (it may be expired or revoked). Re-enter it on the Microsoft connector page.",
         })
-        .where(eq(msConnections.tenantId, tenantId));
+        .where(
+          and(
+            eq(msConnections.tenantId, tenantId),
+            eq(msConnections.generation, msConnAtRead.generation),
+          ),
+        );
     }
     await log.settled();
     await db

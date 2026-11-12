@@ -536,8 +536,10 @@ describe("runSync when a connector is reconnected mid-flight", () => {
     expect(await countRows(schema.findings)).toBe(0);
     const prices = await currentDb.select().from(schema.priceBook);
     expect(prices.some((p) => p.skuId.startsWith("zoom:"))).toBe(false);
-    // The new connection itself is kept.
-    expect(await countRows(schema.saasConnections)).toBe(1);
+    // The new connection itself is kept, and the old run does not stamp it.
+    const conns = await currentDb.select().from(schema.saasConnections);
+    expect(conns).toHaveLength(1);
+    expect(conns[0]!.lastSyncStatus).toBeNull();
   });
 });
 
