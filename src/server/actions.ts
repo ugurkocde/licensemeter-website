@@ -20,6 +20,7 @@ import {
   purgeAdobeSource,
   purgeMicrosoftSource,
   purgeSaasSource,
+  withSourceLock,
 } from "~/server/connectorPurge";
 import {
   approveJoinRequestRow,
@@ -1908,7 +1909,12 @@ export const disconnectTenant = async (): Promise<ActionResult> => {
   // useless here. notifyOps is the durable, off-table signal of the deletion.
   void notifyOps(`workspace deleted: ${ctx.tenant.id}`);
 
-  await db.delete(tenants).where(eq(tenants.id, ctx.tenant.id));
+  // Under the source lock, so the deletion waits for a sync's locked writes
+  // (snapshot, then tenant row) instead of taking the rows in the opposite
+  // order and deadlocking with them.
+  await withSourceLock(ctx.tenant.id, (tx) =>
+    tx.delete(tenants).where(eq(tenants.id, ctx.tenant.id)),
+  );
   revalidatePath("/", "layout");
   redirect("/");
 };
