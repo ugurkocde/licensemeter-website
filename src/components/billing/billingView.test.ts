@@ -132,7 +132,8 @@ describe("planCardLines", () => {
       .flatMap((p) => planCardLines(p, "month"))
       .map((l) => l.text)
       .join("\n");
-    expect(all).not.toMatch(/priority support|SLA|service credits|Azure/i);
+    // The SLA is published at /sla and may be named.
+    expect(all).not.toMatch(/priority support|Azure/i);
   });
 });
 

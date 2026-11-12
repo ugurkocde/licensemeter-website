@@ -59,6 +59,7 @@ const ENGLISH = {
         ["/impressum", "Imprint"],
         ["/privacy", "Privacy"],
         ["/terms", "Terms"],
+        ["/sla", "Service Level Agreement"],
         ["/dpa", "Data Processing Agreement"],
       ],
     },
@@ -111,6 +112,7 @@ const GERMAN = {
         ["/impressum", "Impressum"],
         ["/privacy", "Datenschutz (EN)"],
         ["/terms", "Nutzungsbedingungen (EN)"],
+        ["/de/sla", "Service Level Agreement"],
       ],
     },
     {

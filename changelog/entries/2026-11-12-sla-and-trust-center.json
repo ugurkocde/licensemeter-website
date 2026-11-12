@@ -1,0 +1,8 @@
+{
+  "title": "Service Level Agreement for paid plans and a fuller Trust Center",
+  "summary": "Pro and MSP now come with a published Service Level Agreement: a 99.5% monthly availability target with service credits, support on business days with response times by severity, notification of security incidents within 48 hours, and recovery objectives of 24 hours. The Trust Center now also covers data retention, the security program, vulnerability management, incident response, business continuity and the certifications of each sub-processor, and the site publishes a security.txt for vulnerability reports.",
+  "type": "new",
+  "publishedOn": "2026-11-12",
+  "idempotencyKey": "licensemeter:sla-and-trust-center-2026-11-12",
+  "sourceUrl": "https://www.licensemeter.com/sla"
+}

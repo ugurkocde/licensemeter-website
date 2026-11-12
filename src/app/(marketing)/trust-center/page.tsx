@@ -13,7 +13,7 @@ import { TrustCenterView } from "./TrustCenterView";
 export const metadata: Metadata = {
   title: "Trust Center",
   description:
-    "One place for how LicenseMeter handles your data: read-only access, EU data residency, named subprocessors with their processing locations, encryption, retention and the pre-signed GDPR DPA.",
+    "One place for how LicenseMeter handles your data: read-only access, EU data residency, named subprocessors and their certifications, retention, vulnerability management, incident response, business continuity, the SLA and the pre-signed GDPR DPA.",
   alternates: {
     canonical: "/trust-center",
     languages: {

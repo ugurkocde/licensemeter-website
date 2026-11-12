@@ -9,6 +9,7 @@ import {
   TRIAL_DAYS,
 } from "~/lib/pricing";
 import { formatEuro } from "~/lib/pricingContent";
+import { SLA_TERMS, formatPct } from "~/lib/sla";
 
 import { Reveal } from "./Reveal";
 
@@ -52,7 +53,7 @@ const PLANS: TeaserPlan[] = [
     pitch: "For teams that want someone accountable behind the numbers.",
     points: [
       "Everything in Free, plus email support",
-      "Signed DPA (AVV) and a 99.9% uptime target",
+      `Signed DPA (AVV) and a ${formatPct(SLA_TERMS.availabilityTargetPct, "en")} uptime target`,
       "MCP server, white-label PDF reports and 24 months of history",
     ],
     featured: true,
