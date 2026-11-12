@@ -4,6 +4,7 @@ import { db } from "~/server/db";
 import {
   adobeToken,
   currentFindingFilter,
+  microsoftToken,
   readSourceTokens,
   saasToken,
   type SourceTokens,
@@ -246,8 +247,17 @@ export const runSync = async (
   // source's data checks, under the workspace's source lock, that the source
   // is still connected with the same identity; a source disconnected (or
   // reconnected elsewhere) in between is not written (see connectorPurge).
+  // Microsoft's token comes from the same tenant row the Graph client is
+  // built from (the managed fallback uses tenant.tid), so a disconnect after
+  // that read still counts as a change and the run's writes are dropped.
   const readWith: SourceTokens = {
-    microsoft: (await readSourceTokens(db, tenantId)).microsoft,
+    microsoft: microsoftToken(
+      tenant.tid,
+      await db.query.msConnections.findFirst({
+        where: eq(msConnections.tenantId, tenantId),
+        columns: { mode: true, tid: true },
+      }),
+    ),
     adobe: null,
     saas: {},
   };

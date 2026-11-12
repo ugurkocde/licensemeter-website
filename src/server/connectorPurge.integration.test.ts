@@ -46,6 +46,7 @@ function makeDb(client: PGlite) {
 
 const {
   currentFindingFilter,
+  microsoftToken,
   purgeAdobeSource,
   purgeMicrosoftSource,
   purgeSaasSource,
@@ -320,6 +321,23 @@ describe("writes of a run that read before a disconnect", () => {
 
     // Only the imported ChatGPT finding, whose seats still exist, is written.
     expect(await rules()).toEqual(["saas_inactive"]);
+  });
+
+  it("treat a run that loaded the tenant before a Microsoft disconnect as stale", async () => {
+    // runSync derives the token from the tenant row it builds the client
+    // from; that row still had the tid when the disconnect landed.
+    const stale = microsoftToken("tid-1", undefined);
+    await purgeMicrosoftSource(tenantId);
+    expect(stale).not.toBeNull();
+    expect((await tokens()).microsoft).toBeNull();
+    const keep = await withSourceLock(tenantId, (tx) =>
+      currentFindingFilter(tx, tenantId, {
+        microsoft: stale,
+        adobe: "org:client",
+        saas: { zoom: "acct", openai: "org" },
+      }),
+    );
+    expect(keep({ rule: "never_active", detail: {} })).toBe(false);
   });
 
   it("keep the findings of sources that are still connected", async () => {
