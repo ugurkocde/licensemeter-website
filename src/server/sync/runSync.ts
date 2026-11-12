@@ -2,8 +2,13 @@ import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 
 import { db } from "~/server/db";
 import {
-  connectedSources,
-  purgeDisconnectedSources,
+  adobeToken,
+  currentFindingFilter,
+  readSourceTokens,
+  saasToken,
+  type SourceTokens,
+  type Tx,
+  withSourceLock,
 } from "~/server/connectorPurge";
 import {
   PSEUDONYMISED_KEY_PREFIX,
@@ -142,6 +147,8 @@ const syncAiSpend = async (
   client: AiSpendClient,
   now: Date,
   record: (step: SyncStep) => void,
+  /** The connection identity the run read; rows are written only while it holds. */
+  token: string | undefined,
   deadline?: number,
 ): Promise<void> => {
   const step = `${provider}Spend` as const;
@@ -167,30 +174,37 @@ const syncAiSpend = async (
     const rows = await client.getSpend(sinceDay, deadline);
     for (const batch of chunk(rows, 250)) {
       ensureWithinDeadline();
-      await db
-        .insert(aiSpendDaily)
-        .values(
-          batch.map((r) => ({
-            tenantId,
-            provider,
-            day: r.day,
-            category: r.category,
-            amountCents: r.amountCents,
-            syncedAt: now,
-          })),
-        )
-        .onConflictDoUpdate({
-          target: [
-            aiSpendDaily.tenantId,
-            aiSpendDaily.provider,
-            aiSpendDaily.day,
-            aiSpendDaily.category,
-          ],
-          set: {
-            amountCents: sql`excluded.amount_cents`,
-            syncedAt: sql`excluded.synced_at`,
-          },
-        });
+      const written = await withSourceLock(tenantId, async (tx) => {
+        if ((await readSourceTokens(tx, tenantId)).saas[provider] !== token)
+          return false;
+        await tx
+          .insert(aiSpendDaily)
+          .values(
+            batch.map((r) => ({
+              tenantId,
+              provider,
+              day: r.day,
+              category: r.category,
+              amountCents: r.amountCents,
+              syncedAt: now,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: [
+              aiSpendDaily.tenantId,
+              aiSpendDaily.provider,
+              aiSpendDaily.day,
+              aiSpendDaily.category,
+            ],
+            set: {
+              amountCents: sql`excluded.amount_cents`,
+              syncedAt: sql`excluded.synced_at`,
+            },
+          });
+        return true;
+      });
+      // Disconnected meanwhile: nothing more is written.
+      if (!written) break;
     }
     record({
       step,
@@ -228,10 +242,15 @@ export const runSync = async (
   });
   if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
 
-  // The sources connected as the run starts. Anything disconnected while the
-  // run is reading is purged again once its writes are done.
-  const startedSources = await connectedSources(tenant);
-  if (clientOverride) startedSources.microsoft = false;
+  // The identity of each source as this run reads it. Every write of a
+  // source's data checks, under the workspace's source lock, that the source
+  // is still connected with the same identity; a source disconnected (or
+  // reconnected elsewhere) in between is not written (see connectorPurge).
+  const readWith: SourceTokens = {
+    microsoft: (await readSourceTokens(db, tenantId)).microsoft,
+    adobe: null,
+    saas: {},
+  };
 
   /** True once the request budget is spent: optional sources are skipped. */
   const outOfTime = (): boolean =>
@@ -528,6 +547,7 @@ export const runSync = async (
     const adobeConn = await db.query.adobeConnections.findFirst({
       where: eq(adobeConnections.tenantId, tenantId),
     });
+    readWith.adobe = adobeToken(adobeConn);
     if (tenant.isDemo || adobeConn) {
       adobeActive = true;
       const started = Date.now();
@@ -604,6 +624,7 @@ export const runSync = async (
       : saasConns.map((c) => c.provider);
     for (const provider of activeSaas) {
       const conn = saasConns.find((c) => c.provider === provider);
+      if (conn) readWith.saas[provider] = saasToken(conn);
       const started = Date.now();
       try {
         if (outOfTime()) {
@@ -646,6 +667,7 @@ export const runSync = async (
             saasClient as AiSpendClient,
             now,
             record,
+            readWith.saas[provider],
             deadline,
           );
         }
@@ -743,7 +765,13 @@ export const runSync = async (
       skuTerms?.get(skuId) ?? { trialUnits: 0, nextLifecycleAt: null };
 
     // --- Persist phase (upsert + prune; no destructive window) -------------
-    await db.transaction(async (tx) => {
+    // Licenses and users in one locked transaction, written only while
+    // Microsoft is still connected as it was when the run read it.
+    const microsoftCurrent = await withSourceLock(tenantId, async (tx) => {
+      if (
+        (await readSourceTokens(tx, tenantId)).microsoft !== readWith.microsoft
+      )
+        return false;
       if (skus.length > 0) {
         for (const batch of chunk(skus, 250)) {
           await tx
@@ -791,64 +819,68 @@ export const runSync = async (
             ),
           );
       }
+
+      for (const batch of chunk(joined.users, 250)) {
+        await tx
+          .insert(tenantUsers)
+          .values(
+            batch.map((u) => ({
+              tenantId,
+              graphId: u.graphId,
+              upn: u.upn,
+              mailAliases: u.mailAliases,
+              displayName: u.displayName,
+              accountEnabled: u.accountEnabled,
+              userType: u.userType,
+              createdDateTime: u.createdDateTime,
+              lastInteractiveSignIn: u.lastInteractiveSignIn,
+              lastNonInteractiveSignIn: u.lastNonInteractiveSignIn,
+              lastActivity: u.lastActivity,
+              workloadActivity: u.workloadActivity,
+              licenses: u.licenses,
+              syncedAt: now,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: [tenantUsers.tenantId, tenantUsers.graphId],
+            set: {
+              upn: sql`excluded.upn`,
+              mailAliases: sql`excluded.mail_aliases`,
+              displayName: sql`excluded.display_name`,
+              accountEnabled: sql`excluded.account_enabled`,
+              userType: sql`excluded.user_type`,
+              createdDateTime: sql`excluded.created_date_time`,
+              lastInteractiveSignIn: sql`excluded.last_interactive_sign_in`,
+              lastNonInteractiveSignIn: sql`excluded.last_non_interactive_sign_in`,
+              lastActivity: sql`excluded.last_activity`,
+              workloadActivity: sql`excluded.workload_activity`,
+              licenses: sql`excluded.licenses`,
+              syncedAt: sql`excluded.synced_at`,
+            },
+          });
+      }
+      if (joined.users.length > 0) {
+        await tx
+          .delete(tenantUsers)
+          .where(
+            and(
+              eq(tenantUsers.tenantId, tenantId),
+              notInArray(
+                tenantUsers.graphId,
+                textSet(joined.users.map((u) => u.graphId)),
+              ),
+            ),
+          );
+      }
+      return true;
     });
 
-    for (const batch of chunk(joined.users, 250)) {
-      await db
-        .insert(tenantUsers)
-        .values(
-          batch.map((u) => ({
-            tenantId,
-            graphId: u.graphId,
-            upn: u.upn,
-            mailAliases: u.mailAliases,
-            displayName: u.displayName,
-            accountEnabled: u.accountEnabled,
-            userType: u.userType,
-            createdDateTime: u.createdDateTime,
-            lastInteractiveSignIn: u.lastInteractiveSignIn,
-            lastNonInteractiveSignIn: u.lastNonInteractiveSignIn,
-            lastActivity: u.lastActivity,
-            workloadActivity: u.workloadActivity,
-            licenses: u.licenses,
-            syncedAt: now,
-          })),
-        )
-        .onConflictDoUpdate({
-          target: [tenantUsers.tenantId, tenantUsers.graphId],
-          set: {
-            upn: sql`excluded.upn`,
-            mailAliases: sql`excluded.mail_aliases`,
-            displayName: sql`excluded.display_name`,
-            accountEnabled: sql`excluded.account_enabled`,
-            userType: sql`excluded.user_type`,
-            createdDateTime: sql`excluded.created_date_time`,
-            lastInteractiveSignIn: sql`excluded.last_interactive_sign_in`,
-            lastNonInteractiveSignIn: sql`excluded.last_non_interactive_sign_in`,
-            lastActivity: sql`excluded.last_activity`,
-            workloadActivity: sql`excluded.workload_activity`,
-            licenses: sql`excluded.licenses`,
-            syncedAt: sql`excluded.synced_at`,
-          },
-        });
-    }
-    if (joined.users.length > 0) {
-      await db
-        .delete(tenantUsers)
-        .where(
-          and(
-            eq(tenantUsers.tenantId, tenantId),
-            notInArray(
-              tenantUsers.graphId,
-              textSet(joined.users.map((u) => u.graphId)),
-            ),
-          ),
-        );
-    }
-
-    // Persist Adobe users (upsert + prune) when the connector is active.
+    // Persist Adobe users (upsert + prune) when the connector is active and
+    // still connected as read.
     if (adobeActive) {
-      await db.transaction(async (tx) => {
+      await withSourceLock(tenantId, async (tx) => {
+        if ((await readSourceTokens(tx, tenantId)).adobe !== readWith.adobe)
+          return;
         if (adobeRows.length > 0) {
           for (const batch of chunk(adobeRows, 250)) {
             await tx
@@ -893,7 +925,12 @@ export const runSync = async (
     // Persist SaaS seats (upsert + prune) for providers that fetched cleanly.
     for (const provider of saasPersist) {
       const seats = saasRows.get(provider) ?? [];
-      await db.transaction(async (tx) => {
+      await withSourceLock(tenantId, async (tx) => {
+        if (
+          (await readSourceTokens(tx, tenantId)).saas[provider] !==
+          readWith.saas[provider]
+        )
+          return;
         if (seats.length > 0) {
           for (const batch of chunk(seats, 250)) {
             await tx
@@ -1120,67 +1157,78 @@ export const runSync = async (
       durationMs: since(analysisStarted),
     });
 
-    const inserted = await diffFindings(tenantId, allFindings, now);
+    // Findings of a source disconnected while the run was reading it are
+    // dropped under the lock (see connectorPurge).
+    const inserted = await diffFindings(tenantId, allFindings, now, {
+      keep: (tx) => currentFindingFilter(tx, tenantId, readWith),
+    });
     await sendLeakAlert(tenant, inserted, now);
 
     // --- Snapshot + tenant capabilities ------------------------------------
+    // Both derive from the Microsoft read: written under the lock and only
+    // while Microsoft is still connected as read.
     const totalMonthlySpendCents = inventory.reduce(
       (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
       0,
     );
-    const openRows = await db.query.findings.findMany({
-      where: and(
-        eq(findings.tenantId, tenantId),
-        inArray(findings.status, ["open", "acknowledged"]),
-      ),
-    });
-    const totalMonthlyWasteCents = openRows.reduce(
-      (sum, f) => sum + f.monthlyImpactCents,
-      0,
-    );
+    await withSourceLock(tenantId, async (tx) => {
+      if (
+        !microsoftCurrent ||
+        (await readSourceTokens(tx, tenantId)).microsoft !== readWith.microsoft
+      )
+        return;
+      const openRows = await tx.query.findings.findMany({
+        where: and(
+          eq(findings.tenantId, tenantId),
+          inArray(findings.status, ["open", "acknowledged"]),
+        ),
+      });
+      const totalMonthlyWasteCents = openRows.reduce(
+        (sum, f) => sum + f.monthlyImpactCents,
+        0,
+      );
 
-    const day = now.toISOString().slice(0, 10);
-    const purchasedSeats = purchasedSeatsOf(inventory);
-    await db
-      .insert(snapshots)
-      .values({
-        tenantId,
-        day,
-        totalMonthlySpendCents,
-        totalMonthlyWasteCents,
-        purchasedSeats,
-        assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
-        bySku: bySkuOf(inventory),
-      })
-      .onConflictDoUpdate({
-        target: [snapshots.tenantId, snapshots.day],
-        set: {
+      const day = now.toISOString().slice(0, 10);
+      const purchasedSeats = purchasedSeatsOf(inventory);
+      await tx
+        .insert(snapshots)
+        .values({
+          tenantId,
+          day,
           totalMonthlySpendCents,
           totalMonthlyWasteCents,
           purchasedSeats,
           assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
           bySku: bySkuOf(inventory),
-        },
-      });
-
-    // Directory capabilities describe the Microsoft connection; a workspace
-    // without one keeps its stored values untouched.
-    if (client) {
-      await db
-        .update(tenants)
-        .set({
-          hasP1,
-          concealedNames: concealmentSetting ?? joined.concealed,
-          activitySignal: joined.activitySignal,
-          copilotSignal: joined.copilotSignal,
-          usageAggregate: joined.usageAggregate ?? null,
-          copilotAggregate: joined.copilotAggregate ?? null,
-          ...(orgName && !tenant.isDemo ? { name: orgName } : {}),
         })
-        .where(eq(tenants.id, tenantId));
-    }
+        .onConflictDoUpdate({
+          target: [snapshots.tenantId, snapshots.day],
+          set: {
+            totalMonthlySpendCents,
+            totalMonthlyWasteCents,
+            purchasedSeats,
+            assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
+            bySku: bySkuOf(inventory),
+          },
+        });
 
-    await purgeDisconnectedSources(tenantId, startedSources);
+      // Directory capabilities describe the Microsoft connection; a workspace
+      // without one keeps its stored values untouched.
+      if (client) {
+        await tx
+          .update(tenants)
+          .set({
+            hasP1,
+            concealedNames: concealmentSetting ?? joined.concealed,
+            activitySignal: joined.activitySignal,
+            copilotSignal: joined.copilotSignal,
+            usageAggregate: joined.usageAggregate ?? null,
+            copilotAggregate: joined.copilotAggregate ?? null,
+            ...(orgName && !tenant.isDemo ? { name: orgName } : {}),
+          })
+          .where(eq(tenants.id, tenantId));
+      }
+    });
 
     const status: SyncRunStatus = steps.some((s) => s.status === "failed")
       ? "partial"
@@ -1202,9 +1250,6 @@ export const runSync = async (
     return { runId, status, steps };
   } catch (err) {
     const message = errText(err);
-    // A failed run may still have written part of a source that was
-    // disconnected meanwhile.
-    await purgeDisconnectedSources(tenantId, startedSources).catch(() => null);
     // App-only auth failure (expired/revoked BYO secret or certificate, or
     // managed re-consent needed): record a clean, non-leaking marker on the
     // connection so the dashboard can prompt a re-enter, without crashing the
@@ -1244,26 +1289,31 @@ export const runSync = async (
  * price book edits so impact figures update without a Graph round trip.
  * Falls back gracefully when the tenant has never synced.
  */
-export const runAnalysis = async (tenantId: string): Promise<void> => {
-  const tenant = await db.query.tenants.findFirst({
+export const runAnalysis = (tenantId: string): Promise<void> =>
+  // Reads and writes under the source lock, so a disconnect is either fully
+  // before this analysis (its rows are gone) or fully after it (it deletes
+  // the findings written here).
+  withSourceLock(tenantId, (tx) => analyzeStored(tx, tenantId));
+
+const analyzeStored = async (tx: Tx, tenantId: string): Promise<void> => {
+  const tenant = await tx.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
   });
   if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
-  const startedSources = await connectedSources(tenant);
 
   const [skuRows, userRows, priceRows, adobeRows, saasSeatRows] =
     await Promise.all([
-      db.query.tenantSkus.findMany({
+      tx.query.tenantSkus.findMany({
         where: eq(tenantSkus.tenantId, tenantId),
       }),
-      db.query.tenantUsers.findMany({
+      tx.query.tenantUsers.findMany({
         where: eq(tenantUsers.tenantId, tenantId),
       }),
-      db.query.priceBook.findMany({ where: eq(priceBook.tenantId, tenantId) }),
-      db.query.adobeUsers.findMany({
+      tx.query.priceBook.findMany({ where: eq(priceBook.tenantId, tenantId) }),
+      tx.query.adobeUsers.findMany({
         where: eq(adobeUsersTable.tenantId, tenantId),
       }),
-      db.query.saasSeats.findMany({
+      tx.query.saasSeats.findMany({
         where: eq(saasSeatsTable.tenantId, tenantId),
       }),
     ]);
@@ -1355,13 +1405,14 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     tenantId,
     newFindings.concat(adobeFindings, saasFindings),
     now,
+    { tx },
   );
 
   const totalMonthlySpendCents = skuRows.reduce(
     (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
     0,
   );
-  const openRows = await db.query.findings.findMany({
+  const openRows = await tx.query.findings.findMany({
     where: and(
       eq(findings.tenantId, tenantId),
       inArray(findings.status, ["open", "acknowledged"]),
@@ -1374,7 +1425,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
   const day = now.toISOString().slice(0, 10);
   const purchasedSeats = purchasedSeatsOf(skuRows);
   const assignedSeats = skuRows.reduce((s, x) => s + x.consumedUnits, 0);
-  await db
+  await tx
     .insert(snapshots)
     .values({
       tenantId,
@@ -1395,9 +1446,6 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
         bySku: bySkuOf(skuRows),
       },
     });
-  // A source disconnected while this analysis read it must not keep the
-  // findings computed from that read.
-  await purgeDisconnectedSources(tenantId, startedSources);
 };
 
 /** A finding row genuinely inserted by diffFindings (first appearance, not a reopen/update). */
@@ -1417,12 +1465,24 @@ export type InsertedFinding = {
  */
 export const diffFindings = async (
   tenantId: string,
-  newFindings: WasteFinding[],
+  computed: WasteFinding[],
   now: Date,
+  {
+    tx: outer,
+    keep,
+  }: {
+    /** Run inside this transaction, which already holds the source lock. */
+    tx?: Tx;
+    /** Under the lock: which computed findings may still be written. */
+    keep?: (tx: Tx) => Promise<(f: WasteFinding) => boolean>;
+  } = {},
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
-  // (some inserted/reopened, others never resolved) for the tenant.
-  return db.transaction(async (tx) => {
+  // (some inserted/reopened, others never resolved) for the tenant. It holds
+  // the source lock, so findings of a disconnected source are not written
+  // back (see connectorPurge).
+  const run = async (tx: Tx): Promise<InsertedFinding[]> => {
+    const newFindings = keep ? computed.filter(await keep(tx)) : computed;
     const existing = await tx.query.findings.findMany({
       where: eq(findings.tenantId, tenantId),
     });
@@ -1505,7 +1565,8 @@ export const diffFindings = async (
     }
 
     return inserted;
-  });
+  };
+  return outer ? run(outer) : withSourceLock(tenantId, run);
 };
 
 /**

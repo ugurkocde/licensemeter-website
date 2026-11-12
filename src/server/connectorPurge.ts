@@ -16,35 +16,124 @@ import {
   tenantSkus,
   tenantUsers,
 } from "~/server/db/schema";
-import type { SaasProvider } from "~/server/types";
+import type { SaasProvider, WasteRuleId } from "~/server/types";
 
 /**
- * What disconnecting one connector removes, in one place, so the disconnect
- * actions and the sync use the same definition:
+ * Disconnecting a connector leaves nothing of it behind.
+ *
+ * What a disconnect removes is defined once, per source:
  * - Microsoft: the connection, the metering connection, the synced users,
- *   licenses and history snapshots, and the findings of the Microsoft rules.
- *   Customer-entered prices stay.
+ *   licenses and history snapshots, the usage signals and aggregates stored on
+ *   the workspace, and the findings of the Microsoft rules. Customer-entered
+ *   prices stay.
  * - Adobe: the connection, the synced users and the Adobe findings.
  * - A SaaS provider: the connection, its seats and daily spend, and the
  *   findings raised from its seats.
  *
- * A sync reads its credentials when it starts, so a disconnect during a sync
- * could otherwise be followed by the sync writing what it already read. The
- * sync therefore calls purgeDisconnectedSources when it finishes: any source
- * it started with that is no longer connected is purged again, after the
- * sync's own writes, so nothing it wrote survives.
+ * A sync reads a source over minutes and writes afterwards, and an analysis
+ * reads stored rows and writes findings. Both could otherwise write data of a
+ * source that was disconnected in between. So every disconnect, every write of
+ * synced source data and every analysis runs in a transaction that holds a
+ * per-workspace advisory lock, and a sync writes a source's data only if the
+ * source is still connected with the same identity it read from (its token).
+ * Under the lock these steps are serialised: a write either lands before the
+ * disconnect, which then deletes it, or after it, when the token no longer
+ * matches and the write is dropped.
  */
 
-const ADOBE_RULES = ALL_RULES.filter((rule) => rule.startsWith("adobe_"));
-const SAAS_RULES = ALL_RULES.filter((rule) => rule.startsWith("saas_"));
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Queryable = typeof db | Tx;
 
-export const purgeMicrosoftSource = async (tenantId: string): Promise<void> => {
-  // Release the tid binding first: the managed fallback in resolveMsCredential
-  // would otherwise silently re-enable sync on a partial delete.
-  await db.transaction(async (tx) => {
+/** Takes the workspace's source lock for the rest of the transaction. */
+export const lockSources = async (tx: Tx, tenantId: string): Promise<void> => {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtext(${`licensemeter:sources:${tenantId}`}))`,
+  );
+};
+
+/** Runs fn in a transaction that holds the workspace's source lock. */
+export const withSourceLock = <T>(
+  tenantId: string,
+  fn: (tx: Tx) => Promise<T>,
+): Promise<T> =>
+  db.transaction(async (tx) => {
+    await lockSources(tx, tenantId);
+    return fn(tx);
+  });
+
+/**
+ * The identity of each connected source; null (Microsoft, Adobe) or absent
+ * (SaaS) when it is not connected. A reconnect to another tenant, organisation
+ * or account changes the token.
+ */
+export type SourceTokens = {
+  microsoft: string | null;
+  adobe: string | null;
+  saas: Partial<Record<SaasProvider, string>>;
+};
+
+export const microsoftToken = (
+  tid: string | null,
+  conn: { mode: string; tid: string } | undefined,
+): string | null =>
+  conn ? `${conn.mode}:${conn.tid}` : tid ? `managed:${tid}` : null;
+
+export const adobeToken = (
+  conn: { orgId: string; clientId: string } | undefined,
+): string | null => (conn ? `${conn.orgId}:${conn.clientId}` : null);
+
+export const saasToken = (conn: { orgRef: string }): string => conn.orgRef;
+
+export const readSourceTokens = async (
+  q: Queryable,
+  tenantId: string,
+): Promise<SourceTokens> => {
+  const tenant = await q.query.tenants.findFirst({
+    where: eq(tenants.id, tenantId),
+    columns: { tid: true },
+  });
+  const ms = await q.query.msConnections.findFirst({
+    where: eq(msConnections.tenantId, tenantId),
+    columns: { mode: true, tid: true },
+  });
+  const adobe = await q.query.adobeConnections.findFirst({
+    where: eq(adobeConnections.tenantId, tenantId),
+    columns: { orgId: true, clientId: true },
+  });
+  const saas = await q.query.saasConnections.findMany({
+    where: eq(saasConnections.tenantId, tenantId),
+    columns: { provider: true, orgRef: true },
+  });
+  return {
+    microsoft: microsoftToken(tenant?.tid ?? null, ms),
+    adobe: adobeToken(adobe),
+    saas: Object.fromEntries(saas.map((c) => [c.provider, saasToken(c)])),
+  };
+};
+
+export const ADOBE_RULES: WasteRuleId[] = ALL_RULES.filter((rule) =>
+  rule.startsWith("adobe_"),
+);
+export const SAAS_RULES: WasteRuleId[] = ALL_RULES.filter((rule) =>
+  rule.startsWith("saas_"),
+);
+
+export const purgeMicrosoftSource = (tenantId: string): Promise<void> =>
+  withSourceLock(tenantId, async (tx) => {
+    // Release the tid binding first: the managed fallback in
+    // resolveMsCredential would otherwise silently re-enable sync on a
+    // partial delete. The usage signals and aggregates are Microsoft data
+    // too; left behind, an analysis would raise aggregate findings from them.
     await tx
       .update(tenants)
-      .set({ tid: null, consentedAt: null })
+      .set({
+        tid: null,
+        consentedAt: null,
+        activitySignal: null,
+        copilotSignal: null,
+        usageAggregate: null,
+        copilotAggregate: null,
+      })
       .where(eq(tenants.id, tenantId));
     await tx.delete(msConnections).where(eq(msConnections.tenantId, tenantId));
     await tx
@@ -62,10 +151,9 @@ export const purgeMicrosoftSource = async (tenantId: string): Promise<void> => {
     await tx.delete(tenantSkus).where(eq(tenantSkus.tenantId, tenantId));
     await tx.delete(snapshots).where(eq(snapshots.tenantId, tenantId));
   });
-};
 
-export const purgeAdobeSource = async (tenantId: string): Promise<void> => {
-  await db.transaction(async (tx) => {
+export const purgeAdobeSource = (tenantId: string): Promise<void> =>
+  withSourceLock(tenantId, async (tx) => {
     await tx
       .delete(adobeConnections)
       .where(eq(adobeConnections.tenantId, tenantId));
@@ -79,13 +167,12 @@ export const purgeAdobeSource = async (tenantId: string): Promise<void> => {
         ),
       );
   });
-};
 
-export const purgeSaasSource = async (
+export const purgeSaasSource = (
   tenantId: string,
   provider: SaasProvider,
-): Promise<void> => {
-  await db.transaction(async (tx) => {
+): Promise<void> =>
+  withSourceLock(tenantId, async (tx) => {
     await tx
       .delete(saasConnections)
       .where(
@@ -122,83 +209,41 @@ export const purgeSaasSource = async (
         ),
       );
   });
-};
-
-/** The connected sources a sync started with. */
-export type SyncSources = {
-  microsoft: boolean;
-  adobe: boolean;
-  saas: SaasProvider[];
-};
 
 /**
- * Purges every source the sync started with that has been disconnected since.
- * Sources that were never connected (a CSV import, for example) are not
- * touched, and a source that is still connected keeps its data.
+ * For the end of a sync, under the lock: which of the findings it computed may
+ * still be written, given the tokens each source was read with. A source read
+ * from an import (no connection) keeps its findings only while its imported
+ * seats still exist.
  */
-export const purgeDisconnectedSources = async (
+export const currentFindingFilter = async (
+  tx: Tx,
   tenantId: string,
-  started: SyncSources,
-): Promise<void> => {
-  if (started.microsoft) {
-    const tenant = await db.query.tenants.findFirst({
-      where: eq(tenants.id, tenantId),
-      columns: { tid: true },
-    });
-    const conn = await db.query.msConnections.findFirst({
-      where: eq(msConnections.tenantId, tenantId),
-      columns: { tenantId: true },
-    });
-    if (tenant?.tid === null && !conn) {
-      await purgeMicrosoftSource(tenantId);
+  readWith: SourceTokens,
+): Promise<
+  (f: { rule: WasteRuleId; detail: Record<string, unknown> }) => boolean
+> => {
+  const now = await readSourceTokens(tx, tenantId);
+  const seatProviders = new Set(
+    (
+      await tx
+        .selectDistinct({ provider: saasSeats.provider })
+        .from(saasSeats)
+        .where(eq(saasSeats.tenantId, tenantId))
+    ).map((r) => r.provider),
+  );
+  const microsoftOk = now.microsoft === readWith.microsoft;
+  const adobeOk = now.adobe === readWith.adobe;
+  return (f) => {
+    if (MICROSOFT_RULES.includes(f.rule)) return microsoftOk;
+    if (ADOBE_RULES.includes(f.rule)) return adobeOk;
+    const provider = f.detail.provider as SaasProvider | undefined;
+    if (!provider) return true;
+    const token = readWith.saas[provider];
+    if (token === undefined) {
+      // Imported: no connection then, none now, and the seats still there.
+      return now.saas[provider] === undefined && seatProviders.has(provider);
     }
-  }
-  if (started.adobe) {
-    const conn = await db.query.adobeConnections.findFirst({
-      where: eq(adobeConnections.tenantId, tenantId),
-      columns: { tenantId: true },
-    });
-    if (!conn) await purgeAdobeSource(tenantId);
-  }
-  if (started.saas.length > 0) {
-    const still = await db.query.saasConnections.findMany({
-      where: eq(saasConnections.tenantId, tenantId),
-      columns: { provider: true },
-    });
-    const connected = new Set(still.map((c) => c.provider));
-    for (const provider of started.saas) {
-      if (!connected.has(provider)) await purgeSaasSource(tenantId, provider);
-    }
-  }
-};
-
-/**
- * The sources connected right now. Demo workspaces report none, so their
- * fixture data is never purged.
- */
-export const connectedSources = async (tenant: {
-  id: string;
-  tid: string | null;
-  isDemo: boolean;
-}): Promise<SyncSources> => {
-  if (tenant.isDemo) return { microsoft: false, adobe: false, saas: [] };
-  const [ms, adobe, saas] = await Promise.all([
-    db.query.msConnections.findFirst({
-      where: eq(msConnections.tenantId, tenant.id),
-      columns: { tenantId: true },
-    }),
-    db.query.adobeConnections.findFirst({
-      where: eq(adobeConnections.tenantId, tenant.id),
-      columns: { tenantId: true },
-    }),
-    db.query.saasConnections.findMany({
-      where: eq(saasConnections.tenantId, tenant.id),
-      columns: { provider: true },
-    }),
-  ]);
-  return {
-    microsoft: tenant.tid !== null || ms !== undefined,
-    adobe: adobe !== undefined,
-    saas: saas.map((c) => c.provider),
+    return now.saas[provider] === token;
   };
 };

@@ -5,14 +5,15 @@ import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "~/server/db/schema";
-import type { SaasProvider, WasteRuleId } from "~/server/types";
+import type { WasteRuleId } from "~/server/types";
 
 /**
- * Disconnecting a connector leaves nothing of it behind, even when a sync or
- * an analysis that read the connector before the disconnect writes its
- * results afterwards: purgeDisconnectedSources runs after those writes and
- * removes them again. Sources the run did not start with (a CSV import) and
- * sources that are still connected keep their data.
+ * Disconnecting a connector leaves nothing of it behind: the purges remove a
+ * source's rows and findings, and every later write of that source's data is
+ * checked under the workspace's source lock against the identity the run read
+ * it with, so a sync or analysis that read before the disconnect cannot write
+ * it back. Imported sources and sources that are still connected keep their
+ * data.
  */
 
 let currentDb: ReturnType<typeof makeDb>;
@@ -44,12 +45,17 @@ function makeDb(client: PGlite) {
 }
 
 const {
-  connectedSources,
+  currentFindingFilter,
   purgeAdobeSource,
-  purgeDisconnectedSources,
   purgeMicrosoftSource,
   purgeSaasSource,
+  readSourceTokens,
+  withSourceLock,
 } = await import("~/server/connectorPurge");
+const { diffFindings, runAnalysis } = await import("~/server/sync/runSync");
+
+const tokens = () =>
+  withSourceLock(tenantId, (tx) => readSourceTokens(tx, tenantId));
 
 let tenantId: string;
 
@@ -171,22 +177,24 @@ beforeEach(async () => {
   await writeEverySource();
 });
 
-describe("connectedSources", () => {
-  it("lists the connected sources, not imported ones", async () => {
-    const sources = await connectedSources({
-      id: tenantId,
-      tid: "tid-1",
-      isDemo: false,
-    });
-    expect(sources.microsoft).toBe(true);
-    expect(sources.adobe).toBe(true);
-    expect([...sources.saas].sort()).toEqual(["openai", "zoom"]);
+describe("source tokens", () => {
+  it("name each connected source, not imported ones", async () => {
+    const read = await tokens();
+    expect(read.microsoft).toBe("managed:tid-1");
+    expect(read.adobe).toBe("org:client");
+    expect(read.saas).toEqual({ zoom: "acct", openai: "org" });
   });
 
-  it("reports nothing for a demo workspace", async () => {
-    expect(
-      await connectedSources({ id: tenantId, tid: "tid-1", isDemo: true }),
-    ).toEqual({ microsoft: false, adobe: false, saas: [] });
+  it("change when a source is disconnected or reconnected elsewhere", async () => {
+    await purgeAdobeSource(tenantId);
+    expect((await tokens()).adobe).toBeNull();
+    await currentDb.insert(schema.adobeConnections).values({
+      tenantId,
+      orgId: "other-org",
+      clientId: "client",
+      clientSecretEnc: "enc",
+    });
+    expect((await tokens()).adobe).toBe("other-org:client");
   });
 });
 
@@ -210,7 +218,14 @@ describe("disconnect purges", () => {
     expect(await count(schema.aiSpendDaily)).toBe(0);
   });
 
-  it("removes the Microsoft data and keeps the price book", async () => {
+  it("removes the Microsoft data and signals and keeps the price book", async () => {
+    await currentDb
+      .update(schema.tenants)
+      .set({
+        activitySignal: "none",
+        usageAggregate: { inactiveCount: 7, totalCount: 100 },
+      })
+      .where(eq(schema.tenants.id, tenantId));
     await purgeMicrosoftSource(tenantId);
     expect(await count(schema.tenantUsers)).toBe(0);
     expect(await count(schema.tenantSkus)).toBe(0);
@@ -220,6 +235,8 @@ describe("disconnect purges", () => {
       where: eq(schema.tenants.id, tenantId),
     });
     expect(tenant?.tid).toBeNull();
+    expect(tenant?.usageAggregate).toBeNull();
+    expect(tenant?.activitySignal).toBeNull();
     expect(
       await currentDb
         .select()
@@ -227,53 +244,106 @@ describe("disconnect purges", () => {
         .where(eq(schema.priceBook.tenantId, tenantId)),
     ).toHaveLength(1);
   });
+
+  it("leaves no Microsoft finding behind for the follow-up analysis", async () => {
+    await currentDb
+      .update(schema.tenants)
+      .set({
+        activitySignal: "none",
+        usageAggregate: { inactiveCount: 7, totalCount: 100 },
+      })
+      .where(eq(schema.tenants.id, tenantId));
+    await runAnalysis(tenantId);
+    expect(await rules()).toContain("inactive_90d");
+
+    // The disconnect action purges, then analyses what is left (a SaaS seat).
+    await purgeMicrosoftSource(tenantId);
+    await runAnalysis(tenantId);
+    const left = await rules();
+    expect(
+      left.some((r) => !r.startsWith("saas_") && !r.startsWith("adobe_")),
+    ).toBe(false);
+  });
 });
 
-describe("purgeDisconnectedSources", () => {
-  const started = {
-    microsoft: true,
-    adobe: true,
-    saas: ["zoom", "openai"] as SaasProvider[],
-  };
-
-  it("keeps everything while the sources are still connected", async () => {
-    await purgeDisconnectedSources(tenantId, started);
-    expect(await count(schema.tenantUsers)).toBe(1);
-    expect(await count(schema.adobeUsers)).toBe(1);
-    expect(await seatProviders()).toEqual(["chatgpt", "zoom"]);
-    expect(await rules()).toHaveLength(4);
-  });
-
-  it("removes what a run wrote after the sources were disconnected", async () => {
-    // Disconnect everything while a run is in flight...
+describe("writes of a run that read before a disconnect", () => {
+  it("drop the findings of every source disconnected since", async () => {
+    const readWith = await tokens();
     await purgeMicrosoftSource(tenantId);
     await purgeAdobeSource(tenantId);
     await purgeSaasSource(tenantId, "zoom");
-    await purgeSaasSource(tenantId, "openai");
-    // ...then the run writes what it read before the disconnect.
-    await writeEverySource();
-    expect(await count(schema.adobeUsers)).toBe(1);
 
-    await purgeDisconnectedSources(tenantId, started);
+    // The run now writes the findings it computed from its earlier read.
+    await diffFindings(
+      tenantId,
+      [
+        {
+          dedupeKey: "never_active|g1|sku-1",
+          rule: "never_active",
+          graphUserId: "g1",
+          skuId: "sku-1",
+          title: "t",
+          detail: {},
+          monthlyImpactCents: 0,
+        },
+        {
+          dedupeKey: "adobe_orphaned|ann@example.com|-",
+          rule: "adobe_orphaned",
+          graphUserId: null,
+          skuId: null,
+          title: "t",
+          detail: {},
+          monthlyImpactCents: 0,
+        },
+        {
+          dedupeKey: "saas_orphaned|zoom:ann@example.com|-",
+          rule: "saas_orphaned",
+          graphUserId: null,
+          skuId: null,
+          title: "t",
+          detail: { provider: "zoom" },
+          monthlyImpactCents: 0,
+        },
+        {
+          dedupeKey: "saas_inactive|chatgpt:ann@example.com|-",
+          rule: "saas_inactive",
+          graphUserId: null,
+          skuId: null,
+          title: "t",
+          detail: { provider: "chatgpt" },
+          monthlyImpactCents: 0,
+        },
+      ],
+      new Date(),
+      { keep: (tx) => currentFindingFilter(tx, tenantId, readWith) },
+    );
 
-    expect(await count(schema.tenantUsers)).toBe(0);
-    expect(await count(schema.tenantSkus)).toBe(0);
-    expect(await count(schema.snapshots)).toBe(0);
-    expect(await count(schema.adobeUsers)).toBe(0);
-    expect(await count(schema.aiSpendDaily)).toBe(0);
-    // The imported ChatGPT list was never a connected source and stays.
-    expect(await seatProviders()).toEqual(["chatgpt"]);
+    // Only the imported ChatGPT finding, whose seats still exist, is written.
     expect(await rules()).toEqual(["saas_inactive"]);
   });
 
-  it("leaves sources the run did not start with alone", async () => {
-    await purgeAdobeSource(tenantId);
-    await writeEverySource();
-    await purgeDisconnectedSources(tenantId, {
-      microsoft: false,
-      adobe: false,
-      saas: [],
-    });
-    expect(await count(schema.adobeUsers)).toBe(1);
+  it("keep the findings of sources that are still connected", async () => {
+    const readWith = await tokens();
+    const keep = await withSourceLock(tenantId, (tx) =>
+      currentFindingFilter(tx, tenantId, readWith),
+    );
+    expect(keep({ rule: "never_active", detail: {} })).toBe(true);
+    expect(keep({ rule: "adobe_orphaned", detail: {} })).toBe(true);
+    expect(keep({ rule: "saas_orphaned", detail: { provider: "zoom" } })).toBe(
+      true,
+    );
+  });
+
+  it("drop an imported source's findings once its seats are cleared", async () => {
+    const readWith = await tokens();
+    await currentDb
+      .delete(schema.saasSeats)
+      .where(eq(schema.saasSeats.provider, "chatgpt"));
+    const keep = await withSourceLock(tenantId, (tx) =>
+      currentFindingFilter(tx, tenantId, readWith),
+    );
+    expect(
+      keep({ rule: "saas_inactive", detail: { provider: "chatgpt" } }),
+    ).toBe(false);
   });
 });
