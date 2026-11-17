@@ -5,6 +5,7 @@ const REPORTS = `${LEARN}/microsoft-365/admin/activity-reports/activity-reports`
 const COPILOT = `${LEARN}/microsoft-365/admin/activity-reports/microsoft-365-copilot-usage`;
 const LICENSES = `${LEARN}/microsoft-365/commerce/licenses/subscriptions-and-licenses`;
 const OVERVIEW = `${LEARN}/microsoft-365/admin/admin-overview/admin-center-overview`;
+const COST_MANAGEMENT = `${LEARN}/microsoft-365/copilot/usage-based-billing-overview-copilot-credits`;
 
 /*
  * The admin center belongs in an honest roundup: it is free, included and
@@ -16,7 +17,7 @@ export const m365AdminCenterProduct: Product = {
   name: "Microsoft 365 admin center",
   url: "https://admin.microsoft.com",
   category: "microsoft",
-  checkedOn: "2026-11-06",
+  checkedOn: "2026-11-17",
   headToHead: false,
   comparePath: "/compare/m365-admin-center",
   summary: {
@@ -77,10 +78,10 @@ export const m365AdminCenterProduct: Product = {
     costPerFinding: {
       value: "no",
       note: {
-        en: "Counts only, no cost attached.",
-        de: "Nur Anzahlen, keine Kosten.",
+        en: "Usage reports carry counts only. Copilot > Cost management tracks Copilot Credit spend, but puts no cost on an idle seat.",
+        de: "Nutzungsberichte zeigen nur Anzahlen. Copilot > Kostenverwaltung erfasst Ausgaben in Copilot Credits, beziffert aber keine ungenutzte Lizenz.",
       },
-      source: REPORTS,
+      source: COST_MANAGEMENT,
     },
     customPrices: {
       value: "no",
