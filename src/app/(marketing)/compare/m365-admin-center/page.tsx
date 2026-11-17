@@ -114,9 +114,9 @@ export default function M365AdminCenterComparePage() {
               Watching, not just looking
             </h3>
             <p className="text-ink-soft mt-3 text-sm leading-relaxed">
-              For seats, the admin center answers when asked; it never
-              volunteers. Its spending alerts cover Copilot Credits, not
-              licenses. New leavers keeping seats and new idle licenses bill
+              The admin center does not proactively alert you to idle seats or
+              licenses retained by leavers; its spending alerts cover Copilot
+              Credits. New leavers keeping seats and new idle licenses bill
               quietly between visits. LicenseMeter syncs nightly, keeps findings
               across runs with an acknowledge and reopen workflow, emails a
               weekly digest and delivers a monthly PDF report, so the audit
