@@ -4,7 +4,8 @@ import type { StatusQuoComparison } from "../types";
 /*
  * Admin-center cells are grounded in Microsoft's own documentation
  * (learn.microsoft.com: activity-reports overview, active-users-ww,
- * assign-licenses-to-users, reports-show-anonymous-user-name). LicenseMeter
+ * assign-licenses-to-users, reports-show-anonymous-user-name,
+ * usage-based-billing-overview-copilot-credits). LicenseMeter
  * cells come from ../licensemeter.ts, except where the dimension only exists
  * on this page.
  */
@@ -37,7 +38,7 @@ export const m365AdminCenter: StatusQuoComparison = {
     },
     {
       dimension: "Cost figures",
-      them: "License counts and usage counts, with no cost attached to either. There is no Microsoft API that exposes your negotiated seat prices.",
+      them: "License counts and usage counts, with no cost attached to either. Copilot > Cost management tracks Copilot Credit spend for usage-billed services, but it does not price idle seats, and no Microsoft API exposes your negotiated seat prices.",
       licensemeter: LM.costFigures,
     },
     {
