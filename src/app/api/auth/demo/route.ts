@@ -27,6 +27,7 @@ export const POST = async (req: Request) => {
   // Lead signal for the founder; hourly cooldown so curious clicking
   // doesn't flood the channel.
   void notifyOps("someone opened the demo workspace", {
+    logLevel: "info",
     key: "demo-session",
     cooldownMs: 60 * 60 * 1000,
   });

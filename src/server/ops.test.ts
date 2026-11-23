@@ -122,6 +122,17 @@ describe("notifyOps dedup", () => {
 });
 
 describe("notifyOps delivery", () => {
+  it("logs at info when requested and still sends the alert", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const message = "someone opened the demo workspace";
+
+    await notifyOps(message, { logLevel: "info" });
+
+    expect(info).toHaveBeenCalledExactlyOnceWith(`[ops] ${message}`);
+    expect(console.error).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("hands the delivery to after() inside a request scope", async () => {
     mocks.after.mockImplementationOnce(() => undefined);
     const pending = notifyOps("sync FAILED");
@@ -133,6 +144,7 @@ describe("notifyOps delivery", () => {
 
   it("still delivers when after() is unavailable", async () => {
     await notifyOps("sync FAILED");
+    expect(console.error).toHaveBeenCalledWith("[ops] sync FAILED");
     expect(mocks.after).toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
