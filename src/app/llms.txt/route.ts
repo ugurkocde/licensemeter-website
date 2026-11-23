@@ -5,6 +5,8 @@ import { SITE_DEFINITION } from "~/lib/site";
 import { HEAD_TO_HEAD, ROUNDUPS } from "~/lib/compare/registry";
 
 /* Read the public origin at request time for self-hosted Docker images. */
+export const dynamic = "force-dynamic";
+
 export function GET(): Response {
   const base = publicSiteUrl();
   const body = `# LicenseMeter

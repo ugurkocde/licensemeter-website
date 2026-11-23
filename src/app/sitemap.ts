@@ -52,7 +52,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
   const base = publicSiteUrl();
   return [
-    "/",
+    "",
     "/msp",
     "/pricing",
     "/de/pricing",
@@ -89,7 +89,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: `${base}${path}`,
       ...(lastModified && { lastModified }),
       changeFrequency: LOW_PRIORITY.has(path) ? "yearly" : "weekly",
-      priority: path === "/" ? 1 : LOW_PRIORITY.has(path) ? 0.3 : 0.7,
+      priority: path === "" ? 1 : LOW_PRIORITY.has(path) ? 0.3 : 0.7,
       ...(localized && {
         alternates: {
           languages: {

@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { resolvePublicSiteOrigin } from "~/lib/publicSiteOrigin";
+
 // Sign-in needs nothing here: the session is a signed cookie that the access
 // layer verifies on every protected request, so there is no token to refresh
 // and no header to inject. The middleware only handles the status subdomain.
@@ -18,13 +20,17 @@ export default function middleware(request: NextRequest) {
     !pathname.startsWith("/api") &&
     !pathname.startsWith("/_vercel")
   ) {
-    const apex = process.env.APP_BASE_URL ?? "https://licensemeter.com";
+    const origin = resolvePublicSiteOrigin({
+      PUBLIC_SITE_URL: process.env.PUBLIC_SITE_URL,
+      APP_BASE_URL: process.env.APP_BASE_URL,
+      SELF_HOSTED: process.env.SELF_HOSTED,
+    });
     // Build the target from the configured origin and set the path/search on it
     // rather than resolving the raw path against the base. `new URL("//evil.com",
-    // apex)` would treat a protocol-relative path (or a backslash, which the URL
+    // origin)` would treat a protocol-relative path (or a backslash, which the URL
     // parser normalizes to a slash) as an authority and redirect off-host; the
     // pathname setter always keeps the configured host.
-    const target = new URL(apex);
+    const target = new URL(origin);
     target.pathname = pathname;
     target.search = search;
     return NextResponse.redirect(target, 308);

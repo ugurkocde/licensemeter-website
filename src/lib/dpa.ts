@@ -149,8 +149,19 @@ export type DpaDoc = {
 // retention of person data on resolved findings and of sign-in records.
 export const DPA_VERSION = "2.4";
 export const DPA_EFFECTIVE_ISO = "2026-11-11";
-const EFFECTIVE_EN = "11 November 2026";
-const EFFECTIVE_DE = "11. November 2026";
+const effectiveDate = new Date(DPA_EFFECTIVE_ISO);
+const effectiveDateFormat = {
+  dateStyle: "long",
+  timeZone: "UTC",
+} as const;
+const EFFECTIVE_EN = effectiveDate.toLocaleDateString(
+  "en-GB",
+  effectiveDateFormat,
+);
+const EFFECTIVE_DE = effectiveDate.toLocaleDateString(
+  "de-DE",
+  effectiveDateFormat,
+);
 
 const PROCESSOR_NAME = "Ugurlabs UG (haftungsbeschränkt)";
 const PROCESSOR_REGISTER: Record<DpaLang, string> = {

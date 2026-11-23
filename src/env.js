@@ -1,6 +1,8 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
+import { resolvePublicSiteOrigin } from "./lib/publicSiteOrigin.js";
+
 export const env = createEnv({
   /**
    * Server-side environment variables schema. The app fails the build on invalid env.
@@ -149,7 +151,7 @@ export const env = createEnv({
     RESEND_WEBHOOK_SECRET: z.string().optional(),
 
     /**
-     * Public base URL, used to build the admin-consent redirect URI.
+     * App origin used to build the admin-consent redirect URI.
      * Required on Vercel builds: without it the consent flow would send a
      * relative redirect_uri, which Microsoft rejects.
      */
@@ -157,7 +159,14 @@ export const env = createEnv({
       ? z.string().url()
       : z.string().url().optional(),
     /** Optional public origin for search metadata and discovery files. */
-    PUBLIC_SITE_URL: z.httpUrl().optional(),
+    PUBLIC_SITE_URL: z
+      .string()
+      .url()
+      .regex(
+        /^https?:\/\/[^/?#@\\\s]+\/?$/i,
+        "Must be an HTTP(S) origin without a path, query, fragment, or credentials",
+      )
+      .optional(),
   },
 
   client: {},
@@ -257,11 +266,7 @@ export const marketplaceOfferUrl = () =>
 export const siteUrl = () => env.APP_BASE_URL ?? "http://localhost:3000";
 
 /** Public metadata uses the hosted origin, or the app origin on self-hosts. */
-export const publicSiteUrl = () => {
-  if (env.PUBLIC_SITE_URL) return new URL(env.PUBLIC_SITE_URL).origin;
-  if (env.SELF_HOSTED === "true") return siteUrl().replace(/\/+$/, "");
-  return "https://www.licensemeter.com";
-};
+export const publicSiteUrl = () => resolvePublicSiteOrigin(env);
 
 export const appBaseUrl = () => {
   if (env.APP_BASE_URL) return env.APP_BASE_URL;

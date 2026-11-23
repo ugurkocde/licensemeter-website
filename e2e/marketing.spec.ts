@@ -79,6 +79,14 @@ test("home metadata and conversion labels describe the product consistently", as
     .locator('meta[property="og:url"]')
     .getAttribute("content");
   expect(openGraphUrl).toMatch(/^https?:\/\//);
+  expect(openGraphUrl).not.toMatch(/\/$/);
+  await expect(page.locator('head link[rel="canonical"]')).toHaveAttribute(
+    "href",
+    openGraphUrl!,
+  );
+  expect(await (await page.request.get("/sitemap.xml")).text()).toContain(
+    `<loc>${openGraphUrl}</loc>`,
+  );
 });
 
 test("pricing page renders the three plans and is linked from the header", async ({

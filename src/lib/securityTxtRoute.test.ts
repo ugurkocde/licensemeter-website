@@ -66,7 +66,7 @@ describe("GET /.well-known/security.txt", () => {
     );
     expect(res.status).toBe(308);
     expect(res.headers.get("location")).toBe(
-      "https://licensemeter.com/.well-known/security.txt",
+      "https://www.licensemeter.com/.well-known/security.txt",
     );
   });
 });

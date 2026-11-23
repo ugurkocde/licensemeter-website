@@ -16,6 +16,7 @@ it("uses www for all locations and the corresponding hreflang URLs", async () =>
   const entries = await sitemap();
 
   expect(entries.every(({ url }) => new URL(url).origin === hosted)).toBe(true);
+  expect(entries[0]?.url).toBe(hosted);
   for (const path of ["/pricing", "/compare/cipp"]) {
     const languages = { en: `${hosted}${path}`, de: `${hosted}/de${path}` };
     for (const url of Object.values(languages)) {
