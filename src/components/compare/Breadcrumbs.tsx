@@ -1,4 +1,4 @@
-import { siteUrl } from "~/env";
+import { publicSiteUrl } from "~/env";
 import type { Lang } from "~/lib/compare/types";
 
 import { compareCopy, comparePath } from "./copy";
@@ -13,7 +13,7 @@ export const CompareBreadcrumbs = ({
   name?: string;
   slug?: string;
 }) => {
-  const base = siteUrl();
+  const base = publicSiteUrl();
   const t = compareCopy(lang);
   const items = [
     { name: t.home, item: base },

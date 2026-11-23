@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
-import { siteUrl } from "~/env";
+import { publicSiteUrl } from "~/env";
 import { BLOG_POSTS, formatPostDate, readingMinutes } from "~/lib/blog";
 
 export const metadata: Metadata = {
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/blog" },
 };
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 /* Static breadcrumb and blog entity; "<" escaped so nothing can terminate
  * the script. */

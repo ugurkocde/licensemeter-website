@@ -23,6 +23,9 @@ test("self-hosted image uses runtime configuration and opens the sample tenant",
     "href",
     `http://localhost:${process.env.PLAYWRIGHT_PORT ?? "3100"}`,
   );
+  expect(await (await request.get("/llms.txt")).text()).toContain(
+    `[Home](http://localhost:${process.env.PLAYWRIGHT_PORT ?? "3100"}/)`,
+  );
   await page
     .getByRole("button", { name: "Open the sample tenant" })
     .first()

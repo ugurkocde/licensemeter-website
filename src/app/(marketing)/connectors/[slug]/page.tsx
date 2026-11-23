@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { isDemoMode, signInPath, siteUrl } from "~/env";
+import { isDemoMode, signInPath, publicSiteUrl } from "~/env";
 import { buttonClass, Pill } from "~/components/ui";
 import { CONNECTOR_GUIDES, connectorGuide } from "~/lib/connectorGuides";
 
@@ -26,7 +26,7 @@ export const generateMetadata = async ({
   };
 };
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 export default async function ConnectorGuidePage({
   params,

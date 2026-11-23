@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-import { siteUrl } from "~/env";
+import { publicSiteUrl } from "~/env";
 import { connection } from "next/server";
 
 /*
@@ -37,6 +37,6 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
       { userAgent: "*", allow: "/", disallow },
       ...AI_CRAWLERS.map((userAgent) => ({ userAgent, allow: "/", disallow })),
     ],
-    sitemap: `${siteUrl()}/sitemap.xml`,
+    sitemap: `${publicSiteUrl()}/sitemap.xml`,
   };
 }

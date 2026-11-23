@@ -1,16 +1,12 @@
-import { siteUrl } from "~/env";
+import { publicSiteUrl } from "~/env";
 import { BLOG_POSTS } from "~/lib/blog";
 import { CONNECTOR_GUIDES } from "~/lib/connectorGuides";
 import { SITE_DEFINITION } from "~/lib/site";
 import { HEAD_TO_HEAD, ROUNDUPS } from "~/lib/compare/registry";
 
-/* Curated site map for LLMs (llms.txt convention): a definition, the facts
- * worth citing, and where the details live. Served as a route handler: a
- * public/ file would conflict with App Router metadata routes. */
-export const dynamic = "force-static";
-
+/* Read the public origin at request time for self-hosted Docker images. */
 export function GET(): Response {
-  const base = siteUrl();
+  const base = publicSiteUrl();
   const body = `# LicenseMeter
 
 > ${SITE_DEFINITION}

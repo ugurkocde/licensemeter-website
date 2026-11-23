@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
+import { isDemoMode, signInEnabled, signInPath, publicSiteUrl } from "~/env";
 import { SignInButtons } from "~/components/SignInButtons";
 import {
   DEMO_ANNUAL_WASTE_ROUNDED,
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/sample-report" },
 };
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 /*
  * Every figure on this page comes from DEMO_FIGURES, which

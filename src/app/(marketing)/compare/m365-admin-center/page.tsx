@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
+import { isDemoMode, signInEnabled, signInPath, publicSiteUrl } from "~/env";
 import { SignInButtons } from "~/components/SignInButtons";
 import { ComparisonTable } from "~/components/compare/ComparisonTable";
 import { CorrectionNote } from "~/components/compare/CorrectionNote";
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/compare/m365-admin-center" },
 };
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 /* Static breadcrumb; "<" escaped so nothing can terminate the script. */
 const COMPARE_LD = {

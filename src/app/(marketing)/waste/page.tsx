@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
+import { isDemoMode, signInEnabled, signInPath, publicSiteUrl } from "~/env";
 import { SignInButtons } from "~/components/SignInButtons";
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
 
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/waste" },
 };
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 /* Static breadcrumb; "<" escaped so nothing can terminate the script. */
 const INDEX_LD = {

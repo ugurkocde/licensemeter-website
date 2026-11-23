@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
+import { isDemoMode, signInEnabled, signInPath, publicSiteUrl } from "~/env";
 import { RoiCalculator } from "~/components/RoiCalculator";
 import { SignInButtons } from "~/components/SignInButtons";
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/roi" },
 };
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 /*
  * What typically produces the waste the calculator asks you to assume.

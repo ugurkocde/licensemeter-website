@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { PostBody } from "~/components/blog/PostBody";
-import { siteUrl } from "~/env";
+import { publicSiteUrl } from "~/env";
 import {
   BLOG_POSTS,
   blogPost,
@@ -34,14 +34,16 @@ export const generateMetadata = async ({
       type: "article",
       title: post.title,
       description: post.description,
+      url: `/blog/${post.slug}`,
       publishedTime: post.publishedOn,
+      modifiedTime: post.updatedOn,
       authors: [post.author.url],
     },
     twitter: { title: post.title, description: post.description },
   };
 };
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 export default async function BlogPostPage({
   params,
@@ -66,7 +68,7 @@ export default async function BlogPostPage({
         url,
         mainEntityOfPage: url,
         datePublished: post.publishedOn,
-        dateModified: post.publishedOn,
+        dateModified: post.updatedOn ?? post.publishedOn,
         inLanguage: "en",
         author: {
           "@type": "Person",

@@ -1,11 +1,13 @@
 import type { MetadataRoute } from "next";
 import { connection } from "next/server";
 
-import { siteUrl } from "~/env";
+import { publicSiteUrl } from "~/env";
 import { WASTE_EXPLAINERS } from "~/app/(marketing)/waste/content";
-import { templatedCompareSlugs } from "~/lib/compare/registry";
+import { HEAD_TO_HEAD, ROUNDUPS } from "~/lib/compare/registry";
 import { BLOG_POSTS } from "~/lib/blog";
 import { CONNECTOR_GUIDES } from "~/lib/connectorGuides";
+import { DPA_EFFECTIVE_ISO } from "~/lib/dpa";
+import { SLA_TERMS } from "~/lib/sla";
 
 /** Legal pages: indexable but low priority, they rarely change. */
 const LOW_PRIORITY = new Set([
@@ -17,14 +19,25 @@ const LOW_PRIORITY = new Set([
   "/de/sla",
 ]);
 
-/** Templated compare pages; each has an English and a German edition. */
-const COMPARE_PATHS = [
-  "/compare",
-  ...templatedCompareSlugs().map((slug) => `/compare/${slug}`),
-];
+/** The English paths provide the shared content dates for both editions. */
+const COMPARE_DATES = Object.fromEntries([
+  ...HEAD_TO_HEAD().map((p) => [`/compare/${p.slug}`, p.checkedOn]),
+  ...ROUNDUPS.map((r) => [`/compare/${r.slug}`, r.updated]),
+]) as Record<string, string | undefined>;
+const COMPARE_PATHS = ["/compare", ...Object.keys(COMPARE_DATES)];
+
+const CONTENT_DATES: Record<string, string | undefined> = {
+  ...COMPARE_DATES,
+  ...Object.fromEntries(
+    BLOG_POSTS.map((p) => [`/blog/${p.slug}`, p.updatedOn ?? p.publishedOn]),
+  ),
+  "/dpa": DPA_EFFECTIVE_ISO,
+  "/sla": SLA_TERMS.effectiveIso,
+};
 
 /** Pages with an English and a German edition; both list each other. */
 const LOCALIZED = [
+  "/pricing",
   "/security",
   "/trust-center",
   "/dpa",
@@ -37,9 +50,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     await connection();
     return [];
   }
-  const base = siteUrl();
+  const base = publicSiteUrl();
   return [
-    "",
+    "/",
     "/msp",
     "/pricing",
     "/de/pricing",
@@ -71,10 +84,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ].map((path) => {
     const englishPath = path.startsWith("/de/") ? path.slice(3) : path;
     const localized = LOCALIZED.includes(englishPath);
+    const lastModified = CONTENT_DATES[englishPath];
     return {
       url: `${base}${path}`,
+      ...(lastModified && { lastModified }),
       changeFrequency: LOW_PRIORITY.has(path) ? "yearly" : "weekly",
-      priority: path === "" ? 1 : LOW_PRIORITY.has(path) ? 0.3 : 0.7,
+      priority: path === "/" ? 1 : LOW_PRIORITY.has(path) ? 0.3 : 0.7,
       ...(localized && {
         alternates: {
           languages: {

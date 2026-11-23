@@ -148,6 +148,7 @@ export type DpaDoc = {
 // Annex II states where the per-tenant row policies apply. Annex I states the
 // retention of person data on resolved findings and of sign-in records.
 export const DPA_VERSION = "2.4";
+export const DPA_EFFECTIVE_ISO = "2026-11-11";
 const EFFECTIVE_EN = "11 November 2026";
 const EFFECTIVE_DE = "11. November 2026";
 
