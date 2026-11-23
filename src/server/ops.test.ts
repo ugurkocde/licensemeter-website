@@ -12,11 +12,12 @@ import * as schema from "~/server/db/schema";
  */
 
 let currentDb: ReturnType<typeof drizzle<typeof schema>>;
+let client: PGlite;
 
 const mocks = vi.hoisted(() => ({
   env: {
     NODE_ENV: "test",
-    ALERT_WEBHOOK_URL: "https://hooks.example.test/ops",
+    ALERT_WEBHOOK_URL: undefined as string | undefined,
     ALERT_EMAIL: undefined as string | undefined,
   },
   emailEnabled: vi.fn(() => false),
@@ -56,22 +57,27 @@ const fetchMock = vi.fn((_input: string | URL | Request, _init?: RequestInit) =>
 );
 
 beforeEach(async () => {
-  const client = new PGlite();
+  client = new PGlite();
   const ddl = await generateMigration(
     generateDrizzleJson({}),
     generateDrizzleJson({ opsAlerts: schema.opsAlerts }),
   );
   for (const stmt of ddl) await client.exec(stmt);
   currentDb = drizzle(client, { schema });
-  fetchMock.mockClear();
+  fetchMock.mockReset();
   mocks.after.mockClear();
+  mocks.env.ALERT_WEBHOOK_URL = "https://hooks.example.test/ops";
+  mocks.env.ALERT_EMAIL = undefined;
+  mocks.emailEnabled.mockReset();
+  mocks.sendEmail.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   vi.stubEnv("NODE_ENV", "production");
   vi.stubEnv("VERCEL_ENV", "");
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await client.close();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -186,6 +192,17 @@ describe("daily demo open digest", () => {
       countForDigest: true,
     });
   const digestRow = eq(schema.opsAlerts.key, "daily-digest:demo-session");
+  const readDigest = async () => {
+    const [row] = await currentDb
+      .select()
+      .from(schema.opsAlerts)
+      .where(digestRow);
+    return row;
+  };
+  const useEmail = () => {
+    mocks.env.ALERT_EMAIL = "ops@example.test";
+    mocks.emailEnabled.mockReturnValue(true);
+  };
   const moveClaimBackOneDay = () =>
     currentDb
       .update(schema.opsAlerts)
@@ -200,7 +217,20 @@ describe("daily demo open digest", () => {
       }
     ).text;
 
-  it("counts concurrent opens and lets only one cron invocation claim them", async () => {
+  it("does not deliver or record a digest event without a key", async () => {
+    await notifyOps("someone opened the demo workspace", {
+      countForDigest: true,
+    });
+    expect(console.error).toHaveBeenCalledWith(
+      "[ops] digest event requires a key",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(currentDb.select().from(schema.opsAlerts)).resolves.toEqual(
+      [],
+    );
+  });
+
+  it("counts overlapping demo notifications and sends one digest for repeated cron calls in PGlite", async () => {
     await Promise.all(Array.from({ length: 7 }, recordOpen));
     expect(fetchMock).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith(
@@ -212,10 +242,7 @@ describe("daily demo open digest", () => {
     expect(webhookText(0)).toBe(
       "LicenseMeter: Demo workspace opened 7 times since tracking began",
     );
-    const [row] = await currentDb
-      .select()
-      .from(schema.opsAlerts)
-      .where(digestRow);
+    const row = await readDigest();
     expect(row?.suppressedCount).toBe(0);
     expect(row?.lastSentAt.toISOString()).toMatch(/T05:00:00\.000Z$/);
   });
@@ -235,7 +262,7 @@ describe("daily demo open digest", () => {
     );
   });
 
-  it("preserves an open racing with the digest claim", async () => {
+  it("accounts for an open queued alongside repeated digest calls in PGlite", async () => {
     await recordOpen();
     await Promise.all([
       sendDemoOpenDigest(),
@@ -245,11 +272,147 @@ describe("daily demo open digest", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const sentCount = Number(/opened (\d+)/.exec(webhookText(0))?.[1]);
-    const [row] = await currentDb
-      .select()
-      .from(schema.opsAlerts)
-      .where(digestRow);
+    const row = await readDigest();
     expect(sentCount + row!.suppressedCount).toBe(2);
+  });
+
+  it.each([
+    [
+      "the webhook rejects",
+      () => fetchMock.mockRejectedValueOnce(new Error("offline")),
+    ],
+    [
+      "the webhook returns HTTP 500",
+      () =>
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 500 })),
+    ],
+    [
+      "Resend throws",
+      () => {
+        mocks.env.ALERT_WEBHOOK_URL = undefined;
+        useEmail();
+        mocks.sendEmail.mockRejectedValueOnce(new Error("Resend unavailable"));
+      },
+    ],
+    [
+      "Resend returns false",
+      () => {
+        mocks.env.ALERT_WEBHOOK_URL = undefined;
+        useEmail();
+        mocks.sendEmail.mockResolvedValueOnce(false);
+      },
+    ],
+  ])(
+    "restores the count and prior window when %s",
+    async (_failure, configure) => {
+      await Promise.all([recordOpen(), recordOpen()]);
+      const previousSentAt = new Date("2000-01-01T05:00:00Z");
+      await currentDb
+        .update(schema.opsAlerts)
+        .set({ lastSentAt: previousSentAt })
+        .where(digestRow);
+      configure();
+      await sendDemoOpenDigest();
+
+      expect(console.error).toHaveBeenCalledWith(
+        "[ops] digest delivery failed",
+      );
+      expect(await readDigest()).toMatchObject({
+        suppressedCount: 2,
+        lastSentAt: previousSentAt,
+      });
+      await sendDemoOpenDigest();
+      expect((await readDigest())?.suppressedCount).toBe(0);
+    },
+  );
+
+  it("adds failed delivery counts to opens recorded while it was sending", async () => {
+    await recordOpen();
+    fetchMock.mockImplementationOnce(async () => {
+      await recordOpen();
+      return new Response(null, { status: 500 });
+    });
+    await sendDemoOpenDigest();
+    expect(await readDigest()).toMatchObject({
+      suppressedCount: 2,
+      lastSentAt: new Date(0),
+    });
+  });
+
+  it("restores the count without overwriting a newer window claim", async () => {
+    await recordOpen();
+    const newerWindow = new Date("2100-01-01T05:00:00Z");
+    fetchMock.mockImplementationOnce(async () => {
+      await currentDb
+        .update(schema.opsAlerts)
+        .set({ lastSentAt: newerWindow })
+        .where(digestRow);
+      return new Response(null, { status: 500 });
+    });
+    await sendDemoOpenDigest();
+    expect(await readDigest()).toMatchObject({
+      suppressedCount: 1,
+      lastSentAt: newerWindow,
+    });
+  });
+
+  it("keeps counting without claiming when no alert channels are configured", async () => {
+    mocks.env.ALERT_WEBHOOK_URL = undefined;
+    await recordOpen();
+    await sendDemoOpenDigest();
+    await recordOpen();
+    expect(await readDigest()).toMatchObject({
+      suppressedCount: 2,
+      lastSentAt: new Date(0),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("neither counts nor claims in a preview deployment", async () => {
+    await recordOpen();
+    vi.stubEnv("VERCEL_ENV", "preview");
+    await recordOpen();
+    await sendDemoOpenDigest();
+    expect(await readDigest()).toMatchObject({
+      suppressedCount: 1,
+      lastSentAt: new Date(0),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("delivers through email alone with a digest subject and body", async () => {
+    mocks.env.ALERT_WEBHOOK_URL = undefined;
+    useEmail();
+    await recordOpen();
+    await currentDb
+      .update(schema.opsAlerts)
+      .set({ lastSentAt: new Date("2000-01-01T05:00:00Z") })
+      .where(digestRow);
+    await recordOpen();
+    await sendDemoOpenDigest();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
+    const { subject, html } = mocks.sendEmail.mock.calls[0]![0];
+    expect(subject).toBe(
+      "LicenseMeter: demo workspace opened 2 times since the last digest",
+    );
+    expect(html).toContain(
+      "Demo workspace opened 2 times since the last digest",
+    );
+    expect(html).not.toContain("Sync failures and crashes");
+    expect((await readDigest())?.suppressedCount).toBe(0);
+  });
+
+  it("keeps the claim when one channel accepts the digest", async () => {
+    useEmail();
+    mocks.sendEmail.mockRejectedValueOnce(new Error("Resend unavailable"));
+    await recordOpen();
+    await sendDemoOpenDigest();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
+    expect((await readDigest())?.suppressedCount).toBe(0);
   });
 
   it("sends nothing on empty days and ignores legacy and other ops keys", async () => {

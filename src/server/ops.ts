@@ -107,49 +107,82 @@ const countDigestEvent = async (key: string): Promise<void> => {
   }
 };
 
+const demoDigestRow = () => eq(opsAlerts.key, digestKey("demo-session"));
+
+const claimDemoOpenDigest = async () => {
+  // Use the scheduled UTC boundary so cron jitter cannot skip a day.
+  const windowStart = sql`date_bin('24 hours', now(), '2000-01-01 05:00:00+00'::timestamptz)`;
+  // Lock the row before reading its count. A concurrent open is either in
+  // this claim or increments the reset counter for the next digest.
+  const pending = db.$with("pending").as(
+    db
+      .select({
+        key: opsAlerts.key,
+        count: opsAlerts.suppressedCount,
+        lastSentAt: opsAlerts.lastSentAt,
+      })
+      .from(opsAlerts)
+      .where(
+        and(
+          demoDigestRow(),
+          gt(opsAlerts.suppressedCount, 0),
+          lt(opsAlerts.lastSentAt, windowStart),
+        ),
+      )
+      .for("update"),
+  );
+  const [claimed] = await db
+    .with(pending)
+    .update(opsAlerts)
+    .set({ lastSentAt: windowStart, suppressedCount: 0 })
+    .from(pending)
+    .where(eq(opsAlerts.key, pending.key))
+    .returning({
+      count: pending.count,
+      previousSentAt: pending.lastSentAt,
+      claimedWindow: opsAlerts.lastSentAt,
+    });
+  return claimed;
+};
+
 export const sendDemoOpenDigest = async (): Promise<void> => {
   if (!isProductionDeployment()) return;
   const channels = alertChannels();
   if (!channels.webhook && !channels.email) return;
 
-  try {
-    // Use the scheduled UTC boundary so cron jitter cannot skip a day.
-    const windowStart = sql`date_bin('24 hours', now(), '2000-01-01 05:00:00+00'::timestamptz)`;
-    // Lock the row before reading its count. A concurrent open is either in
-    // this claim or increments the reset counter for the next digest.
-    const pending = db.$with("pending").as(
-      db
-        .select({
-          key: opsAlerts.key,
-          count: opsAlerts.suppressedCount,
-          lastSentAt: opsAlerts.lastSentAt,
-        })
-        .from(opsAlerts)
-        .where(
-          and(
-            eq(opsAlerts.key, digestKey("demo-session")),
-            gt(opsAlerts.suppressedCount, 0),
-            lt(opsAlerts.lastSentAt, windowStart),
-          ),
-        )
-        .for("update"),
-    );
-    const [claimed] = await db
-      .with(pending)
-      .update(opsAlerts)
-      .set({ lastSentAt: windowStart, suppressedCount: 0 })
-      .from(pending)
-      .where(eq(opsAlerts.key, pending.key))
-      .returning({ count: pending.count, lastSentAt: pending.lastSentAt });
-    if (!claimed) return;
-
-    const { count, lastSentAt } = claimed;
-    const period =
-      lastSentAt.getTime() === 0 ? "tracking began" : "the last digest";
-    const text = `Demo workspace opened ${count} ${count === 1 ? "time" : "times"} since ${period}`;
-    await sendToChannels(text, "", {}, channels);
-  } catch (err) {
+  const claimed = await claimDemoOpenDigest().catch((err: unknown) => {
     console.error("[ops] digest claim failed", err);
+  });
+  if (!claimed) return;
+
+  const { count, previousSentAt, claimedWindow } = claimed;
+  const period =
+    previousSentAt.getTime() === 0 ? "tracking began" : "the last digest";
+  const summary = `opened ${count} ${count === 1 ? "time" : "times"} since ${period}`;
+  const accepted = await sendToChannels(
+    `Demo workspace ${summary}`,
+    "",
+    { subject: `LicenseMeter: demo workspace ${summary}`, digest: true },
+    channels,
+  );
+  if (accepted) return;
+
+  console.error("[ops] digest delivery failed");
+  try {
+    // Add to new opens and leave a newer window claim intact.
+    await db
+      .update(opsAlerts)
+      .set({
+        suppressedCount: sql`${opsAlerts.suppressedCount} + ${count}`,
+        lastSentAt: sql`case
+          when ${opsAlerts.lastSentAt} = ${claimedWindow.toISOString()}::timestamptz
+          then ${previousSentAt.toISOString()}::timestamptz
+          else ${opsAlerts.lastSentAt}
+        end`,
+      })
+      .where(demoDigestRow());
+  } catch (err) {
+    console.error("[ops] digest count restore failed", err);
   }
 };
 
@@ -163,7 +196,11 @@ const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
   // self-hosted installs, where production alerts must flow). Raw
   // process.env: system vars, not in the env schema.
   if (!isProductionDeployment()) return;
-  if (opts.countForDigest && opts.key) return countDigestEvent(opts.key);
+  if (opts.countForDigest) {
+    if (opts.key) return countDigestEvent(opts.key);
+    console.error("[ops] digest event requires a key");
+    return;
+  }
 
   const channels = alertChannels();
   if (!channels.webhook && !channels.email) return;
@@ -212,27 +249,41 @@ const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
 const sendToChannels = async (
   text: string,
   suffix: string,
-  opts: NotifyOptions,
+  opts: Pick<NotifyOptions, "subject" | "detail"> & { digest?: true },
   channels: ReturnType<typeof alertChannels>,
-): Promise<void> => {
+): Promise<boolean> => {
   const message = `${text}${suffix}`;
+  let webhookAccepted = false;
+  let emailAccepted = false;
 
   if (channels.webhook) {
     try {
-      await fetch(env.ALERT_WEBHOOK_URL!, {
+      const response = await fetch(env.ALERT_WEBHOOK_URL!, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: `LicenseMeter: ${message}` }),
         signal: AbortSignal.timeout(5000),
       });
+      webhookAccepted = response.ok;
+      if (opts.digest && !response.ok) {
+        console.error(
+          "[ops] digest delivery failed (webhook)",
+          response.status,
+        );
+      }
     } catch (err) {
-      console.error("[ops] alert webhook failed", err);
+      console.error(
+        opts.digest
+          ? "[ops] digest delivery failed (webhook)"
+          : "[ops] alert webhook failed",
+        err,
+      );
     }
   }
 
   if (channels.email) {
     try {
-      await sendEmail({
+      emailAccepted = await sendEmail({
         to: [env.ALERT_EMAIL!],
         subject: opts.subject ?? `LicenseMeter alert: ${text.slice(0, 80)}`,
         html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1c1a16;max-width:560px">
@@ -240,12 +291,21 @@ const sendToChannels = async (
     opts.detail
       ? `\n  <pre style="font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f4f2ee;padding:12px">${escapeHtml(opts.detail)}</pre>`
       : ""
+  }${
+    opts.digest
+      ? ""
+      : '\n  <p style="font-size:11px;color:#a39d8f">Operational alert from licensemeter.com. Sync failures and crashes are deduplicated per 30-minute window.</p>'
   }
-  <p style="font-size:11px;color:#a39d8f">Operational alert from licensemeter.com. Sync failures and crashes are deduplicated per 30-minute window.</p>
 </div>`,
       });
     } catch (err) {
-      console.error("[ops] alert email failed", err);
+      console.error(
+        opts.digest
+          ? "[ops] digest delivery failed (email)"
+          : "[ops] alert email failed",
+        err,
+      );
     }
   }
+  return webhookAccepted || emailAccepted;
 };
