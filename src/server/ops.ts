@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { after } from "next/server";
 
 import { env } from "~/env";
@@ -38,6 +38,8 @@ export type NotifyOptions = {
   key?: string;
   /** Cooldown window in ms; only meaningful together with key. */
   cooldownMs?: number;
+  /** Count this keyed event for a later digest without notifying immediately. */
+  countForDigest?: boolean;
   /** Longer context (stack excerpt, commit) shown in the email body only. */
   detail?: string;
   /** Email subject override; defaults to "LicenseMeter alert: <text>". */
@@ -75,6 +77,82 @@ export const notifyOps = (
   return delivery;
 };
 
+const isProductionDeployment = () =>
+  process.env.NODE_ENV === "production" &&
+  (!process.env.VERCEL_ENV || process.env.VERCEL_ENV === "production");
+
+const alertChannels = () => ({
+  webhook: Boolean(env.ALERT_WEBHOOK_URL),
+  email: Boolean(env.ALERT_EMAIL) && emailEnabled(),
+});
+
+// Use fresh rows because the old keys counted only suppressed alerts.
+const digestKey = (key: string) => `daily-digest:${key}`;
+
+const countDigestEvent = async (key: string): Promise<void> => {
+  try {
+    await db
+      .insert(opsAlerts)
+      .values({
+        key: digestKey(key),
+        lastSentAt: new Date(0),
+        suppressedCount: 1,
+      })
+      .onConflictDoUpdate({
+        target: opsAlerts.key,
+        set: { suppressedCount: sql`${opsAlerts.suppressedCount} + 1` },
+      });
+  } catch (err) {
+    console.error("[ops] digest count failed", err);
+  }
+};
+
+export const sendDemoOpenDigest = async (): Promise<void> => {
+  if (!isProductionDeployment()) return;
+  const channels = alertChannels();
+  if (!channels.webhook && !channels.email) return;
+
+  try {
+    // Use the scheduled UTC boundary so cron jitter cannot skip a day.
+    const windowStart = sql`date_bin('24 hours', now(), '2000-01-01 05:00:00+00'::timestamptz)`;
+    // Lock the row before reading its count. A concurrent open is either in
+    // this claim or increments the reset counter for the next digest.
+    const pending = db.$with("pending").as(
+      db
+        .select({
+          key: opsAlerts.key,
+          count: opsAlerts.suppressedCount,
+          lastSentAt: opsAlerts.lastSentAt,
+        })
+        .from(opsAlerts)
+        .where(
+          and(
+            eq(opsAlerts.key, digestKey("demo-session")),
+            gt(opsAlerts.suppressedCount, 0),
+            lt(opsAlerts.lastSentAt, windowStart),
+          ),
+        )
+        .for("update"),
+    );
+    const [claimed] = await db
+      .with(pending)
+      .update(opsAlerts)
+      .set({ lastSentAt: windowStart, suppressedCount: 0 })
+      .from(pending)
+      .where(eq(opsAlerts.key, pending.key))
+      .returning({ count: pending.count, lastSentAt: pending.lastSentAt });
+    if (!claimed) return;
+
+    const { count, lastSentAt } = claimed;
+    const period =
+      lastSentAt.getTime() === 0 ? "tracking began" : "the last digest";
+    const text = `Demo workspace opened ${count} ${count === 1 ? "time" : "times"} since ${period}`;
+    await sendToChannels(text, "", {}, channels);
+  } catch (err) {
+    console.error("[ops] digest claim failed", err);
+  }
+};
+
 const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
   console.error(`[ops] ${text}`);
 
@@ -84,12 +162,11 @@ const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
   // VERCEL_ENV system var additionally gates preview deploys (unset on
   // self-hosted installs, where production alerts must flow). Raw
   // process.env: system vars, not in the env schema.
-  if (process.env.NODE_ENV !== "production") return;
-  if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production") return;
+  if (!isProductionDeployment()) return;
+  if (opts.countForDigest && opts.key) return countDigestEvent(opts.key);
 
-  const wantWebhook = Boolean(env.ALERT_WEBHOOK_URL);
-  const wantEmail = Boolean(env.ALERT_EMAIL) && emailEnabled();
-  if (!wantWebhook && !wantEmail) return;
+  const channels = alertChannels();
+  if (!channels.webhook && !channels.email) return;
 
   let suffix = "";
   if (opts.key && opts.cooldownMs) {
@@ -129,9 +206,18 @@ const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
     }
   }
 
+  await sendToChannels(text, suffix, opts, channels);
+};
+
+const sendToChannels = async (
+  text: string,
+  suffix: string,
+  opts: NotifyOptions,
+  channels: ReturnType<typeof alertChannels>,
+): Promise<void> => {
   const message = `${text}${suffix}`;
 
-  if (wantWebhook) {
+  if (channels.webhook) {
     try {
       await fetch(env.ALERT_WEBHOOK_URL!, {
         method: "POST",
@@ -144,7 +230,7 @@ const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
     }
   }
 
-  if (wantEmail) {
+  if (channels.email) {
     try {
       await sendEmail({
         to: [env.ALERT_EMAIL!],

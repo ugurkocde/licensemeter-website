@@ -1,4 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -48,7 +49,7 @@ vi.mock("~/server/email", () => ({
   sendEmail: mocks.sendEmail,
 }));
 
-const { notifyOps } = await import("~/server/ops");
+const { notifyOps, sendDemoOpenDigest } = await import("~/server/ops");
 
 const fetchMock = vi.fn((_input: string | URL | Request, _init?: RequestInit) =>
   Promise.resolve(new Response(null)),
@@ -175,6 +176,111 @@ describe("notifyOps delivery", () => {
       mocks.emailEnabled.mockReturnValue(false);
       mocks.sendEmail.mockClear();
     }
+  });
+});
+
+describe("daily demo open digest", () => {
+  const recordOpen = () =>
+    notifyOps("someone opened the demo workspace", {
+      key: "demo-session",
+      countForDigest: true,
+    });
+  const digestRow = eq(schema.opsAlerts.key, "daily-digest:demo-session");
+  const moveClaimBackOneDay = () =>
+    currentDb
+      .update(schema.opsAlerts)
+      .set({
+        lastSentAt: sql`${schema.opsAlerts.lastSentAt} - interval '24 hours'`,
+      })
+      .where(digestRow);
+  const webhookText = (index: number) =>
+    (
+      JSON.parse(fetchMock.mock.calls[index]![1]?.body as string) as {
+        text: string;
+      }
+    ).text;
+
+  it("counts concurrent opens and lets only one cron invocation claim them", async () => {
+    await Promise.all(Array.from({ length: 7 }, recordOpen));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith(
+      "[ops] someone opened the demo workspace",
+    );
+
+    await Promise.all(Array.from({ length: 5 }, sendDemoOpenDigest));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(webhookText(0)).toBe(
+      "LicenseMeter: Demo workspace opened 7 times since tracking began",
+    );
+    const [row] = await currentDb
+      .select()
+      .from(schema.opsAlerts)
+      .where(digestRow);
+    expect(row?.suppressedCount).toBe(0);
+    expect(row?.lastSentAt.toISOString()).toMatch(/T05:00:00\.000Z$/);
+  });
+
+  it("keeps new opens for the next 24-hour window", async () => {
+    await recordOpen();
+    await sendDemoOpenDigest();
+    await recordOpen();
+    await sendDemoOpenDigest();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await moveClaimBackOneDay();
+    await sendDemoOpenDigest();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(webhookText(1)).toBe(
+      "LicenseMeter: Demo workspace opened 1 time since the last digest",
+    );
+  });
+
+  it("preserves an open racing with the digest claim", async () => {
+    await recordOpen();
+    await Promise.all([
+      sendDemoOpenDigest(),
+      recordOpen(),
+      sendDemoOpenDigest(),
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const sentCount = Number(/opened (\d+)/.exec(webhookText(0))?.[1]);
+    const [row] = await currentDb
+      .select()
+      .from(schema.opsAlerts)
+      .where(digestRow);
+    expect(sentCount + row!.suppressedCount).toBe(2);
+  });
+
+  it("sends nothing on empty days and ignores legacy and other ops keys", async () => {
+    await notifyOps("legacy demo alert", {
+      key: "demo-session",
+      cooldownMs: 60_000,
+    });
+    await notifyOps("legacy demo alert", {
+      key: "demo-session",
+      cooldownMs: 60_000,
+    });
+    await sendDemoOpenDigest();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await recordOpen();
+    await notifyOps("sync FAILED", { key: "sync:t1", cooldownMs: 60_000 });
+    await notifyOps("sync FAILED", { key: "sync:t1", cooldownMs: 60_000 });
+    await sendDemoOpenDigest();
+    expect(webhookText(1)).toBe("LicenseMeter: sync FAILED");
+    expect(webhookText(2)).toBe(
+      "LicenseMeter: Demo workspace opened 1 time since tracking began",
+    );
+
+    await moveClaimBackOneDay();
+    await sendDemoOpenDigest();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [sync] = await currentDb
+      .select()
+      .from(schema.opsAlerts)
+      .where(eq(schema.opsAlerts.key, "sync:t1"));
+    expect(sync?.suppressedCount).toBe(1);
   });
 });
 

@@ -24,11 +24,10 @@ export const POST = async (req: Request) => {
   if (!(await rateLimitDurable(`demo:${ip}`, 20, 60 * 60 * 1000, "deny"))) {
     return NextResponse.json({ error: "rate limited" }, { status: 429 });
   }
-  // Lead signal for the founder; hourly cooldown so curious clicking
-  // doesn't flood the channel.
+  // Count this open for the daily ops digest.
   void notifyOps("someone opened the demo workspace", {
     key: "demo-session",
-    cooldownMs: 60 * 60 * 1000,
+    countForDigest: true,
   });
 
   const token = await createSessionToken({
