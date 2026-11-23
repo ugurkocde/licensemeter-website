@@ -80,7 +80,7 @@ test("home metadata and conversion labels describe the product consistently", as
     .getAttribute("content");
   expect(openGraphUrl).toMatch(/^https?:\/\//);
   expect(openGraphUrl).not.toMatch(/\/$/);
-  await expect(page.locator('head link[rel="canonical"]')).toHaveAttribute(
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     "href",
     openGraphUrl!,
   );
