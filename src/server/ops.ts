@@ -78,7 +78,9 @@ export const notifyOps = (
 };
 
 const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
-  console[opts.logLevel ?? "error"](`[ops] ${text}`);
+  // Fail closed: anything other than an explicit "info" logs at error level.
+  if (opts.logLevel === "info") console.info(`[ops] ${text}`);
+  else console.error(`[ops] ${text}`);
 
   // Webhook/email fire only from production deployments. Local dev and
   // preview deploys share the same .env credentials, and a crash on a dev
