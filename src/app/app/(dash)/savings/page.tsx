@@ -184,7 +184,8 @@ export default async function SavingsPage() {
 
       <Card title="No longer flagged">
         <p className="text-ink-soft mb-3 text-xs">
-          Findings resolved for other reasons in the last 24 months.
+          Findings resolved without a recorded savings credit in the last 24
+          months.
         </p>
         {ledger.noLongerFlagged.length ? (
           <dl className="divide-line divide-y">
@@ -200,7 +201,7 @@ export default async function SavingsPage() {
           </dl>
         ) : (
           <p className="text-ink-soft text-sm">
-            No other resolutions recorded.
+            No resolutions without a savings credit.
           </p>
         )}
       </Card>

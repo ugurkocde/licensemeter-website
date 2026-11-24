@@ -176,6 +176,7 @@ export const bulkSetFindingStatus = async (
       ),
     )
     .returning({ id: findings.id });
+  if (updated.length === 0) return fail("No selected findings can be updated");
   await audit(ctx, "findings_bulk_updated", { count: updated.length, status });
   revalidateApp();
   return ok();
@@ -1188,38 +1189,39 @@ export const setCurrency = async (
   if (!isSupportedCurrency(ctx.tenant.currency)) {
     return fail("The current workspace currency is unsupported");
   }
-  if (currency === ctx.tenant.currency) return ok();
-
-  const running = await db.query.syncRuns.findFirst({
-    where: and(
-      eq(syncRuns.tenantId, ctx.tenant.id),
-      eq(syncRuns.status, "running"),
-    ),
-    columns: { id: true },
-  });
-  if (running) return fail("Wait for the current sync to finish, then retry");
-
+  const from = ctx.tenant.currency;
   let reference;
-  let rate: number;
-  let targetPerEur: number;
-  try {
-    reference = await fetchEcbReferenceRates();
-    rate = rateBetween(reference, ctx.tenant.currency, currency);
-    targetPerEur = rateBetween(reference, "EUR", currency);
-  } catch (error) {
-    console.error("currency change: ECB reference rates unavailable", error);
-    return fail("Exchange rates are temporarily unavailable. Please retry.");
+  let rate = 1;
+  let targetPerEur = 1;
+  if (from !== currency) {
+    const running = await db.query.syncRuns.findFirst({
+      where: and(
+        eq(syncRuns.tenantId, ctx.tenant.id),
+        eq(syncRuns.status, "running"),
+      ),
+      columns: { id: true },
+    });
+    if (running) return fail("Wait for the current sync to finish, then retry");
+
+    try {
+      reference = await fetchEcbReferenceRates();
+      rate = rateBetween(reference, from, currency);
+      targetPerEur = rateBetween(reference, "EUR", currency);
+    } catch (error) {
+      console.error("currency change: ECB reference rates unavailable", error);
+      return fail("Exchange rates are temporarily unavailable. Please retry.");
+    }
   }
 
-  const from = ctx.tenant.currency;
-
   try {
-    await db.transaction(async (tx) => {
-      await tx
-        .select({ id: tenants.id })
+    const result = await db.transaction(async (tx) => {
+      const [lockedTenant] = await tx
+        .select({ currency: tenants.currency })
         .from(tenants)
         .where(eq(tenants.id, ctx.tenant.id))
         .for("update");
+      if (lockedTenant?.currency === currency) return "unchanged";
+      if (lockedTenant?.currency !== from) return "stale";
       const convertedPrice = sql<number>`round(${priceBook.monthlyPriceCents}::numeric * ${rate})::integer`;
       const convertedSavings = sql<number>`round(${savingsLedger.monthlyCents}::numeric * ${rate})::integer`;
       const convertedImpact = sql<number>`round(${findings.monthlyImpactCents}::numeric * ${rate})::integer`;
@@ -1262,7 +1264,11 @@ export const setCurrency = async (
           currencyRatePpm: Math.round(targetPerEur * 1_000_000),
         })
         .where(eq(tenants.id, ctx.tenant.id));
+      return "converted";
     });
+    if (result === "stale")
+      return fail("The workspace currency changed. Refresh and retry.");
+    if (result === "unchanged" || !reference) return ok();
   } catch (error) {
     console.error("currency change: conversion failed", error);
     return fail("Currency conversion failed. No values were changed.");
@@ -1887,7 +1893,10 @@ export const importSeats = async (
     imported: rows.length,
     invalid: parsed.invalid.length,
   });
-  await runAnalysis(ctx.tenant.id, { verifiedSources: new Set([provider]) });
+  await runAnalysis(
+    ctx.tenant.id,
+    parsed.invalid.length === 0 ? { verifiedSources: new Set([provider]) } : {},
+  );
   revalidateApp();
   return { ok: true, imported: rows.length, invalid: parsed.invalid.length };
 };

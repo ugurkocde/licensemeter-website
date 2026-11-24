@@ -38,6 +38,14 @@ export const pseudonymisedDedupeKey = (key: string): string =>
       createHash("sha256").update(key, "utf8").digest("hex")
     : key;
 
+/** A version change makes prior HMACs impossible to match against live seats. */
+export const savingsSubjectVersion = () =>
+  createHash("sha256")
+    .update("savings-ledger-subject-version:")
+    .update(env.AUTH_SECRET ?? "")
+    .digest("hex")
+    .slice(0, 16);
+
 /** Pseudonymous, non-reversible identifier scoped to a workspace and identity type. */
 export const savingsSubjectKey = (
   tenantId: string,
@@ -46,9 +54,10 @@ export const savingsSubjectKey = (
 ): string => {
   const data = JSON.stringify(["savings-ledger", tenantId, scope, identity]);
   const secret = env.AUTH_SECRET;
-  return (secret ? createHmac("sha256", secret) : createHash("sha256"))
+  const digest = (secret ? createHmac("sha256", secret) : createHash("sha256"))
     .update(data, "utf8")
     .digest("hex");
+  return `${savingsSubjectVersion()}:${digest}`;
 };
 
 const hashedKeySql = sql`case when position('@' in ${findings.dedupeKey}) > 0 then '${sql.raw(PSEUDONYMISED_KEY_PREFIX)}' || encode(sha256(convert_to(${findings.dedupeKey}, 'UTF8')), 'hex') else ${findings.dedupeKey} end`;

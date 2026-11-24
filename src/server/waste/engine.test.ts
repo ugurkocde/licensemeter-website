@@ -225,6 +225,37 @@ describe("copilot_unused", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]!.monthlyImpactCents).toBe(5 * 2810);
   });
+
+  it("does not count 40 priced holders again among 40 aggregate inactive seats", () => {
+    const findings = run({
+      copilotSignal: "aggregate",
+      copilotAggregate: { inactiveCount: 40, totalCount: 100 },
+      users: Array.from({ length: 40 }, (_, index) =>
+        user({
+          graphId: `disabled-${index}`,
+          accountEnabled: false,
+          licenses: [lic(COPILOT_SKU_ID)],
+        }),
+      ),
+      skus: [
+        {
+          skuId: COPILOT_SKU_ID,
+          skuPartNumber: "COPILOT",
+          prepaidEnabled: 100,
+          consumedUnits: 100,
+        },
+      ],
+    });
+    expect(
+      findings.filter((row) => row.rule === "disabled_account_with_license"),
+    ).toHaveLength(40);
+    expect(
+      findings.find((row) => row.rule === "copilot_unused")?.monthlyImpactCents,
+    ).toBe(0);
+    expect(findings.reduce((sum, row) => sum + row.monthlyImpactCents, 0)).toBe(
+      40 * 2810,
+    );
+  });
 });
 
 describe("overlapping_licenses", () => {

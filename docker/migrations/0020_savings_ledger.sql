@@ -7,6 +7,7 @@ CREATE TABLE "savings_ledger" (
 	"sku_id" text,
 	"seats" integer NOT NULL,
 	"subject_key" text,
+	"replaces_entry_id" uuid,
 	"reason" text NOT NULL,
 	"monthly_cents" integer NOT NULL,
 	"currency" text NOT NULL,
@@ -22,6 +23,7 @@ CREATE TABLE "savings_ledger" (
 ALTER TABLE "findings" ADD COLUMN "resolution_reason" text;--> statement-breakpoint
 ALTER TABLE "savings_ledger" ADD CONSTRAINT "savings_ledger_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "savings_ledger" ADD CONSTRAINT "savings_ledger_finding_id_findings_id_fk" FOREIGN KEY ("finding_id") REFERENCES "public"."findings"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "savings_ledger" ADD CONSTRAINT "savings_ledger_replaces_entry_id_savings_ledger_id_fk" FOREIGN KEY ("replaces_entry_id") REFERENCES "public"."savings_ledger"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "savings_ledger_tenant_realized_idx" ON "savings_ledger" USING btree ("tenant_id","realized_at");--> statement-breakpoint
 CREATE INDEX "savings_ledger_finding_idx" ON "savings_ledger" USING btree ("finding_id");--> statement-breakpoint
 CREATE INDEX "findings_tenant_resolved_at_idx" ON "findings" USING btree ("tenant_id","resolved_at");--> statement-breakpoint

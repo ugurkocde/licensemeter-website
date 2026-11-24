@@ -43,6 +43,7 @@ type WorkspaceState = {
   verifiedSources?: ReadonlySet<SeatSource>;
   removedSources?: readonly SeatSource[];
   previousInactiveDays?: number;
+  analysisCurrency?: string;
 };
 
 export type ReclaimedSeats = {
@@ -166,7 +167,8 @@ export function resolutionOf(state: WorkspaceState) {
       const stillHeld = matchingSeats.some(
         (row) =>
           isImport ||
-          row.products.some((product) => products.includes(product)),
+          (row.status === "active" &&
+            row.products.some((product) => products.includes(product))),
       );
       if (
         !stillHeld &&
@@ -234,7 +236,8 @@ export function resolutionOf(state: WorkspaceState) {
         }) - (sku ? paidSeatsOf(sku) : 0);
       const seats = Math.min(dropped, paidDrop, previouslyFlagged);
       const unitPrice =
-        typeof d.unitPriceCents === "number" ? d.unitPriceCents : 0;
+        prices[f.skuId] ??
+        (typeof d.unitPriceCents === "number" ? d.unitPriceCents : 0);
       if (verifiedSources?.has(source) && seats > 0 && unitPrice > 0) {
         return {
           reason: "seats_reduced",

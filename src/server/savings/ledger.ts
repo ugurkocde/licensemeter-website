@@ -35,7 +35,7 @@ export async function reverseDisconnectedSavings(
 
 export const DAY_MS = 86_400_000;
 export const RESOLUTION_LABELS: Record<
-  ResolutionReason | "unrecorded",
+  ResolutionReason | "unrecorded" | "no_seat_released",
   string
 > = {
   license_removed: "License removed",
@@ -48,12 +48,31 @@ export const RESOLUTION_LABELS: Record<
   price_changed: "Price changed",
   other: "Other",
   unrecorded: "Reason not recorded",
+  no_seat_released: "No seat released",
 };
 
-function noLongerFlagged(tenantId: string, since: Date, now: Date) {
-  return db
+function noLongerFlagged(
+  tx: Transaction,
+  tenantId: string,
+  since: Date,
+  now: Date,
+) {
+  const reclamation = sql`${findings.resolutionReason} in ('license_removed', 'seats_reduced')`;
+  // Match this resolution event. Historical credits from earlier resolutions
+  // or from a purchase cut while the finding stayed open do not qualify.
+  const credited = sql`exists (
+    select 1 from ${savingsLedger}
+    where ${savingsLedger.tenantId} = ${findings.tenantId}
+      and ${savingsLedger.findingId} = ${findings.id}
+      and ${savingsLedger.realizedAt} = ${findings.resolvedAt}
+      and ${savingsLedger.replacesEntryId} is null
+  )`;
+  return tx
     .select({
-      reason: findings.resolutionReason,
+      reason: sql<ResolutionReason | "no_seat_released" | null>`case
+        when ${reclamation} then 'no_seat_released'
+        else ${findings.resolutionReason}
+      end`,
       count: sql<number>`count(*)::int`,
     })
     .from(findings)
@@ -63,11 +82,16 @@ function noLongerFlagged(tenantId: string, since: Date, now: Date) {
         eq(findings.status, "resolved"),
         gte(findings.resolvedAt, since),
         lte(findings.resolvedAt, now),
-        sql`coalesce(${findings.resolutionReason}, '') not in ('license_removed', 'seats_reduced')`,
+        sql`not (coalesce(${reclamation}, false) and ${credited})`,
       ),
     )
-    .groupBy(findings.resolutionReason);
+    .groupBy(sql`1`);
 }
+
+const ledgerSnapshot = {
+  isolationLevel: "repeatable read",
+  accessMode: "read only",
+} as const;
 
 export async function loadRecentSavings(
   tenantId: string,
@@ -76,24 +100,28 @@ export async function loadRecentSavings(
   days = 30,
 ) {
   const since = new Date(now.getTime() - days * DAY_MS);
-  const [[active], resolved] = await Promise.all([
-    db
-      .select({
-        cents: sql<number>`coalesce(sum(${savingsLedger.monthlyCents}), 0)::float8`,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(savingsLedger)
-      .where(
-        and(
-          eq(savingsLedger.tenantId, tenantId),
-          eq(savingsLedger.currency, currency),
-          gte(savingsLedger.realizedAt, since),
-          lte(savingsLedger.realizedAt, now),
-          isNull(savingsLedger.reversedAt),
-        ),
-      ),
-    noLongerFlagged(tenantId, since, now),
-  ]);
+  const [[active], resolved] = await db.transaction(
+    async (tx) =>
+      [
+        await tx
+          .select({
+            cents: sql<number>`coalesce(sum(${savingsLedger.monthlyCents}), 0)::float8`,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(savingsLedger)
+          .where(
+            and(
+              eq(savingsLedger.tenantId, tenantId),
+              eq(savingsLedger.currency, currency),
+              gte(savingsLedger.realizedAt, since),
+              lte(savingsLedger.realizedAt, now),
+              isNull(savingsLedger.reversedAt),
+            ),
+          ),
+        await noLongerFlagged(tx, tenantId, since, now),
+      ] as const,
+    ledgerSnapshot,
+  );
   return {
     cents: active?.cents ?? 0,
     reclaimed: active?.count ?? 0,
@@ -126,46 +154,54 @@ export async function loadSavingsLedger(
       .slice(0, 7),
   );
   const since = monthStart(now, -23);
-  const start = monthPosition(
-    sql`(${savingsLedger.realizedAt} at time zone 'UTC')`,
-  );
+  // A successor keeps the realization date but accrues from the transaction
+  // that reversed the original. No calendar time is counted in both rows.
+  const accruesAt = sql`case when ${savingsLedger.replacesEntryId} is null
+    then ${savingsLedger.realizedAt} else ${savingsLedger.createdAt} end`;
+  const start = monthPosition(sql`((${accruesAt}) at time zone 'UTC')`);
   const end = monthPosition(
     sql`(least(${savingsLedger.reversedAt}, ${now.toISOString()}::timestamptz) at time zone 'UTC')`,
   );
   const scope = and(
     eq(savingsLedger.tenantId, tenantId),
     eq(savingsLedger.currency, currency),
-    lte(savingsLedger.realizedAt, now),
+    sql`(${accruesAt}) <= ${now.toISOString()}::timestamptz`,
   );
-  const [entries, resolved, [totals]] = await Promise.all([
-    db.query.savingsLedger.findMany({
-      where: and(scope, gte(savingsLedger.realizedAt, since)),
-      columns: {
-        id: true,
-        rule: true,
-        vendor: true,
-        skuId: true,
-        reason: true,
-        monthlyCents: true,
-        currency: true,
-        realizedAt: true,
-        reversedAt: true,
-      },
-      orderBy: [desc(savingsLedger.realizedAt), desc(savingsLedger.id)],
-    }),
-    noLongerFlagged(tenantId, since, now),
-    db
-      .select({
-        runRate: sql<number>`coalesce(sum(${savingsLedger.monthlyCents}) filter (
+  const [entries, resolved, [totals]] = await db.transaction(
+    async (tx) =>
+      [
+        await tx.query.savingsLedger.findMany({
+          where: and(scope, gte(savingsLedger.realizedAt, since)),
+          columns: {
+            id: true,
+            rule: true,
+            vendor: true,
+            skuId: true,
+            reason: true,
+            monthlyCents: true,
+            currency: true,
+            realizedAt: true,
+            reversedAt: true,
+            replacesEntryId: true,
+          },
+          orderBy: [desc(savingsLedger.realizedAt), desc(savingsLedger.id)],
+        }),
+        await noLongerFlagged(tx, tenantId, since, now),
+        await tx
+          .select({
+            runRate: sql<number>`coalesce(sum(${savingsLedger.monthlyCents}) filter (
         where ${savingsLedger.reversedAt} is null or ${savingsLedger.reversedAt} > ${now.toISOString()}::timestamptz
       ), 0)::float8`,
-        cumulative: sql<number>`coalesce(round(sum(${savingsLedger.monthlyCents} * (${end} - ${start}))), 0)::float8`,
-      })
-      .from(savingsLedger)
-      .where(scope),
-  ]);
+            cumulative: sql<number>`coalesce(round(sum(${savingsLedger.monthlyCents} * (${end} - ${start}))), 0)::float8`,
+          })
+          .from(savingsLedger)
+          .where(scope),
+      ] as const,
+    ledgerSnapshot,
+  );
   const buckets = new Map<string, number>();
   for (const entry of entries) {
+    if (entry.replacesEntryId) continue;
     const month = entry.realizedAt.toISOString().slice(0, 7);
     buckets.set(month, (buckets.get(month) ?? 0) + entry.monthlyCents);
   }

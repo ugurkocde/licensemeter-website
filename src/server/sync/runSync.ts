@@ -738,19 +738,17 @@ export const runSync = async (
     const analysisStarted = Date.now();
     const joined = joinSignals({ graphUsers, usageRows, copilotRows, hasP1 });
 
-    const previousSkus = client
-      ? await db.query.tenantSkus.findMany({
-          where: eq(tenantSkus.tenantId, tenantId),
-          columns: {
-            skuId: true,
-            skuPartNumber: true,
-            prepaidEnabled: true,
-            consumedUnits: true,
-            trialUnits: true,
-            nextLifecycleAt: true,
-          },
-        })
-      : [];
+    const previousSkus = await db.query.tenantSkus.findMany({
+      where: eq(tenantSkus.tenantId, tenantId),
+      columns: {
+        skuId: true,
+        skuPartNumber: true,
+        prepaidEnabled: true,
+        consumedUnits: true,
+        trialUnits: true,
+        nextLifecycleAt: true,
+      },
+    });
 
     // A failed subscriptions read keeps the trial seats and renewal dates of
     // the last successful one.
@@ -772,8 +770,9 @@ export const runSync = async (
       graphUsers.length &&
       (skus.length || joined.users.every((user) => user.licenses.length === 0)),
     );
-    // --- Persist phase (upsert + prune; no destructive window) -------------
-    await db.transaction(async (tx) => {
+    // Commit the next seat baseline with the findings and savings it proves.
+    const persistInventory = async (tx: SyncTransaction) => {
+      if (!verifiedMicrosoft) return;
       if (skus.length > 0) {
         for (const batch of chunk(skus, 250)) {
           await tx
@@ -809,22 +808,17 @@ export const runSync = async (
             });
         }
       }
-      if (verifiedMicrosoft) {
-        await tx
-          .delete(tenantSkus)
-          .where(
-            and(
-              eq(tenantSkus.tenantId, tenantId),
-              skus.length > 0
-                ? notInArray(
-                    tenantSkus.skuId,
-                    textSet(skus.map((s) => s.skuId)),
-                  )
-                : undefined,
-            ),
-          );
-      }
-    });
+      await tx
+        .delete(tenantSkus)
+        .where(
+          and(
+            eq(tenantSkus.tenantId, tenantId),
+            skus.length > 0
+              ? notInArray(tenantSkus.skuId, textSet(skus.map((s) => s.skuId)))
+              : undefined,
+          ),
+        );
+    };
 
     for (const batch of chunk(joined.users, 250)) {
       await db
@@ -983,127 +977,133 @@ export const runSync = async (
       });
     }
 
-    // Prefill missing price book rows from the static catalog.
-    const existingPrices = await db.query.priceBook.findMany({
-      where: eq(priceBook.tenantId, tenantId),
-    });
-    const known = new Set(existingPrices.map((p) => p.skuId));
-    // Catalog prices added after a row was prefilled: a row still on the
-    // catalog's old fallback of 0 picks up the new list price. Only rows the
-    // customer never touched (source "default") qualify; any edited price
-    // is "custom" and is never overwritten.
-    const skuIds = new Set(skus.map((s) => s.skuId));
-    for (const p of existingPrices) {
-      if (
-        p.source !== "default" ||
-        p.monthlyPriceCents !== 0 ||
-        !skuIds.has(p.skuId)
-      ) {
-        continue;
-      }
-      const price = skuDefaultPriceCents(p.skuId, tenant.currencyRatePpm);
-      if (price === 0) continue;
-      await db
-        .update(priceBook)
-        .set({ monthlyPriceCents: price, updatedAt: now })
-        .where(
-          and(
-            eq(priceBook.tenantId, tenantId),
-            eq(priceBook.skuId, p.skuId),
-            eq(priceBook.source, "default"),
-            eq(priceBook.monthlyPriceCents, 0),
-          ),
-        );
-    }
-    const missing = skus.filter((s) => !known.has(s.skuId));
-    if (missing.length > 0) {
-      for (const batch of chunk(missing, 250)) {
-        await db.insert(priceBook).values(
-          batch.map((s) => ({
-            tenantId,
-            skuId: s.skuId,
-            monthlyPriceCents: skuDefaultPriceCents(
-              s.skuId,
-              tenant.currencyRatePpm,
+    const prices = await db.transaction(async (tx) => {
+      const locked = await lockAnalysisTenant(tx, tenantId, tenant.currency);
+      if (!locked) throw new Error("Workspace removed during sync");
+
+      // Prefill missing price book rows from the static catalog.
+      const existingPrices = await tx.query.priceBook.findMany({
+        where: eq(priceBook.tenantId, tenantId),
+      });
+      const known = new Set(existingPrices.map((p) => p.skuId));
+      // Catalog prices added after a row was prefilled: a row still on the
+      // catalog's old fallback of 0 picks up the new list price. Only rows the
+      // customer never touched (source "default") qualify; any edited price
+      // is "custom" and is never overwritten.
+      const skuIds = new Set(skus.map((s) => s.skuId));
+      for (const p of existingPrices) {
+        if (
+          p.source !== "default" ||
+          p.monthlyPriceCents !== 0 ||
+          !skuIds.has(p.skuId)
+        ) {
+          continue;
+        }
+        const price = skuDefaultPriceCents(p.skuId, tenant.currencyRatePpm);
+        if (price === 0) continue;
+        await tx
+          .update(priceBook)
+          .set({ monthlyPriceCents: price, updatedAt: now })
+          .where(
+            and(
+              eq(priceBook.tenantId, tenantId),
+              eq(priceBook.skuId, p.skuId),
+              eq(priceBook.source, "default"),
+              eq(priceBook.monthlyPriceCents, 0),
             ),
-            source:
-              tenant.isDemo &&
-              s.skuId === "05e9a617-0261-4cee-bb44-138d3ef5d965"
-                ? ("custom" as const)
-                : ("default" as const),
-          })),
-        );
+          );
       }
-    }
-
-    // Prefill Adobe product prices (demo gets plausible list estimates).
-    const DEMO_ADOBE_PRICES: Record<string, number> = {
-      "Creative Cloud All Apps": 7100,
-      "Acrobat Pro": 2000,
-      Photoshop: 2400,
-    };
-    const adobeProducts = [...new Set(adobeRows.flatMap((u) => u.products))];
-    const missingAdobe = adobeProducts
-      .map(adobePriceKey)
-      .filter((id) => !known.has(id));
-    if (missingAdobe.length > 0) {
-      for (const batch of chunk(missingAdobe, 250)) {
-        await db
-          .insert(priceBook)
-          .values(
-            batch.map((id) => ({
+      const missing = skus.filter((s) => !known.has(s.skuId));
+      if (missing.length > 0) {
+        for (const batch of chunk(missing, 250)) {
+          await tx.insert(priceBook).values(
+            batch.map((s) => ({
               tenantId,
-              skuId: id,
-              monthlyPriceCents: tenant.isDemo
-                ? (DEMO_ADOBE_PRICES[id.slice("adobe:".length)] ?? 0)
-                : 0,
-              source: "default" as const,
+              skuId: s.skuId,
+              monthlyPriceCents: skuDefaultPriceCents(
+                s.skuId,
+                tenant.currencyRatePpm,
+              ),
+              source:
+                tenant.isDemo &&
+                s.skuId === "05e9a617-0261-4cee-bb44-138d3ef5d965"
+                  ? ("custom" as const)
+                  : ("default" as const),
             })),
-          )
-          .onConflictDoNothing();
+          );
+        }
       }
-    }
 
-    // Prefill SaaS connector prices (demo gets plausible list estimates).
-    const missingSaas = [...saasRows.entries()]
-      .flatMap(([provider, seats]) =>
-        [...new Set(seats.flatMap((s) => s.products))].map((p) =>
-          saasPriceKey(provider, p),
-        ),
-      )
-      .filter((id) => !known.has(id));
-    if (missingSaas.length > 0) {
-      for (const batch of chunk(missingSaas, 250)) {
-        await db
-          .insert(priceBook)
-          .values(
-            batch.map((id) => ({
-              tenantId,
-              skuId: id,
-              monthlyPriceCents: tenant.isDemo
-                ? (DEMO_SAAS_PRICES[id] ?? 0)
-                : 0,
-              source: "default" as const,
-            })),
-          )
-          .onConflictDoNothing();
+      // Prefill Adobe product prices (demo gets plausible list estimates).
+      const DEMO_ADOBE_PRICES: Record<string, number> = {
+        "Creative Cloud All Apps": 7100,
+        "Acrobat Pro": 2000,
+        Photoshop: 2400,
+      };
+      const adobeProducts = [...new Set(adobeRows.flatMap((u) => u.products))];
+      const missingAdobe = adobeProducts
+        .map(adobePriceKey)
+        .filter((id) => !known.has(id));
+      if (missingAdobe.length > 0) {
+        for (const batch of chunk(missingAdobe, 250)) {
+          await tx
+            .insert(priceBook)
+            .values(
+              batch.map((id) => ({
+                tenantId,
+                skuId: id,
+                monthlyPriceCents: tenant.isDemo
+                  ? (DEMO_ADOBE_PRICES[id.slice("adobe:".length)] ?? 0)
+                  : 0,
+                source: "default" as const,
+              })),
+            )
+            .onConflictDoNothing();
+        }
       }
-    }
-    const prices = Object.fromEntries(
-      (
-        await db.query.priceBook.findMany({
-          where: eq(priceBook.tenantId, tenantId),
-        })
-      ).map((p) => [p.skuId, p.monthlyPriceCents]),
-    );
 
-    const inventory = skus.map((s) => ({
-      skuId: s.skuId,
-      skuPartNumber: s.skuPartNumber,
-      prepaidEnabled: s.prepaidUnits.enabled,
-      consumedUnits: s.consumedUnits,
-      trialUnits: termsOf(s.skuId).trialUnits,
-    }));
+      // Prefill SaaS connector prices (demo gets plausible list estimates).
+      const missingSaas = [...saasRows.entries()]
+        .flatMap(([provider, seats]) =>
+          [...new Set(seats.flatMap((s) => s.products))].map((p) =>
+            saasPriceKey(provider, p),
+          ),
+        )
+        .filter((id) => !known.has(id));
+      if (missingSaas.length > 0) {
+        for (const batch of chunk(missingSaas, 250)) {
+          await tx
+            .insert(priceBook)
+            .values(
+              batch.map((id) => ({
+                tenantId,
+                skuId: id,
+                monthlyPriceCents: tenant.isDemo
+                  ? (DEMO_SAAS_PRICES[id] ?? 0)
+                  : 0,
+                source: "default" as const,
+              })),
+            )
+            .onConflictDoNothing();
+        }
+      }
+      const rows = await tx.query.priceBook.findMany({
+        where: eq(priceBook.tenantId, tenantId),
+      });
+      return Object.fromEntries(
+        rows.map((p) => [p.skuId, p.monthlyPriceCents]),
+      );
+    });
+
+    const inventory = verifiedMicrosoft
+      ? skus.map((s) => ({
+          skuId: s.skuId,
+          skuPartNumber: s.skuPartNumber,
+          prepaidEnabled: s.prepaidUnits.enabled,
+          consumedUnits: s.consumedUnits,
+          trialUnits: termsOf(s.skuId).trialUnits,
+        }))
+      : previousSkus;
     const newFindings = analyzeWaste({
       users: joined.users,
       skus: inventory,
@@ -1153,13 +1153,6 @@ export const runSync = async (
       adobeFindings,
       saasFindings,
     );
-    record({
-      step: "wasteAnalysis",
-      status: "ok",
-      count: allFindings.length,
-      durationMs: since(analysisStarted),
-    });
-
     const verifiedSources = new Set<SeatSource>(saasPersist);
     if (adobeActive) verifiedSources.add("adobe");
     if (verifiedMicrosoft) verifiedSources.add("microsoft");
@@ -1183,9 +1176,18 @@ export const runSync = async (
         inactiveDays: tenant.inactiveDays,
         exclusions: tenant.findingExclusions,
         verifiedSources,
+        analysisCurrency: tenant.currency,
       },
       !verifiedSources.has("microsoft"),
+      persistInventory,
     );
+
+    record({
+      step: "wasteAnalysis",
+      status: "ok",
+      count: allFindings.length,
+      durationMs: since(analysisStarted),
+    });
 
     await sendLeakAlert(tenant, inserted, now);
 
@@ -1213,7 +1215,7 @@ export const runSync = async (
         totalMonthlySpendCents,
         totalMonthlyWasteCents,
         purchasedSeats,
-        assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
+        assignedSeats: inventory.reduce((s, x) => s + x.consumedUnits, 0),
         bySku: bySkuOf(inventory),
       })
       .onConflictDoUpdate({
@@ -1222,7 +1224,7 @@ export const runSync = async (
           totalMonthlySpendCents,
           totalMonthlyWasteCents,
           purchasedSeats,
-          assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
+          assignedSeats: inventory.reduce((s, x) => s + x.consumedUnits, 0),
           bySku: bySkuOf(inventory),
         },
       });
@@ -1263,6 +1265,19 @@ export const runSync = async (
     }
     return { runId, status, steps };
   } catch (err) {
+    if (err instanceof AnalysisCurrencyChanged) {
+      record({
+        step: "wasteAnalysis",
+        status: "warning",
+        message: err.message,
+      });
+      await log.settled();
+      await db
+        .update(syncRuns)
+        .set({ status: "partial", steps, finishedAt: new Date() })
+        .where(eq(syncRuns.id, runId));
+      return { runId, status: "partial", steps };
+    }
     const message = errText(err);
     // App-only auth failure (expired/revoked BYO secret or certificate, or
     // managed re-consent needed): record a clean, non-leaking marker on the
@@ -1432,6 +1447,7 @@ export const runAnalysis = async (
       now,
       inactiveDays: tenant.inactiveDays,
       exclusions: tenant.findingExclusions,
+      analysisCurrency: tenant.currency,
       ...changes,
     },
   );
@@ -1484,6 +1500,31 @@ export type InsertedFinding = {
   monthlyImpactCents: number;
 };
 
+type SyncTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+class AnalysisCurrencyChanged extends Error {
+  constructor() {
+    super(
+      "The workspace currency changed during analysis. Run sync again to refresh findings.",
+    );
+  }
+}
+
+async function lockAnalysisTenant(
+  tx: SyncTransaction,
+  tenantId: string,
+  expectedCurrency?: string,
+) {
+  const [tenant] = await tx
+    .select({ currency: tenants.currency })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .for("update");
+  if (tenant && expectedCurrency && tenant.currency !== expectedCurrency)
+    throw new AnalysisCurrencyChanged();
+  return tenant;
+}
+
 /**
  * Reconciles the new analysis with stored findings:
  * new keys are inserted as open, reappearing resolved findings reopen,
@@ -1497,15 +1538,17 @@ export const diffFindings = async (
   now: Date,
   state?: Parameters<typeof resolutionOf>[0],
   preserveMicrosoft = false,
+  persistInventory?: (tx: SyncTransaction) => Promise<void>,
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
   // (some inserted/reopened, others never resolved) for the tenant.
   return db.transaction(async (tx) => {
-    const [lockedTenant] = await tx
-      .select({ currency: tenants.currency })
-      .from(tenants)
-      .where(eq(tenants.id, tenantId))
-      .for("update");
+    const lockedTenant = await lockAnalysisTenant(
+      tx,
+      tenantId,
+      state?.analysisCurrency,
+    );
+    if (persistInventory) await persistInventory(tx);
     const classify = state && resolutionOf(state);
     const entries: (typeof savingsLedger.$inferInsert)[] = [];
     const reopened = new Set<string>();
@@ -1570,6 +1613,12 @@ export const diffFindings = async (
         (viaHash && !existingByKey.has(viaHash.dedupeKey)
           ? viaHash
           : undefined);
+      // A purchase cut can reclaim some shelfware while the finding stays
+      // open. Classify against its previous detail before refreshing it.
+      const resolution =
+        f.status !== "resolved" && (!fresh || f.rule === "shelfware")
+          ? classify?.(f)
+          : undefined;
       if (fresh) {
         if (f.status === "resolved") {
           reopened.add(f.id);
@@ -1597,8 +1646,7 @@ export const diffFindings = async (
         f.status !== "resolved" &&
         !(preserveMicrosoft && findingSource(f) === "microsoft")
       ) {
-        const resolution = classify?.(f) ?? { reason: "other" as const };
-        const { reason } = resolution;
+        const reason = resolution?.reason ?? "other";
         await tx
           .update(findings)
           .set({
@@ -1607,51 +1655,48 @@ export const diffFindings = async (
             resolutionReason: reason,
           })
           .where(eq(findings.id, f.id));
-        if ("entries" in resolution && lockedTenant) {
-          const source = findingSource(f);
-          for (const entry of resolution.entries) {
-            if (entry.monthlyCents <= 0) continue;
-            // The ledger stores Microsoft product GUIDs and no imported labels.
-            if (
-              source === "microsoft" &&
-              !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(
-                entry.skuId ?? "",
-              )
-            )
-              continue;
-            entries.push({
-              ...entry,
-              tenantId,
-              findingId: f.id,
-              rule: f.rule,
-              vendor: vendorLabel(source),
-              subjectKey:
-                reason === "license_removed"
-                  ? subjects(f).values().next().value
-                  : null,
-              reason: resolution.reason,
-              currency: lockedTenant.currency,
-              realizedAt: now,
-            });
-          }
-        }
+      }
+      if (!resolution || !("entries" in resolution) || !lockedTenant) continue;
+      const source = findingSource(f);
+      // Keep pseudonymous keys for both the connector account and any known
+      // directory identity so a returned seat can be matched by either.
+      const subjectKeys =
+        resolution.reason === "license_removed" ? [...subjects(f)] : [];
+      if (resolution.reason === "license_removed" && subjectKeys.length === 0)
+        continue;
+      const subjectKey = subjectKeys.length > 0 ? subjectKeys.join(",") : null;
+      for (const entry of resolution.entries) {
+        if (entry.monthlyCents <= 0) continue;
+        // The ledger stores Microsoft product GUIDs and no imported labels.
+        if (
+          source === "microsoft" &&
+          !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(
+            entry.skuId ?? "",
+          )
+        )
+          continue;
+        entries.push({
+          ...entry,
+          tenantId,
+          findingId: f.id,
+          rule: f.rule,
+          vendor: vendorLabel(source),
+          subjectKey,
+          reason: resolution.reason,
+          currency: lockedTenant.currency,
+          realizedAt: now,
+        });
       }
     }
 
-    const active =
-      opened.length ||
-      entries.length ||
-      state?.verifiedSources?.has("microsoft") ||
-      state?.removedSources?.length
-        ? await tx.query.savingsLedger.findMany({
-            where: and(
-              eq(savingsLedger.tenantId, tenantId),
-              isNull(savingsLedger.reversedAt),
-              lte(savingsLedger.realizedAt, now),
-            ),
-            orderBy: [asc(savingsLedger.realizedAt), asc(savingsLedger.id)],
-          })
-        : [];
+    const active = await tx.query.savingsLedger.findMany({
+      where: and(
+        eq(savingsLedger.tenantId, tenantId),
+        isNull(savingsLedger.reversedAt),
+        lte(savingsLedger.realizedAt, now),
+      ),
+      orderBy: [asc(savingsLedger.realizedAt), asc(savingsLedger.id)],
+    });
     const { reversed, additions } = reconcileSavings(
       active,
       entries,
@@ -1660,6 +1705,7 @@ export const diffFindings = async (
       state,
       subjects,
       tenantId,
+      now,
     );
     for (const batch of chunk([...reversed], 250)) {
       await tx

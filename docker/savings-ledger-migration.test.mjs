@@ -12,6 +12,14 @@ test("self-host migration and hosted script can coexist and preserve ledger rete
     "CREATE ROLE licensemeter_app; CREATE ROLE licensemeter_tenant; CREATE ROLE anon; CREATE ROLE authenticated",
   );
   await migrate(drizzle(client), { migrationsFolder: "docker/migrations" });
+  const replacementConstraint =
+    "savings_ledger_replaces_entry_id_savings_ledger_id_fk";
+  const { rows: dockerConstraints } = await client.query(
+    "SELECT conname FROM pg_constraint WHERE conrelid = 'savings_ledger'::regclass",
+  );
+  assert.ok(
+    dockerConstraints.some((row) => row.conname === replacementConstraint),
+  );
   const hosted = await readFile("scripts/db-add-savings-ledger.sql", "utf8");
   const indexAt = hosted.indexOf("CREATE INDEX CONCURRENTLY");
   assert.ok(indexAt > hosted.indexOf("COMMIT;"));
@@ -24,6 +32,8 @@ test("self-host migration and hosted script can coexist and preserve ledger rete
     // Execute separately from the transaction and the validation, as on Postgres.
     await client.exec(hosted.slice(indexAt));
   };
+  // Also upgrade the earlier hosted shape without replacing its table.
+  await client.exec("ALTER TABLE savings_ledger DROP COLUMN replaces_entry_id");
   await client.exec("GRANT SELECT ON savings_ledger TO anon, authenticated");
   await applyHosted();
   for (const role of ["anon", "authenticated"]) {
@@ -47,6 +57,7 @@ test("self-host migration and hosted script can coexist and preserve ledger rete
     "savings_ledger_tenant_id_tenants_id_fk",
     "savings_ledger_finding_id_findings_id_fk",
     "savings_ledger_seats_positive",
+    replacementConstraint,
   ]) {
     assert.equal(
       constraints.find((constraint) => constraint.conname === name)
@@ -66,9 +77,15 @@ test("self-host migration and hosted script can coexist and preserve ledger rete
     )
   ).rows;
   assert.equal(reason, null);
+  const [{ id: original }] = (
+    await client.query(
+      "INSERT INTO savings_ledger (tenant_id, finding_id, rule, vendor, seats, monthly_cents, reason, currency, realized_at) VALUES ($1, $2, 'shelfware', 'Microsoft', 2, 200, 'seats_reduced', 'EUR', now()) RETURNING id",
+      [tenant, finding],
+    )
+  ).rows;
   await client.query(
-    "INSERT INTO savings_ledger (tenant_id, finding_id, rule, vendor, seats, monthly_cents, reason, currency, realized_at) VALUES ($1, $2, 'shelfware', 'Microsoft', 1, 100, 'seats_reduced', 'EUR', now())",
-    [tenant, finding],
+    "INSERT INTO savings_ledger (tenant_id, finding_id, replaces_entry_id, rule, vendor, seats, monthly_cents, reason, currency, realized_at) VALUES ($1, $2, $3, 'shelfware', 'Microsoft', 1, 100, 'seats_reduced', 'EUR', now())",
+    [tenant, finding, original],
   );
   await client.exec("SET ROLE licensemeter_tenant");
   assert.equal(
@@ -78,9 +95,14 @@ test("self-host migration and hosted script can coexist and preserve ledger rete
   await client.query("SELECT set_config('app.tenant_id', $1, false)", [tenant]);
   assert.equal(
     (await client.query("SELECT id FROM savings_ledger")).rows.length,
-    1,
+    2,
   );
   await client.exec("RESET ROLE");
+  await client.query("DELETE FROM savings_ledger WHERE id = $1", [original]);
+  assert.deepEqual(
+    (await client.query("SELECT replaces_entry_id FROM savings_ledger")).rows,
+    [{ replaces_entry_id: null }],
+  );
   await client.query("DELETE FROM findings WHERE id = $1", [finding]);
   assert.equal(
     (await client.query("SELECT finding_id FROM savings_ledger")).rows[0]

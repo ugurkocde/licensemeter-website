@@ -583,7 +583,10 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
         title: `${inactiveCount} of ${totalCount} Copilot seats show no usage`,
         detail: { aggregate: true, inactiveCount, totalCount },
         monthlyImpactCents:
-          Math.min(remaining, inactiveCount) * (prices[COPILOT_SKU_ID] ?? 0),
+          Math.min(
+            remaining,
+            Math.max(0, inactiveCount - copilotAlreadyPriced),
+          ) * (prices[COPILOT_SKU_ID] ?? 0),
       });
     }
   }

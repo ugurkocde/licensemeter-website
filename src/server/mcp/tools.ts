@@ -84,7 +84,7 @@ const getWasteSummary: Tool = {
     name: "get_waste_summary",
     title: "Waste summary",
     description:
-      "Current purchased-seat spend and monthly license waste across providers, with waste by category, open findings, currency and data freshness. Matches the Overview page.",
+      "Current purchased-seat spend and monthly license waste across providers. by_category contains raw finding impact; add cap_adjustment to uncapped_monthly_waste to get monthly_waste. Includes open findings, currency and data freshness.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -129,8 +129,9 @@ const getWasteSummary: Tool = {
       loadLicenseSpend(tenantId),
     ]);
 
+    const uncappedWasteCents = ruleAgg.reduce((sum, r) => sum + r.cents, 0);
     const monthlyWasteCents = comparableWaste(
-      ruleAgg.reduce((sum, r) => sum + r.cents, 0),
+      uncappedWasteCents,
       spend.totalCents,
     );
     const lastSync = isImported
@@ -143,6 +144,8 @@ const getWasteSummary: Tool = {
         currency: ctx.tenant.currency,
         monthly_spend: amount(spend.totalCents),
         monthly_waste: amount(monthlyWasteCents),
+        uncapped_monthly_waste: amount(uncappedWasteCents),
+        cap_adjustment: amount(monthlyWasteCents - uncappedWasteCents),
         annualized_waste: amount(monthlyWasteCents * 12),
         open_findings: ruleAgg.reduce((sum, r) => sum + r.count, 0),
         by_category: [...ruleAgg]

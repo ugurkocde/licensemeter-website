@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -638,6 +639,7 @@ export const savingsLedger = pgTable(
     skuId: text("sku_id"),
     seats: integer("seats").notNull(),
     subjectKey: text("subject_key"),
+    replacesEntryId: uuid("replaces_entry_id"),
     reason: text("reason").$type<SavingsReason>().notNull(),
     monthlyCents: integer("monthly_cents").notNull(),
     currency: text("currency").notNull(),
@@ -648,6 +650,11 @@ export const savingsLedger = pgTable(
       .defaultNow(),
   },
   (t) => [
+    foreignKey({
+      columns: [t.replacesEntryId],
+      foreignColumns: [t.id],
+      name: "savings_ledger_replaces_entry_id_savings_ledger_id_fk",
+    }).onDelete("set null"),
     index("savings_ledger_tenant_realized_idx").on(t.tenantId, t.realizedAt),
     index("savings_ledger_finding_idx").on(t.findingId),
     check("savings_ledger_seats_positive", sql`${t.seats} > 0`),

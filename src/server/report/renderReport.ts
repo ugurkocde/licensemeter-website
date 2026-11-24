@@ -50,10 +50,9 @@ export const renderWasteReportPdf = async (
   ]);
 
   const monthlySpend = spend.totalCents;
-  const monthlyWaste = comparableWaste(
-    open.reduce((sum, f) => sum + f.monthlyImpactCents, 0),
-    monthlySpend,
-  );
+  const uncappedWaste = open.reduce((sum, f) => sum + f.monthlyImpactCents, 0);
+  const monthlyWaste = comparableWaste(uncappedWaste, monthlySpend);
+  const capAdjustment = monthlyWaste - uncappedWaste;
 
   const byRule = new Map<WasteRuleId, { count: number; impact: number }>();
   for (const f of open) {
@@ -81,6 +80,10 @@ export const renderWasteReportPdf = async (
             impact:
               agg.impact > 0 ? `${fmtMoney(agg.impact, currency)}/mo` : "-",
           })),
+        capAdjustment:
+          capAdjustment < 0
+            ? `${fmtMoney(capAdjustment, currency)}/mo`
+            : undefined,
         topFindings: open.slice(0, 12).map((f) => ({
           title: f.title,
           impact:

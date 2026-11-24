@@ -2854,6 +2854,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "replaces_entry_id": {
+          "name": "replaces_entry_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "reason": {
           "name": "reason",
           "type": "text",
@@ -2931,6 +2937,15 @@
         }
       },
       "foreignKeys": {
+        "savings_ledger_replaces_entry_id_savings_ledger_id_fk": {
+          "name": "savings_ledger_replaces_entry_id_savings_ledger_id_fk",
+          "tableFrom": "savings_ledger",
+          "tableTo": "savings_ledger",
+          "columnsFrom": ["replaces_entry_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "savings_ledger_tenant_id_tenants_id_fk": {
           "name": "savings_ledger_tenant_id_tenants_id_fk",
           "tableFrom": "savings_ledger",

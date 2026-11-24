@@ -2,6 +2,8 @@
 -- before deploying the ledger code. The final concurrent index statement
 -- must not be wrapped in a transaction. If the editor batches the script in
 -- one transaction, execute the final statement by itself after the rest.
+-- Subject keys are versioned HMACs. The next reconciliation reverses active
+-- keyed credits from an older AUTH_SECRET because their seats cannot be matched.
 BEGIN;
 CREATE TABLE IF NOT EXISTS public."savings_ledger" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -24,6 +26,8 @@ CREATE TABLE IF NOT EXISTS public."savings_ledger" (
 	CONSTRAINT "savings_ledger_reversal_check" CHECK ("savings_ledger"."reversed_at" >= "savings_ledger"."realized_at")
 );
 
+ALTER TABLE public."savings_ledger" ADD COLUMN IF NOT EXISTS "replaces_entry_id" uuid;
+
 ALTER TABLE "findings" ADD COLUMN IF NOT EXISTS "resolution_reason" text;
 CREATE INDEX IF NOT EXISTS "savings_ledger_tenant_realized_idx" ON "savings_ledger" USING btree ("tenant_id","realized_at");
 CREATE INDEX IF NOT EXISTS "savings_ledger_finding_idx" ON "savings_ledger" USING btree ("finding_id");
@@ -33,6 +37,10 @@ REVOKE ALL ON TABLE public.savings_ledger FROM PUBLIC;
 
 DO $$
 BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.savings_ledger'::regclass AND conname = 'savings_ledger_replaces_entry_id_savings_ledger_id_fk') THEN
+    ALTER TABLE public."savings_ledger" ADD CONSTRAINT "savings_ledger_replaces_entry_id_savings_ledger_id_fk"
+      FOREIGN KEY ("replaces_entry_id") REFERENCES public."savings_ledger"("id") ON DELETE SET NULL;
+  END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
     REVOKE ALL ON TABLE public.savings_ledger FROM anon;
   END IF;

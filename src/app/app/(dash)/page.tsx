@@ -224,10 +224,9 @@ export default async function OverviewPage({
 
   const spendBySku = new Map(spend.rows.map((row) => [row.skuId, row.cents]));
   const monthlySpend = spend.totalCents;
-  const monthlyWaste = comparableWaste(
-    ruleAgg.reduce((sum, r) => sum + r.cents, 0),
-    monthlySpend,
-  );
+  const uncappedWaste = ruleAgg.reduce((sum, r) => sum + r.cents, 0);
+  const monthlyWaste = comparableWaste(uncappedWaste, monthlySpend);
+  const capAdjustment = monthlyWaste - uncappedWaste;
   const wasteShare = monthlySpend > 0 ? (monthlyWaste / monthlySpend) * 100 : 0;
   const confidence = overviewPriceConfidence(
     ctx.entitlement,
@@ -340,6 +339,15 @@ export default async function OverviewPage({
     value: fmtMoney(agg.cents * 12, currency),
     tone: agg.cents > 0 ? "waste" : "ink",
   }));
+  if (capAdjustment < 0) {
+    const label = "Capped at comparable spend";
+    wasteRows.push({ label, value: fmtMoney(capAdjustment, currency) });
+    annualRows.push({
+      label,
+      sub: `${fmtMoney(capAdjustment, currency)}/mo × 12`,
+      value: fmtMoney(capAdjustment * 12, currency),
+    });
+  }
   const findingRows: BreakdownRow[] = ruleEntries.map(([rule, agg]) => ({
     label: ruleLabel(rule),
     sub: agg.cents > 0 ? `${fmtMoney(agg.cents, currency)}/mo` : undefined,

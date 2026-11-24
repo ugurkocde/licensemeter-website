@@ -21,7 +21,7 @@ Select **Save workflow**. The sample workspace shows **Workflow preview** instea
 
 Acknowledge a finding when it has been reviewed and should remain tracked. Reopen it if it needs attention again. Neither action changes anything at the provider.
 
-After an approved provider-side action, run another sync. LicenseMeter automatically resolves a finding when the relevant condition is no longer present. Each resolved finding records why it resolved. Only a removed license or a reduced purchased seat count adds to the **Realized savings (30d)** metric; other reasons show as no longer flagged. Financial savings still depend on the contract and billing cycle.
+After an approved provider-side action, run another sync. LicenseMeter automatically resolves a finding when the relevant condition is no longer present. LicenseMeter records a reason for new automatic resolutions. Older resolutions may show **Reason not recorded**. A verified license removal or purchased-seat reduction adds to **Realized savings (30d)** when it can be credited. Other resolutions appear under **No longer flagged**. Financial savings still depend on the contract and billing cycle.
 
 Before changing Microsoft licenses, identify the affected account and services, check retention and downstream access, and record the current assignments. Reassigning the original license may restore access if a seat remains available, but it does not guarantee recovery of data already deleted under a service's retention rules. Treat exported remediation scripts as a proposal that requires separate review and execution.
 

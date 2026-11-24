@@ -829,3 +829,67 @@ describe("disconnectTenant during a running sync", () => {
     expect(await getRuns()).toHaveLength(0);
   });
 });
+
+it("reverses a returned connector seat without a new finding only after a successful fetch", async () => {
+  await seedTenant({ tid: null, consentedAt: null });
+  await currentDb.insert(schema.saasConnections).values({
+    tenantId: TENANT_ID,
+    provider: "zoom",
+    orgRef: "fixture",
+    secretEnc: "enc",
+  });
+  await currentDb.insert(schema.priceBook).values({
+    tenantId: TENANT_ID,
+    skuId: "zoom:Licensed",
+    monthlyPriceCents: 1500,
+  });
+  const member: SaasSeat = {
+    email: "member@example.test",
+    displayName: null,
+    status: "active",
+    products: ["Licensed"],
+    lastActiveAt: new Date(),
+  };
+  const getSeats = vi
+    .fn<() => Promise<SaasSeat[]>>()
+    .mockResolvedValueOnce([
+      { ...member, lastActiveAt: new Date(Date.now() - 200 * 86_400_000) },
+    ])
+    .mockResolvedValueOnce([])
+    .mockRejectedValueOnce(new Error("fixture fetch failed"))
+    .mockResolvedValueOnce([member]);
+  buildSaasClientMock.mockImplementation(() => Promise.resolve({ getSeats }));
+
+  await runSync(TENANT_ID);
+  await runSync(TENANT_ID);
+  const [original] = await currentDb.query.savingsLedger.findMany();
+  expect(original).toMatchObject({
+    vendor: "Zoom",
+    reason: "license_removed",
+    reversedAt: null,
+  });
+
+  // A cached current seat is insufficient evidence during the failed fetch.
+  await currentDb.insert(schema.saasSeats).values({
+    ...member,
+    provider: "zoom",
+    tenantId: TENANT_ID,
+  });
+  expect((await runSync(TENANT_ID)).steps).toContainEqual(
+    expect.objectContaining({ step: "zoomSeats", status: "warning" }),
+  );
+  expect(await currentDb.query.savingsLedger.findMany()).toEqual([original]);
+  expect(await currentDb.query.findings.findMany()).toEqual([
+    expect.objectContaining({ status: "resolved", rule: "saas_inactive" }),
+  ]);
+
+  expect((await runSync(TENANT_ID)).steps).toContainEqual(
+    expect.objectContaining({ step: "zoomSeats", status: "ok" }),
+  );
+  expect(await currentDb.query.findings.findMany()).toEqual([
+    expect.objectContaining({ status: "resolved", rule: "saas_inactive" }),
+  ]);
+  const entries = await currentDb.query.savingsLedger.findMany();
+  expect(entries.map((entry) => entry.id)).toEqual([original!.id]);
+  expect(entries[0]?.reversedAt).toBeInstanceOf(Date);
+});

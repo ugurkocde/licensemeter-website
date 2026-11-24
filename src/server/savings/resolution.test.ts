@@ -194,3 +194,21 @@ it("finds a renamed CSV seat through the former address of an orphaned finding",
     }),
   ).toEqual({ reason: "activity_resumed" });
 });
+
+it("treats only active Adobe rows as holding the flagged product", () => {
+  const adobeFinding = {
+    ...finding,
+    rule: "adobe_disabled_in_entra" as const,
+    detail: { upn: member.upn, products: ["Product"], adobe: true },
+  };
+  for (const status of ["active", "inactive"]) {
+    const result = classify({
+      adobe: [{ email: member.upn, status, products: ["Product"] }],
+      prices: { "adobe:Product": 200 },
+      verifiedSources: new Set(["adobe"]),
+    })(adobeFinding);
+    expect(result.reason).toBe(
+      status === "active" ? "activity_resumed" : "license_removed",
+    );
+  }
+});
