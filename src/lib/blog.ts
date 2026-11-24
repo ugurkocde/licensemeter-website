@@ -51,6 +51,144 @@ const METERING_DOCS =
 
 export const BLOG_POSTS: BlogPost[] = [
   {
+    slug: "shared-mailbox-license",
+    title: "Does a Microsoft 365 shared mailbox need a license?",
+    description:
+      "Check when a Microsoft 365 shared mailbox needs a license and what to verify in Exchange before removing one or converting a user mailbox.",
+    excerpt:
+      "A Microsoft 365 shared mailbox can store up to 50 GB without a license. It needs a license for storage over 50 GB, archive expansion, Litigation Hold or In-Place Hold, and some advanced features might also require one.",
+    publishedOn: "2026-11-24",
+    author: {
+      name: "Ugur Koc",
+      role: "Maintainer, Microsoft MVP for Intune",
+      url: "https://ugurkoc.de",
+    },
+    tag: "Guide",
+    cta: {
+      title: "Review disabled accounts that still hold licenses",
+      body: "Use the finding to identify accounts for review, then check in Exchange whether the mailbox still needs its license.",
+      primary: {
+        label: "Review the finding",
+        href: "/waste/disabled-accounts-still-licensed",
+      },
+      secondary: {
+        label: "Read the detection rules",
+        href: "https://docs.licensemeter.com/findings/rules/",
+      },
+    },
+    body: [
+      {
+        type: "h2",
+        id: "when-a-license-is-required",
+        text: "When does a shared mailbox need a license?",
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "More than 50 GB." },
+            " Exchange Online Plan 2 raises the mailbox limit to 100 GB.",
+          ],
+          [
+            { strong: "Archive growth or auto-expanding archiving." },
+            " Use Exchange Online Plan 2 or Exchange Online Plan 1 with the Exchange Online Archiving add-on.",
+          ],
+          [
+            { strong: "Litigation Hold or In-Place Hold." },
+            " Use Exchange Online Plan 2 or Exchange Online Plan 1 with the Exchange Online Archiving add-on.",
+          ],
+          [
+            { strong: "Advanced features." },
+            " Microsoft Defender for Office 365, Microsoft Purview eDiscovery (Premium), and retention policies might require licenses.",
+          ],
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "See ",
+          {
+            text: "Microsoft’s shared mailbox licensing guidance",
+            href: "https://learn.microsoft.com/en-us/microsoft-365/admin/email/about-shared-mailboxes?view=o365-worldwide#licensing-and-mailbox-storage-limits",
+          },
+          " for details.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "before-removing-a-license",
+        text: "What to check before removing a license",
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "Mailbox size." },
+            " Check the size in Exchange and confirm the mailbox is below 50 GB. At the storage limit, the mailbox stops sending. It eventually stops receiving too, and senders get a non-delivery report.",
+          ],
+          [
+            { strong: "Holds and archive." },
+            " Check for Litigation Hold, In-Place Hold, and archive settings in Exchange. Confirm whether archive expansion or any retention or other advanced feature still requires the license.",
+          ],
+          [
+            { strong: "Account sign-in." },
+            " Verify that sign-in is blocked for the shared mailbox account and keep it blocked.",
+          ],
+          [
+            { strong: "The associated account." },
+            " Keep the user account when you remove its license. The shared mailbox depends on that account as its anchor.",
+          ],
+        ],
+      },
+      {
+        type: "h2",
+        id: "convert-a-user-mailbox",
+        text: "Convert a user mailbox before removing its license",
+      },
+      {
+        type: "p",
+        text: [
+          "The user mailbox must have a license assigned when you convert it to a shared mailbox. If you already removed the license, reassign it before converting. After conversion, you can remove the license if the mailbox is below 50 GB and none of the licensing requirements above apply. Follow ",
+          {
+            text: "Microsoft’s mailbox conversion steps",
+            href: "https://learn.microsoft.com/en-us/microsoft-365/admin/email/convert-user-mailbox-to-shared-mailbox?view=o365-worldwide",
+          },
+          " to make the change.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "review-licensed-accounts",
+        text: "Review licensed accounts in LicenseMeter",
+      },
+      {
+        type: "p",
+        text: [
+          "LicenseMeter’s ",
+          { strong: "Disabled account still licensed" },
+          " finding lists disabled directory accounts that retain a paid license assignment. A shared mailbox account with blocked sign-in can appear there if it still has a paid license.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "The finding is based on directory and license data. LicenseMeter does not read mailbox content, so check mailbox size, holds, and retention requirements in Exchange before removing a license.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "member-licenses",
+        text: "Do people who use the shared mailbox need their own licenses?",
+      },
+      {
+        type: "p",
+        text: [
+          "Yes. Each member needs their own licensed Exchange Online mailbox. Member access does not require an additional license for the shared mailbox itself.",
+        ],
+      },
+    ],
+  },
+  {
     slug: "software-metering",
     title: "Introducing Software Metering: see which Windows apps get started",
     description:
