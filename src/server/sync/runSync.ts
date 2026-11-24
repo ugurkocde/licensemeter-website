@@ -1,11 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, gte, inArray, lt, notInArray, sql } from "drizzle-orm";
 
-import { db } from "~/server/db";
+import { db, type Db } from "~/server/db";
 import {
   PSEUDONYMISED_KEY_PREFIX,
   pseudonymisedDedupeKey,
 } from "~/server/retention";
-import { isUniqueViolation } from "~/server/db/errors";
 import { OpsSafeError, opsErrorText } from "~/server/opsError";
 import {
   adobeConnections,
@@ -65,6 +65,10 @@ import { optionalStepDeadline } from "~/server/sync/deadline";
 import { errText } from "~/server/sync/errText";
 import { createStepLog, persistRunSteps } from "~/server/sync/stepProgress";
 import { textSet } from "~/server/sync/textSet";
+import {
+  lockTenantForWorkspaceUpdate,
+  WorkspaceUpdateInProgressError,
+} from "~/server/sync/lockTenant";
 import { mergeAdobeUsers, mergeSaasSeats } from "~/server/sync/mergeByEmail";
 import {
   subscriptionTermsBySku,
@@ -134,9 +138,10 @@ const USAGE_REPORT_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 const analyzeWasteWithCoverage = async (
   tenantId: string,
   input: WasteInput,
+  database = db,
 ) => {
   if (input.activitySignal !== "unknown") return analyzeWaste(input);
-  const previous = await db.query.findings.findMany({
+  const previous = await database.query.findings.findMany({
     where: and(
       eq(findings.tenantId, tenantId),
       inArray(findings.rule, INACTIVITY_RULES),
@@ -164,11 +169,13 @@ const MICROSOFT_STEPS = [
   "copilotUsage",
 ] as const satisfies readonly SyncStep["step"][];
 
-export type SyncResult = {
-  runId: string;
-  status: SyncRunStatus;
-  steps: SyncStep[];
-};
+export type SyncResult =
+  | {
+      runId: string;
+      status: SyncRunStatus;
+      steps: SyncStep[];
+    }
+  | { runId: null; status: "running"; steps: [] };
 
 /**
  * Pull daily cost rows for an AI connector and upsert them. The first sync
@@ -303,39 +310,49 @@ export const runSync = async (
   // before the next nightly cron, and keeps the instant-scan poller from showing
   // "syncing" indefinitely after a hard kill.
   const STALE_RUN_MS = 20 * 60 * 1000;
-  await db
-    .update(syncRuns)
-    .set({ status: "failed", error: "stale run", finishedAt: new Date() })
-    .where(
-      and(
-        eq(syncRuns.tenantId, tenantId),
-        eq(syncRuns.status, "running"),
-        lt(syncRuns.startedAt, new Date(Date.now() - STALE_RUN_MS)),
-      ),
-    );
+  const started = await db
+    .transaction(async (tx) => {
+      // A backfill holds this lock until all repairs for this tenant commit.
+      await lockTenantForWorkspaceUpdate(tx, tenantId);
+      await tx
+        .update(syncRuns)
+        .set({ status: "failed", error: "stale run", finishedAt: new Date() })
+        .where(
+          and(
+            eq(syncRuns.tenantId, tenantId),
+            eq(syncRuns.status, "running"),
+            lt(syncRuns.startedAt, new Date(Date.now() - STALE_RUN_MS)),
+          ),
+        );
 
-  // Concurrency lock via the partial unique index: only one running sync per
-  // tenant. A concurrent caller gets the in-flight run back instead of racing.
-  let runId: string;
-  try {
-    const [run] = await db
-      .insert(syncRuns)
-      .values({ tenantId, status: "running" })
-      .returning({ id: syncRuns.id });
-    runId = run!.id;
-  } catch (err) {
-    // Only a unique violation means "lock held"; anything else (connection
-    // loss, FK failure) must surface instead of masquerading as a running sync.
-    if (!isUniqueViolation(err)) throw err;
-    const inFlight = await db.query.syncRuns.findFirst({
-      where: and(
-        eq(syncRuns.tenantId, tenantId),
-        eq(syncRuns.status, "running"),
-      ),
+      // The partial unique index holds the guard for the rest of the sync.
+      const [run] = await tx
+        .insert(syncRuns)
+        .values({ tenantId, status: "running" })
+        .onConflictDoNothing({
+          target: syncRuns.tenantId,
+          where: sql`${syncRuns.status} = 'running'`,
+        })
+        .returning({ id: syncRuns.id });
+      if (run) return { runId: run.id, inFlight: false };
+
+      const inFlight = await tx.query.syncRuns.findFirst({
+        where: and(
+          eq(syncRuns.tenantId, tenantId),
+          eq(syncRuns.status, "running"),
+        ),
+      });
+      if (!inFlight)
+        throw new Error("The concurrent sync already finished. Retry sync.");
+      return { runId: inFlight.id, inFlight: true };
+    })
+    .catch((error: unknown) => {
+      if (error instanceof WorkspaceUpdateInProgressError) return null;
+      throw error;
     });
-    if (!inFlight) throw err;
-    return { runId: inFlight.id, status: "running", steps: [] };
-  }
+  if (!started) return { runId: null, status: "running", steps: [] };
+  const { runId } = started;
+  if (started.inFlight) return { runId, status: "running", steps: [] };
 
   // Each recorded step is also written to the running row, so the status poll
   // can show progress before the run finishes.
@@ -1361,30 +1378,75 @@ export const runSync = async (
   }
 };
 
+type StoredUser = typeof tenantUsers.$inferSelect;
+type StoredFinding = typeof findings.$inferSelect;
+type FindingIdentity = Pick<StoredFinding, "id" | "rule" | "graphUserId">;
+
+export type FindingStatusChange = FindingIdentity & {
+  before: Pick<StoredFinding, "status" | "resolvedAt"> | null;
+  after: Pick<StoredFinding, "status" | "resolvedAt">;
+};
+
+type ActivityReconciliation = {
+  preview: boolean;
+  includes: (finding: Pick<StoredFinding, "rule" | "graphUserId">) => boolean;
+  protects: (finding: StoredFinding) => boolean;
+  changes: FindingStatusChange[];
+};
+
+type ActivityAnalysisOptions = {
+  database: Db;
+  now: Date;
+  users: ReadonlyMap<
+    string,
+    Pick<StoredUser, "lastActivity" | "workloadActivity">
+  >;
+  copilotChanged: ReadonlySet<string>;
+  reconcile: ActivityReconciliation;
+};
+
 /**
  * Re-runs the waste analysis from data already in the database, used after
  * price book edits so impact figures update without a Graph round trip.
  * Falls back gracefully when the tenant has never synced.
  */
-export const runAnalysis = async (tenantId: string): Promise<void> => {
-  const tenant = await db.query.tenants.findFirst({
+export const runAnalysis = async (
+  tenantId: string,
+  activity?: ActivityAnalysisOptions,
+): Promise<void> => {
+  if (activity)
+    return analyzeStoredTenant(tenantId, activity.database, activity);
+  await db.transaction(async (tx) => {
+    await lockTenantForWorkspaceUpdate(tx, tenantId);
+    await analyzeStoredTenant(tenantId, tx);
+  });
+};
+
+async function analyzeStoredTenant(
+  tenantId: string,
+  database: Db,
+  activity?: ActivityAnalysisOptions,
+) {
+  const tenant = await database.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
   });
   if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
 
   const [skuRows, userRows, priceRows, adobeRows, saasSeatRows] =
     await Promise.all([
-      db.query.tenantSkus.findMany({
+      database.query.tenantSkus.findMany({
         where: eq(tenantSkus.tenantId, tenantId),
       }),
-      db.query.tenantUsers.findMany({
+      database.query.tenantUsers.findMany({
         where: eq(tenantUsers.tenantId, tenantId),
       }),
-      db.query.priceBook.findMany({ where: eq(priceBook.tenantId, tenantId) }),
-      db.query.adobeUsers.findMany({
+      database.query.priceBook.findMany({
+        where: eq(priceBook.tenantId, tenantId),
+      }),
+      database.query.adobeUsers.findMany({
         where: eq(adobeUsersTable.tenantId, tenantId),
       }),
-      db.query.saasSeats.findMany({
+      database.query.saasSeats.findMany({
         where: eq(saasSeatsTable.tenantId, tenantId),
       }),
     ]);
@@ -1399,7 +1461,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
   )
     return;
 
-  const now = new Date();
+  const now = activity?.now ?? new Date();
   const prices = Object.fromEntries(
     priceRows.map((p) => [p.skuId, p.monthlyPriceCents]),
   );
@@ -1408,8 +1470,9 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
   const activitySignal =
     tenant.activitySignal ??
     (tenant.hasP1 || tenant.concealedNames === false ? "full" : "none");
-  const newFindings = await analyzeWasteWithCoverage(tenantId, {
-    users: userRows.map((r) => ({
+  const users = userRows.map((row) => {
+    const r = { ...row, ...activity?.users.get(row.graphId) };
+    return {
       graphId: r.graphId,
       upn: r.upn,
       displayName: r.displayName,
@@ -1421,20 +1484,63 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
         ? new Date(r.workloadActivity.copilot)
         : null,
       licenses: r.licenses,
-    })),
+    };
+  });
+  const inputs = {
     skus: skuRows,
     prices,
     now,
-    activitySignal,
-    copilotSignal: tenant.copilotSignal ?? "none",
-    // An outage can leave an aggregate stored even when there are no users.
-    usageAggregate: tenant.usageReportUnavailable
-      ? undefined
-      : (tenant.usageAggregate ?? undefined),
-    copilotAggregate: tenant.copilotAggregate ?? undefined,
     inactiveDays: tenant.inactiveDays,
     exclusions: tenant.findingExclusions,
-  });
+  };
+
+  if (activity) {
+    const evaluated = new Map<string, Set<WasteRuleId>>();
+    const newFindings = analyzeWaste({
+      ...inputs,
+      users: users.filter((user) => activity.users.has(user.graphId)),
+      activitySignal: "full",
+      copilotSignal: "per-user",
+      onActivityEvaluated: (user, rule) => {
+        const graphId = user.graphId.toLowerCase();
+        const hasEvidence =
+          rule === "copilot_unused"
+            ? activity.copilotChanged.has(graphId) &&
+              Number.isFinite(user.copilotLastActivity?.getTime())
+            : Number.isFinite(user.lastActivity?.getTime());
+        if (!hasEvidence) return;
+        const rules = evaluated.get(graphId) ?? new Set<WasteRuleId>();
+        rules.add(rule);
+        evaluated.set(graphId, rules);
+      },
+    });
+    const includes: ActivityReconciliation["includes"] = (finding) =>
+      finding.graphUserId !== null &&
+      evaluated.get(finding.graphUserId.toLowerCase())?.has(finding.rule) ===
+        true &&
+      activity.reconcile.includes(finding);
+    await diffFindings(tenantId, newFindings.filter(includes), now, "full", {
+      database,
+      reconcile: { ...activity.reconcile, includes },
+    });
+    return;
+  }
+
+  const newFindings = await analyzeWasteWithCoverage(
+    tenantId,
+    {
+      ...inputs,
+      users,
+      activitySignal,
+      copilotSignal: tenant.copilotSignal ?? "none",
+      // An outage can leave an aggregate stored even when there are no users.
+      usageAggregate: tenant.usageReportUnavailable
+        ? undefined
+        : (tenant.usageAggregate ?? undefined),
+      copilotAggregate: tenant.copilotAggregate ?? undefined,
+    },
+    database,
+  );
 
   const entraIdentities = directoryIdentitiesOf(userRows);
   const seatExcluded = connectorSeatExclusion(
@@ -1478,13 +1584,14 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     newFindings.concat(adobeFindings, saasFindings),
     now,
     activitySignal,
+    { database },
   );
 
   const totalMonthlySpendCents = skuRows.reduce(
     (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
     0,
   );
-  const openRows = await db.query.findings.findMany({
+  const openRows = await database.query.findings.findMany({
     where: and(
       eq(findings.tenantId, tenantId),
       inArray(findings.status, ["open", "acknowledged"]),
@@ -1497,7 +1604,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
   const day = now.toISOString().slice(0, 10);
   const purchasedSeats = purchasedSeatsOf(skuRows);
   const assignedSeats = skuRows.reduce((s, x) => s + x.consumedUnits, 0);
-  await db
+  await database
     .insert(snapshots)
     .values({
       tenantId,
@@ -1518,7 +1625,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
         bySku: bySkuOf(skuRows),
       },
     });
-};
+}
 
 /** A finding row genuinely inserted by diffFindings (first appearance, not a reopen/update). */
 export type InsertedFinding = {
@@ -1540,10 +1647,12 @@ export const diffFindings = async (
   newFindings: WasteFinding[],
   now: Date,
   activitySignal?: ActivitySignal,
+  options?: { database: Db; reconcile?: ActivityReconciliation },
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
   // (some inserted/reopened, others never resolved) for the tenant.
-  return db.transaction(async (tx) => {
+  return (options?.database ?? db).transaction(async (tx) => {
+    const reconcile = options?.reconcile;
     const existing = await tx.query.findings.findMany({
       where: eq(findings.tenantId, tenantId),
     });
@@ -1564,6 +1673,18 @@ export const diffFindings = async (
     );
     const inserted: InsertedFinding[] = [];
     for (const batch of chunk(toInsert, 250)) {
+      if (reconcile?.preview) {
+        for (const f of batch) {
+          reconcile.changes.push({
+            id: randomUUID(),
+            rule: f.rule,
+            graphUserId: f.graphUserId,
+            before: null,
+            after: { status: "open", resolvedAt: null },
+          });
+        }
+        continue;
+      }
       const rows = await tx
         .insert(findings)
         .values(
@@ -1586,8 +1707,27 @@ export const diffFindings = async (
           rule: findings.rule,
           title: findings.title,
           monthlyImpactCents: findings.monthlyImpactCents,
+          graphUserId: findings.graphUserId,
         });
-      inserted.push(...rows);
+      inserted.push(
+        ...rows.map(({ id, rule, title, monthlyImpactCents }) => ({
+          id,
+          rule,
+          title,
+          monthlyImpactCents,
+        })),
+      );
+      if (reconcile) {
+        for (const row of rows) {
+          reconcile.changes.push({
+            id: row.id,
+            rule: row.rule,
+            graphUserId: row.graphUserId,
+            before: null,
+            after: { status: "open", resolvedAt: null },
+          });
+        }
+      }
     }
 
     for (const f of existing) {
@@ -1602,10 +1742,34 @@ export const diffFindings = async (
         (viaHash && !existingByKey.has(viaHash.dedupeKey)
           ? viaHash
           : undefined);
+      // Carried findings are refreshed without recording an observation.
+      const carried =
+        activitySignal === "unknown" && INACTIVITY_RULES.includes(f.rule);
+      const transition =
+        fresh && !carried && f.status === "resolved"
+          ? { status: "open" as const, resolvedAt: null }
+          : !fresh && f.status !== "resolved"
+            ? { status: "resolved" as const, resolvedAt: now }
+            : undefined;
+      if (reconcile) {
+        if (!transition || !reconcile.includes(f) || reconcile.protects(f))
+          continue;
+        reconcile.changes.push({
+          id: f.id,
+          rule: f.rule,
+          graphUserId: f.graphUserId,
+          before: { status: f.status, resolvedAt: f.resolvedAt },
+          after: transition,
+        });
+        if (!reconcile.preview) {
+          await tx
+            .update(findings)
+            .set(transition)
+            .where(eq(findings.id, f.id));
+        }
+        continue;
+      }
       if (fresh) {
-        // Refresh the details of carried findings without recording an observation.
-        const carried =
-          activitySignal === "unknown" && INACTIVITY_RULES.includes(f.rule);
         await tx
           .update(findings)
           .set({
@@ -1615,16 +1779,11 @@ export const diffFindings = async (
             graphUserId: fresh.graphUserId,
             monthlyImpactCents: fresh.monthlyImpactCents,
             ...(!carried && { lastSeenAt: now }),
-            ...(!carried && f.status === "resolved"
-              ? { status: "open" as const, resolvedAt: null }
-              : {}),
+            ...transition,
           })
           .where(eq(findings.id, f.id));
-      } else if (f.status !== "resolved") {
-        await tx
-          .update(findings)
-          .set({ status: "resolved", resolvedAt: now })
-          .where(eq(findings.id, f.id));
+      } else if (transition) {
+        await tx.update(findings).set(transition).where(eq(findings.id, f.id));
       }
     }
 

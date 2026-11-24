@@ -28,6 +28,7 @@ import {
 import { skuDefaultPriceCents } from "~/server/graph/skuCatalog";
 import { rateLimitDurable } from "~/server/rateLimit";
 import { runAnalysis } from "~/server/sync/runSync";
+import { WorkspaceUpdateInProgressError } from "~/server/sync/lockTenant";
 import type { UserLicense, WorkloadActivity } from "~/server/types";
 
 export type CsvImportResult = { ok: boolean; error?: string };
@@ -400,8 +401,14 @@ export const submitCsvImport = async (
     })
     .where(eq(tenants.id, tenantId));
 
-  await runAnalysis(tenantId);
+  let analysisDeferred = false;
+  try {
+    await runAnalysis(tenantId);
+  } catch (error) {
+    if (!(error instanceof WorkspaceUpdateInProgressError)) throw error;
+    analysisDeferred = true;
+  }
 
   (await cookies()).set(WORKSPACE_COOKIE, tenantId, workspaceCookieOptions());
-  redirect("/app");
+  redirect(analysisDeferred ? "/app?csvAnalysis=pending" : "/app");
 };

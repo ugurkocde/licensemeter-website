@@ -67,6 +67,9 @@ export const POST = async (req: Request) => {
     );
     return NextResponse.json({ error: "sync_failed" }, { status: 500 });
   }
+  if (result.runId === null) {
+    return NextResponse.json({ error: "sync_in_progress" }, { status: 409 });
+  }
   revalidatePath("/app", "layout");
   return NextResponse.json(result);
 };

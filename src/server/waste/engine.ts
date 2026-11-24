@@ -118,6 +118,8 @@ export type WasteInput = {
    */
   activitySignal: ActivitySignal;
   previousInactivity?: ReadonlyMap<string, WasteFinding>;
+  /** Records the per-user activity decisions that the engine reached. */
+  onActivityEvaluated?: (user: WasteUser, rule: WasteRuleId) => void;
   copilotSignal: "per-user" | "aggregate" | "none";
   usageAggregate?: AggregateUsage;
   copilotAggregate?: AggregateUsage;
@@ -374,6 +376,10 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
       ? daysBetween(u.lastActivity, now)
       : null;
     const fullActivity = input.activitySignal === "full";
+    if (fullActivity) {
+      input.onActivityEvaluated?.(u, "never_active");
+      input.onActivityEvaluated?.(u, "inactive_90d");
+    }
     const carryInactivity = input.activitySignal === "unknown";
     const previousInactive = carryInactivity
       ? input.previousInactivity?.get(inactiveKey)
@@ -485,6 +491,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
       input.copilotSignal === "per-user" &&
       u.licenses.some((l) => l.skuId === COPILOT_SKU_ID)
     ) {
+      input.onActivityEvaluated?.(u, "copilot_unused");
       const idle =
         u.copilotLastActivity === null ||
         daysBetween(u.copilotLastActivity, now) > COPILOT_INACTIVE_DAYS;

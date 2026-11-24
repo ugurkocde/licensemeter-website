@@ -91,6 +91,7 @@ import {
   workspaceAdminEmails,
 } from "~/server/workspaceEmail";
 import { byoConnectorEnabled, siteUrl } from "~/env";
+import { WorkspaceUpdateInProgressError } from "~/server/sync/lockTenant";
 import { runAnalysis, runSync } from "~/server/sync/runSync";
 import { requestDeadline } from "~/server/sync/deadline";
 import { fetchEcbReferenceRates } from "~/server/exchangeRates";
@@ -106,6 +107,20 @@ const fail = (error: string): ActionResult => ({ ok: false, error });
 const ok = (): ActionResult => ({ ok: true });
 
 const revalidateApp = () => revalidatePath("/app", "layout");
+
+/** The mutation is already saved even if the findings refresh must be retried. */
+async function refreshAnalysis(tenantId: string): Promise<ActionResult> {
+  try {
+    await runAnalysis(tenantId);
+    return ok();
+  } catch (error) {
+    if (error instanceof WorkspaceUpdateInProgressError)
+      return fail(error.message);
+    throw error;
+  } finally {
+    revalidateApp();
+  }
+}
 
 const chunk = <T>(arr: T[], size: number): T[][] => {
   const out: T[][] = [];
@@ -375,9 +390,7 @@ export const updatePrice = async (
   if (updated.length === 0) return fail("Unknown SKU");
 
   await audit(ctx, "price_updated", { skuId, monthlyPriceCents: cents });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 export type ImportPricesResult = ActionResult & {
@@ -484,9 +497,8 @@ export const importPrices = async (
     skipped: skipped.length,
     invalid: invalid.length,
   });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return { ok: true, applied: bySku.size, skipped, invalid: invalid.length };
+  const result = await refreshAnalysis(ctx.tenant.id);
+  return { ...result, applied: bySku.size, skipped, invalid: invalid.length };
 };
 
 /** Invite a member by email/UPN; they get access on their first sign-in. */
@@ -861,9 +873,7 @@ export const setInactiveDays = async (
     .set({ inactiveDays: days })
     .where(eq(tenants.id, ctx.tenant.id));
   await audit(ctx, "threshold_changed", { inactiveDays: days });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 /**
@@ -891,9 +901,7 @@ export const setFindingExclusions = async (
   await audit(ctx, "finding_exclusions_changed", {
     patterns: parsed.patterns.length,
   });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 /** Email alerts when a sync finds new offboarding leaks. */
@@ -1271,6 +1279,8 @@ export const triggerSync = async (): Promise<
   if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   await audit(ctx, "sync_triggered", {});
   const result = await runSync(ctx.tenant.id, { deadline: requestDeadline() });
+  if (result.runId === null)
+    return fail("Wait for the current workspace update to finish, then retry");
   revalidateApp();
   return {
     ...(result.status === "failed"
@@ -1349,9 +1359,7 @@ export const disconnectAdobe = async (): Promise<ActionResult> => {
     .where(eq(adobeConnections.tenantId, ctx.tenant.id));
   await db.delete(adobeUsers).where(eq(adobeUsers.tenantId, ctx.tenant.id));
   await audit(ctx, "adobe_disconnected", {});
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 /** Connect a SaaS connector (Zoom / Atlassian / Salesforce). */
@@ -1478,9 +1486,7 @@ export const disconnectSaasConnector = async (
       ),
     );
   await audit(ctx, "connector_disconnected", { provider });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 /** GUID shape for tenant/app ids (lenient case). */
@@ -1758,9 +1764,7 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
       .where(eq(tenants.id, ctx.tenant.id));
   });
   await audit(ctx, "microsoft_disconnected", {});
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 export type ImportSeatsResult = ActionResult & {
@@ -1859,9 +1863,8 @@ export const importSeats = async (
     imported: rows.length,
     invalid: parsed.invalid.length,
   });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return { ok: true, imported: rows.length, invalid: parsed.invalid.length };
+  const result = await refreshAnalysis(ctx.tenant.id);
+  return { ...result, imported: rows.length, invalid: parsed.invalid.length };
 };
 
 /** Remove an import connector's seat snapshot; findings auto-resolve. */
@@ -1885,9 +1888,7 @@ export const clearImportedSeats = async (
       ),
     );
   await audit(ctx, "seats_import_cleared", { provider });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 /** Switch the active workspace (MSP/multi-tenant users). */

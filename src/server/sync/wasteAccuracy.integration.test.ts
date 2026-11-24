@@ -364,8 +364,9 @@ describe("ingest hygiene", () => {
       expect(step.durationMs).toEqual(expect.any(Number));
       expect(step.durationMs).toBeGreaterThanOrEqual(0);
     }
+    expect(result.runId).not.toBeNull();
     const run = await currentDb.query.syncRuns.findFirst({
-      where: eq(schema.syncRuns.id, result.runId),
+      where: eq(schema.syncRuns.id, result.runId!),
     });
     expect(run!.steps.every((s) => typeof s.durationMs === "number")).toBe(
       true,
