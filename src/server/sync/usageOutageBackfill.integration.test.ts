@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   readdir,
   readFile,
@@ -8,11 +8,13 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { createServer, connect } from "node:net";
 import { resolve, join } from "node:path";
 import { promisify } from "node:util";
 import { PGlite } from "@electric-sql/pglite";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
+import postgres from "postgres";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -22,9 +24,29 @@ import {
 } from "../../../scripts/backfill-usage-outage";
 import type { Db } from "~/server/db";
 import * as schema from "~/server/db/schema";
+import { COPILOT_SKU_ID } from "~/server/waste/engine";
 
 type Report = Awaited<ReturnType<typeof backfillUsageOutage>>;
 const parseReport = (value: string) => JSON.parse(value) as Report;
+type ApplyLine =
+  | ({ type: "tenant" } & Report["tenants"][number])
+  | ({ type: "summary" } & Omit<Report, "tenants">);
+const parseApply = (value: string): Report => {
+  const lines = value
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as ApplyLine);
+  const summary = lines.pop();
+  if (summary?.type !== "summary") throw new Error("Missing apply summary");
+  return {
+    ...summary,
+    tenants: lines.map((line) => {
+      if (line.type !== "tenant")
+        throw new Error("Expected a committed tenant");
+      return line;
+    }),
+  };
+};
 
 const repo = process.cwd();
 const exec = promisify(execFile);
@@ -33,6 +55,8 @@ const id = (n: number) =>
 const t1 = id(1),
   t2 = id(2),
   t3 = id(3);
+const userId = (n: number) =>
+  n === 102 || n === 110 ? id(n).replace(/^11111111/, "ab000000") : id(n);
 const e3 = "05e9a617-0261-4cee-bb44-138d3ef5d965";
 const emptyWorkloads = {
   exchange: null,
@@ -58,7 +82,13 @@ async function seed(directory: string, today: Date) {
   try {
     for (const statement of ddl) await client.exec(statement);
     await db.insert(schema.tenants).values([
-      { id: t1, name: "Example One", hasP1: true, activitySignal: "unknown" },
+      {
+        id: t1,
+        name: "Example One",
+        hasP1: false,
+        activitySignal: "none",
+        copilotSignal: "none",
+      },
       {
         id: t2,
         name: "Example Two",
@@ -111,7 +141,10 @@ async function seed(directory: string, today: Date) {
     const tenantFor = (n: number) => (n === 121 ? t2 : n === 131 ? t3 : t1);
     const sourceWorkloads = (n: number) => ({
       ...emptyWorkloads,
-      exchange: n === 102 || n === 108 ? old : recent,
+      exchange:
+        n === 110 ? null : n === 102 || n === 108 || n === 111 ? old : recent,
+      ...(n === 112 && { copilot: old }),
+      ...(n === 113 && { copilot: old }),
       ...(n === 101 && {
         oneDrive: recent,
         sharePoint: recent,
@@ -120,28 +153,33 @@ async function seed(directory: string, today: Date) {
       }),
     });
     await db.insert(schema.tenantUsers).values(
-      [101, 102, 103, 104, 105, 106, 107, 108, 121, 131].map((n) => ({
+      [
+        101, 102, 103, 104, 105, 106, 107, 108, 110, 111, 112, 113, 121, 131,
+      ].map((n) => ({
         tenantId: tenantFor(n),
-        graphId: id(n),
+        graphId: userId(n),
         upn: `user-${n}@example.test`,
         displayName: `Example User ${n}`,
         createdDateTime: shift(-365),
-        licenses: [
-          {
-            skuId: e3,
-            assignedByGroup: null,
-            disabledPlans: [],
-            state: "Active",
-          },
-        ],
+        accountEnabled: n !== 113,
+        licenses: ([101, 112, 113].includes(n)
+          ? [e3, COPILOT_SKU_ID]
+          : [e3]
+        ).map((skuId) => ({
+          skuId,
+          assignedByGroup: null,
+          disabledPlans: [],
+          state: "Active",
+        })),
         syncedAt: shift(-3), // Mirrors the outage-era overwrite.
-        lastInteractiveSignIn: n === 102 || n === 108 ? null : shift(-125),
-        lastActivity:
-          n === 102 || n === 108
-            ? null
-            : n === 104
-              ? new Date(newer)
-              : shift(-125),
+        lastInteractiveSignIn: [102, 108, 110, 111].includes(n)
+          ? null
+          : shift(-125),
+        lastActivity: [102, 108, 110, 111].includes(n)
+          ? null
+          : n === 104
+            ? new Date(newer)
+            : shift(-125),
         workloadActivity:
           n === 104 ? { ...emptyWorkloads, exchange: newer } : emptyWorkloads,
       })),
@@ -149,17 +187,18 @@ async function seed(directory: string, today: Date) {
     const finding = (
       n: number,
       user: number,
-      rule: "inactive_90d" | "never_active",
+      rule: "inactive_90d" | "never_active" | "copilot_unused",
       status: "open" | "acknowledged" | "resolved",
       extras: Partial<typeof schema.findings.$inferInsert> = {},
     ): typeof schema.findings.$inferInsert => ({
       id: id(n),
       tenantId: tenantFor(user),
-      graphUserId: id(user),
+      graphUserId: userId(user),
       rule,
       status,
       title: "Example finding",
-      dedupeKey: `${rule}|${id(user)}|-`,
+      dedupeKey: `${rule}|${userId(user)}|${rule === "copilot_unused" ? COPILOT_SKU_ID : "-"}`,
+      skuId: rule === "copilot_unused" ? COPILOT_SKU_ID : null,
       firstSeenAt: shift(-20),
       lastSeenAt: shift(-2),
       resolvedAt: status === "resolved" ? shift(-3) : null,
@@ -168,6 +207,7 @@ async function seed(directory: string, today: Date) {
     await db.insert(schema.findings).values([
       finding(201, 101, "inactive_90d", "open"),
       finding(202, 102, "inactive_90d", "resolved", {
+        graphUserId: userId(102).toUpperCase(),
         lastSeenAt: shift(-4),
         detail: {
           lastActivity: new Date(old).toISOString(),
@@ -181,6 +221,11 @@ async function seed(directory: string, today: Date) {
       }),
       finding(206, 106, "inactive_90d", "open"),
       finding(207, 107, "inactive_90d", "open"),
+      finding(210, 110, "inactive_90d", "open"),
+      finding(211, 111, "inactive_90d", "open"),
+      finding(212, 112, "copilot_unused", "resolved"),
+      finding(213, 101, "copilot_unused", "open"),
+      finding(214, 113, "copilot_unused", "open"),
       finding(221, 121, "inactive_90d", "open"),
       finding(231, 131, "inactive_90d", "open"),
     ]);
@@ -191,12 +236,15 @@ async function seed(directory: string, today: Date) {
       detail: { findingId: id(206), status: "open" },
     });
     const snapshot = [
-      101, 102, 103, 104, 105, 106, 107, 108, 109, 121, 131,
+      101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 121, 131,
     ].map((n) => ({
       tenant_id: tenantFor(n),
-      graph_id: id(n),
-      workload_activity: sourceWorkloads(n),
-      last_activity: new Date(sourceWorkloads(n).exchange).toISOString(),
+      graph_id: userId(n).toUpperCase(),
+      workload_activity: n === 110 ? null : sourceWorkloads(n),
+      last_activity:
+        n === 110
+          ? shift(-5).toISOString()
+          : new Date(sourceWorkloads(n).exchange!).toISOString(),
       synced_at: shift(n === 107 ? -3 : -4).toISOString(),
     }));
     await writeFile(join(directory, "snapshot.json"), JSON.stringify(snapshot));
@@ -204,7 +252,7 @@ async function seed(directory: string, today: Date) {
       join(directory, "snapshot.jsonl"),
       snapshot.map((row) => JSON.stringify(row)).join("\n"),
     );
-    return { since, recent, newer, old };
+    return { since, recent, newer, old, signIn: shift(-5), ddl };
   } finally {
     await client.close();
   }
@@ -285,8 +333,8 @@ describe("usage outage backfill CLI on local PGlite", () => {
     expect(await fingerprint(directory)).toBe(before);
     expect(preview.totals).toMatchObject({
       tenants: 2,
-      findingsReopened: 1,
-      findingsResolved: 3,
+      findingsReopened: 2,
+      findingsResolved: 5,
       findingsCreated: 1,
       deletedUsersSkipped: 1,
       flagsChanged: 1,
@@ -295,15 +343,22 @@ describe("usage outage backfill CLI on local PGlite", () => {
       tenantId: t1,
       counts: {
         workloadCounts: {
-          exchange: 6,
+          exchange: 9,
           oneDrive: 1,
           sharePoint: 1,
           teams: 1,
-          copilot: 1,
+          copilot: 3,
         },
       },
       findings: {
-        reopen: [{ id: id(202), graphUserId: id(102), rule: "inactive_90d" }],
+        reopen: expect.arrayContaining([
+          {
+            id: id(202),
+            graphUserId: userId(102).toUpperCase(),
+            rule: "inactive_90d",
+          },
+          { id: id(212), graphUserId: userId(112), rule: "copilot_unused" },
+        ]) as unknown,
       },
     });
     expect(preview.tenants[1]).toMatchObject({
@@ -315,7 +370,7 @@ describe("usage outage backfill CLI on local PGlite", () => {
       "--apply",
       "--i-have-a-backup",
     ]);
-    const written = parseReport(apply.stdout);
+    const written = parseApply(apply.stdout);
     expect(written.totals).toEqual(preview.totals);
     expect(written.tenants[0]?.rollback).toMatchObject({
       users: expect.arrayContaining([
@@ -352,7 +407,7 @@ describe("usage outage backfill CLI on local PGlite", () => {
       "--apply",
       "--i-have-a-backup",
     ]);
-    expect(parseReport(second.stdout).totals).toMatchObject({
+    expect(parseApply(second.stdout).totals).toMatchObject({
       usersChanged: 0,
       lastActivityChanged: 0,
       flagsChanged: 0,
@@ -369,15 +424,21 @@ describe("usage outage backfill CLI on local PGlite", () => {
       expect(users.get(id(101))?.workloadActivity?.exchange).toBe(dates.recent);
       expect(users.get(id(104))?.workloadActivity?.exchange).toBe(dates.newer);
       expect(users.get(id(107))?.workloadActivity).toEqual(emptyWorkloads);
+      expect(users.get(userId(110))).toMatchObject({
+        lastActivity: dates.signIn,
+        lastInteractiveSignIn: null,
+        lastNonInteractiveSignIn: null,
+        workloadActivity: emptyWorkloads,
+      });
       expect(users.get(id(109))).toBeUndefined();
       expect(users.get(id(131))?.workloadActivity).toEqual(emptyWorkloads);
       const statuses = new Map(
         (await db.select().from(schema.findings)).map((f) => [f.id, f.status]),
       );
       expect(
-        [201, 202, 203, 204, 205, 206, 207, 221, 231].map((n) =>
-          statuses.get(id(n)),
-        ),
+        [
+          201, 202, 203, 204, 205, 206, 207, 210, 211, 212, 213, 214, 221, 231,
+        ].map((n) => statuses.get(id(n))),
       ).toEqual([
         "resolved",
         "open",
@@ -385,6 +446,11 @@ describe("usage outage backfill CLI on local PGlite", () => {
         "acknowledged",
         "open",
         "open",
+        "open",
+        "resolved",
+        "open",
+        "open",
+        "resolved",
         "open",
         "resolved",
         "open",
@@ -415,7 +481,7 @@ describe("usage outage backfill CLI on local PGlite", () => {
       "--i-have-a-backup",
       "--json",
     ]);
-    const result = parseReport(run.stdout);
+    const result = parseApply(run.stdout);
     expect(result).toMatchObject({
       partial: true,
       totals: {
@@ -427,7 +493,7 @@ describe("usage outage backfill CLI on local PGlite", () => {
     });
     expect(result.tenants[0]?.rollback?.users).toEqual([
       {
-        graphId: id(102),
+        graphId: userId(102),
         before: { lastActivity: null },
         after: { lastActivity: new Date(dates.old).toISOString() },
       },
@@ -472,7 +538,7 @@ describe("usage outage backfill CLI on local PGlite", () => {
     const confirmed = ["--confirm-target-host", hostname];
     const snapshot = {
       ...env,
-      SNAPSHOT_DATABASE_URL: "postgresql://db.restore.example/usage",
+      SNAPSHOT_DATABASE_URL: "postgresql://postgres@db.restore.example/usage",
     };
     expect(backfillOptions(confirmed, snapshot)).toMatchObject({
       apply: false,
@@ -481,8 +547,10 @@ describe("usage outage backfill CLI on local PGlite", () => {
       snapshotDb: { host: "db.restore.example", database: "usage" },
     });
     expect(
-      backfillOptions([...confirmed, "--apply", "--i-have-a-backup"], snapshot)
-        .apply,
+      backfillOptions(
+        [...confirmed, "--apply", "--i-have-a-backup", "--json"],
+        snapshot,
+      ).apply,
     ).toBe(true);
   });
 
@@ -510,6 +578,125 @@ describe("usage outage backfill CLI on local PGlite", () => {
       });
     },
   );
+
+  it("requires JSON for apply and rejects conflicting sources and unsafe remote URLs", () => {
+    expect(() =>
+      backfillOptions(
+        ["--source", "findings", "--apply", "--i-have-a-backup"],
+        {},
+      ),
+    ).toThrow("--apply requires --json");
+    for (const args of [
+      ["--snapshot-file", "snapshot.json"],
+      ["--source", "findings"],
+    ]) {
+      expect(() =>
+        backfillOptions(args, {
+          SNAPSHOT_DATABASE_URL: "postgres://postgres@127.0.0.1/snapshot",
+        }),
+      ).toThrow("Choose exactly one");
+    }
+    for (const url of [
+      "postgres://postgres@db.example.test/usage?sslmode=disable",
+      "postgres://db.example.test/usage",
+    ]) {
+      expect(() =>
+        backfillOptions(["--source", "findings"], { DATABASE_URL: url }),
+      ).toThrow("requires TLS and a username");
+    }
+  });
+
+  it("reads a separate loopback PostgreSQL snapshot and rejects a same-database alias", async ({
+    skip,
+  }) => {
+    // Set this to the port of a disposable local PostgreSQL server with the
+    // postgres user and trust auth. No ambient database URL is read.
+    const port = Number(process.env.BACKFILL_TEST_POSTGRES_PORT);
+    if (!port) {
+      skip(
+        "Set BACKFILL_TEST_POSTGRES_PORT to a disposable loopback Postgres server",
+      );
+      return;
+    }
+    const url = (database: string, dbPort = port) =>
+      `postgres://postgres@127.0.0.1:${dbPort}/${database}`;
+    const suffix = randomUUID().replaceAll("-", "");
+    const targetName = `target_${suffix}`;
+    const snapshotName = `snapshot_${suffix}`;
+    const admin = postgres(url("postgres"));
+    const target = postgres(url(targetName));
+    const snapshot = postgres(url(snapshotName));
+    const alias = createServer((socket) => {
+      const upstream = connect(port, "127.0.0.1");
+      socket.on("error", () => upstream.destroy());
+      upstream.on("error", () => socket.destroy());
+      socket.pipe(upstream).pipe(socket);
+    });
+    try {
+      await admin`create database ${admin(targetName)}`;
+      await admin`create database ${admin(snapshotName)}`;
+      for (const stmt of dates.ddl) await target.unsafe(stmt);
+      await target`insert into tenants (id, name, activity_signal) values (${t1}, 'Example', 'none')`;
+      await target`insert into sync_runs (tenant_id, started_at, status, steps) values
+        (${t1}, ${new Date(new Date(dates.since).getTime() - 1)}, 'success', '[{"step":"usageReports","status":"ok","count":1}]'),
+        (${t1}, ${new Date(dates.since)}, 'success', '[{"step":"usageReports","status":"ok","count":0}]')`;
+      await target`insert into tenant_users (tenant_id, graph_id, upn) values (${t1}, ${userId(110)}, 'example@example.test')`;
+      await snapshot`create table tenant_users (
+        tenant_id uuid, graph_id text, workload_activity jsonb, last_activity timestamptz, synced_at timestamptz
+      )`;
+      await snapshot`insert into tenant_users values
+        (${t1}, ${userId(110).toUpperCase()}, null, ${dates.signIn}, ${dates.signIn})`;
+
+      const args = ["--since", dates.since, "--json"];
+      const result = await cli(
+        directory,
+        [...args, "--apply", "--i-have-a-backup"],
+        {
+          DATABASE_URL: url(targetName),
+          SNAPSHOT_DATABASE_URL: url(snapshotName),
+        },
+      );
+      expect(parseApply(result.stdout).tenants[0]?.rollback?.users).toEqual([
+        {
+          graphId: userId(110),
+          before: { lastActivity: null },
+          after: { lastActivity: dates.signIn.toISOString() },
+        },
+      ]);
+      const [stored] = await target`select last_activity from tenant_users`;
+      expect(stored?.last_activity).toEqual(dates.signIn);
+      const [source] = await snapshot`select last_activity from tenant_users`;
+      expect(source?.last_activity).toEqual(dates.signIn);
+
+      await new Promise<void>((resolve, reject) => {
+        alias.once("error", reject);
+        alias.listen(0, "127.0.0.1", resolve);
+      });
+      const address = alias.address();
+      if (!address || typeof address === "string")
+        throw new Error("Missing loopback port");
+      await expect(
+        cli(directory, args, {
+          DATABASE_URL: url(targetName),
+          SNAPSHOT_DATABASE_URL: url(targetName, address.port),
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          "must be separate databases",
+        ) as unknown,
+      });
+    } finally {
+      if (alias.listening)
+        await new Promise<void>((resolve) => alias.close(() => resolve()));
+      await Promise.all([target.end(), snapshot.end()]);
+      try {
+        await admin`drop database if exists ${admin(targetName)} with (force)`;
+        await admin`drop database if exists ${admin(snapshotName)} with (force)`;
+      } finally {
+        await admin.end();
+      }
+    }
+  }, 25_000);
 
   it("enforces a read-only dry run on the database session", async () => {
     const rehearsal = join(directory, "readonly");
@@ -557,7 +744,7 @@ describe("usage outage backfill CLI on local PGlite", () => {
       "--i-have-a-backup",
       "--json",
     ]);
-    const report = parseReport(run.stdout);
+    const report = parseApply(run.stdout);
     expect(report.skippedTenants).toEqual([
       { tenantId: t1, reason: "sync in progress" },
     ]);
@@ -607,10 +794,15 @@ describe("usage outage backfill CLI on local PGlite", () => {
       () => {
         throw new Error("Expected a failed apply");
       },
-      (error: { code: number; stdout: string }) => error,
+      (error: { code: number; stdout: string; stderr: string }) => error,
     );
     expect(run.code).toBe(1);
-    const report = parseReport(run.stdout);
+    expect(run.stderr).toContain(
+      `Apply failed for tenant ${t2}: PostgresError (SQLSTATE 23514).`,
+    );
+    expect(run.stderr).not.toContain("simulated_failure");
+    expect(run.stdout.trim().split("\n")).toHaveLength(2);
+    const report = parseApply(run.stdout);
     expect(report.failedTenant).toBe(t2);
     expect(report.tenants.map(({ tenantId }) => tenantId)).toEqual([t1]);
     expect(report.tenants[0]?.rollback).toBeDefined();

@@ -1,0 +1,7 @@
+{
+  "title": "Recover activity lost during the Microsoft 365 usage report outage",
+  "summary": "LicenseMeter can restore last-known activity for affected workspaces and correct inactivity and Copilot findings using recovered dates. The repair preserves newer activity and findings that workspace admins have acted on.",
+  "type": "fixed",
+  "publishedOn": "2026-11-24",
+  "idempotencyKey": "licensemeter:restore-microsoft-usage-activity"
+}

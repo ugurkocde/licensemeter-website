@@ -22,7 +22,7 @@
 In the Supabase Dashboard, go to **Database > Backups** and choose the last
 backup from before the outage. Pro retains seven days of daily backups, so the
 2026-11-20 backup expires around **2026-11-27**, depending on the backup time.
-Preserve the backup before then. Restore it into a separate database or project. Leave production in place. [Supabase database backups](https://supabase.com/docs/guides/platform/backups)
+Preserve the backup before then. Restore it into a separate database or project. Never use the in-place **Restore** action on the production project. [Supabase database backups](https://supabase.com/docs/guides/platform/backups)
 
 For a PostgreSQL archive already downloaded, create a fresh database on the
 local server. Use client tools compatible with the backup's PostgreSQL
@@ -79,12 +79,15 @@ unset SNAPSHOT_DATABASE_URL
 
 As an alternative, pass the separate restore via `SNAPSHOT_DATABASE_URL`
 and omit `--snapshot-file`. That connection always uses a read-only transaction.
-Source selection prefers the database, then the file, then the explicit
-`--source findings` fallback. The fallback recovers only last activity
-recorded by pre-outage inactivity findings. Use the file if the two connection
-strings share a hostname, port, and database name, as can happen with Supabase
-pooler hosts. Verify the project references in the Dashboard when setting up a
-database source because direct and pooler hosts for one project can differ.
+Choose one source per invocation. The explicit `--source findings` fallback
+recovers only last activity recorded by pre-outage inactivity findings.
+The script refuses a database source when both URLs identify the same
+hostname, port, and database, or when both servers report the same PostgreSQL
+system identifier and database name. If the database role lacks permission
+to read the identifier, the script uses the URL check. Verify the project
+references in the Dashboard because direct and pooler hosts for one project
+can differ. Use the file for a physical clone with the same system identifier
+and database name, or when the distinct projects share a pooler address.
 
 ## Optional rehearsal
 
@@ -107,8 +110,9 @@ report filename for the rehearsal. For a local PGlite rehearsal, unset
    in a private shell without printing or recording the URI. Use
    `sslmode=verify-full` and the trusted CA from the Dashboard if needed
    (`NODE_EXTRA_CA_CERTS` for Node.js and `PGSSLROOTCERT` for `psql`).
-   The script accepts only the `sslmode` URL parameter and prints the
-   selected hostname and database name to stderr before connecting.
+   The script accepts only the `sslmode` URL parameter, requires TLS and a
+   non-empty username for remote hosts, and prints the selected hostname
+   and database name to stderr before connecting.
    [Supabase Postgres connections](https://supabase.com/docs/guides/database/connecting-to-postgres)
 
    The repository grants `licensemeter_app` a permissive `app_all` policy.
@@ -141,11 +145,14 @@ report filename for the rehearsal. For a local PGlite rehearsal, unset
    00:00 UTC**. Use `--since YYYY-MM-DD` only if the incident scope requires
    a different UTC cutoff, and use the same value in every step. Snapshot
    rows at or after that cutoff and users no longer in the directory are
-   excluded. The availability flag is set only when the latest completed
-   report is still empty.
+   excluded. The snapshot's last activity can restore a sign-in even when the
+   current sign-in columns are empty. Newer stored dates are preserved. The
+   availability flag is set only when the latest completed report is still
+   empty.
 
    The repair reconciles inactivity and Copilot findings only for users
-   with changed activity inputs. It protects acknowledged findings,
+   with changed activity inputs and enough evidence for the relevant rule.
+   It protects acknowledged findings,
    findings with workflow fields and findings with individual operator
    audit events. It also preserves findings that existed at the time of
    a historical bulk status edit, whose audit records contain only counts.
@@ -153,15 +160,18 @@ report filename for the rehearsal. For a local PGlite rehearsal, unset
 
 3. Take a fresh production backup, or confirm that PITR covers the moment
    before apply or that a fresh daily backup is available. Record the
-   backup or recovery point. Avoid manual finding edits and imports for the
-   tenant during its repair. The app and other tenants can stay online.
+   backup or recovery point. Avoid manual finding edits, imports, currency
+   changes, and Microsoft disconnects for the tenant during its repair. The app
+   and other tenants can stay online. Sync registration and stored-data
+   analysis wait up to five seconds for the tenant lock. If the wait times out,
+   retry those operations after the repair.
 
 4. Run the same tenant, snapshot, and cutoff through the release gate with
    `--apply --i-have-a-backup --json`. Save each run to a new private file.
 
    ```bash
    umask 077
-   REPORT="$BACKFILL_DIR/apply-${TENANT}-$(date -u +%Y%m%dT%H%M%SZ).json"
+   REPORT="$BACKFILL_DIR/apply-${TENANT}-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
    npx tsx scripts/backfill-usage-outage.ts \
      --confirm-target-host "$TARGET_HOST" --tenant "$TENANT" \
      --snapshot-file "$BACKFILL_DIR/pre-outage.json" \
@@ -169,13 +179,16 @@ report filename for the rehearsal. For a local PGlite rehearsal, unset
    ```
 
    Apply checks the latest evidence again and repairs each tenant in one
-   transaction. It skips tenants with a running sync or an unavailable
-   tenant lock. Review `skippedTenants`, wait for the tenant to become idle,
-   then repeat the preview and apply for that tenant. On an apply error,
-   check `failedTenant` and preserve the JSON for any tenants already
-   committed. If execution is interrupted and the report is incomplete,
-   check the audit row and use the backup to recover before-values before
-   attempting a reversal.
+   transaction. Stdout contains one JSON object per line. A `type: "tenant"`
+   record is written immediately after each tenant commits and includes a
+   `rollback` object for any writes. The final `type: "summary"` record
+   contains totals, `skippedTenants`, and `failedTenant` if apply stopped at
+   an error. That error is also reported on stderr with its name and SQLSTATE
+   when available. Preserve the JSON lines already written if apply stops.
+   For a skipped tenant, wait for it to become idle, then repeat preview and
+   apply. If a process is interrupted between a commit and its output, check
+   the audit row and use the backup to recover before-values before attempting
+   a reversal.
 
 ## Verify
 
@@ -218,7 +231,8 @@ apply adds no audit rows.
 
 ## Roll back from the saved JSON
 
-Use `tenants[].rollback` from the saved apply report. Work one tenant at a
+Use the `rollback` object from the matching `type: "tenant"` line in the saved
+apply report. Work one tenant at a
 time through the release gate, outside the nightly sync window. Use an
 interactive `psql -X -v ON_ERROR_STOP=1 "$DATABASE_URL"` session. Hold the
 same tenant lock as the repair. The following example stops the transaction

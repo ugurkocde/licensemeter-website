@@ -1,3 +1,4 @@
+import { writeSync } from "node:fs";
 import { cp, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,6 +10,7 @@ import postgres from "postgres";
 import { z } from "zod";
 
 import type { Db } from "~/server/db";
+import { sqlState } from "~/server/db/sqlState";
 import * as schema from "~/server/db/schema";
 import {
   auditLog,
@@ -24,7 +26,7 @@ import type { SyncStep, WorkloadActivity } from "~/server/types";
 
 const DEFAULT_SINCE = "2026-11-21";
 const DRY_RUN_MESSAGE =
-  "DRY RUN: no changes written. Re-run with --apply to write.";
+  "DRY RUN: no changes written. Re-run with --apply --i-have-a-backup --json to write.";
 const uuid = z.guid();
 const date = z.iso.date();
 const timestamp = z.iso.datetime({ offset: true });
@@ -92,6 +94,11 @@ function databaseUrl(raw: string, name: string) {
   const local = host === "127.0.0.1" || host === "[::1]";
   const port = Number(url.port || 5432);
   if (port === 0) return fail();
+  if (!local && (mode === "disable" || !username.trim())) {
+    throw new BackfillError(
+      `${name} requires TLS and a username for remote hosts.`,
+    );
+  }
   return {
     hostname: url.hostname,
     host: host.replace(/^\[|\]$/g, ""),
@@ -154,6 +161,9 @@ export function backfillOptions(
   if (values.apply && !values["i-have-a-backup"]) {
     throw new BackfillError("--apply requires --i-have-a-backup.");
   }
+  if (values.apply && !values.json) {
+    throw new BackfillError("--apply requires --json for the rollback report.");
+  }
   const target = env.DATABASE_URL
     ? databaseUrl(env.DATABASE_URL, "DATABASE_URL")
     : null;
@@ -193,6 +203,12 @@ export function backfillOptions(
   const snapshotFile = values["snapshot-file"]
     ? resolve(values["snapshot-file"])
     : null;
+  if (
+    Number(!!snapshotDb) + Number(!!snapshotFile) + Number(!!values.source) >
+    1
+  ) {
+    throw new BackfillError("Choose exactly one snapshot or findings source.");
+  }
   const source = snapshotDb
     ? "snapshot-database"
     : snapshotFile
@@ -289,26 +305,67 @@ async function affectedTenants(
     .sort((a, b) => a.tenantId.localeCompare(b.tenantId));
 }
 
-async function readSnapshot(options: Options, ids: string[]) {
+async function databaseIdentity(tx: Db) {
+  try {
+    return await tx.transaction(async (savepoint) => {
+      const [row] = await savepoint.execute<{
+        system_id: string;
+        database_name: string;
+      }>(sql`
+        select system_identifier::text as system_id, current_database() as database_name
+        from pg_catalog.pg_control_system()
+      `);
+      return row;
+    });
+  } catch (error) {
+    // Managed roles may lack EXECUTE on pg_control_system.
+    if (sqlState(error) !== "42501") throw error;
+    return undefined;
+  }
+}
+
+async function readSnapshot(target: Db, options: Options, ids: string[]) {
   const byTenant = new Map<string, Map<string, SnapshotRow>>();
-  if (ids.length === 0 || options.source === "findings") return byTenant;
+  if (options.source === "findings") return byTenant;
   let rows: readonly unknown[];
   if (options.snapshotDb) {
     const client = openPostgres(options.snapshotDb);
     try {
-      rows = await client.begin("read only", async (tx) => {
-        // Fail instead of exporting an incomplete snapshot under RLS.
-        await tx`set local row_security = off`;
-        return tx`
+      const targetIdentity = options.target
+        ? await databaseIdentity(target)
+        : undefined;
+      const database = drizzle(client, { schema });
+      rows = await database.transaction(
+        async (tx) => {
+          const snapshotIdentity = await databaseIdentity(tx);
+          if (
+            targetIdentity &&
+            snapshotIdentity?.system_id === targetIdentity.system_id &&
+            snapshotIdentity.database_name === targetIdentity.database_name
+          ) {
+            throw new BackfillError(
+              "DATABASE_URL and SNAPSHOT_DATABASE_URL must be separate databases.",
+            );
+          }
+          if (ids.length === 0) return [];
+          // Fail instead of exporting an incomplete snapshot under RLS.
+          await tx.execute(sql`set local row_security = off`);
+          return tx.execute(sql`
           select tenant_id, graph_id, workload_activity,
             to_json(last_activity) as last_activity, to_json(synced_at) as synced_at
-          from public.tenant_users where tenant_id in ${tx(ids)}
-        `;
-      });
+          from public.tenant_users where tenant_id in (${sql.join(
+            ids.map((id) => sql`${id}::uuid`),
+            sql`, `,
+          )})
+        `);
+        },
+        { accessMode: "read only" },
+      );
     } finally {
       await client.end();
     }
   } else {
+    if (ids.length === 0) return byTenant;
     try {
       const file = (await readFile(options.snapshotFile!, "utf8")).trim();
       rows = file.startsWith("[")
@@ -337,7 +394,7 @@ async function readSnapshot(options: Options, ids: string[]) {
     )
       continue;
     const users = byTenant.get(tenantId) ?? new Map<string, SnapshotRow>();
-    const userId = parsed.data.graph_id;
+    const userId = parsed.data.graph_id.toLowerCase();
     if (users.has(userId))
       throw new BackfillError("Snapshot has duplicate tenant/user keys.");
     users.set(userId, parsed.data);
@@ -346,6 +403,8 @@ async function readSnapshot(options: Options, ids: string[]) {
   return byTenant;
 }
 
+const scrubGraphUserId = (id: string | null) =>
+  uuid.safeParse(id).success ? id : null;
 const inactivityRules = new Set(["inactive_90d", "never_active"]);
 const dateValue = (value: Date | null) => value?.getTime() ?? null;
 type UserRow = typeof tenantUsers.$inferSelect;
@@ -366,9 +425,10 @@ function findingEvidence(rows: FindingRow[], since: Date) {
     )
       continue;
     const lastActivity = new Date(value);
-    const prior = result.get(row.graphUserId);
+    const graphId = row.graphUserId.toLowerCase();
+    const prior = result.get(graphId);
     if (lastActivity < since && (!prior || lastActivity > prior)) {
-      result.set(row.graphUserId, lastActivity);
+      result.set(graphId, lastActivity);
     }
   }
   return result;
@@ -444,8 +504,11 @@ async function repairTenant(
 
   for (const user of users) {
     const { graphId } = user;
-    if (!missing.delete(graphId)) continue;
-    const previous = snapshot.get(graphId)?.workload_activity;
+    const sourceId = graphId.toLowerCase();
+    if (!source.has(sourceId)) continue;
+    missing.delete(sourceId);
+    const snapshotUser = snapshot.get(sourceId);
+    const previous = snapshotUser?.workload_activity;
     const merged: WorkloadActivity = {
       exchange: null,
       oneDrive: null,
@@ -464,7 +527,7 @@ async function repairTenant(
       merged[key] = recovered;
       workloadChanged = true;
       workloadCounts[key]++;
-      if (key === "copilot") copilotChanged.add(graphId);
+      if (key === "copilot") copilotChanged.add(sourceId);
     }
     const workloadActivity = workloadChanged ? merged : user.workloadActivity;
     const lastActivity = latestActivity(
@@ -472,11 +535,12 @@ async function repairTenant(
       user.lastActivity,
       user.lastInteractiveSignIn,
       user.lastNonInteractiveSignIn,
-      fallback?.get(graphId) ?? null,
+      snapshotUser?.last_activity ? new Date(snapshotUser.last_activity) : null,
+      fallback?.get(sourceId) ?? null,
     );
     const activityChanged =
       dateValue(lastActivity) !== dateValue(user.lastActivity);
-    if (activityChanged) lastActivityChanged.add(graphId);
+    if (activityChanged) lastActivityChanged.add(sourceId);
     if (!workloadChanged && !activityChanged) continue;
 
     const before: UserValues = {};
@@ -530,16 +594,16 @@ async function repairTenant(
       database: tx,
       now,
       users: restored,
-      usageReportUnavailable: unavailable,
+      copilotChanged,
       reconcile: {
         preview: !options.apply,
         changes: findingChanges,
         includes: ({ graphUserId, rule }) =>
           graphUserId !== null &&
           (rule === "copilot_unused"
-            ? copilotChanged.has(graphUserId)
+            ? copilotChanged.has(graphUserId.toLowerCase())
             : inactivityRules.has(rule) &&
-              lastActivityChanged.has(graphUserId)),
+              lastActivityChanged.has(graphUserId.toLowerCase())),
         protects: (f) =>
           f.status === "acknowledged" ||
           f.remediationStatus !== "unassigned" ||
@@ -565,7 +629,7 @@ async function repairTenant(
   }: Pick<FindingRow, "id" | "rule" | "graphUserId">) => ({
     id,
     rule,
-    graphUserId: uuid.safeParse(graphUserId).success ? graphUserId : null,
+    graphUserId: scrubGraphUserId(graphUserId),
   });
   const findingReport = {
     reopen: findingChanges
@@ -593,16 +657,24 @@ async function repairTenant(
 
   let auditId: string | undefined;
   if (options.apply && (changes.length || flag || findingChanges.length)) {
-    for (const change of changes) {
-      await tx
-        .update(tenantUsers)
-        .set(change.after)
-        .where(
-          and(
-            eq(tenantUsers.tenantId, tenantId),
-            eq(tenantUsers.graphId, change.graphId),
-          ),
-        );
+    for (let offset = 0; offset < changes.length; offset += 500) {
+      const batch = changes.slice(offset, offset + 500).map(
+        ({ graphId, after }) => sql`(
+        ${graphId}::text,
+        ${after.workloadActivity !== undefined}::boolean,
+        ${after.workloadActivity ? JSON.stringify(after.workloadActivity) : null}::jsonb,
+        ${after.lastActivity !== undefined}::boolean,
+        ${after.lastActivity?.toISOString() ?? null}::timestamptz
+      )`,
+      );
+      await tx.execute(sql`
+        update ${tenantUsers} as u
+        set workload_activity = case when v.set_workload then v.workload_activity else u.workload_activity end,
+            last_activity = case when v.set_activity then v.last_activity else u.last_activity end
+        from (values ${sql.join(batch, sql`, `)})
+          as v(graph_id, set_workload, workload_activity, set_activity, last_activity)
+        where u.tenant_id = ${tenantId} and u.graph_id = v.graph_id
+      `);
     }
     if (flag) {
       await tx
@@ -630,7 +702,10 @@ async function repairTenant(
         rollback: {
           users: changes,
           usageReportUnavailable: flag,
-          findings: findingChanges,
+          findings: findingChanges.map((change) => ({
+            ...change,
+            graphUserId: scrubGraphUserId(change.graphUserId),
+          })),
           auditId,
         },
       }),
@@ -641,6 +716,7 @@ export async function backfillUsageOutage(
   database: Db,
   options: Options,
   now = new Date(),
+  onCommit?: (report: Awaited<ReturnType<typeof repairTenant>>) => void,
 ) {
   const reports: Awaited<ReturnType<typeof repairTenant>>[] = [];
   const skippedTenants: { tenantId: string; reason: string }[] = [];
@@ -663,6 +739,7 @@ export async function backfillUsageOutage(
     }
     const detected = await affectedTenants(tx, options);
     const snapshot = await readSnapshot(
+      tx,
       options,
       detected.map((d) => d.tenantId),
     );
@@ -691,8 +768,8 @@ export async function backfillUsageOutage(
 
   if (options.apply) {
     for (const { tenantId } of detected) {
-      try {
-        const result = await database.transaction(
+      const result = await database
+        .transaction(
           async (tx) => {
             await tx.execute(sql`set local row_security = off`);
             await tx.execute(sql`set local lock_timeout = '5s'`);
@@ -724,13 +801,26 @@ export async function backfillUsageOutage(
             };
           },
           { isolationLevel: "read committed" },
-        );
-        if (result.report) reports.push(result.report);
-        else skippedTenants.push({ tenantId, reason: result.reason });
-      } catch {
-        // Preserve the reports for any tenants already committed.
-        failedTenant = tenantId;
-        break;
+        )
+        .catch((error: unknown) => {
+          const code = sqlState(error);
+          const name = code
+            ? "PostgresError"
+            : error instanceof BackfillError
+              ? "BackfillError"
+              : "Error";
+          console.error(
+            `Apply failed for tenant ${tenantId}: ${name}${code ? ` (SQLSTATE ${code})` : ""}.`,
+          );
+          failedTenant = tenantId;
+          return null;
+        });
+      if (!result) break;
+      if (result.report) {
+        onCommit?.(result.report);
+        reports.push(result.report);
+      } else {
+        skippedTenants.push({ tenantId, reason: result.reason });
       }
     }
   }
@@ -818,6 +908,13 @@ function formatReport(report: Awaited<ReturnType<typeof backfillUsageOutage>>) {
   return lines.join("\n");
 }
 
+function writeJsonLine(value: object) {
+  const line = Buffer.from(JSON.stringify(value) + "\n");
+  for (let offset = 0; offset < line.length;) {
+    offset += writeSync(1, line, offset, line.length - offset);
+  }
+}
+
 async function main() {
   const raw = process.env.DATABASE_URL;
   if (raw) {
@@ -857,15 +954,22 @@ async function main() {
     const local = client ? null : await import("~/server/db");
     try {
       const database = client ? drizzle(client, { schema }) : local!.db;
-      const report = await backfillUsageOutage(database, options);
-      console.log(
-        options.json ? JSON.stringify(report, null, 2) : formatReport(report),
+      const report = await backfillUsageOutage(
+        database,
+        options,
+        new Date(),
+        (tenant) => {
+          writeJsonLine({ type: "tenant", ...tenant });
+        },
       );
-      if (report.failedTenant) {
-        if (options.json)
-          console.error(`Apply stopped at tenant ${report.failedTenant}.`);
-        process.exitCode = 1;
+      if (options.apply) {
+        writeJsonLine({ type: "summary", ...report, tenants: undefined });
+      } else {
+        console.log(
+          options.json ? JSON.stringify(report, null, 2) : formatReport(report),
+        );
       }
+      if (report.failedTenant) process.exitCode = 1;
     } finally {
       if (client) await client.end();
       else await local!.closeDatabase();

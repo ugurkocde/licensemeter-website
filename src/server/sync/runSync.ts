@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, gte, inArray, lt, notInArray, sql } from "drizzle-orm";
 
 import { db, type Db } from "~/server/db";
+import { sqlState } from "~/server/db/sqlState";
 import {
   PSEUDONYMISED_KEY_PREFIX,
   pseudonymisedDedupeKey,
@@ -166,11 +167,13 @@ const MICROSOFT_STEPS = [
   "copilotUsage",
 ] as const satisfies readonly SyncStep["step"][];
 
-export type SyncResult = {
-  runId: string;
-  status: SyncRunStatus;
-  steps: SyncStep[];
-};
+export type SyncResult =
+  | {
+      runId: string;
+      status: SyncRunStatus;
+      steps: SyncStep[];
+    }
+  | { runId: null; status: "running"; steps: [] };
 
 /**
  * Pull daily cost rows for an AI connector and upsert them. The first sync
@@ -305,42 +308,49 @@ export const runSync = async (
   // before the next nightly cron, and keeps the instant-scan poller from showing
   // "syncing" indefinitely after a hard kill.
   const STALE_RUN_MS = 20 * 60 * 1000;
-  const started = await db.transaction(async (tx) => {
-    // A backfill holds this lock until all repairs for this tenant commit.
-    if (!(await lockTenant(tx, tenantId)))
-      throw new Error(`Unknown tenant ${tenantId}`);
-    await tx
-      .update(syncRuns)
-      .set({ status: "failed", error: "stale run", finishedAt: new Date() })
-      .where(
-        and(
+  const started = await db
+    .transaction(async (tx) => {
+      // A backfill holds this lock until all repairs for this tenant commit.
+      await tx.execute(sql`set local lock_timeout = '5s'`);
+      if (!(await lockTenant(tx, tenantId)))
+        throw new Error(`Unknown tenant ${tenantId}`);
+      await tx
+        .update(syncRuns)
+        .set({ status: "failed", error: "stale run", finishedAt: new Date() })
+        .where(
+          and(
+            eq(syncRuns.tenantId, tenantId),
+            eq(syncRuns.status, "running"),
+            lt(syncRuns.startedAt, new Date(Date.now() - STALE_RUN_MS)),
+          ),
+        );
+
+      // The partial unique index holds the guard for the rest of the sync.
+      const [run] = await tx
+        .insert(syncRuns)
+        .values({ tenantId, status: "running" })
+        .onConflictDoNothing({
+          target: syncRuns.tenantId,
+          where: sql`${syncRuns.status} = 'running'`,
+        })
+        .returning({ id: syncRuns.id });
+      if (run) return { runId: run.id, inFlight: false };
+
+      const inFlight = await tx.query.syncRuns.findFirst({
+        where: and(
           eq(syncRuns.tenantId, tenantId),
           eq(syncRuns.status, "running"),
-          lt(syncRuns.startedAt, new Date(Date.now() - STALE_RUN_MS)),
         ),
-      );
-
-    // The partial unique index holds the guard for the rest of the sync.
-    const [run] = await tx
-      .insert(syncRuns)
-      .values({ tenantId, status: "running" })
-      .onConflictDoNothing({
-        target: syncRuns.tenantId,
-        where: sql`${syncRuns.status} = 'running'`,
-      })
-      .returning({ id: syncRuns.id });
-    if (run) return { runId: run.id, inFlight: false };
-
-    const inFlight = await tx.query.syncRuns.findFirst({
-      where: and(
-        eq(syncRuns.tenantId, tenantId),
-        eq(syncRuns.status, "running"),
-      ),
+      });
+      if (!inFlight)
+        throw new Error("The concurrent sync already finished. Retry sync.");
+      return { runId: inFlight.id, inFlight: true };
+    })
+    .catch((error: unknown) => {
+      if (sqlState(error) === "55P03") return null;
+      throw error;
     });
-    if (!inFlight)
-      throw new Error("The concurrent sync already finished. Retry sync.");
-    return { runId: inFlight.id, inFlight: true };
-  });
+  if (!started) return { runId: null, status: "running", steps: [] };
   const { runId } = started;
   if (started.inFlight) return { runId, status: "running", steps: [] };
 
@@ -1391,7 +1401,7 @@ type ActivityAnalysisOptions = {
     string,
     Pick<StoredUser, "lastActivity" | "workloadActivity">
   >;
-  usageReportUnavailable: boolean | null;
+  copilotChanged: ReadonlySet<string>;
   reconcile: ActivityReconciliation;
 };
 
@@ -1406,11 +1416,21 @@ export const runAnalysis = async (
 ): Promise<void> => {
   if (activity)
     return analyzeStoredTenant(tenantId, activity.database, activity);
-  await db.transaction(async (tx) => {
-    if (!(await lockTenant(tx, tenantId)))
-      throw new Error(`Unknown tenant ${tenantId}`);
-    await analyzeStoredTenant(tenantId, tx);
-  });
+  await db
+    .transaction(async (tx) => {
+      await tx.execute(sql`set local lock_timeout = '5s'`);
+      if (!(await lockTenant(tx, tenantId)))
+        throw new Error(`Unknown tenant ${tenantId}`);
+      await analyzeStoredTenant(tenantId, tx);
+    })
+    .catch((error: unknown) => {
+      if (sqlState(error) === "55P03") {
+        throw new Error(
+          "Wait for the current workspace update to finish, then retry",
+        );
+      }
+      throw error;
+    });
 };
 
 async function analyzeStoredTenant(
@@ -1458,61 +1478,80 @@ async function analyzeStoredTenant(
   );
 
   // Older workspaces predate the stored coverage signal.
-  const storedSignal =
+  const activitySignal =
     tenant.activitySignal ??
     (tenant.hasP1 || tenant.concealedNames === false ? "full" : "none");
-  // Restored evidence allows the normal age rules to run for users selected
-  // by the repair even if a later preservation sync marked coverage unknown.
-  const activitySignal =
-    activity && storedSignal === "unknown" ? "full" : storedSignal;
-  const reportUnavailable = activity
-    ? activity.usageReportUnavailable
-    : tenant.usageReportUnavailable;
+  const users = userRows.map((row) => {
+    const r = { ...row, ...activity?.users.get(row.graphId) };
+    return {
+      graphId: r.graphId,
+      upn: r.upn,
+      displayName: r.displayName,
+      accountEnabled: r.accountEnabled,
+      userType: r.userType,
+      createdDateTime: r.createdDateTime,
+      lastActivity: r.lastActivity,
+      copilotLastActivity: r.workloadActivity?.copilot
+        ? new Date(r.workloadActivity.copilot)
+        : null,
+      licenses: r.licenses,
+    };
+  });
+  const inputs = {
+    skus: skuRows,
+    prices,
+    now,
+    inactiveDays: tenant.inactiveDays,
+    exclusions: tenant.findingExclusions,
+  };
+
+  if (activity) {
+    const evaluated = new Map<string, Set<WasteRuleId>>();
+    const newFindings = analyzeWaste({
+      ...inputs,
+      users: users.filter((user) => activity.users.has(user.graphId)),
+      activitySignal: "full",
+      copilotSignal: "per-user",
+      onActivityEvaluated: (user, rule) => {
+        const graphId = user.graphId.toLowerCase();
+        const hasEvidence =
+          rule === "copilot_unused"
+            ? activity.copilotChanged.has(graphId) &&
+              Number.isFinite(user.copilotLastActivity?.getTime())
+            : Number.isFinite(user.lastActivity?.getTime());
+        if (!hasEvidence) return;
+        const rules = evaluated.get(graphId) ?? new Set<WasteRuleId>();
+        rules.add(rule);
+        evaluated.set(graphId, rules);
+      },
+    });
+    const includes: ActivityReconciliation["includes"] = (finding) =>
+      finding.graphUserId !== null &&
+      evaluated.get(finding.graphUserId.toLowerCase())?.has(finding.rule) ===
+        true &&
+      activity.reconcile.includes(finding);
+    await diffFindings(tenantId, newFindings.filter(includes), now, "full", {
+      database,
+      reconcile: { ...activity.reconcile, includes },
+    });
+    return;
+  }
+
   const newFindings = await analyzeWasteWithCoverage(
     tenantId,
     {
-      users: userRows.map((row) => {
-        const r = { ...row, ...activity?.users.get(row.graphId) };
-        return {
-          graphId: r.graphId,
-          upn: r.upn,
-          displayName: r.displayName,
-          accountEnabled: r.accountEnabled,
-          userType: r.userType,
-          createdDateTime: r.createdDateTime,
-          lastActivity: r.lastActivity,
-          copilotLastActivity: r.workloadActivity?.copilot
-            ? new Date(r.workloadActivity.copilot)
-            : null,
-          licenses: r.licenses,
-        };
-      }),
-      skus: skuRows,
-      prices,
-      now,
+      ...inputs,
+      users,
       activitySignal,
       copilotSignal: tenant.copilotSignal ?? "none",
       // An outage can leave an aggregate stored even when there are no users.
-      usageAggregate: reportUnavailable
+      usageAggregate: tenant.usageReportUnavailable
         ? undefined
         : (tenant.usageAggregate ?? undefined),
       copilotAggregate: tenant.copilotAggregate ?? undefined,
-      inactiveDays: tenant.inactiveDays,
-      exclusions: tenant.findingExclusions,
     },
     database,
   );
-
-  if (activity) {
-    await diffFindings(
-      tenantId,
-      newFindings.filter(activity.reconcile.includes),
-      now,
-      activitySignal,
-      { database, reconcile: activity.reconcile },
-    );
-    return;
-  }
 
   const entraIdentities = directoryIdentitiesOf(userRows);
   const seatExcluded = connectorSeatExclusion(

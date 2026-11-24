@@ -337,7 +337,7 @@ function makeCtx(
 
 // Imported after the mocks are registered (top-level vi.mock is hoisted).
 const { runAnalysis, runSync } = await import("~/server/sync/runSync");
-const { disconnectMicrosoft, disconnectTenant } =
+const { disconnectMicrosoft, disconnectTenant, triggerSync } =
   await import("~/server/actions");
 
 // --- helpers to read state ---------------------------------------------------
@@ -397,6 +397,54 @@ describe("runSync concurrency lock (sync_runs_one_running_idx)", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]!.status).toBe("running");
     expect(getOrganizationName).not.toHaveBeenCalled();
+  });
+
+  it("returns an in-flight status and a retry message when repair holds the tenant lock", async ({
+    onTestFinished,
+  }) => {
+    const tenant = await seedTenant();
+    currentCtx = makeCtx(tenant, "admin");
+    const transaction = currentDb.transaction.bind(currentDb);
+    // PGlite has one connection. Assert the transaction's timeout and
+    // simulate the PostgreSQL error raised by the competing lock.
+    const transactionSpy = vi
+      .spyOn(currentDb, "transaction")
+      .mockImplementation((run, config) =>
+        transaction(async (tx) => {
+          vi.spyOn(tx, "select").mockImplementationOnce(() => {
+            throw Object.assign(
+              new Error("canceling statement due to lock timeout"),
+              {
+                code: "55P03",
+              },
+            );
+          });
+          return run(tx);
+        }, config),
+      );
+    onTestFinished(() => {
+      transactionSpy.mockRestore();
+    });
+    const client = makeGraphClient();
+    logQuery.mockClear();
+    await expect(runSync(TENANT_ID, { client })).resolves.toEqual({
+      runId: null,
+      status: "running",
+      steps: [],
+    });
+    await expect(runAnalysis(TENANT_ID)).rejects.toThrow("then retry");
+    expect(
+      logQuery.mock.calls.filter(
+        ([query]) => query === "set local lock_timeout = '5s'",
+      ),
+    ).toHaveLength(2);
+    expect(await getRuns()).toEqual([]);
+    // Avoid the fake connector's authenticated-client factory in the action.
+    await currentDb.update(schema.tenants).set({ tid: null });
+    await expect(triggerSync()).resolves.toMatchObject({
+      ok: false,
+      error: "Wait for the current workspace update to finish, then retry",
+    });
   });
 
   it("a stale running run is force-failed and the new sync proceeds", async () => {
@@ -741,7 +789,8 @@ describe("runSync live step progress", () => {
     const result = await runSync(TENANT_ID, { client: makeGraphClient() });
     const { persistRunSteps } = await import("~/server/sync/stepProgress");
 
-    await persistRunSteps(result.runId, [
+    expect(result.runId).not.toBeNull();
+    await persistRunSteps(result.runId!, [
       { step: "subscribedSkus", status: "ok" },
     ]);
 
@@ -942,10 +991,11 @@ describe("runSync with unavailable Microsoft usage data", () => {
       activitySignal: "unknown",
       usageReportUnavailable: true,
     });
+    expect(baseline.runId).not.toBeNull();
     await currentDb
       .update(schema.syncRuns)
       .set({ startedAt: new Date(daysAgo(31)) })
-      .where(eq(schema.syncRuns.id, baseline.runId));
+      .where(eq(schema.syncRuns.id, baseline.runId!));
 
     await sync(missing);
     expect(await storedTenant()).toMatchObject({

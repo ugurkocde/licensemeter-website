@@ -1271,6 +1271,8 @@ export const triggerSync = async (): Promise<
   if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   await audit(ctx, "sync_triggered", {});
   const result = await runSync(ctx.tenant.id, { deadline: requestDeadline() });
+  if (result.runId === null)
+    return fail("Wait for the current workspace update to finish, then retry");
   revalidateApp();
   return {
     ...(result.status === "failed"
