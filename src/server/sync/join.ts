@@ -59,6 +59,12 @@ export const joinSignals = (args: {
   copilotRows: CopilotUsageRow[];
   hasP1: boolean;
   previousActivity?: ReadonlyMap<string, StoredActivity>;
+  /**
+   * The usage report failed or came back without usable rows for a tenant
+   * that had report coverage before. Passed explicitly: the stored directory
+   * can be empty while an earlier concealed aggregate still counts.
+   */
+  reportUnavailable?: boolean;
 }): JoinResult => {
   const { graphUsers, usageRows, copilotRows, hasP1 } = args;
 
@@ -143,7 +149,7 @@ export const joinSignals = (args: {
   // P1 sign-ins still support per-user analysis during a report outage.
   const activitySignal: JoinResult["activitySignal"] = hasP1
     ? "full"
-    : args.previousActivity?.size
+    : args.reportUnavailable
       ? "unknown"
       : !concealed && usageRows.length > 0
         ? "full"

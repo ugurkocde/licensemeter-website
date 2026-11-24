@@ -246,6 +246,18 @@ describe("joinSignals", () => {
     ).toBe("none");
   });
 
+  it("uses unknown coverage when the report is unavailable even without stored users", () => {
+    const result = joinSignals({
+      hasP1: false,
+      graphUsers: [graphUser({})],
+      usageRows: [],
+      copilotRows: [],
+      previousActivity: new Map(),
+      reportUnavailable: true,
+    });
+    expect(result.activitySignal).toBe("unknown");
+  });
+
   it("uses unknown coverage and preserves the Copilot date during an outage without P1", () => {
     const previousCopilot = "2026-05-01";
     const result = joinSignals({
@@ -253,6 +265,7 @@ describe("joinSignals", () => {
       graphUsers: [graphUser({})],
       usageRows: [],
       copilotRows: [],
+      reportUnavailable: true,
       previousActivity: new Map([
         [
           "g-1",

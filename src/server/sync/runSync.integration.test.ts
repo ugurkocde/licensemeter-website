@@ -1214,11 +1214,35 @@ describe("runSync with unavailable Microsoft usage data", () => {
       getActiveUserDetail: async () => emptyReport,
     });
     expect(await storedTenant()).toMatchObject({
-      activitySignal: "none",
+      activitySignal: "unknown",
       usageReportUnavailable: true,
     });
     await runAnalysis(TENANT_ID);
     expect(await activityFindings()).toMatchObject([{ status: "resolved" }]);
+  });
+
+  it("keeps a concealed aggregate when a licensed user appears during an outage", async () => {
+    await seedTenant();
+    await sync({
+      listUsers: listUsers([]),
+      getActiveUserDetail: async () =>
+        usageReport([{ ...never, userPrincipalName: "a".repeat(32) }]),
+    });
+    const [before] = await activityFindings();
+    expect(before).toMatchObject({ status: "open" });
+
+    await sync({
+      listUsers: listUsers([never]),
+      getActiveUserDetail: async () => emptyReport,
+    });
+    expect(await storedTenant()).toMatchObject({
+      activitySignal: "unknown",
+      usageReportUnavailable: true,
+    });
+    await runAnalysis(TENANT_ID);
+    expect(await activityFindings()).toMatchObject([
+      { id: before?.id, status: "open" },
+    ]);
   });
 
   it("accepts a report with a licensed match and a deleted user's row", async () => {

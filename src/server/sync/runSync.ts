@@ -835,6 +835,7 @@ export const runSync = async (
       copilotRows,
       hasP1,
       previousActivity,
+      reportUnavailable: usageReportUnavailable,
     });
 
     // A failed subscriptions read keeps the trial seats and renewal dates of
