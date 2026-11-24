@@ -227,7 +227,7 @@ export const GET = async (req: NextRequest) => {
       signupSource: oauth.from ?? null,
     });
     if (count === 1) {
-      void notifyOps(firstSignInAlert(claims.tid));
+      void notifyOps(firstSignInAlert(claims.tid), { logLevel: "info" });
     }
   } catch (err) {
     console.error("[auth] sign-in tracking failed", err);

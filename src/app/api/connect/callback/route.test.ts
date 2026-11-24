@@ -24,7 +24,7 @@ let currentDb: ReturnType<typeof makeDb>;
 const apiAccess = vi.fn();
 const auth = vi.fn();
 const verifyManagedConsent = vi.fn();
-const notifyOps = vi.fn<(text: string, opts?: unknown) => Promise<void>>();
+const notifyOps = vi.fn<typeof import("~/server/ops").notifyOps>();
 const runSync = vi.fn();
 
 const env = vi.hoisted(
@@ -56,7 +56,10 @@ vi.mock("~/server/access", () => ({
 }));
 vi.mock("~/server/auth", () => ({ auth }));
 vi.mock("~/server/graph/msGraph", () => ({ verifyManagedConsent }));
-vi.mock("~/server/ops", () => ({ notifyOps }));
+vi.mock("~/server/ops", async (importOriginal) => {
+  const ops = await importOriginal<typeof import("~/server/ops")>();
+  return { ...ops, notifyOps: notifyOps.mockImplementation(ops.notifyOps) };
+});
 vi.mock("~/server/sync/runSync", () => ({ runSync }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({ set: () => undefined }),
@@ -175,15 +178,30 @@ describe("admin-consent callback tenant binding", () => {
     expect(conns[0]?.mode).toBe("managed");
   });
 
-  it("alerts nothing on the success path", async () => {
+  it("logs a successful connection at info without a rejection alert", async () => {
     await seedState();
     verifyManagedConsent.mockResolvedValue(true);
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "");
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
 
-    await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
-      /redirect:.*status=syncing/,
-    );
-
-    expect(rejectionAlerts()).toHaveLength(0);
+    try {
+      await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
+        /redirect:.*status=syncing/,
+      );
+      expect(info).toHaveBeenCalledExactlyOnceWith(
+        `[ops] workspace ${TENANT_ID} connected its Microsoft tenant, first sync starting`,
+      );
+      expect(error).not.toHaveBeenCalled();
+      expect(rejectionAlerts()).toHaveLength(0);
+    } finally {
+      info.mockRestore();
+      error.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 });
 
