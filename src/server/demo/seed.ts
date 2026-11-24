@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 
+import { DEMO_FIGURES } from "~/lib/demoFigures";
 import { db } from "~/server/db";
 import {
   findings,
@@ -151,7 +152,7 @@ const seedDemoShowcase = async (tenantId: string): Promise<void> => {
         contractName: "Microsoft Customer Agreement",
         renewalDate: dateAfter(74),
         noticeDays: 45,
-        annualValueCents: 8_375_880,
+        annualValueCents: DEMO_FIGURES.monthlySpendCents * 12,
         ownerMembershipId: owner?.id ?? null,
         notes: "Review Copilot adoption and shelfware before the true-up.",
       },
@@ -184,7 +185,8 @@ const seedDemoHistory = async (tenantId: string): Promise<void> => {
     return {
       tenantId,
       day,
-      totalMonthlySpendCents: 697_990 + Math.round(Math.sin(i * 0.9) * 12_000),
+      totalMonthlySpendCents:
+        DEMO_FIGURES.monthlySpendCents + Math.round(Math.sin(i * 0.9) * 12_000),
       totalMonthlyWasteCents: Math.max(
         Math.round(310_000 - i * 1_500 + wobble),
         200_000,

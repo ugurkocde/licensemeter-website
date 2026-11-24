@@ -75,6 +75,7 @@ import {
   analyzeWaste,
   assignedSeatsOf,
   billedSeatsOf,
+  isShelfwareExempt,
   paidSeatsOf,
   purchasedSeatsOf,
   type WasteFinding,
@@ -87,23 +88,25 @@ const chunk = <T>(arr: T[], size: number): T[][] => {
 };
 
 /**
- * Per-SKU seats for the daily snapshot: paid seats (trial seats excluded,
- * matching purchasedSeats) and assigned seats. Written on insert and on every
- * same-day rewrite so the two never disagree.
+ * Daily snapshot breakdown of purchased and assigned seats for the same SKUs
+ * included in the totals.
  */
 const bySkuOf = (
   skus: readonly {
     skuId: string;
+    skuPartNumber: string;
     prepaidEnabled: number;
     consumedUnits: number;
     trialUnits?: number;
   }[],
 ): Record<string, { purchased: number; assigned: number }> =>
   Object.fromEntries(
-    skus.map((s) => [
-      s.skuId,
-      { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
-    ]),
+    skus
+      .filter((s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled))
+      .map((s) => [
+        s.skuId,
+        { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
+      ]),
   );
 
 /** Milliseconds since `start`, recorded on every step to diagnose slow syncs. */

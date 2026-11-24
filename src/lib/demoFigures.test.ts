@@ -13,7 +13,11 @@ import {
 import { meteringDemo } from "~/server/metering/demo";
 import { summarize } from "~/server/metering/summary";
 import { joinSignals } from "~/server/sync/join";
-import { analyzeWaste, type WasteFinding } from "~/server/waste/engine";
+import {
+  analyzeWaste,
+  billedSeatsOf,
+  type WasteFinding,
+} from "~/server/waste/engine";
 import type { WasteRuleId } from "~/server/types";
 import { DEMO_FIGURES } from "./demoFigures";
 
@@ -60,14 +64,15 @@ const recompute = async () => {
   };
   const now = new Date();
 
+  const inventory = skus.map((s) => ({
+    skuId: s.skuId,
+    skuPartNumber: s.skuPartNumber,
+    prepaidEnabled: s.prepaidUnits.enabled,
+    consumedUnits: s.consumedUnits,
+  }));
   const graphFindings = analyzeWaste({
     users: joined.users,
-    skus: skus.map((s) => ({
-      skuId: s.skuId,
-      skuPartNumber: s.skuPartNumber,
-      prepaidEnabled: s.prepaidUnits.enabled,
-      consumedUnits: s.consumedUnits,
-    })),
+    skus: inventory,
     prices,
     now,
     activitySignal: joined.activitySignal,
@@ -102,11 +107,21 @@ const recompute = async () => {
   }
 
   const findings = graphFindings.concat(adobeFindings, saasFindings);
-  const monthlySpendCents = skus.reduce(
-    (sum, s) => sum + s.consumedUnits * (prices[s.skuId] ?? 0),
+  const billedSeats = inventory.reduce(
+    (sum, sku) => sum + billedSeatsOf(sku),
     0,
   );
-  return { orgName, users: graphUsers.length, findings, monthlySpendCents };
+  const monthlySpendCents = inventory.reduce(
+    (sum, s) => sum + billedSeatsOf(s) * (prices[s.skuId] ?? 0),
+    0,
+  );
+  return {
+    orgName,
+    users: graphUsers.length,
+    findings,
+    monthlySpendCents,
+    billedSeats,
+  };
 };
 
 const sumByRules = (findings: WasteFinding[], rules: WasteRuleId[]): number =>
@@ -122,10 +137,11 @@ describe("DEMO_FIGURES matches the recomputed demo tenant analysis", () => {
   });
 
   it("totals", async () => {
-    const { findings, monthlySpendCents } = await recompute();
+    const { findings, monthlySpendCents, billedSeats } = await recompute();
     expect(findings.reduce((s, f) => s + f.monthlyImpactCents, 0)).toBe(
       DEMO_FIGURES.monthlyWasteCents,
     );
+    expect(billedSeats).toBe(300);
     expect(monthlySpendCents).toBe(DEMO_FIGURES.monthlySpendCents);
     expect(findings).toHaveLength(DEMO_FIGURES.findingsCount);
   });

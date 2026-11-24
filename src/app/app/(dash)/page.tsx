@@ -1,3 +1,4 @@
+import { wasteShareLabel } from "./wasteShare";
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { AccessRequestCards } from "~/components/workspace/AccessRequestCards";
@@ -31,7 +32,7 @@ import {
 import { fmtAgo, fmtDate, fmtMoney, fmtNumber } from "~/lib/format";
 import { calculatePriceCoverage } from "~/lib/priceCoverage";
 import { syncStatusRun } from "~/lib/syncStatusRun";
-import { ALL_RULES, MICROSOFT_RULES, RULE_META } from "~/lib/rules";
+import { ALL_RULES, RULE_META } from "~/lib/rules";
 import { upgradePath } from "~/lib/upgrade";
 import type { WasteRuleId } from "~/server/types";
 import { requireAccess, hasRole } from "~/server/access";
@@ -229,15 +230,6 @@ export default async function OverviewPage({
     billedSeatsOf(s) * (priceBySku.get(s.skuId) ?? 0);
   const monthlySpend = realSkus.reduce((sum, s) => sum + spendOf(s), 0);
   const monthlyWaste = ruleAgg.reduce((sum, r) => sum + r.cents, 0);
-  // Spend covers Microsoft licenses. Open findings can also include other
-  // connectors and can outlive the price or seat counts used to value them.
-  const hasOtherConnectorWaste = ruleAgg.some(
-    (r) => r.cents > 0 && !MICROSOFT_RULES.includes(r.rule),
-  );
-  const wasteShare =
-    monthlySpend > 0 && monthlyWaste <= monthlySpend && !hasOtherConnectorWaste
-      ? (monthlyWaste / monthlySpend) * 100
-      : null;
 
   // Inventory rows for the dashboard table, sorted client-side (default: spend
   // descending). Pre-shaped here so the client component stays serializable.
@@ -370,10 +362,7 @@ export default async function OverviewPage({
       key: "waste",
       label: "Monthly waste",
       value: fmtMoney(monthlyWaste, currency),
-      sub:
-        wasteShare === null
-          ? "Spend share unavailable"
-          : `${wasteShare.toFixed(1)}% of spend`,
+      sub: wasteShareLabel(monthlySpend, ruleAgg),
       tone: "waste",
       note: !priceCoverage.complete ? (
         <>
@@ -387,12 +376,12 @@ export default async function OverviewPage({
         </>
       ) : null,
       explainer:
-        "The share compares Microsoft waste with recorded Microsoft spend. It is hidden when spend is zero, waste exceeds spend, or other connectors contribute waste.",
+        "Monthly waste includes all connectors. The percentage compares Microsoft waste with recorded Microsoft spend.",
       detail: {
         formula:
           "Each open or acknowledged finding carries the monthly cost of the wasted seat. Monthly waste is the sum of those costs, grouped here by the rule that flagged them.",
         source:
-          "Sync values open and acknowledged findings using the price book. Spend share is available when recorded Microsoft spend is positive, covers the total waste, and all priced findings are for Microsoft licenses.",
+          "Sync values open and acknowledged findings using the price book. The percentage uses Microsoft findings only and requires recorded Microsoft spend. If Microsoft waste exceeds recorded spend, run a sync to refresh the figures.",
         columns: ["Rule", "Impact / mo"],
         rows: wasteRows,
         totalLabel: "Total monthly waste",

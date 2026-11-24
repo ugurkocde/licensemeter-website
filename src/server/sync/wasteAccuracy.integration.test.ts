@@ -508,7 +508,9 @@ describe("same-day snapshots", () => {
       purchasedSeats: 125,
       assignedSeats: 90,
       totalMonthlySpendCents: 125 * 3670,
-      bySku: { [E3]: { purchased: 125, assigned: 90 } },
+    });
+    expect((await snapshot()).bySku).toEqual({
+      [E3]: { purchased: 125, assigned: 90 },
     });
 
     await runSync(TENANT, {
@@ -523,7 +525,9 @@ describe("same-day snapshots", () => {
       purchasedSeats: 100,
       assignedSeats: 90,
       totalMonthlySpendCents: 100 * 3670,
-      bySku: { [E3]: { purchased: 100, assigned: 90 } },
+    });
+    expect((await snapshot()).bySku).toEqual({
+      [E3]: { purchased: 100, assigned: 90 },
     });
 
     await currentDb
@@ -540,7 +544,9 @@ describe("same-day snapshots", () => {
       purchasedSeats: 75,
       assignedSeats: 90,
       totalMonthlySpendCents: 75 * 3670,
-      bySku: { [E3]: { purchased: 75, assigned: 90 } },
+    });
+    expect((await snapshot()).bySku).toEqual({
+      [E3]: { purchased: 75, assigned: 90 },
     });
   });
 });

@@ -180,7 +180,11 @@ export const spendSeatsOf = (s: SeatCounts): number =>
 
 type InventorySeatCounts = SeatCounts & { skuPartNumber: string };
 
-/** Seats included in monthly spend, including paid seats without an assignment. */
+/**
+ * Seats included in monthly spend, including paid seats without an assignment.
+ * Shelfware-exempt SKUs, including the 5,000-seat capacity heuristic, count
+ * only paid assignments.
+ */
 export const billedSeatsOf = (s: InventorySeatCounts): number =>
   isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled)
     ? spendSeatsOf(s)

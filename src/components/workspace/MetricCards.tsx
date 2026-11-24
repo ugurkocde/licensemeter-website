@@ -18,7 +18,7 @@ export type MetricCardData = {
   key: string;
   label: string;
   value: string;
-  sub: string;
+  sub?: string;
   tone: "ink" | "waste";
   /** Optional footnote rendered under the card (may contain a link). */
   note?: React.ReactNode;
@@ -131,7 +131,9 @@ export const MetricCards = ({ cards }: { cards: MetricCardData[] }) => {
             >
               {card.value}
             </p>
-            <div className="text-ink-soft mt-1 text-xs">{card.sub}</div>
+            {card.sub && (
+              <div className="text-ink-soft mt-1 text-xs">{card.sub}</div>
+            )}
             {card.note && (
               <div className="text-ink-faint mt-1 text-xs">{card.note}</div>
             )}
@@ -163,7 +165,9 @@ export const MetricCards = ({ cards }: { cards: MetricCardData[] }) => {
               >
                 {active.value}
               </div>
-              <div className="text-ink-soft mt-1 text-sm">{active.sub}</div>
+              {active.sub && (
+                <div className="text-ink-soft mt-1 text-sm">{active.sub}</div>
+              )}
             </div>
 
             <dl className="flex flex-col gap-4">
