@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import Link from "next/link";
 
 import { ConnectPoller } from "~/components/workspace/ConnectPoller";
@@ -14,7 +14,7 @@ import { CONNECTOR_SCOPES } from "~/lib/scopes";
 import { fmtDate } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
-import { msConnections, syncRuns } from "~/server/db/schema";
+import { msConnections } from "~/server/db/schema";
 import { loadAccessLoss, type AccessLossCause } from "~/server/msAccessLoss";
 
 export const metadata = { title: "Microsoft 365 connector" };
@@ -245,24 +245,12 @@ export default async function MicrosoftConnectorPage({
   const status = typeof sp.status === "string" ? sp.status : null;
   const error = typeof sp.error === "string" ? sp.error : null;
 
-  const [conn, latestUsageRun] = await Promise.all([
-    db.query.msConnections.findFirst({
-      where: eq(msConnections.tenantId, ctx.tenant.id),
-    }),
-    db.query.syncRuns.findFirst({
-      where: and(
-        eq(syncRuns.tenantId, ctx.tenant.id),
-        sql`${syncRuns.steps} @> '[{"step":"usageReports"}]'::jsonb`,
-      ),
-      orderBy: desc(syncRuns.startedAt),
-      columns: { steps: true },
-    }),
-  ]);
-  const usageStep = latestUsageRun?.steps.find(
-    (step) => step.step === "usageReports",
-  );
-  const emptyUsageReport =
-    usageStep?.status === "warning" && usageStep.count === 0;
+  const conn = await db.query.msConnections.findFirst({
+    where: eq(msConnections.tenantId, ctx.tenant.id),
+  });
+  const usageReportUnavailable =
+    ctx.tenant.usageReportUnavailable ??
+    ctx.tenant.activitySignal === "unknown";
   const lostAccess =
     conn?.mode === "managed" && conn.lastVerifyError
       ? await loadAccessLoss(ctx.tenant.id)
@@ -336,12 +324,13 @@ export default async function MicrosoftConnectorPage({
           <Card title="Microsoft 365 conceals names in usage reports">
             <div className="text-ink-soft flex flex-col gap-2 text-sm">
               <p>
-                LicenseMeter can&rsquo;t match report activity to individual
-                users while names are concealed.
+                {ctx.tenant.hasP1
+                  ? "Sign-in activity still supports per-user inactivity findings. Concealed names hide each user’s workload activity."
+                  : "LicenseMeter can’t match report activity to individual users while names are concealed."}
               </p>
               <p>
-                A Global Administrator or Reports Administrator can open the
-                Microsoft 365 admin center and go to{" "}
+                A Global Administrator can open the Microsoft 365 admin center
+                and go to{" "}
                 <strong>
                   Settings &gt; Org settings &gt; Services &gt; Reports
                 </strong>
@@ -354,11 +343,14 @@ export default async function MicrosoftConnectorPage({
             </div>
           </Card>
         )}
-        {emptyUsageReport && (
-          <Card title="Microsoft returned no usage data">
+        {usageReportUnavailable && (
+          <Card title="Microsoft 365 usage data is unavailable">
             <p className="text-ink-soft text-sm">
-              LicenseMeter kept the last known activity from previous syncs. For
-              new tenants, reports can take up to 48 hours to fill.
+              LicenseMeter keeps the last known workload activity when
+              available.{" "}
+              {ctx.tenant.hasP1
+                ? "Per-user inactivity findings continue to update using sign-in activity."
+                : "Inactivity findings are carried forward until report data is available again."}
             </p>
           </Card>
         )}

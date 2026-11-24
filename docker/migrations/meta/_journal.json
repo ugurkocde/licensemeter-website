@@ -141,6 +141,13 @@
       "when": 1794404242276,
       "tag": "0019_mcp_token_expiry",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795520240723,
+      "tag": "0020_usage_report_availability",
+      "breakpoints": true
     }
   ]
 }

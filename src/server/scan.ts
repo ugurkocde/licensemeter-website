@@ -123,7 +123,7 @@ export const resolveScanTenant = async (
         name: ms.upn.split("@")[1] ?? null,
         consentedAt: null,
 
-        concealedNames: false,
+        concealedNames: null,
         hasP1: false,
         activitySignal: "none",
         copilotSignal: "none",
@@ -241,7 +241,7 @@ const bindOwnEmptyWorkspace = async (
         // Same placeholder as a fresh scan workspace when sign-in left no name;
         // the scan replaces it with the name from /organization.
         name: sql`coalesce(${tenants.name}, ${upn.split("@")[1] ?? null})`,
-        concealedNames: false,
+        concealedNames: null,
         hasP1: false,
         activitySignal: "none",
         copilotSignal: "none",

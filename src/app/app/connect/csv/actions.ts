@@ -394,6 +394,7 @@ export const submitCsvImport = async (
       hasP1: false,
       activitySignal: hasUsage ? "full" : "none",
       copilotSignal: "none",
+      usageReportUnavailable: false,
       usageAggregate: null,
       copilotAggregate: null,
     })

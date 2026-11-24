@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "usage_report_unavailable" boolean;

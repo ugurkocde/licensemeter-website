@@ -44,6 +44,7 @@ import {
 } from "~/server/graph/skuCatalog";
 import {
   GraphHttpError,
+  isConcealedUpn,
   PremiumLicenseRequiredError,
   type ActiveUserDetailReport,
   type CopilotUsageRow,
@@ -117,7 +118,9 @@ const emptyUsageMessage = (report: ActiveUserDetailReport): string => {
     ? "no CSV header"
     : report.dataRowCount === 0
       ? "header only"
-      : "no user rows";
+      : report.rows.length === 0
+        ? "no user rows"
+        : "no rows matched a licensed directory user";
   const details = [reason];
   if (report.reportRefreshDate)
     details.push(`report refresh date ${report.reportRefreshDate}`);
@@ -140,9 +143,7 @@ const analyzeWasteWithCoverage = async (
     ),
   });
   const previousInactivity = new Map(
-    previous
-      .filter((f) => f.graphUserId !== null)
-      .map((f) => [f.graphUserId!, f]),
+    previous.filter((f) => f.graphUserId !== null).map((f) => [f.dedupeKey, f]),
   );
   const current = analyzeWaste({ ...input, previousInactivity });
   // Concealed reports can produce an aggregate inactivity finding. An empty
@@ -366,7 +367,16 @@ export const runSync = async (
     let graphUsers: GraphUser[] = [];
     let hasP1 = true;
     let usageRows: UsageReportRow[] = [];
-    let emptyUsageReport = false;
+    let usageReportUnavailable = false;
+    let previousActivity:
+      | Map<
+          string,
+          Pick<
+            typeof tenantUsers.$inferSelect,
+            "workloadActivity" | "lastActivity"
+          >
+        >
+      | undefined;
     let copilotRows: CopilotUsageRow[] = [];
 
     if (!client) {
@@ -527,25 +537,75 @@ export const runSync = async (
       }
 
       started = Date.now();
+      let report: ActiveUserDetailReport | undefined;
       try {
-        const report = await client.getActiveUserDetail("D90");
-        usageRows = report.rows;
-        emptyUsageReport =
-          usageRows.length === 0 &&
-          (skus.some((sku) => sku.consumedUnits > 0) ||
-            graphUsers.some((user) => user.assignedLicenses.length > 0));
-        record({
-          step: "usageReports",
-          status: emptyUsageReport ? "warning" : "ok",
-          message: emptyUsageReport ? emptyUsageMessage(report) : undefined,
-          count: usageRows.length,
-          durationMs: since(started),
-        });
+        report = await client.getActiveUserDetail("D90");
       } catch (err) {
         record({
           step: "usageReports",
           status: "warning",
           message: errText(err),
+          durationMs: since(started),
+        });
+      }
+
+      const licensedUpns = new Set(
+        graphUsers
+          .filter((user) => user.assignedLicenses.length > 0)
+          .map((user) => user.userPrincipalName.toLowerCase()),
+      );
+      // Concealed identities can still supply a usable tenant-wide count.
+      if (
+        report?.rows.some(
+          (row) =>
+            isConcealedUpn(row.userPrincipalName) ||
+            licensedUpns.has(row.userPrincipalName.toLowerCase()),
+        )
+      ) {
+        usageRows = report.rows;
+      } else {
+        const stored = await db.query.tenantUsers.findMany({
+          where: eq(tenantUsers.tenantId, tenantId),
+          columns: {
+            graphId: true,
+            lastActivity: true,
+            workloadActivity: true,
+          },
+        });
+        // Licensing alone does not establish that a tenant uses workloads
+        // covered by this report. Fall back to earlier successful report
+        // steps so tenants whose report had only null dates are covered too.
+        usageReportUnavailable =
+          !report ||
+          (tenant.usageAggregate?.totalCount ?? 0) > 0 ||
+          stored.some(({ workloadActivity: w }) =>
+            [w?.exchange, w?.oneDrive, w?.sharePoint, w?.teams].some(Boolean),
+          ) ||
+          Boolean(
+            await db.query.syncRuns.findFirst({
+              where: and(
+                eq(syncRuns.tenantId, tenantId),
+                inArray(syncRuns.status, ["success", "partial"]),
+                sql`jsonb_path_exists(${syncRuns.steps}, '$[*] ? (@.step == "usageReports" && @.status == "ok" && @.count > 0)')`,
+              ),
+              columns: { id: true },
+            }),
+          );
+        if (usageReportUnavailable) {
+          previousActivity = new Map(
+            stored.map((user) => [user.graphId, user]),
+          );
+        }
+      }
+
+      if (report) {
+        record({
+          step: "usageReports",
+          status: usageReportUnavailable ? "warning" : "ok",
+          message: usageReportUnavailable
+            ? emptyUsageMessage(report)
+            : undefined,
+          count: usageRows.length,
           durationMs: since(started),
         });
       }
@@ -770,24 +830,12 @@ export const runSync = async (
 
     // --- Join + analyze ---------------------------------------------------
     const analysisStarted = Date.now();
-    const storedActivity = emptyUsageReport
-      ? await db.query.tenantUsers.findMany({
-          where: eq(tenantUsers.tenantId, tenantId),
-          columns: {
-            graphId: true,
-            lastActivity: true,
-            workloadActivity: true,
-          },
-        })
-      : undefined;
     const joined = joinSignals({
       graphUsers,
       usageRows,
       copilotRows,
       hasP1,
-      previousActivity:
-        storedActivity &&
-        new Map(storedActivity.map((user) => [user.graphId, user])),
+      previousActivity,
     });
 
     // A failed subscriptions read keeps the trial seats and renewal dates of
@@ -1244,12 +1292,13 @@ export const runSync = async (
             concealmentSetting ??
             (joined.concealed
               ? true
-              : emptyUsageReport
-                ? tenant.concealedNames
-                : false),
+              : usageRows.length > 0
+                ? false
+                : tenant.concealedNames),
           activitySignal: joined.activitySignal,
+          usageReportUnavailable,
           copilotSignal: joined.copilotSignal,
-          usageAggregate: emptyUsageReport
+          usageAggregate: usageReportUnavailable
             ? tenant.usageAggregate
             : (joined.usageAggregate ?? null),
           copilotAggregate: joined.copilotAggregate ?? null,
@@ -1551,9 +1600,9 @@ export const diffFindings = async (
           ? viaHash
           : undefined);
       if (fresh) {
-        // Carry existing inactivity findings through without recording a new observation.
-        if (activitySignal === "unknown" && INACTIVITY_RULES.includes(f.rule))
-          continue;
+        // Refresh the details of carried findings without recording an observation.
+        const carried =
+          activitySignal === "unknown" && INACTIVITY_RULES.includes(f.rule);
         await tx
           .update(findings)
           .set({
@@ -1562,8 +1611,8 @@ export const diffFindings = async (
             detail: fresh.detail,
             graphUserId: fresh.graphUserId,
             monthlyImpactCents: fresh.monthlyImpactCents,
-            lastSeenAt: now,
-            ...(f.status === "resolved"
+            ...(!carried && { lastSeenAt: now }),
+            ...(!carried && f.status === "resolved"
               ? { status: "open" as const, resolvedAt: null }
               : {}),
           })

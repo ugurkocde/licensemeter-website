@@ -229,7 +229,7 @@ describe("joinSignals", () => {
     );
   });
 
-  it("degrades to no activity signal without P1 and without usage rows (role-denied delegated scan)", () => {
+  it("degrades to no activity signal without P1 and without usage rows or stored activity", () => {
     const result = joinSignals({
       hasP1: false,
       graphUsers: [graphUser({})],
@@ -240,6 +240,17 @@ describe("joinSignals", () => {
     expect(result.activitySignal).toBe("none");
     expect(result.copilotSignal).toBe("none");
     expect(result.usageAggregate).toBeUndefined();
+  });
+
+  it("uses unknown coverage when a report outage is detected without P1", () => {
+    const result = joinSignals({
+      hasP1: false,
+      graphUsers: [graphUser({})],
+      usageRows: [],
+      copilotRows: [],
+      previousActivity: new Map(),
+    });
+    expect(result.activitySignal).toBe("unknown");
   });
 
   it("keeps the full signal without P1 when joinable usage rows exist", () => {

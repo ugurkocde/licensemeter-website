@@ -164,6 +164,8 @@ export const tenants = pgTable(
     copilotSignal: text("copilot_signal").$type<
       "per-user" | "aggregate" | "none"
     >(),
+    /** A fetch failed or a previously populated report had no usable rows. */
+    usageReportUnavailable: boolean("usage_report_unavailable"),
     usageAggregate: jsonb("usage_aggregate").$type<AggregateUsage>(),
     copilotAggregate: jsonb("copilot_aggregate").$type<AggregateUsage>(),
     isDemo: boolean("is_demo").notNull().default(false),
