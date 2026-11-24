@@ -257,7 +257,10 @@ describe("trial seats and renewal dates", () => {
     const [snapshot] = await currentDb.query.snapshots.findMany({
       where: eq(schema.snapshots.tenantId, TENANT),
     });
-    expect(snapshot!.purchasedSeats).toBe(100);
+    expect(snapshot).toMatchObject({
+      purchasedSeats: 100,
+      totalMonthlySpendCents: 100 * 3670,
+    });
   });
 
   it("skips the step on 403 and counts every prepaid seat as before", async () => {
@@ -495,11 +498,16 @@ describe("same-day snapshots", () => {
       })
     )[0]!;
 
-  it("rewrites bySku with paid seats on a second sync and on reanalysis", async () => {
-    const seats = [sku(E3, "SPE_E3", 125, 90)];
+  it("recalculates billed spend and comparable seat totals on sync and reanalysis", async () => {
+    const seats = [
+      sku(E3, "SPE_E3", 125, 90),
+      sku("sku-flow-free", "FLOW_FREE", 10_000, 117),
+    ];
     await runSync(TENANT, { client: client(seats) });
     expect(await snapshot()).toMatchObject({
       purchasedSeats: 125,
+      assignedSeats: 90,
+      totalMonthlySpendCents: 125 * 3670,
       bySku: { [E3]: { purchased: 125, assigned: 90 } },
     });
 
@@ -513,16 +521,25 @@ describe("same-day snapshots", () => {
     });
     expect(await snapshot()).toMatchObject({
       purchasedSeats: 100,
+      assignedSeats: 90,
+      totalMonthlySpendCents: 100 * 3670,
       bySku: { [E3]: { purchased: 100, assigned: 90 } },
     });
 
     await currentDb
       .update(schema.tenantSkus)
       .set({ trialUnits: 50 })
-      .where(eq(schema.tenantSkus.tenantId, TENANT));
+      .where(
+        and(
+          eq(schema.tenantSkus.tenantId, TENANT),
+          eq(schema.tenantSkus.skuId, E3),
+        ),
+      );
     await runAnalysis(TENANT);
     expect(await snapshot()).toMatchObject({
       purchasedSeats: 75,
+      assignedSeats: 90,
+      totalMonthlySpendCents: 75 * 3670,
       bySku: { [E3]: { purchased: 75, assigned: 90 } },
     });
   });

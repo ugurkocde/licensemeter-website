@@ -178,12 +178,21 @@ export const spendSeatsOf = (s: SeatCounts): number =>
     ? Math.min(s.consumedUnits, paidSeatsOf(s))
     : s.consumedUnits;
 
+type InventorySeatCounts = SeatCounts & { skuPartNumber: string };
+
+/** Seats included in monthly spend, including paid seats without an assignment. */
+export const billedSeatsOf = (s: InventorySeatCounts): number =>
+  isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled)
+    ? spendSeatsOf(s)
+    : Math.max(paidSeatsOf(s), spendSeatsOf(s));
+
 /**
  * Monthly price of one assignment, for rules that price individual users.
  * Which assignment sits on a trial seat is unknowable, so on SKUs with trial
  * seats the paid spend is spread over every assignment (rounded down, so the
  * per-user amounts never add up to more than the paid spend). SKUs without
- * trial seats keep their price unchanged.
+ * trial seats keep their price unchanged. This uses spendSeatsOf because idle
+ * seats are accounted for separately by the shelfware rule.
  */
 export const assignmentPrices = (
   skus: readonly (SeatCounts & { skuId: string })[],
@@ -266,6 +275,16 @@ export const purchasedSeatsOf = (
       isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled)
         ? sum
         : sum + paidSeatsOf(s),
+    0,
+  );
+
+/** Assigned seats on the same SKUs included in the purchased seat total. */
+export const assignedSeatsOf = (skus: readonly InventorySeatCounts[]): number =>
+  skus.reduce(
+    (sum, s) =>
+      isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled)
+        ? sum
+        : sum + s.consumedUnits,
     0,
   );
 

@@ -31,7 +31,7 @@ import {
 import { fmtAgo, fmtDate, fmtMoney, fmtNumber } from "~/lib/format";
 import { calculatePriceCoverage } from "~/lib/priceCoverage";
 import { syncStatusRun } from "~/lib/syncStatusRun";
-import { ALL_RULES, RULE_META } from "~/lib/rules";
+import { ALL_RULES, MICROSOFT_RULES, RULE_META } from "~/lib/rules";
 import { upgradePath } from "~/lib/upgrade";
 import type { WasteRuleId } from "~/server/types";
 import { requireAccess, hasRole } from "~/server/access";
@@ -46,9 +46,9 @@ import { workspaceHasConnectorOrData } from "~/server/workspaceState";
 import { daysUntilDate } from "~/server/digestDelta";
 import { loadWasteHistory } from "~/server/historyStore";
 import {
+  billedSeatsOf,
   isShelfwareExempt,
   paidSeatsOf,
-  spendSeatsOf,
   unpricedSkuCount,
 } from "~/server/waste/engine";
 import {
@@ -225,12 +225,19 @@ export default async function OverviewPage({
     (s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled),
   );
 
-  // Seats on trial cost nothing, so spend counts paid assignments only.
   const spendOf = (s: (typeof realSkus)[number]) =>
-    spendSeatsOf(s) * (priceBySku.get(s.skuId) ?? 0);
+    billedSeatsOf(s) * (priceBySku.get(s.skuId) ?? 0);
   const monthlySpend = realSkus.reduce((sum, s) => sum + spendOf(s), 0);
   const monthlyWaste = ruleAgg.reduce((sum, r) => sum + r.cents, 0);
-  const wasteShare = monthlySpend > 0 ? (monthlyWaste / monthlySpend) * 100 : 0;
+  // Spend covers Microsoft licenses. Open findings can also include other
+  // connectors and can outlive the price or seat counts used to value them.
+  const hasOtherConnectorWaste = ruleAgg.some(
+    (r) => r.cents > 0 && !MICROSOFT_RULES.includes(r.rule),
+  );
+  const wasteShare =
+    monthlySpend > 0 && monthlyWaste <= monthlySpend && !hasOtherConnectorWaste
+      ? (monthlyWaste / monthlySpend) * 100
+      : null;
 
   // Inventory rows for the dashboard table, sorted client-side (default: spend
   // descending). Pre-shaped here so the client component stays serializable.
@@ -248,7 +255,7 @@ export default async function OverviewPage({
     realSkus.map((s) => {
       const price = priceRowsBySku.get(s.skuId);
       return {
-        seats: spendSeatsOf(s),
+        seats: billedSeatsOf(s),
         priceCents: price?.monthlyPriceCents ?? 0,
         source: price?.source,
       };
@@ -284,7 +291,7 @@ export default async function OverviewPage({
   // Drill-down rows for each metric card. Each breakdown is derived from the
   // exact same inputs as the headline figure, so the rows always sum to the
   // number on the card.
-  const assignedSeats = realSkus.reduce((s, x) => s + x.consumedUnits, 0);
+  const billedSeats = realSkus.reduce((sum, s) => sum + billedSeatsOf(s), 0);
 
   // Spend by product: zero-cost SKUs (free/viral sentinels) drop out, leaving
   // only rows that actually contribute to monthly spend.
@@ -298,7 +305,7 @@ export default async function OverviewPage({
     .sort((a, b) => b.cents - a.cents)
     .map((r) => ({
       label: r.sku.displayName ?? r.sku.skuPartNumber,
-      sub: `${fmtNumber(spendSeatsOf(r.sku), currency)} × ${fmtMoney(
+      sub: `${fmtNumber(billedSeatsOf(r.sku), currency)} × ${fmtMoney(
         r.price,
         currency,
       )}`,
@@ -343,13 +350,13 @@ export default async function OverviewPage({
       key: "spend",
       label: "Monthly license spend",
       value: fmtMoney(monthlySpend, currency),
-      sub: `${fmtNumber(assignedSeats, currency)} assigned seats`,
+      sub: `${fmtNumber(billedSeats, currency)} billed seats`,
       tone: "ink",
       explainer:
-        "Assigned seats × the monthly price of each product, summed across your license inventory.",
+        "Billed seats × monthly price for each Microsoft product. Trial seats are free.",
       detail: {
         formula:
-          "For every product we multiply the seats assigned to people by that product's monthly price, then add them up.",
+          "For each product, we multiply its billed seats by its monthly price and add the results. Billed seats include unused paid seats and any extra paid assignments.",
         source:
           "Seat counts come from your latest sync; prices come from your price book (your custom price, or the Microsoft list price as a fallback).",
         columns: ["Product (seats × price)", "Spend / mo"],
@@ -363,7 +370,10 @@ export default async function OverviewPage({
       key: "waste",
       label: "Monthly waste",
       value: fmtMoney(monthlyWaste, currency),
-      sub: `${wasteShare.toFixed(1)}% of spend`,
+      sub:
+        wasteShare === null
+          ? "Spend share unavailable"
+          : `${wasteShare.toFixed(1)}% of spend`,
       tone: "waste",
       note: !priceCoverage.complete ? (
         <>
@@ -377,12 +387,12 @@ export default async function OverviewPage({
         </>
       ) : null,
       explainer:
-        "The monthly cost of every open finding added together. This is the spend you could reclaim.",
+        "The share compares Microsoft waste with recorded Microsoft spend. It is hidden when spend is zero, waste exceeds spend, or other connectors contribute waste.",
       detail: {
         formula:
           "Each open or acknowledged finding carries the monthly cost of the wasted seat. Monthly waste is the sum of those costs, grouped here by the rule that flagged them.",
         source:
-          "Findings are raised during sync by the detection rules; resolved findings are excluded. Costs reuse the same prices as monthly spend.",
+          "Sync values open and acknowledged findings using the price book. Spend share is available when recorded Microsoft spend is positive, covers the total waste, and all priced findings are for Microsoft licenses.",
         columns: ["Rule", "Impact / mo"],
         rows: wasteRows,
         totalLabel: "Total monthly waste",

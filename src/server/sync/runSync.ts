@@ -73,9 +73,10 @@ import { directoryIdentitiesOf, joinSignals } from "~/server/sync/join";
 import type { SyncRunStatus, SyncStep, WasteRuleId } from "~/server/types";
 import {
   analyzeWaste,
+  assignedSeatsOf,
+  billedSeatsOf,
   paidSeatsOf,
   purchasedSeatsOf,
-  spendSeatsOf,
   type WasteFinding,
 } from "~/server/waste/engine";
 
@@ -1116,7 +1117,7 @@ export const runSync = async (
 
     // --- Snapshot + tenant capabilities ------------------------------------
     const totalMonthlySpendCents = inventory.reduce(
-      (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
+      (sum, s) => sum + billedSeatsOf(s) * (prices[s.skuId] ?? 0),
       0,
     );
     const openRows = await db.query.findings.findMany({
@@ -1132,6 +1133,7 @@ export const runSync = async (
 
     const day = now.toISOString().slice(0, 10);
     const purchasedSeats = purchasedSeatsOf(inventory);
+    const assignedSeats = assignedSeatsOf(inventory);
     await db
       .insert(snapshots)
       .values({
@@ -1140,7 +1142,7 @@ export const runSync = async (
         totalMonthlySpendCents,
         totalMonthlyWasteCents,
         purchasedSeats,
-        assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
+        assignedSeats,
         bySku: bySkuOf(inventory),
       })
       .onConflictDoUpdate({
@@ -1149,7 +1151,7 @@ export const runSync = async (
           totalMonthlySpendCents,
           totalMonthlyWasteCents,
           purchasedSeats,
-          assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
+          assignedSeats,
           bySku: bySkuOf(inventory),
         },
       });
@@ -1343,7 +1345,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
   );
 
   const totalMonthlySpendCents = skuRows.reduce(
-    (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
+    (sum, s) => sum + billedSeatsOf(s) * (prices[s.skuId] ?? 0),
     0,
   );
   const openRows = await db.query.findings.findMany({
@@ -1358,7 +1360,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
   );
   const day = now.toISOString().slice(0, 10);
   const purchasedSeats = purchasedSeatsOf(skuRows);
-  const assignedSeats = skuRows.reduce((s, x) => s + x.consumedUnits, 0);
+  const assignedSeats = assignedSeatsOf(skuRows);
   await db
     .insert(snapshots)
     .values({

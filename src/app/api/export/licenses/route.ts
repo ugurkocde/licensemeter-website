@@ -11,7 +11,7 @@ import {
   idleSeatsOf,
   isShelfwareExempt,
   paidSeatsOf,
-  spendSeatsOf,
+  billedSeatsOf,
 } from "~/server/waste/engine";
 
 export const GET = async () => {
@@ -61,7 +61,7 @@ export const GET = async () => {
           s.consumedUnits,
           available,
           centsToDecimal(price),
-          centsToDecimal(spendSeatsOf(s) * price),
+          centsToDecimal(billedSeatsOf(s) * price),
           centsToDecimal(available * price),
         ];
       }),

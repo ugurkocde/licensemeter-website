@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { UserLicense } from "~/server/types";
 import {
   analyzeWaste,
+  assignedSeatsOf,
+  billedSeatsOf,
   COPILOT_SKU_ID,
   isShelfwareExempt,
   purchasedSeatsOf,
@@ -383,6 +385,59 @@ describe("purchasedSeatsOf", () => {
 
   it("is zero for an empty tenant", () => {
     expect(purchasedSeatsOf([])).toBe(0);
+  });
+});
+
+describe("billedSeatsOf", () => {
+  it.each([
+    ["unused paid seats", "SPE_E3", 10, 1, 0, 10],
+    ["over-assignment", "SPE_E3", 10, 12, 0, 12],
+    ["idle seats on a mixed subscription", "SPE_E3", 15, 1, 5, 10],
+    ["assigned trial seats", "SPE_E3", 15, 12, 5, 10],
+    ["trial-only subscription", "SPE_E3", 5, 5, 5, 0],
+    ["free SKU", "FLOW_FREE", 10, 1, 0, 1],
+    ["capacity SKU", "EXAMPLE_CAPACITY", 5_000, 3, 0, 3],
+  ])(
+    "counts %s correctly",
+    (
+      _case,
+      skuPartNumber,
+      prepaidEnabled,
+      consumedUnits,
+      trialUnits,
+      expected,
+    ) => {
+      expect(
+        billedSeatsOf({
+          skuPartNumber,
+          prepaidEnabled,
+          consumedUnits,
+          trialUnits,
+        }),
+      ).toBe(expected);
+    },
+  );
+});
+
+describe("assignedSeatsOf", () => {
+  it("counts assignments on the same SKUs as the purchased total", () => {
+    const skus = [
+      { skuPartNumber: "SPE_E3", prepaidEnabled: 10, consumedUnits: 12 },
+      {
+        skuPartNumber: "EMS",
+        prepaidEnabled: 5,
+        consumedUnits: 3,
+        trialUnits: 5,
+      },
+      { skuPartNumber: "FLOW_FREE", prepaidEnabled: 10, consumedUnits: 8 },
+      {
+        skuPartNumber: "EXAMPLE_CAPACITY",
+        prepaidEnabled: 5_000,
+        consumedUnits: 6,
+      },
+    ];
+    expect(purchasedSeatsOf(skus)).toBe(10);
+    expect(assignedSeatsOf(skus)).toBe(15);
   });
 });
 

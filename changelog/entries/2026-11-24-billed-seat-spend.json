@@ -1,0 +1,7 @@
+{
+  "title": "Monthly license spend includes every paid seat",
+  "summary": "Monthly spend now includes unused paid Microsoft seats. The dashboard shows a waste percentage only when it can compare waste with recorded Microsoft spend, so the share never reads above 100%.",
+  "type": "fixed",
+  "publishedOn": "2026-11-24",
+  "idempotencyKey": "licensemeter:2026-11-24-billed-seat-spend"
+}
