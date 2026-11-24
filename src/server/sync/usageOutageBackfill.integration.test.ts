@@ -16,7 +16,11 @@ import { drizzle } from "drizzle-orm/pglite";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import type { backfillUsageOutage } from "../../../scripts/backfill-usage-outage";
+import {
+  backfillOptions,
+  backfillUsageOutage,
+} from "../../../scripts/backfill-usage-outage";
+import type { Db } from "~/server/db";
 import * as schema from "~/server/db/schema";
 
 type Report = Awaited<ReturnType<typeof backfillUsageOutage>>;
@@ -435,27 +439,197 @@ describe("usage outage backfill CLI on local PGlite", () => {
     });
   }, 20_000);
 
-  it("refuses unacknowledged apply, same databases, and non-local URLs", async () => {
-    await expect(cli(directory, ["--apply"])).rejects.toMatchObject({
+  it("refuses remote targets without an exact host confirmation and backup for apply", async () => {
+    const hostname = "db.example.supabase.co";
+    const env = {
+      DATABASE_URL: `postgresql://postgres:fake-secret@${hostname}/usage`,
+    };
+    const args = ["--snapshot-file", "snapshot.jsonl"];
+    const refusal = {
+      stderr: `Target host: ${hostname} | Database: "usage"\nA remote DATABASE_URL requires --confirm-target-host matching its hostname exactly.\n`,
+    };
+    await expect(cli(directory, args, env)).rejects.toMatchObject(refusal);
+    await expect(
+      cli(
+        directory,
+        [...args, "--confirm-target-host", hostname.toUpperCase()],
+        env,
+      ),
+    ).rejects.toMatchObject(refusal);
+    await expect(
+      cli(
+        directory,
+        [...args, "--confirm-target-host", hostname, "--apply"],
+        env,
+      ),
+    ).rejects.toMatchObject({
       stderr: expect.stringContaining(
         "--apply requires --i-have-a-backup",
       ) as unknown,
     });
-    const uri = "postgres://example:fake-secret@localhost/usage";
-    await expect(
-      cli(directory, [], { DATABASE_URL: uri, SNAPSHOT_DATABASE_URL: uri }),
-    ).rejects.toMatchObject({
-      stderr: expect.stringContaining("must be separate databases") as unknown,
+
+    // Parse positive remote cases without opening a connection.
+    const confirmed = ["--confirm-target-host", hostname];
+    const snapshot = {
+      ...env,
+      SNAPSHOT_DATABASE_URL: "postgresql://db.restore.example/usage",
+    };
+    expect(backfillOptions(confirmed, snapshot)).toMatchObject({
+      apply: false,
+      source: "snapshot-database",
+      target: { host: hostname, database: "usage", local: false },
+      snapshotDb: { host: "db.restore.example", database: "usage" },
     });
-    await expect(
-      cli(directory, [], {
-        DATABASE_URL: "postgres://example:fake-secret@example.test/usage",
-      }),
-    ).rejects.toMatchObject({
-      stderr:
-        "Target host: [invalid or non-local]\nDATABASE_URL must name a local PostgreSQL database on localhost or 127.0.0.1.\n",
-    });
+    expect(
+      backfillOptions([...confirmed, "--apply", "--i-have-a-backup"], snapshot)
+        .apply,
+    ).toBe(true);
   });
+
+  it.each([
+    [
+      "postgres://example:fake-secret@localhost/usage",
+      "postgresql://other@127.0.0.1:5432/%75sage?sslmode=disable",
+    ],
+    [
+      "postgres://postgres@db.example.supabase.co/usage",
+      "postgresql://other@DB.Example.Supabase.CO.:05432/usage?sslmode=require",
+    ],
+  ])(
+    "refuses the same database with different URL spellings",
+    async (target, snapshot) => {
+      await expect(
+        cli(directory, [], {
+          DATABASE_URL: target,
+          SNAPSHOT_DATABASE_URL: snapshot,
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          "must be separate databases",
+        ) as unknown,
+      });
+    },
+  );
+
+  it("enforces a read-only dry run on the database session", async () => {
+    const rehearsal = join(directory, "readonly");
+    await seed(rehearsal, today);
+    const client = new PGlite(join(rehearsal, ".pglite", "data"));
+    try {
+      const database = drizzle(client, { schema }) as unknown as Db;
+      // Inject a write at the start of the real transaction callback, after
+      // Drizzle has applied the transaction settings chosen by the backfill.
+      const transaction = database.transaction.bind(database);
+      database.transaction = (run, config) =>
+        transaction(async (tx) => {
+          await tx.update(schema.tenants).set({ usageReportUnavailable: true });
+          return run(tx);
+        }, config);
+      await expect(
+        backfillUsageOutage(
+          database,
+          backfillOptions(["--source", "findings"], {}),
+        ),
+      ).rejects.toMatchObject({ cause: { code: "25006" } });
+    } finally {
+      await client.close();
+    }
+  }, 20_000);
+
+  it("skips a tenant with a running sync and still repairs another", async () => {
+    const rehearsal = join(directory, "running");
+    await seed(rehearsal, today);
+    const store = join(rehearsal, ".pglite", "data");
+    const client = new PGlite(store);
+    try {
+      await drizzle(client)
+        .insert(schema.syncRuns)
+        .values({ tenantId: t1, status: "running" });
+    } finally {
+      await client.close();
+    }
+    const run = await cli(rehearsal, [
+      "--since",
+      dates.since,
+      "--snapshot-file",
+      "snapshot.jsonl",
+      "--apply",
+      "--i-have-a-backup",
+      "--json",
+    ]);
+    const report = parseReport(run.stdout);
+    expect(report.skippedTenants).toEqual([
+      { tenantId: t1, reason: "sync in progress" },
+    ]);
+    expect(report.tenants.map(({ tenantId }) => tenantId)).toEqual([t2]);
+
+    const repaired = new PGlite(store);
+    try {
+      const db = drizzle(repaired, { schema });
+      const tenant = await db.query.tenants.findFirst({
+        where: eq(schema.tenants.id, t1),
+      });
+      const user = await db.query.tenantUsers.findFirst({
+        where: eq(schema.tenantUsers.graphId, id(101)),
+      });
+      expect(tenant?.usageReportUnavailable).toBeNull();
+      expect(user?.workloadActivity).toEqual(emptyWorkloads);
+      const audits = await db
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actorOid, "system backfill"));
+      expect(audits.map(({ tenantId }) => tenantId)).toEqual([t2]);
+    } finally {
+      await repaired.close();
+    }
+  }, 20_000);
+
+  it("rolls back a failed tenant and reports any earlier committed repair", async () => {
+    const rehearsal = join(directory, "partial");
+    await seed(rehearsal, today);
+    const store = join(rehearsal, ".pglite", "data");
+    const client = new PGlite(store);
+    try {
+      await client.exec(`alter table audit_log add constraint simulated_failure
+        check (tenant_id <> '${t2}' or action <> 'usage_outage_backfilled')`);
+    } finally {
+      await client.close();
+    }
+    const run = await cli(rehearsal, [
+      "--since",
+      dates.since,
+      "--snapshot-file",
+      "snapshot.jsonl",
+      "--apply",
+      "--i-have-a-backup",
+      "--json",
+    ]).then(
+      () => {
+        throw new Error("Expected a failed apply");
+      },
+      (error: { code: number; stdout: string }) => error,
+    );
+    expect(run.code).toBe(1);
+    const report = parseReport(run.stdout);
+    expect(report.failedTenant).toBe(t2);
+    expect(report.tenants.map(({ tenantId }) => tenantId)).toEqual([t1]);
+    expect(report.tenants[0]?.rollback).toBeDefined();
+
+    const repaired = new PGlite(store);
+    try {
+      const db = drizzle(repaired, { schema });
+      const user = await db.query.tenantUsers.findFirst({
+        where: eq(schema.tenantUsers.graphId, id(121)),
+      });
+      const finding = await db.query.findings.findFirst({
+        where: eq(schema.findings.id, id(221)),
+      });
+      expect(user?.workloadActivity).toEqual(emptyWorkloads);
+      expect(finding?.status).toBe("open");
+    } finally {
+      await repaired.close();
+    }
+  }, 20_000);
 
   it("reports the required migration when the column is absent", async () => {
     const missing = join(directory, "missing");

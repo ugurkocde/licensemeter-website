@@ -2,27 +2,27 @@
 
 ## Prerequisites
 
-- Merge and deploy PR #176 before running the backfill. Apply
-  `scripts/db-add-usage-report-unavailable.sql` before deploying #176. On the
-  local repair target, verify the column is present by running the same SQL.
-- Use Node.js 24 and install the repository dependencies with
-  `npm ci --ignore-scripts`.
-- Work on an offline local copy of the post-outage database. Stop the app and
-  scheduled syncs for the copy, let any sync finish, and back up the copy
-  immediately before applying the repair. For PGlite, stop all processes that
-  use the store before copying the entire `.pglite/data` directory.
-- Prepare a separate snapshot from before **2026-11-21 00:00 UTC**. Use separate
-  databases for the target and snapshot. Keep backups, exports, and reports
-  out of Git and restrict access to them. The tool accepts local Postgres on
-  loopback and PGlite. Use a dedicated local Postgres instance with no port
-  forwards to another machine.
+- The repository owner runs the production repair through the release gate.
+  During development, run the tool against local fixtures or an isolated local
+  restore.
+- Through the release gate, apply `scripts/db-add-usage-report-unavailable.sql`
+  to production, then merge and deploy [PR #176](https://github.com/ugurkocde/licensemeter-website/pull/176).
+  Before applying the repair, also deploy the app version from this stack that
+  shares the tenant lock with the backfill. Wait for invocations of the prior
+  app version to finish.
+- Use Node.js 24 and install dependencies with `npm ci --ignore-scripts`.
+  Plan production execution outside the nightly `/api/cron/sync` window,
+  which starts at **03:00 UTC**. Verify the nightly sync has finished if
+  running later that morning.
+- Keep connection strings, backups, exports, and reports private and outside
+  the checkout. Use a new directory with restricted permissions.
 
 ## Get and restore the pre-outage snapshot
 
 In the Supabase Dashboard, go to **Database > Backups** and choose the last
 backup from before the outage. Pro retains seven days of daily backups, so the
 2026-11-20 backup expires around **2026-11-27**, depending on the backup time.
-Preserve the backup before then. [Supabase database backups](https://supabase.com/docs/guides/platform/backups)
+Preserve the backup before then. Restore it into a separate database or project. Leave production in place. [Supabase database backups](https://supabase.com/docs/guides/platform/backups)
 
 For a PostgreSQL archive already downloaded, create a fresh database on the
 local server. Use client tools compatible with the backup's PostgreSQL
@@ -42,27 +42,29 @@ Use the Supabase local restoration instructions for its logical dump format.
 [Restore a downloaded backup locally](https://supabase.com/docs/guides/local-development/restoring-downloaded-backup)
 
 For a physical backup without a download option, use **Restore to a New
-Project** for the pre-outage date. Review the clone's scheduled jobs and
-network-capable extensions before using it. Export the snapshot from that
+Project** for the pre-outage date. Review the source for scheduled jobs and network-capable extensions
+before cloning. Those jobs can run as soon as the clone is restored. Use an
+isolated logical restore when you need to inspect or disable them before they
+can run. Export the snapshot from that
 separate project, then pass the resulting local file to the script. Always
 select a fresh database or a separate project as the restore destination.
 [Restore to a new project](https://supabase.com/docs/guides/platform/clone-project)
 
 ## Export the snapshot
 
-For a snapshot restored to local Postgres, set `SNAPSHOT_DATABASE_URL` to
-its local URL. The tool reads the five required columns for affected tenants
-in a read-only transaction. To make a portable snapshot file, run the
-following from a shell with `psql` pointed at the restored copy. Substitute
-the tenant IDs from your incident scope, or omit the tenant predicate to
-include every tenant in the snapshot file. This produces a JSON array on
-standard output. The tool also accepts one JSON object with these same
-column names per line.
+Use the file as the backfill source. In a private directory, point
+`SNAPSHOT_DATABASE_URL` at the separate pre-outage restore and run the
+export below. Substitute the tenant IDs from the incident scope or omit the
+tenant predicate to export all tenants. The tool accepts this JSON array or
+one JSON object with the same columns per line.
 
 ```bash
 umask 077
-psql -X -qAt -v ON_ERROR_STOP=1 "$SNAPSHOT_DATABASE_URL" > pre-outage.json <<'SQL'
+mkdir -p "$HOME/.local/state/licensemeter-usage-backfill"
+export BACKFILL_DIR="$HOME/.local/state/licensemeter-usage-backfill"
+psql -X -qAt -v ON_ERROR_STOP=1 "$SNAPSHOT_DATABASE_URL" > "$BACKFILL_DIR/pre-outage.json" <<'SQL'
 BEGIN READ ONLY;
+SET LOCAL row_security = off;
 SELECT coalesce(json_agg(s ORDER BY s.tenant_id, s.graph_id), '[]'::json)
 FROM (
   SELECT tenant_id, graph_id, workload_activity, last_activity, synced_at
@@ -75,56 +77,114 @@ SQL
 unset SNAPSHOT_DATABASE_URL
 ```
 
-## Preview and apply
+As an alternative, pass the separate restore via `SNAPSHOT_DATABASE_URL`
+and omit `--snapshot-file`. That connection always uses a read-only transaction.
+Source selection prefers the database, then the file, then the explicit
+`--source findings` fallback. The fallback recovers only last activity
+recorded by pre-outage inactivity findings. Use the file if the two connection
+strings share a hostname, port, and database name, as can happen with Supabase
+pooler hosts. Verify the project references in the Dashboard when setting up a
+database source because direct and pooler hosts for one project can differ.
 
-Run from the repository root. Set `DATABASE_URL` to the local post-outage
-copy, or unset it to target the existing `.pglite/data` store. The script
-prints the selected host to stderr and leaves stdout available for the report.
+## Optional rehearsal
 
-```bash
-export DATABASE_URL=postgresql://127.0.0.1/usage_post_outage
-unset SNAPSHOT_DATABASE_URL
-npx tsx scripts/backfill-usage-outage.ts --snapshot-file pre-outage.json
-```
+Restore a **current** production backup to a separate local database and
+make sure it has the #176 schema change. Set `DATABASE_URL` to that local
+target and run the production commands below with the same snapshot file and
+tenant scope. Omit `--confirm-target-host` for loopback and use a different
+report filename for the rehearsal. For a local PGlite rehearsal, unset
+`DATABASE_URL`, stop any app using the store and copy the entire
+`.pglite/data` directory before applying.
 
-If using a local snapshot database, set `SNAPSHOT_DATABASE_URL` and omit
-`--snapshot-file`. Source selection prefers the database, then the file,
-then the explicit `--source findings` fallback. The fallback is partial and
-uses only last activity dates recorded by inactivity findings whose last
-observation predates the outage. It can recover no workload dates and has
-no evidence for users who lacked pre-outage findings.
+## Production dry run and apply
 
-Check each tenant's last populated and first empty usage report. Review
-restoration counts and every finding status transition. Use repeatable
-`--tenant <uuid>` arguments to narrow auto-detection, and use
-`--since YYYY-MM-DD` to override the cutoff in UTC. Snapshot rows at or after
-that cutoff and users missing from the current directory are excluded. The
-availability flag is set only when the latest completed usage-report step is
-still empty. Preview IDs for proposed inserts are temporary.
+1. In **Supabase Dashboard > Connect**, copy the **Direct connection** or
+   **Session pooler** Postgres URI for the production project, using the
+   `postgres` database password. The session pooler username is
+   `postgres.<project-ref>`. Use the session pooler if direct IPv6
+   connectivity is unavailable. Select one of those two connection modes
+   for these commands and for verification and rollback. Set `DATABASE_URL`
+   in a private shell without printing or recording the URI. Use
+   `sslmode=verify-full` and the trusted CA from the Dashboard if needed
+   (`NODE_EXTRA_CA_CERTS` for Node.js and `PGSSLROOTCERT` for `psql`).
+   The script accepts only the `sslmode` URL parameter and prints the
+   selected hostname and database name to stderr before connecting.
+   [Supabase Postgres connections](https://supabase.com/docs/guides/database/connecting-to-postgres)
 
-The reconciliation covers only inactivity and Copilot findings tied to
-changed activity inputs. It preserves acknowledged findings, findings with
-workflow fields, and findings identified by individual operator audit events.
-Historical bulk status events record only a count, so the repair also protects
-any finding that existed at the time of such an event. Existing finding
-details and daily rollups refresh during the next normal sync or analysis.
+   The repository grants `licensemeter_app` a permissive `app_all` policy.
+   Tenant-scoped requests can switch to `licensemeter_tenant`, whose
+   policies require the transaction-local `app.tenant_id`. Maintenance
+   uses the database owner with cross-tenant visibility, so it needs no
+   tenant session setting. The script sets `row_security = off` locally
+   in the transaction so a role subject to RLS fails instead of silently
+   returning filtered rows.
 
-After reviewing the preview and taking the local target backup, apply with
-the same source, tenant IDs, and cutoff. Save the JSON for verification and
-rollback.
+2. From the repository root, preview and review one affected tenant at a
+   time. Replace the fake hostname with the exact hostname from the
+   production URI and the fake UUID with the approved tenant ID. Repeat
+   `--tenant` or omit it for wider discovery during the preview.
 
-```bash
-umask 077
-npx tsx scripts/backfill-usage-outage.ts --snapshot-file pre-outage.json \
-  --apply --i-have-a-backup --json > backfill-applied.json
-```
+   ```bash
+   unset SNAPSHOT_DATABASE_URL
+   TARGET_HOST=db.example.supabase.co
+   TENANT=11111111-1111-4111-8111-000000000001
+   npx tsx scripts/backfill-usage-outage.ts \
+     --confirm-target-host "$TARGET_HOST" --tenant "$TENANT" \
+     --snapshot-file "$BACKFILL_DIR/pre-outage.json"
+   ```
+
+   The preview runs in a server-enforced read-only, repeatable-read
+   transaction. It computes finding transitions in memory and needs no
+   temporary writes. Review the last populated and first empty report,
+   restoration counts, and proposed finding transitions. Preview IDs for
+   new findings are provisional. The default cutoff is **2026-11-21
+   00:00 UTC**. Use `--since YYYY-MM-DD` only if the incident scope requires
+   a different UTC cutoff, and use the same value in every step. Snapshot
+   rows at or after that cutoff and users no longer in the directory are
+   excluded. The availability flag is set only when the latest completed
+   report is still empty.
+
+   The repair reconciles inactivity and Copilot findings only for users
+   with changed activity inputs. It protects acknowledged findings,
+   findings with workflow fields and findings with individual operator
+   audit events. It also preserves findings that existed at the time of
+   a historical bulk status edit, whose audit records contain only counts.
+   The next normal sync or analysis refreshes finding details and rollups.
+
+3. Take a fresh production backup, or confirm that PITR covers the moment
+   before apply or that a fresh daily backup is available. Record the
+   backup or recovery point. Avoid manual finding edits and imports for the
+   tenant during its repair. The app and other tenants can stay online.
+
+4. Run the same tenant, snapshot, and cutoff through the release gate with
+   `--apply --i-have-a-backup --json`. Save each run to a new private file.
+
+   ```bash
+   umask 077
+   REPORT="$BACKFILL_DIR/apply-${TENANT}-$(date -u +%Y%m%dT%H%M%SZ).json"
+   npx tsx scripts/backfill-usage-outage.ts \
+     --confirm-target-host "$TARGET_HOST" --tenant "$TENANT" \
+     --snapshot-file "$BACKFILL_DIR/pre-outage.json" \
+     --apply --i-have-a-backup --json > "$REPORT"
+   ```
+
+   Apply checks the latest evidence again and repairs each tenant in one
+   transaction. It skips tenants with a running sync or an unavailable
+   tenant lock. Review `skippedTenants`, wait for the tenant to become idle,
+   then repeat the preview and apply for that tenant. On an apply error,
+   check `failedTenant` and preserve the JSON for any tenants already
+   committed. If execution is interrupted and the report is incomplete,
+   check the audit row and use the backup to recover before-values before
+   attempting a reversal.
 
 ## Verify
 
 Repeat the dry-run command with the same options. Expect zero proposed
 writes. Deleted users and unchanged findings may still be counted.
-For local Postgres, run read-only verification against the target. Substitute
-the tenant, graph user, and finding IDs from the applied report.
+Run the read-only SQL below against the same production target using the
+maintenance connection. Substitute the tenant, graph user, finding, and audit
+IDs from the saved apply report. Verify each changed row against its
+`after` values.
 
 ```sql
 BEGIN READ ONLY;
@@ -145,8 +205,9 @@ WHERE tenant_id = '11111111-1111-4111-8111-000000000001'
 
 SELECT id, tenant_id, detail, created_at
 FROM public.audit_log
-WHERE actor_oid = 'system backfill' AND action = 'usage_outage_backfilled'
-ORDER BY created_at DESC;
+WHERE tenant_id = '11111111-1111-4111-8111-000000000001'
+  AND id = '11111111-1111-4111-8111-000000000301'
+  AND actor_oid = 'system backfill' AND action = 'usage_outage_backfilled';
 
 COMMIT;
 ```
@@ -155,33 +216,51 @@ Compare the rows with the report's `after` values. A changing apply adds one
 counts-only audit row per affected tenant with writes. A subsequent no-op
 apply adds no audit rows.
 
-## Roll back the local repair
+## Roll back from the saved JSON
 
-For an offline copy reserved for this operation, restore the target's
-immediately pre-apply backup into a fresh local database or replace the
-offline PGlite directory with its pre-apply copy. This is the simplest
-full rollback.
+Use `tenants[].rollback` from the saved apply report. Work one tenant at a
+time through the release gate, outside the nightly sync window. Use an
+interactive `psql -X -v ON_ERROR_STOP=1 "$DATABASE_URL"` session. Hold the
+same tenant lock as the repair. The following example stops the transaction
+if the tenant is busy, missing, or has a running sync.
 
-For selective reversal, use the saved apply JSON under
-`tenants[].rollback`. Pause writers and compare the current rows against the
-logged `after` values before undoing anything. If a row has changed since the
-backfill, leave it alone pending review. Apply the following within one
-transaction, sorting changes by tenant so each operation is scoped by
-`tenantId` plus its row key.
+```sql
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL row_security = off;
+DO $$
+DECLARE
+  target_tenant constant uuid := '11111111-1111-4111-8111-000000000001';
+BEGIN
+  PERFORM id FROM public.tenants WHERE id = target_tenant
+  FOR NO KEY UPDATE SKIP LOCKED;
+  IF NOT FOUND OR EXISTS (
+    SELECT 1 FROM public.sync_runs WHERE tenant_id = target_tenant AND status = 'running'
+  ) THEN
+    RAISE EXCEPTION 'Tenant is unavailable for rollback';
+  END IF;
+END $$;
+```
+
+Within that transaction, review later syncs and audit actions and lock
+the affected rows before comparing them with the logged `after` values.
+Leave any row with newer activity or operator changes for review. Use
+tenant and row identifiers in each statement. If the displayed values
+differ unexpectedly, run `ROLLBACK;`.
 
 1. For each `users[]` entry, restore only the keys present in `before`.
    `workloadActivity` maps to `tenant_users.workload_activity` and
-   `lastActivity` to `tenant_users.last_activity`. Use `graphId` with the
-   tenant ID in the predicate. An explicit null means SQL NULL.
-2. If `usageReportUnavailable` is present and non-null, set
-   `tenants.usage_report_unavailable` back to its `before` value.
-3. For each `findings[]` entry with a `before` object, update
-   `findings.status` and `findings.resolved_at` to the logged before values
-   where both tenant and finding ID match. For `before: null`, the backfill
-   inserted the row. Delete it only after verifying that no user has acted
-   on it and that it still matches the backfill state.
-4. Keep the audit row for selective reversal so it records the original
-   repair. When restoring the complete pre-apply backup, that audit row
-   disappears along with the other repair writes.
-5. Verify the restored before values within the transaction. Commit only
-   after all checks match.
+   `lastActivity` maps to `tenant_users.last_activity`. Use the tenant ID
+   and `graphId` in the predicate. An explicit null means SQL NULL.
+2. If `usageReportUnavailable` is non-null, restore the
+   `tenants.usage_report_unavailable` value from `before`.
+3. For each `findings[]` entry with a `before` object, restore
+   `findings.status` and `findings.resolved_at` using the tenant and
+   finding IDs. For `before: null`, delete the inserted finding only
+   after verifying its identity, status, timestamps, and workflow state
+   and checking for subsequent operator actions.
+4. Keep the audit row as a record of the original repair. Verify the
+   restored `before` values with `SELECT` in the same transaction, then
+   run `COMMIT;`. Re-run read-only verification after the commit. If
+   backup data is needed, restore it to another database and compare
+   rows there before making any further production changes.

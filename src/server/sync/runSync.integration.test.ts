@@ -196,8 +196,10 @@ async function seedSchema(client: PGlite): Promise<void> {
   for (const stmt of await schemaDdl()) await client.exec(stmt);
 }
 
+const logQuery = vi.fn<(query: string) => void>();
+
 function makeDb(client: PGlite) {
-  return drizzle(client, { schema });
+  return drizzle(client, { schema, logger: { logQuery } });
 }
 
 // --- fixtures ----------------------------------------------------------------
@@ -373,7 +375,18 @@ describe("runSync concurrency lock (sync_runs_one_running_idx)", () => {
     );
     const client = makeGraphClient({ getOrganizationName });
 
+    logQuery.mockClear();
     const result = await runSync(TENANT_ID, { client });
+    const statements = logQuery.mock.calls.map(([query]) => query);
+    const lock = statements.findIndex(
+      (query) =>
+        query.includes('from "tenants"') && query.endsWith("for no key update"),
+    );
+    const claim = statements.findIndex((query) =>
+      query.startsWith('insert into "sync_runs"'),
+    );
+    expect(lock).toBeGreaterThanOrEqual(0);
+    expect(claim).toBeGreaterThan(lock);
 
     expect(result.status).toBe("running");
     expect(result.runId).toBe(inFlightId);

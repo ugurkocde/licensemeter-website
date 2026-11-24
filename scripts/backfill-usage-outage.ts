@@ -4,10 +4,12 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { z } from "zod";
 
 import type { Db } from "~/server/db";
+import * as schema from "~/server/db/schema";
 import {
   auditLog,
   findings,
@@ -16,6 +18,7 @@ import {
   tenantUsers,
 } from "~/server/db/schema";
 import { latestActivity, WORKLOAD_KEYS } from "~/server/sync/join";
+import { lockTenant } from "~/server/sync/lockTenant";
 import type { FindingStatusChange } from "~/server/sync/runSync";
 import type { SyncStep, WorkloadActivity } from "~/server/types";
 
@@ -42,29 +45,92 @@ const snapshotRow = z.object({
 
 class BackfillError extends Error {}
 
-function localUrl(raw: string, name: string) {
+function databaseUrl(raw: string, name: string) {
   const url = URL.parse(raw);
+  const fail = () => {
+    throw new BackfillError(
+      `${name} must name one PostgreSQL host and database, with optional sslmode.`,
+    );
+  };
   if (
     !url ||
     !["postgres:", "postgresql:"].includes(url.protocol) ||
-    !["localhost", "127.0.0.1"].includes(url.hostname) ||
-    !/^\/[a-zA-Z0-9_-]+$/.test(url.pathname) ||
-    url.hash ||
-    [...url.searchParams].some(
-      ([key, value]) => key !== "sslmode" || value !== "disable",
-    )
-  ) {
-    throw new BackfillError(
-      `${name} must name a local PostgreSQL database on localhost or 127.0.0.1.`,
-    );
+    !url.hostname ||
+    /[%,]/.test(url.hostname) ||
+    url.hash
+  )
+    return fail();
+
+  const mode = url.searchParams.get("sslmode");
+  if (
+    url.searchParams.size > Number(mode !== null) ||
+    (mode !== null &&
+      !["disable", "require", "verify-ca", "verify-full"].includes(mode))
+  )
+    return fail();
+
+  let database: string;
+  let username: string;
+  let password: string;
+  try {
+    database = decodeURIComponent(url.pathname.slice(1));
+    username = decodeURIComponent(url.username);
+    password = decodeURIComponent(url.password);
+  } catch {
+    return fail();
   }
-  // Pin the TCP address so an altered hosts file cannot redirect localhost.
-  url.hostname = "127.0.0.1";
-  url.port ||= "5432";
-  return url;
+  if (
+    !database ||
+    url.pathname.slice(1).includes("/") ||
+    [database, username, password].some((value) => value.includes("\0"))
+  )
+    return fail();
+
+  // Pin localhost to loopback without consulting DNS.
+  const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+  const host = hostname === "localhost" ? "127.0.0.1" : hostname;
+  const local = host === "127.0.0.1" || host === "[::1]";
+  const port = Number(url.port || 5432);
+  if (port === 0) return fail();
+  return {
+    hostname: url.hostname,
+    host: host.replace(/^\[|\]$/g, ""),
+    port,
+    database,
+    username,
+    password,
+    local,
+    ssl:
+      mode === "disable" || (local && mode === null)
+        ? (false as const)
+        : mode === "require"
+          ? ("require" as const)
+          : ("verify-full" as const),
+  };
 }
 
-export function backfillOptions(args: string[], env: NodeJS.ProcessEnv) {
+function openPostgres(config: ReturnType<typeof databaseUrl>) {
+  const { host, port, database, username, password, ssl } = config;
+  return postgres({
+    // postgres.js accepts endpoint arrays at runtime. They keep IPv6 colons
+    // intact instead of passing the address through its host:port splitter.
+    host: [host] as unknown as string,
+    port: [port] as unknown as number,
+    database,
+    username,
+    password,
+    ssl,
+    max: 1,
+    connect_timeout: 5,
+    prepare: false,
+    onnotice: () => undefined,
+  });
+}
+
+export function backfillOptions(
+  args: string[],
+  env: Readonly<Record<string, string | undefined>>,
+) {
   let values;
   try {
     ({ values } = parseArgs({
@@ -72,6 +138,7 @@ export function backfillOptions(args: string[], env: NodeJS.ProcessEnv) {
       options: {
         apply: { type: "boolean" },
         "i-have-a-backup": { type: "boolean" },
+        "confirm-target-host": { type: "string" },
         "snapshot-file": { type: "string" },
         source: { type: "string" },
         since: { type: "string", default: DEFAULT_SINCE },
@@ -87,24 +154,29 @@ export function backfillOptions(args: string[], env: NodeJS.ProcessEnv) {
   if (values.apply && !values["i-have-a-backup"]) {
     throw new BackfillError("--apply requires --i-have-a-backup.");
   }
-  if (env.DATABASE_URL && env.DATABASE_URL === env.SNAPSHOT_DATABASE_URL) {
-    throw new BackfillError(
-      "DATABASE_URL and SNAPSHOT_DATABASE_URL must be separate databases.",
-    );
-  }
   const target = env.DATABASE_URL
-    ? localUrl(env.DATABASE_URL, "DATABASE_URL")
+    ? databaseUrl(env.DATABASE_URL, "DATABASE_URL")
     : null;
   const snapshotDb = env.SNAPSHOT_DATABASE_URL
-    ? localUrl(env.SNAPSHOT_DATABASE_URL, "SNAPSHOT_DATABASE_URL")
+    ? databaseUrl(env.SNAPSHOT_DATABASE_URL, "SNAPSHOT_DATABASE_URL")
     : null;
   if (
     target &&
     target.host === snapshotDb?.host &&
-    target.pathname === snapshotDb.pathname
+    target.port === snapshotDb.port &&
+    target.database === snapshotDb.database
   ) {
     throw new BackfillError(
       "DATABASE_URL and SNAPSHOT_DATABASE_URL must be separate databases.",
+    );
+  }
+  if (
+    target &&
+    !target.local &&
+    values["confirm-target-host"] !== target.hostname
+  ) {
+    throw new BackfillError(
+      "A remote DATABASE_URL requires --confirm-target-host matching its hostname exactly.",
     );
   }
   if (
@@ -157,7 +229,11 @@ function emptyStep(step: SyncStep) {
   return step.count === 0 || step.status === "warning";
 }
 
-async function affectedTenants(tx: Db, options: Options): Promise<Evidence[]> {
+async function affectedTenants(
+  tx: Db,
+  options: Options,
+  tenantIds = options.tenantIds,
+): Promise<Evidence[]> {
   const runs = await tx
     .select({
       tenantId: syncRuns.tenantId,
@@ -171,9 +247,7 @@ async function affectedTenants(tx: Db, options: Options): Promise<Evidence[]> {
           syncRuns.startedAt,
           new Date(options.since.getTime() - 30 * 86_400_000),
         ),
-        options.tenantIds.length
-          ? inArray(syncRuns.tenantId, options.tenantIds)
-          : undefined,
+        tenantIds.length ? inArray(syncRuns.tenantId, tenantIds) : undefined,
         sql`${syncRuns.status} <> 'running'`,
         sql`jsonb_path_exists(${syncRuns.steps}, '$[*] ? (@.step == "usageReports")')`,
       ),
@@ -220,20 +294,17 @@ async function readSnapshot(options: Options, ids: string[]) {
   if (ids.length === 0 || options.source === "findings") return byTenant;
   let rows: readonly unknown[];
   if (options.snapshotDb) {
-    const client = postgres(options.snapshotDb.href, {
-      max: 1,
-      connect_timeout: 5,
-      prepare: false,
-    });
+    const client = openPostgres(options.snapshotDb);
     try {
-      rows = await client.begin(
-        "read only",
-        (tx) => tx`
-        select tenant_id, graph_id, workload_activity,
-          to_json(last_activity) as last_activity, to_json(synced_at) as synced_at
-        from public.tenant_users where tenant_id in ${tx(ids)}
-      `,
-      );
+      rows = await client.begin("read only", async (tx) => {
+        // Fail instead of exporting an incomplete snapshot under RLS.
+        await tx`set local row_security = off`;
+        return tx`
+          select tenant_id, graph_id, workload_activity,
+            to_json(last_activity) as last_activity, to_json(synced_at) as synced_at
+          from public.tenant_users where tenant_id in ${tx(ids)}
+        `;
+      });
     } finally {
       await client.end();
     }
@@ -332,17 +403,23 @@ async function repairTenant(
     },
     orderBy: asc(tenantUsers.graphId),
   });
-  const storedFindings = await tx.query.findings.findMany({
-    where: and(
-      eq(findings.tenantId, tenantId),
-      inArray(findings.rule, [
-        "inactive_90d",
-        "never_active",
-        "copilot_unused",
-      ]),
-    ),
-    orderBy: asc(findings.id),
-  });
+  const tenantFindings = tx
+    .select()
+    .from(findings)
+    .where(
+      and(
+        eq(findings.tenantId, tenantId),
+        inArray(findings.rule, [
+          "inactive_90d",
+          "never_active",
+          "copilot_unused",
+        ]),
+      ),
+    )
+    .orderBy(asc(findings.id));
+  const storedFindings = await (options.apply
+    ? tenantFindings.for("no key update")
+    : tenantFindings);
   const fallback =
     options.source === "findings"
       ? findingEvidence(storedFindings, options.since)
@@ -565,16 +642,13 @@ export async function backfillUsageOutage(
   options: Options,
   now = new Date(),
 ) {
-  return database.transaction(async (tx) => {
-    if (!options.apply) {
-      await tx.execute(
-        sql`set transaction isolation level repeatable read read only`,
-      );
-    } else if (options.target) {
-      await tx.execute(sql`set local lock_timeout = '5s'`);
-      await tx.execute(sql`lock table public.tenants, public.sync_runs, public.tenant_users,
-        public.findings, public.audit_log in share row exclusive mode`);
-    }
+  const reports: Awaited<ReturnType<typeof repairTenant>>[] = [];
+  const skippedTenants: { tenantId: string; reason: string }[] = [];
+  let failedTenant: string | undefined;
+  const readPlan = async (tx: Db) => {
+    // Maintenance needs complete tenant visibility. Fail if policies would
+    // filter rows; this setting does not bypass RLS for restricted roles.
+    await tx.execute(sql`set local row_security = off`);
     const result = await tx.execute<{ present: boolean }>(sql`
       select exists (select 1 from information_schema.columns
         where table_schema = 'public' and table_name = 'tenants'
@@ -588,81 +662,118 @@ export async function backfillUsageOutage(
       );
     }
     const detected = await affectedTenants(tx, options);
-    if (
-      options.apply &&
-      detected.length &&
-      (await tx.query.syncRuns.findFirst({
-        where: and(
-          eq(syncRuns.status, "running"),
-          inArray(
-            syncRuns.tenantId,
-            detected.map((d) => d.tenantId),
-          ),
-        ),
-        columns: { id: true },
-      }))
-    ) {
-      throw new BackfillError(
-        "An affected tenant has a running sync. Pause syncs and let active runs finish before applying.",
-      );
-    }
     const snapshot = await readSnapshot(
       options,
       detected.map((d) => d.tenantId),
     );
-    const reports = [];
-    for (const evidence of detected) {
-      reports.push(
-        await repairTenant(
-          tx,
-          options,
-          evidence,
-          snapshot.get(evidence.tenantId) ?? new Map(),
-          now,
-        ),
-      );
+    if (!options.apply) {
+      for (const evidence of detected) {
+        reports.push(
+          await repairTenant(
+            tx,
+            options,
+            evidence,
+            snapshot.get(evidence.tenantId) ?? new Map(),
+            now,
+          ),
+        );
+      }
     }
-    return {
-      mode: options.apply ? "apply" : "dry-run",
-      source: options.source,
-      partial: options.source === "findings",
-      since: options.since,
-      tenants: reports,
-      totals: {
-        tenants: reports.length,
-        usersChanged: reports.reduce(
-          (sum, r) => sum + r.counts.usersChanged,
-          0,
-        ),
-        lastActivityChanged: reports.reduce(
-          (sum, r) => sum + r.counts.lastActivityChanged,
-          0,
-        ),
-        deletedUsersSkipped: reports.reduce(
-          (sum, r) => sum + r.counts.deletedUsersSkipped,
-          0,
-        ),
-        flagsChanged: reports.reduce((sum, r) => sum + r.counts.flagChanged, 0),
-        findingsReopened: reports.reduce(
-          (sum, r) => sum + r.counts.findingsReopened,
-          0,
-        ),
-        findingsResolved: reports.reduce(
-          (sum, r) => sum + r.counts.findingsResolved,
-          0,
-        ),
-        findingsCreated: reports.reduce(
-          (sum, r) => sum + r.counts.findingsCreated,
-          0,
-        ),
-        findingsUnchanged: reports.reduce(
-          (sum, r) => sum + r.counts.findingsUnchanged,
-          0,
-        ),
-      },
-      ...(!options.apply && { message: DRY_RUN_MESSAGE }),
-    };
+    return { detected, snapshot };
+  };
+
+  // Drizzle sets READ ONLY immediately after BEGIN, before the first query.
+  // The preview computes finding transitions in memory, so it needs no writes.
+  const { detected, snapshot } = await database.transaction(readPlan, {
+    isolationLevel: "repeatable read",
+    accessMode: "read only",
   });
+
+  if (options.apply) {
+    for (const { tenantId } of detected) {
+      try {
+        const result = await database.transaction(
+          async (tx) => {
+            await tx.execute(sql`set local row_security = off`);
+            await tx.execute(sql`set local lock_timeout = '5s'`);
+            if (!(await lockTenant(tx, tenantId, true)))
+              return { reason: "tenant busy or removed" };
+
+            const running = await tx.query.syncRuns.findFirst({
+              where: and(
+                eq(syncRuns.tenantId, tenantId),
+                eq(syncRuns.status, "running"),
+              ),
+              columns: { id: true },
+            });
+            if (running) return { reason: "sync in progress" };
+
+            // A sync may have finished after discovery. Use its current evidence
+            // and read the rows under the same lock that covers the repair.
+            const [evidence] = await affectedTenants(tx, options, [tenantId]);
+            if (!evidence) return { reason: "outage evidence changed" };
+
+            return {
+              report: await repairTenant(
+                tx,
+                options,
+                evidence,
+                snapshot.get(tenantId) ?? new Map(),
+                now,
+              ),
+            };
+          },
+          { isolationLevel: "read committed" },
+        );
+        if (result.report) reports.push(result.report);
+        else skippedTenants.push({ tenantId, reason: result.reason });
+      } catch {
+        // Preserve the reports for any tenants already committed.
+        failedTenant = tenantId;
+        break;
+      }
+    }
+  }
+
+  return {
+    mode: options.apply ? "apply" : "dry-run",
+    source: options.source,
+    partial: options.source === "findings",
+    since: options.since,
+    tenants: reports,
+    skippedTenants,
+    ...(failedTenant && { failedTenant }),
+    totals: {
+      tenants: reports.length,
+      usersChanged: reports.reduce((sum, r) => sum + r.counts.usersChanged, 0),
+      lastActivityChanged: reports.reduce(
+        (sum, r) => sum + r.counts.lastActivityChanged,
+        0,
+      ),
+      deletedUsersSkipped: reports.reduce(
+        (sum, r) => sum + r.counts.deletedUsersSkipped,
+        0,
+      ),
+      flagsChanged: reports.reduce((sum, r) => sum + r.counts.flagChanged, 0),
+      findingsReopened: reports.reduce(
+        (sum, r) => sum + r.counts.findingsReopened,
+        0,
+      ),
+      findingsResolved: reports.reduce(
+        (sum, r) => sum + r.counts.findingsResolved,
+        0,
+      ),
+      findingsCreated: reports.reduce(
+        (sum, r) => sum + r.counts.findingsCreated,
+        0,
+      ),
+      findingsUnchanged: reports.reduce(
+        (sum, r) => sum + r.counts.findingsUnchanged,
+        0,
+      ),
+    },
+    ...(!options.apply && { message: DRY_RUN_MESSAGE }),
+  };
 }
 
 function formatReport(report: Awaited<ReturnType<typeof backfillUsageOutage>>) {
@@ -690,6 +801,14 @@ function formatReport(report: Awaited<ReturnType<typeof backfillUsageOutage>>) {
         lines.push(`    ${f.id} | ${f.rule} | ${f.graphUserId ?? "-"}`);
     }
   }
+  for (const { tenantId, reason } of report.skippedTenants) {
+    lines.push(`Skipped tenant ${tenantId}: ${reason}.`);
+  }
+  if (report.failedTenant) {
+    lines.push(
+      `Apply stopped at tenant ${report.failedTenant}. Check the database logs and keep this report for any tenants already committed.`,
+    );
+  }
   const t = report.totals;
   lines.push(
     "",
@@ -701,17 +820,23 @@ function formatReport(report: Awaited<ReturnType<typeof backfillUsageOutage>>) {
 
 async function main() {
   const raw = process.env.DATABASE_URL;
-  const host = raw ? URL.parse(raw)?.hostname : null;
-  console.error(
-    `Target host: ${raw ? (host && ["127.0.0.1", "localhost"].includes(host) ? host : "[invalid or non-local]") : "local PGlite"}`,
-  );
+  if (raw) {
+    try {
+      const target = databaseUrl(raw, "DATABASE_URL");
+      console.error(
+        `Target host: ${target.hostname} | Database: ${JSON.stringify(target.database)}`,
+      );
+    } catch {
+      console.error("Target host and database: invalid DATABASE_URL");
+    }
+  } else {
+    console.error("Target host: local PGlite | Database: pglite");
+  }
   const options = backfillOptions(process.argv.slice(2), process.env);
   const original = process.cwd();
   let scratch: string | undefined;
   try {
-    if (options.target) {
-      process.env.DATABASE_URL = options.target.href;
-    } else {
+    if (!options.target) {
       delete process.env.DATABASE_URL;
       const data = join(original, ".pglite", "data");
       if (!(await stat(join(data, "PG_VERSION")).catch(() => null))) {
@@ -728,14 +853,22 @@ async function main() {
     if (!process.env.NODE_ENV)
       Object.assign(process.env, { NODE_ENV: "development" });
     process.env.SKIP_ENV_VALIDATION = "true";
-    const { db, closeDatabase } = await import("~/server/db");
+    const client = options.target && openPostgres(options.target);
+    const local = client ? null : await import("~/server/db");
     try {
-      const report = await backfillUsageOutage(db, options);
+      const database = client ? drizzle(client, { schema }) : local!.db;
+      const report = await backfillUsageOutage(database, options);
       console.log(
         options.json ? JSON.stringify(report, null, 2) : formatReport(report),
       );
+      if (report.failedTenant) {
+        if (options.json)
+          console.error(`Apply stopped at tenant ${report.failedTenant}.`);
+        process.exitCode = 1;
+      }
     } finally {
-      await closeDatabase();
+      if (client) await client.end();
+      else await local!.closeDatabase();
     }
   } finally {
     process.chdir(original);
@@ -752,7 +885,7 @@ if (
     console.error(
       error instanceof BackfillError
         ? error.message
-        : "Backfill failed. Check the local database connection, schema, and permissions.",
+        : "Backfill failed. Check the database connection, schema, and maintenance-role permissions.",
     );
     process.exitCode = 1;
   });

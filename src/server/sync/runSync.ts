@@ -6,7 +6,6 @@ import {
   PSEUDONYMISED_KEY_PREFIX,
   pseudonymisedDedupeKey,
 } from "~/server/retention";
-import { isUniqueViolation } from "~/server/db/errors";
 import { OpsSafeError, opsErrorText } from "~/server/opsError";
 import {
   adobeConnections,
@@ -66,6 +65,7 @@ import { optionalStepDeadline } from "~/server/sync/deadline";
 import { errText } from "~/server/sync/errText";
 import { createStepLog, persistRunSteps } from "~/server/sync/stepProgress";
 import { textSet } from "~/server/sync/textSet";
+import { lockTenant } from "~/server/sync/lockTenant";
 import { mergeAdobeUsers, mergeSaasSeats } from "~/server/sync/mergeByEmail";
 import {
   subscriptionTermsBySku,
@@ -135,9 +135,10 @@ const USAGE_REPORT_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 const analyzeWasteWithCoverage = async (
   tenantId: string,
   input: WasteInput,
+  database = db,
 ) => {
   if (input.activitySignal !== "unknown") return analyzeWaste(input);
-  const previous = await db.query.findings.findMany({
+  const previous = await database.query.findings.findMany({
     where: and(
       eq(findings.tenantId, tenantId),
       inArray(findings.rule, INACTIVITY_RULES),
@@ -304,39 +305,44 @@ export const runSync = async (
   // before the next nightly cron, and keeps the instant-scan poller from showing
   // "syncing" indefinitely after a hard kill.
   const STALE_RUN_MS = 20 * 60 * 1000;
-  await db
-    .update(syncRuns)
-    .set({ status: "failed", error: "stale run", finishedAt: new Date() })
-    .where(
-      and(
-        eq(syncRuns.tenantId, tenantId),
-        eq(syncRuns.status, "running"),
-        lt(syncRuns.startedAt, new Date(Date.now() - STALE_RUN_MS)),
-      ),
-    );
+  const started = await db.transaction(async (tx) => {
+    // A backfill holds this lock until all repairs for this tenant commit.
+    if (!(await lockTenant(tx, tenantId)))
+      throw new Error(`Unknown tenant ${tenantId}`);
+    await tx
+      .update(syncRuns)
+      .set({ status: "failed", error: "stale run", finishedAt: new Date() })
+      .where(
+        and(
+          eq(syncRuns.tenantId, tenantId),
+          eq(syncRuns.status, "running"),
+          lt(syncRuns.startedAt, new Date(Date.now() - STALE_RUN_MS)),
+        ),
+      );
 
-  // Concurrency lock via the partial unique index: only one running sync per
-  // tenant. A concurrent caller gets the in-flight run back instead of racing.
-  let runId: string;
-  try {
-    const [run] = await db
+    // The partial unique index holds the guard for the rest of the sync.
+    const [run] = await tx
       .insert(syncRuns)
       .values({ tenantId, status: "running" })
+      .onConflictDoNothing({
+        target: syncRuns.tenantId,
+        where: sql`${syncRuns.status} = 'running'`,
+      })
       .returning({ id: syncRuns.id });
-    runId = run!.id;
-  } catch (err) {
-    // Only a unique violation means "lock held"; anything else (connection
-    // loss, FK failure) must surface instead of masquerading as a running sync.
-    if (!isUniqueViolation(err)) throw err;
-    const inFlight = await db.query.syncRuns.findFirst({
+    if (run) return { runId: run.id, inFlight: false };
+
+    const inFlight = await tx.query.syncRuns.findFirst({
       where: and(
         eq(syncRuns.tenantId, tenantId),
         eq(syncRuns.status, "running"),
       ),
     });
-    if (!inFlight) throw err;
-    return { runId: inFlight.id, status: "running", steps: [] };
-  }
+    if (!inFlight)
+      throw new Error("The concurrent sync already finished. Retry sync.");
+    return { runId: inFlight.id, inFlight: true };
+  });
+  const { runId } = started;
+  if (started.inFlight) return { runId, status: "running", steps: [] };
 
   // Each recorded step is also written to the running row, so the status poll
   // can show progress before the run finishes.
@@ -1398,7 +1404,20 @@ export const runAnalysis = async (
   tenantId: string,
   activity?: ActivityAnalysisOptions,
 ): Promise<void> => {
-  const database = activity?.database ?? db;
+  if (activity)
+    return analyzeStoredTenant(tenantId, activity.database, activity);
+  await db.transaction(async (tx) => {
+    if (!(await lockTenant(tx, tenantId)))
+      throw new Error(`Unknown tenant ${tenantId}`);
+    await analyzeStoredTenant(tenantId, tx);
+  });
+};
+
+async function analyzeStoredTenant(
+  tenantId: string,
+  database: Db,
+  activity?: ActivityAnalysisOptions,
+) {
   const tenant = await database.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
   });
@@ -1449,36 +1468,40 @@ export const runAnalysis = async (
   const reportUnavailable = activity
     ? activity.usageReportUnavailable
     : tenant.usageReportUnavailable;
-  const newFindings = await analyzeWasteWithCoverage(tenantId, {
-    users: userRows.map((row) => {
-      const r = { ...row, ...activity?.users.get(row.graphId) };
-      return {
-        graphId: r.graphId,
-        upn: r.upn,
-        displayName: r.displayName,
-        accountEnabled: r.accountEnabled,
-        userType: r.userType,
-        createdDateTime: r.createdDateTime,
-        lastActivity: r.lastActivity,
-        copilotLastActivity: r.workloadActivity?.copilot
-          ? new Date(r.workloadActivity.copilot)
-          : null,
-        licenses: r.licenses,
-      };
-    }),
-    skus: skuRows,
-    prices,
-    now,
-    activitySignal,
-    copilotSignal: tenant.copilotSignal ?? "none",
-    // An outage can leave an aggregate stored even when there are no users.
-    usageAggregate: reportUnavailable
-      ? undefined
-      : (tenant.usageAggregate ?? undefined),
-    copilotAggregate: tenant.copilotAggregate ?? undefined,
-    inactiveDays: tenant.inactiveDays,
-    exclusions: tenant.findingExclusions,
-  });
+  const newFindings = await analyzeWasteWithCoverage(
+    tenantId,
+    {
+      users: userRows.map((row) => {
+        const r = { ...row, ...activity?.users.get(row.graphId) };
+        return {
+          graphId: r.graphId,
+          upn: r.upn,
+          displayName: r.displayName,
+          accountEnabled: r.accountEnabled,
+          userType: r.userType,
+          createdDateTime: r.createdDateTime,
+          lastActivity: r.lastActivity,
+          copilotLastActivity: r.workloadActivity?.copilot
+            ? new Date(r.workloadActivity.copilot)
+            : null,
+          licenses: r.licenses,
+        };
+      }),
+      skus: skuRows,
+      prices,
+      now,
+      activitySignal,
+      copilotSignal: tenant.copilotSignal ?? "none",
+      // An outage can leave an aggregate stored even when there are no users.
+      usageAggregate: reportUnavailable
+        ? undefined
+        : (tenant.usageAggregate ?? undefined),
+      copilotAggregate: tenant.copilotAggregate ?? undefined,
+      inactiveDays: tenant.inactiveDays,
+      exclusions: tenant.findingExclusions,
+    },
+    database,
+  );
 
   if (activity) {
     await diffFindings(
@@ -1533,6 +1556,7 @@ export const runAnalysis = async (
     newFindings.concat(adobeFindings, saasFindings),
     now,
     activitySignal,
+    { database },
   );
 
   const totalMonthlySpendCents = skuRows.reduce(
@@ -1573,7 +1597,7 @@ export const runAnalysis = async (
         bySku: bySkuOf(skuRows),
       },
     });
-};
+}
 
 /** A finding row genuinely inserted by diffFindings (first appearance, not a reopen/update). */
 export type InsertedFinding = {
@@ -1595,7 +1619,7 @@ export const diffFindings = async (
   newFindings: WasteFinding[],
   now: Date,
   activitySignal?: ActivitySignal,
-  options?: { database: Db; reconcile: ActivityReconciliation },
+  options?: { database: Db; reconcile?: ActivityReconciliation },
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
   // (some inserted/reopened, others never resolved) for the tenant.
