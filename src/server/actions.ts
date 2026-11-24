@@ -1744,7 +1744,17 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
     await tx.delete(snapshots).where(eq(snapshots.tenantId, ctx.tenant.id));
     await tx
       .update(tenants)
-      .set({ tid: null, consentedAt: null })
+      .set({
+        tid: null,
+        consentedAt: null,
+        concealedNames: null,
+        hasP1: null,
+        activitySignal: null,
+        copilotSignal: null,
+        usageAggregate: null,
+        copilotAggregate: null,
+        usageReportUnavailable: false,
+      })
       .where(eq(tenants.id, ctx.tenant.id));
   });
   await audit(ctx, "microsoft_disconnected", {});

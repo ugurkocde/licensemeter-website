@@ -41,8 +41,9 @@ const schemaDdl = async (): Promise<string[]> => {
   return cachedDdl;
 };
 
-beforeEach(async () => {
+beforeEach(async ({ onTestFinished }) => {
   const client = new PGlite();
+  onTestFinished(() => client.close());
   for (const stmt of await schemaDdl()) await client.exec(stmt);
   currentDb = drizzle(client, { schema }) as unknown as Db;
 });
@@ -114,7 +115,7 @@ describe("resolveScanTenant", () => {
       id: own!.id,
       tid: ACME_TID,
       consentedAt: null,
-      concealedNames: false,
+      concealedNames: null,
       hasP1: false,
       activitySignal: "none",
       copilotSignal: "none",

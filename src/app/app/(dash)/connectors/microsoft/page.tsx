@@ -248,6 +248,9 @@ export default async function MicrosoftConnectorPage({
   const conn = await db.query.msConnections.findFirst({
     where: eq(msConnections.tenantId, ctx.tenant.id),
   });
+  const usageReportUnavailable =
+    ctx.tenant.usageReportUnavailable ??
+    ctx.tenant.activitySignal === "unknown";
   const lostAccess =
     conn?.mode === "managed" && conn.lastVerifyError
       ? await loadAccessLoss(ctx.tenant.id)
@@ -317,6 +320,40 @@ export default async function MicrosoftConnectorPage({
       )}
 
       <div className="rise rise-3 flex flex-col gap-6">
+        {ctx.tenant.concealedNames && (
+          <Card title="Microsoft 365 conceals names in usage reports">
+            <div className="text-ink-soft flex flex-col gap-2 text-sm">
+              <p>
+                {ctx.tenant.hasP1
+                  ? "Sign-in activity still supports per-user inactivity findings. Concealed names hide each user’s workload activity."
+                  : "LicenseMeter can’t match report activity to individual users while names are concealed."}
+              </p>
+              <p>
+                A Global Administrator can open the Microsoft 365 admin center
+                and go to{" "}
+                <strong>
+                  Settings &gt; Org settings &gt; Services &gt; Reports
+                </strong>
+                . Clear{" "}
+                <strong>
+                  Display concealed user, group, and site names in all reports
+                </strong>{" "}
+                and save. The next nightly or manual sync picks up the change.
+              </p>
+            </div>
+          </Card>
+        )}
+        {usageReportUnavailable && (
+          <Card title="Microsoft 365 usage data is unavailable">
+            <p className="text-ink-soft text-sm">
+              LicenseMeter keeps the last known workload activity when
+              available.{" "}
+              {ctx.tenant.hasP1
+                ? "Per-user inactivity findings continue to update using sign-in activity."
+                : "Inactivity findings are carried forward until report data is available again."}
+            </p>
+          </Card>
+        )}
         <Card title="Connection">
           {ctx.tenant.isDemo ? (
             <div className="flex flex-col gap-4">

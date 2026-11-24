@@ -35,19 +35,18 @@ const INACTIVE_DAYS = 90;
  */
 const recompute = async () => {
   const client = new DemoGraphClient();
-  const [orgName, skus, graphUsers, usageRows, copilotRows] = await Promise.all(
-    [
+  const [orgName, skus, graphUsers, usageReport, copilotRows] =
+    await Promise.all([
       client.getOrganizationName(),
       client.getSubscribedSkus(),
       client.listUsers({ includeSignInActivity: true }),
       client.getActiveUserDetail("D90"),
       client.getCopilotUsage("D90"),
-    ],
-  );
+    ]);
 
   const joined = joinSignals({
     graphUsers,
-    usageRows,
+    usageRows: usageReport.rows,
     copilotRows,
     hasP1: true,
   });

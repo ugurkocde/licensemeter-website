@@ -469,7 +469,7 @@ export default async function SettingsPage() {
             label="Identifiable usage reports"
             okText="Usage reports include user names. Per-user findings enabled."
             warnText="Report names are concealed (Microsoft default since 2021); usage-based findings are aggregate only."
-            hint="A Global Admin can change this in Microsoft 365 admin center > Settings > Org settings > Reports (the change is audit-logged)."
+            hint="A Global Administrator can change this in Microsoft 365 admin center > Settings > Org settings > Reports (the change is audit-logged)."
           />
           <Capability
             ok={

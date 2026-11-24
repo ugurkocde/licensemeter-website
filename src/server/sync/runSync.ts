@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, notInArray, sql } from "drizzle-orm";
 
 import { db } from "~/server/db";
 import {
@@ -44,7 +44,9 @@ import {
 } from "~/server/graph/skuCatalog";
 import {
   GraphHttpError,
+  isConcealedUpn,
   PremiumLicenseRequiredError,
+  type ActiveUserDetailReport,
   type CopilotUsageRow,
   type GraphClient,
   type GraphSubscribedSku,
@@ -70,13 +72,19 @@ import {
 } from "~/server/sync/subscriptionTerms";
 import { connectorSeatExclusion } from "~/server/sync/connectorExclusions";
 import { directoryIdentitiesOf, joinSignals } from "~/server/sync/join";
-import type { SyncRunStatus, SyncStep, WasteRuleId } from "~/server/types";
+import type {
+  ActivitySignal,
+  SyncRunStatus,
+  SyncStep,
+  WasteRuleId,
+} from "~/server/types";
 import {
   analyzeWaste,
   paidSeatsOf,
   purchasedSeatsOf,
   spendSeatsOf,
   type WasteFinding,
+  type WasteInput,
 } from "~/server/waste/engine";
 
 const chunk = <T>(arr: T[], size: number): T[][] => {
@@ -104,6 +112,44 @@ const bySkuOf = (
       { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
     ]),
   );
+
+const emptyUsageMessage = (report: ActiveUserDetailReport): string => {
+  const reason = !report.hasHeader
+    ? "no CSV header"
+    : report.dataRowCount === 0
+      ? "header only"
+      : report.rows.length === 0
+        ? "no user rows"
+        : "no rows matched a licensed directory user";
+  const details = [reason];
+  if (report.reportRefreshDate)
+    details.push(`report refresh date ${report.reportRefreshDate}`);
+  if (report.bodyBytes !== undefined) details.push(`${report.bodyBytes} bytes`);
+  return `Microsoft returned an empty usage report (${details.join(", ")})`;
+};
+
+const INACTIVITY_RULES: WasteRuleId[] = ["inactive_90d", "never_active"];
+const USAGE_REPORT_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
+
+const analyzeWasteWithCoverage = async (
+  tenantId: string,
+  input: WasteInput,
+) => {
+  if (input.activitySignal !== "unknown") return analyzeWaste(input);
+  const previous = await db.query.findings.findMany({
+    where: and(
+      eq(findings.tenantId, tenantId),
+      inArray(findings.rule, INACTIVITY_RULES),
+      inArray(findings.status, ["open", "acknowledged"]),
+    ),
+  });
+  const previousInactivity = new Map(previous.map((f) => [f.dedupeKey, f]));
+  const current = analyzeWaste({ ...input, previousInactivity });
+  // An empty directory response leaves the stored directory in place.
+  return input.users.length === 0
+    ? current.concat(previous.filter((f) => f.graphUserId !== null))
+    : current;
+};
 
 /** Milliseconds since `start`, recorded on every step to diagnose slow syncs. */
 const since = (start: number): number => Date.now() - start;
@@ -317,6 +363,16 @@ export const runSync = async (
     let graphUsers: GraphUser[] = [];
     let hasP1 = true;
     let usageRows: UsageReportRow[] = [];
+    let usageReportUnavailable = false;
+    let previousActivity:
+      | Map<
+          string,
+          Pick<
+            typeof tenantUsers.$inferSelect,
+            "workloadActivity" | "lastActivity"
+          >
+        >
+      | undefined;
     let copilotRows: CopilotUsageRow[] = [];
 
     if (!client) {
@@ -477,19 +533,78 @@ export const runSync = async (
       }
 
       started = Date.now();
+      let report: ActiveUserDetailReport | undefined;
       try {
-        usageRows = await client.getActiveUserDetail("D90");
-        record({
-          step: "usageReports",
-          status: "ok",
-          count: usageRows.length,
-          durationMs: since(started),
-        });
+        report = await client.getActiveUserDetail("D90");
       } catch (err) {
         record({
           step: "usageReports",
           status: "warning",
           message: errText(err),
+          durationMs: since(started),
+        });
+      }
+
+      const licensedUpns = new Set(
+        graphUsers
+          .filter((user) => user.assignedLicenses.length > 0)
+          .map((user) => user.userPrincipalName.toLowerCase()),
+      );
+      // Concealed identities can still supply a usable tenant-wide count.
+      if (
+        report?.rows.some(
+          (row) =>
+            isConcealedUpn(row.userPrincipalName) ||
+            licensedUpns.has(row.userPrincipalName.toLowerCase()),
+        )
+      ) {
+        usageRows = report.rows;
+      } else {
+        const stored = await db.query.tenantUsers.findMany({
+          where: eq(tenantUsers.tenantId, tenantId),
+          columns: {
+            graphId: true,
+            lastActivity: true,
+            workloadActivity: true,
+          },
+        });
+        // Stored dates and counts remain useful even during a long outage.
+        // Recent successful report steps also cover reports with only null
+        // dates. That evidence expires after 30 days without fresh rows.
+        usageReportUnavailable =
+          (tenant.usageAggregate?.totalCount ?? 0) > 0 ||
+          stored.some(({ workloadActivity: w }) =>
+            [w?.exchange, w?.oneDrive, w?.sharePoint, w?.teams].some(Boolean),
+          ) ||
+          Boolean(
+            await db.query.syncRuns.findFirst({
+              where: and(
+                eq(syncRuns.tenantId, tenantId),
+                inArray(syncRuns.status, ["success", "partial"]),
+                gte(
+                  syncRuns.startedAt,
+                  new Date(now.getTime() - USAGE_REPORT_LOOKBACK_MS),
+                ),
+                sql`jsonb_path_exists(${syncRuns.steps}, '$[*] ? (@.step == "usageReports" && @.status == "ok" && @.count > 0)')`,
+              ),
+              columns: { id: true },
+            }),
+          );
+        if (usageReportUnavailable) {
+          previousActivity = new Map(
+            stored.map((user) => [user.graphId, user]),
+          );
+        }
+      }
+
+      if (report) {
+        record({
+          step: "usageReports",
+          status: usageReportUnavailable ? "warning" : "ok",
+          message: usageReportUnavailable
+            ? emptyUsageMessage(report)
+            : undefined,
+          count: usageRows.length,
           durationMs: since(started),
         });
       }
@@ -714,7 +829,14 @@ export const runSync = async (
 
     // --- Join + analyze ---------------------------------------------------
     const analysisStarted = Date.now();
-    const joined = joinSignals({ graphUsers, usageRows, copilotRows, hasP1 });
+    const joined = joinSignals({
+      graphUsers,
+      usageRows,
+      copilotRows,
+      hasP1,
+      previousActivity,
+      reportUnavailable: usageReportUnavailable,
+    });
 
     // A failed subscriptions read keeps the trial seats and renewal dates of
     // the last successful one.
@@ -1058,7 +1180,7 @@ export const runSync = async (
       consumedUnits: s.consumedUnits,
       trialUnits: termsOf(s.skuId).trialUnits,
     }));
-    const newFindings = analyzeWaste({
+    const newFindings = await analyzeWasteWithCoverage(tenantId, {
       users: joined.users,
       skus: inventory,
       prices,
@@ -1111,7 +1233,12 @@ export const runSync = async (
       durationMs: since(analysisStarted),
     });
 
-    const inserted = await diffFindings(tenantId, allFindings, now);
+    const inserted = await diffFindings(
+      tenantId,
+      allFindings,
+      now,
+      joined.activitySignal,
+    );
     await sendLeakAlert(tenant, inserted, now);
 
     // --- Snapshot + tenant capabilities ------------------------------------
@@ -1161,10 +1288,19 @@ export const runSync = async (
         .update(tenants)
         .set({
           hasP1,
-          concealedNames: concealmentSetting ?? joined.concealed,
+          concealedNames:
+            concealmentSetting ??
+            (joined.concealed
+              ? true
+              : usageRows.length > 0
+                ? false
+                : tenant.concealedNames),
           activitySignal: joined.activitySignal,
+          usageReportUnavailable,
           copilotSignal: joined.copilotSignal,
-          usageAggregate: joined.usageAggregate ?? null,
+          usageAggregate: usageReportUnavailable
+            ? tenant.usageAggregate
+            : (joined.usageAggregate ?? null),
           copilotAggregate: joined.copilotAggregate ?? null,
           ...(orgName && !tenant.isDemo ? { name: orgName } : {}),
         })
@@ -1268,7 +1404,11 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     priceRows.map((p) => [p.skuId, p.monthlyPriceCents]),
   );
 
-  const newFindings = analyzeWaste({
+  // Older workspaces predate the stored coverage signal.
+  const activitySignal =
+    tenant.activitySignal ??
+    (tenant.hasP1 || tenant.concealedNames === false ? "full" : "none");
+  const newFindings = await analyzeWasteWithCoverage(tenantId, {
     users: userRows.map((r) => ({
       graphId: r.graphId,
       upn: r.upn,
@@ -1285,15 +1425,12 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     skus: skuRows,
     prices,
     now,
-    // Prefer the signal recorded by the last sync; the boolean derivation is
-    // only a fallback for tenants synced before the column existed. Unknown
-    // concealment (null) is treated as concealed: conservative, no false
-    // per-user inactivity findings.
-    activitySignal:
-      tenant.activitySignal ??
-      (tenant.hasP1 || tenant.concealedNames === false ? "full" : "none"),
+    activitySignal,
     copilotSignal: tenant.copilotSignal ?? "none",
-    usageAggregate: tenant.usageAggregate ?? undefined,
+    // An outage can leave an aggregate stored even when there are no users.
+    usageAggregate: tenant.usageReportUnavailable
+      ? undefined
+      : (tenant.usageAggregate ?? undefined),
     copilotAggregate: tenant.copilotAggregate ?? undefined,
     inactiveDays: tenant.inactiveDays,
     exclusions: tenant.findingExclusions,
@@ -1340,6 +1477,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     tenantId,
     newFindings.concat(adobeFindings, saasFindings),
     now,
+    activitySignal,
   );
 
   const totalMonthlySpendCents = skuRows.reduce(
@@ -1401,6 +1539,7 @@ export const diffFindings = async (
   tenantId: string,
   newFindings: WasteFinding[],
   now: Date,
+  activitySignal?: ActivitySignal,
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
   // (some inserted/reopened, others never resolved) for the tenant.
@@ -1464,6 +1603,9 @@ export const diffFindings = async (
           ? viaHash
           : undefined);
       if (fresh) {
+        // Refresh the details of carried findings without recording an observation.
+        const carried =
+          activitySignal === "unknown" && INACTIVITY_RULES.includes(f.rule);
         await tx
           .update(findings)
           .set({
@@ -1472,8 +1614,8 @@ export const diffFindings = async (
             detail: fresh.detail,
             graphUserId: fresh.graphUserId,
             monthlyImpactCents: fresh.monthlyImpactCents,
-            lastSeenAt: now,
-            ...(f.status === "resolved"
+            ...(!carried && { lastSeenAt: now }),
+            ...(!carried && f.status === "resolved"
               ? { status: "open" as const, resolvedAt: null }
               : {}),
           })

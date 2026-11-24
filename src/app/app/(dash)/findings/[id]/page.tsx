@@ -24,6 +24,7 @@ const DETAIL_LABELS: Record<string, string> = {
   lastActivity: "Last activity",
   copilotLastActivity: "Last Copilot activity",
   inactiveDays: "Inactive for",
+  inactiveThresholdDays: "Inactivity threshold",
   accountAgeDays: "Account age",
   purchased: "Paid seats",
   assigned: "Assigned seats",

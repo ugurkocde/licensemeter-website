@@ -58,6 +58,14 @@ export type UsageReportRow = {
   teamsLastActivityDate: string | null;
 };
 
+export type ActiveUserDetailReport = {
+  rows: UsageReportRow[];
+  hasHeader: boolean;
+  dataRowCount: number;
+  reportRefreshDate: string | null;
+  bodyBytes?: number;
+};
+
 /** One row of the Microsoft 365 Copilot usage user detail report. */
 export type CopilotUsageRow = {
   userPrincipalName: string;
@@ -105,7 +113,7 @@ export interface GraphClient {
   getReportConcealment(): Promise<boolean | null>;
   /** Throws PremiumLicenseRequiredError when includeSignInActivity is true on a non-P1 tenant. */
   listUsers(opts: { includeSignInActivity: boolean }): Promise<GraphUser[]>;
-  getActiveUserDetail(period: "D90"): Promise<UsageReportRow[]>;
+  getActiveUserDetail(period: "D90"): Promise<ActiveUserDetailReport>;
   getCopilotUsage(period: "D90"): Promise<CopilotUsageRow[]>;
 }
 

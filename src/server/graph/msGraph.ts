@@ -5,7 +5,7 @@ import { ConfidentialClientApplication } from "@azure/msal-node";
 import { env } from "~/env";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
 import { requestDeadline, withinDeadline } from "~/server/sync/deadline";
-import { csvToRecords, reportDate } from "./reportCsv";
+import { csvToRecords, parseActiveUserDetail, reportDate } from "./reportCsv";
 import {
   GraphHttpError,
   PremiumLicenseRequiredError,
@@ -14,7 +14,7 @@ import {
   type GraphSubscribedSku,
   type GraphSubscription,
   type GraphUser,
-  type UsageReportRow,
+  type ActiveUserDetailReport,
 } from "./types";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -576,26 +576,13 @@ const fetchActiveUserDetail = async (
   token: string,
   period: "D90",
   deadline?: number,
-): Promise<UsageReportRow[]> => {
+): Promise<ActiveUserDetailReport> => {
   const res = await graphFetch(
     token,
     `${GRAPH}/reports/getOffice365ActiveUserDetail(period='${period}')`,
     deadline,
   );
-  const text = await res.text();
-  // Rows without a UPN (deleted accounts, blank trailing rows) cannot join
-  // and must not be mistaken for concealed names.
-  return csvToRecords(text)
-    .filter((r) => (r["User Principal Name"] ?? "") !== "")
-    .map((r) => ({
-      userPrincipalName: r["User Principal Name"]!,
-      exchangeLastActivityDate: reportDate(r["Exchange Last Activity Date"]),
-      oneDriveLastActivityDate: reportDate(r["OneDrive Last Activity Date"]),
-      sharePointLastActivityDate: reportDate(
-        r["SharePoint Last Activity Date"],
-      ),
-      teamsLastActivityDate: reportDate(r["Teams Last Activity Date"]),
-    }));
+  return parseActiveUserDetail(await res.arrayBuffer());
 };
 
 /** Copilot usage report (CSV or JSON shape) -> rows (shared by both clients). */
@@ -825,7 +812,7 @@ export class MsGraphClient implements GraphClient {
     }
   }
 
-  async getActiveUserDetail(period: "D90"): Promise<UsageReportRow[]> {
+  async getActiveUserDetail(period: "D90"): Promise<ActiveUserDetailReport> {
     return this.withAppIdentityRetry((token) =>
       fetchActiveUserDetail(token, period, this.deadline),
     );
@@ -961,10 +948,9 @@ export class DelegatedGraphClient implements GraphClient {
     }
   }
 
-  async getActiveUserDetail(period: "D90"): Promise<UsageReportRow[]> {
-    // Role-bounded: throws GraphHttpError 403 without Reports Reader/Global
-    // Reader. The sync records the failure as a warning and the join treats
-    // the missing rows as "no activity signal", never a thrown scan.
+  async getActiveUserDetail(period: "D90"): Promise<ActiveUserDetailReport> {
+    // The sync records report failures as warnings and preserves activity
+    // when prior report coverage exists.
     return fetchActiveUserDetail(this.accessToken, period, this.deadline);
   }
 

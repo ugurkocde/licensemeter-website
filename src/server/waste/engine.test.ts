@@ -135,7 +135,10 @@ describe("inactive_90d", () => {
   it("flags users inactive for more than 90 days", () => {
     const findings = run({ users: [user({ lastActivity: daysAgo(91) })] });
     expect(findings.map((f) => f.rule)).toEqual(["inactive_90d"]);
-    expect(findings[0]!.detail.inactiveDays).toBe(91);
+    expect(findings[0]!.detail).toMatchObject({
+      inactiveDays: 91,
+      inactiveThresholdDays: 90,
+    });
   });
 
   it("does not flag at exactly 90 days or below", () => {

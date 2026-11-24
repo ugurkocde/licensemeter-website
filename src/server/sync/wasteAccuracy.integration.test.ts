@@ -118,7 +118,19 @@ const client = (
   getSubscribedSkus: () => Promise.resolve(skus),
   getReportConcealment: () => Promise.resolve(false),
   listUsers: () => Promise.resolve(users),
-  getActiveUserDetail: () => Promise.resolve([]),
+  getActiveUserDetail: () =>
+    Promise.resolve({
+      rows: users.map((user) => ({
+        userPrincipalName: user.userPrincipalName,
+        exchangeLastActivityDate: null,
+        oneDriveLastActivityDate: null,
+        sharePointLastActivityDate: null,
+        teamsLastActivityDate: null,
+      })),
+      hasHeader: true,
+      dataRowCount: users.length,
+      reportRefreshDate: null,
+    }),
   getCopilotUsage: () => Promise.resolve([]),
   ...extra,
 });

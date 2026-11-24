@@ -36,6 +36,7 @@ import type {
   UserLicense,
   WasteRuleId,
   WorkloadActivity,
+  ActivitySignal,
 } from "~/server/types";
 
 /** Historical MSP billing records retained for database compatibility. Unused by the free service. */
@@ -159,10 +160,12 @@ export const tenants = pgTable(
     /** Monthly PDF waste report to owners/admins (QBR deliverable). */
     monthlyReport: boolean("monthly_report").notNull().default(false),
     /** Signal quality from the last sync; lets price edits re-run analysis offline. */
-    activitySignal: text("activity_signal").$type<"full" | "none">(),
+    activitySignal: text("activity_signal").$type<ActivitySignal>(),
     copilotSignal: text("copilot_signal").$type<
       "per-user" | "aggregate" | "none"
     >(),
+    /** A fetch failed or a previously populated report had no usable rows. */
+    usageReportUnavailable: boolean("usage_report_unavailable"),
     usageAggregate: jsonb("usage_aggregate").$type<AggregateUsage>(),
     copilotAggregate: jsonb("copilot_aggregate").$type<AggregateUsage>(),
     isDemo: boolean("is_demo").notNull().default(false),
