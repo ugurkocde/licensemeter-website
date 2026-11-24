@@ -24,7 +24,7 @@ const now = new Date("2026-11-24T10:00:00Z").getTime();
 const minute = 60_000;
 const person = {
   oid: "fake-object-id",
-  tid: "fake-home-tenant",
+  tid: "22222222-2222-2222-2222-00000000000b",
   email: "alex@example.com",
   name: "Alex Rivera",
 };
@@ -100,18 +100,31 @@ it("reports one stall per unconnected workspace and leaves personal details out 
 
 it("reuses a live handoff when two workspace admins request approval", async () => {
   const tenantId = await workspace();
+  await db.insert(schema.memberships).values({
+    tenantId,
+    oid: person.oid,
+    email: person.email,
+    role: "owner",
+  });
   const links = await Promise.all([
     createConsentHandoff({ tenantId, ...person }),
     createConsentHandoff({ tenantId, ...person, name: "Second admin" }),
   ]);
-  expect(links[0]).toMatch(/^handoff\./);
-  expect(links[1]).toBe(links[0]);
+  expect(links[0]?.state).toMatch(/^handoff\./);
+  expect(links[1]?.state).toBe(links[0]?.state);
+  expect(links.map((link) => link?.created).sort()).toEqual([false, true]);
   expect(await db.select().from(schema.consentStates)).toHaveLength(1);
   expect(notifyOps).toHaveBeenCalledTimes(1);
 });
 
 it("keeps self consent and detection available before the hosted migration", async () => {
   const tenantId = await workspace();
+  await db.insert(schema.memberships).values({
+    tenantId,
+    oid: person.oid,
+    email: person.email,
+    role: "owner",
+  });
   await db.execute(sql`alter table consent_states drop column kind`);
   try {
     await createSelfConsentState({

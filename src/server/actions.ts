@@ -660,7 +660,14 @@ export const removeMember = async (
   if (target.id === ctx.membership.id)
     return fail("You cannot remove yourself");
 
-  await db.delete(memberships).where(eq(memberships.id, target.id));
+  await db.transaction(async (tx) => {
+    await tx.delete(memberships).where(eq(memberships.id, target.id));
+    if (target.oid) {
+      await tx
+        .delete(consentStates)
+        .where(pendingApprovalLinks(ctx.tenant.id, target.oid));
+    }
+  });
   await audit(ctx, "member_removed", {
     email: target.email,
     role: target.role,
@@ -710,10 +717,17 @@ export const changeMemberRole = async (
   }
   if (target.role === newRole) return ok();
 
-  await db
-    .update(memberships)
-    .set({ role: newRole })
-    .where(eq(memberships.id, target.id));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(memberships)
+      .set({ role: newRole })
+      .where(eq(memberships.id, target.id));
+    if (target.oid && (newRole === "viewer" || target.role === "owner")) {
+      await tx
+        .delete(consentStates)
+        .where(pendingApprovalLinks(ctx.tenant.id, target.oid));
+    }
+  });
   await audit(ctx, "member_role_changed", {
     email: target.email,
     from: target.role,

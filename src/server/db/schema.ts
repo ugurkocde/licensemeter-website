@@ -453,7 +453,7 @@ export const consentStates = pgTable(
     state: text("state").primaryKey(),
     /** Entra object id of the initiator. */
     oid: text("oid"),
-    /** Initiator's Entra home tenant; not read on callback. */
+    /** Initiator's Entra home tenant; required for approval handoffs. */
     tid: text("tid"),
     /** Workspace the consent was started from; checked on callback. */
     tenantId: uuid("tenant_id").references(() => tenants.id, {

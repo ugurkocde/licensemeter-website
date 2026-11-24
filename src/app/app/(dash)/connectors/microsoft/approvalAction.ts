@@ -1,14 +1,20 @@
 "use server";
 
-import { appBaseUrl } from "~/env";
+import { and, eq } from "drizzle-orm";
+
 import { apiAccess } from "~/server/access";
+import { audit } from "~/server/audit";
 import {
-  approvalPath,
+  approvalLink,
   createConsentHandoff,
   handoffConfigured,
+  pendingApprovalLinks,
 } from "~/server/consentState";
+import { db } from "~/server/db";
+import { consentStates } from "~/server/db/schema";
 
-export type ApprovalLinkResult = { link: string } | { error: string } | null;
+export type ApprovalLinkResult =
+  { link: string; token: string } | { link: null } | { error: string } | null;
 
 export const requestApprovalLink = async (
   workspaceId: string,
@@ -17,7 +23,7 @@ export const requestApprovalLink = async (
   if (ctx?.tenant.id !== workspaceId || ctx.tenant.isDemo) {
     return { error: "Open the workspace as an admin and try again." };
   }
-  const token =
+  const result =
     handoffConfigured() &&
     (await createConsentHandoff({
       tenantId: workspaceId,
@@ -26,11 +32,30 @@ export const requestApprovalLink = async (
       name: ctx.user.name || null,
       email: ctx.user.upn || ctx.membership.email,
     }));
-  if (!token) {
+  if (!result) {
     return {
       error:
         "An approval link is unavailable. You can retry Grant admin consent below.",
     };
   }
-  return { link: new URL(approvalPath(token), appBaseUrl()).href };
+  if (result.created) await audit(ctx, "microsoft_approval_link_created");
+  return { link: approvalLink(result.state), token: result.state };
+};
+
+export const revokeApprovalLink = async (
+  workspaceId: string,
+  token: string,
+): Promise<ApprovalLinkResult> => {
+  const ctx = await apiAccess("admin");
+  if (ctx?.tenant.id !== workspaceId || ctx.tenant.isDemo) {
+    return { error: "Open the workspace as an admin and try again." };
+  }
+  const removed = await db
+    .delete(consentStates)
+    .where(
+      and(pendingApprovalLinks(workspaceId), eq(consentStates.state, token)),
+    )
+    .returning({ state: consentStates.state });
+  if (removed.length) await audit(ctx, "microsoft_approval_link_revoked");
+  return { link: null };
 };

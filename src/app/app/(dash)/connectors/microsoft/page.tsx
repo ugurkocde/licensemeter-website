@@ -14,12 +14,17 @@ import { MICROSOFT_CONNECTOR } from "~/lib/connectors";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
 import { fmtDate } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
-import { detectConsentStalls, handoffConfigured } from "~/server/consentState";
+import {
+  approvalLink,
+  detectConsentStalls,
+  findApprovalLinkToken,
+  handoffConfigured,
+} from "~/server/consentState";
 import { db } from "~/server/db";
 import { msConnections } from "~/server/db/schema";
 import { loadAccessLoss, type AccessLossCause } from "~/server/msAccessLoss";
 
-import { requestApprovalLink } from "./approvalAction";
+import { requestApprovalLink, revokeApprovalLink } from "./approvalAction";
 
 export const metadata = { title: "Microsoft 365 connector" };
 // BYO connect action syncs in after(); same 300s budget as other sync paths.
@@ -256,6 +261,15 @@ export default async function MicrosoftConnectorPage({
       ? await loadAccessLoss(ctx.tenant.id)
       : null;
   const byoEnabled = byoConnectorEnabled();
+  const showApproval =
+    !conn &&
+    !ctx.tenant.tid &&
+    !ctx.tenant.isDemo &&
+    isAdmin &&
+    handoffConfigured();
+  const approvalToken = showApproval
+    ? await findApprovalLinkToken(ctx.tenant.id)
+    : undefined;
   const stalled =
     !conn && !ctx.tenant.tid && !ctx.tenant.isDemo
       ? (await detectConsentStalls(ctx.tenant.id)).length > 0
@@ -324,9 +338,18 @@ export default async function MicrosoftConnectorPage({
       )}
 
       <div className="rise rise-3 flex flex-col gap-6">
-        {stalled && isAdmin && handoffConfigured() && (
+        {showApproval && (stalled || approvalToken) && (
           <ConsentApprovalPanel
+            initialLink={
+              approvalToken
+                ? {
+                    token: approvalToken,
+                    link: approvalLink(approvalToken),
+                  }
+                : null
+            }
             createLink={requestApprovalLink.bind(null, ctx.tenant.id)}
+            revokeLink={revokeApprovalLink.bind(null, ctx.tenant.id)}
           />
         )}
         <Card title="Connection">

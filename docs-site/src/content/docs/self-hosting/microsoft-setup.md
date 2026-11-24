@@ -51,12 +51,19 @@ Both requests need `Application.ReadWrite.All` or ownership of the app, use the 
 
 A fresh invitation can be accepted across Microsoft tenants only when the token proves the invited email address. Within the workspace's connected Microsoft tenant, the invited UPN or email can also match. Existing memberships are identified by Microsoft object ID. Email recovery for older identities is no longer available.
 
+### Shared Microsoft admin approval links
+
+Set `"groupMembershipClaims": "DirectoryRole"` in the **LicenseMeter Sign-in** manifest under **Microsoft Entra ID > App registrations > LicenseMeter Sign-in > Manifest**, then save. The setup script sets this when it creates the sign-in registration. Update an existing registration in place before enabling shared approval links.
+
+LicenseMeter checks the `wids` claim in the approver's ID token for an eligible directory role. The approver must use a Global Administrator or Privileged Role Administrator account in the requester's Microsoft tenant. If the claim is absent, LicenseMeter directs the approver to support.
+
 ## Microsoft registrations
 
 [setup-entra.ps1](https://github.com/ugurkocde/licensemeter-website/blob/main/scripts/setup-entra.ps1) creates two multi-tenant app registrations in the tenant you select, each with a service principal and a client secret that expires after 12 months. "LicenseMeter Sign-in" gets the sign-in redirect URI and declares no Microsoft Graph permissions. "LicenseMeter Connector" gets the connector redirect URI and the five read-only application permissions listed below. The script prints the four environment values once. Review the script and its requested permissions before running it. It creates application registrations and credentials in the selected Microsoft tenant, affecting sign-in and connector access for this deployment. Start in a test tenant, verify the tenant and generated applications, and stop if the requested permissions or redirect URLs differ from your plan. To retire the setup, revoke consent, remove the created credentials and applications, and remove their deployment settings. This stops sign-in or refresh for the installation; it does not erase data already collected.
 
 ```powershell
 Install-Module Microsoft.Graph.Applications -Scope CurrentUser
+Install-Module Microsoft.Graph.Beta.Applications -Scope CurrentUser
 ./scripts/setup-entra.ps1 -BaseUrl "https://licenses.example.com"
 ```
 

@@ -1,10 +1,25 @@
-import { and, eq, gt, isNull, lt, min, like, notExists } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  min,
+  like,
+  notExists,
+} from "drizzle-orm";
 import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { appBaseUrl, env } from "~/env";
 import { db } from "~/server/db";
 import { isUndefinedColumn } from "~/server/db/errors";
-import { consentStates, msConnections, tenants } from "~/server/db/schema";
+import {
+  consentStates,
+  memberships,
+  msConnections,
+  tenants,
+} from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
 
 export const SELF_CONSENT_TTL_MS = 15 * 60 * 1000;
@@ -111,11 +126,13 @@ export const detectConsentStalls = async (
 
 export const sweepConsentStalls = async () => {
   await detectConsentStalls();
-  // Keep pending rows through the entire recovery and detection window.
-  await db
+  await deleteExpiredConsentStates();
+};
+
+export const deleteExpiredConsentStates = () =>
+  db
     .delete(consentStates)
     .where(lt(consentStates.createdAt, new Date(Date.now() - HANDOFF_TTL_MS)));
-};
 
 export const handoffConfigured = () =>
   Boolean(
@@ -126,6 +143,20 @@ export const handoffConfigured = () =>
   );
 
 export const approvalPath = (token: string) => `/connect/approve/${token}`;
+
+export const approvalLink = (token: string) =>
+  new URL(approvalPath(token), appBaseUrl()).href;
+
+export const requesterLabel = (
+  { name, email }: Pick<StateInput, "name" | "email">,
+  fallback: string,
+) => {
+  // Some sign-in profiles use the email address as the display name.
+  const displayName = name?.includes("@") ? "" : (name?.trim() ?? "");
+  const label = displayName || fallback;
+  const domain = email.split("@").at(-1)?.trim().toLowerCase();
+  return email.includes("@") && domain ? `${label} (${domain})` : label;
+};
 
 export const microsoftConsentUrl = (state: string, tid = "organizations") => {
   const url = new URL(
@@ -141,6 +172,8 @@ export const microsoftConsentUrl = (state: string, tid = "organizations") => {
 export const createConsentHandoff = async (
   input: Omit<StateInput, "state" | "tenantId"> & { tenantId: string },
 ) => {
+  if (!input.oid || !input.tid || !GUID_PATTERN.test(input.tid)) return;
+  const oid = input.oid;
   const tenantId = input.tenantId;
   try {
     const result = await db.transaction(async (tx) => {
@@ -155,15 +188,15 @@ export const createConsentHandoff = async (
         where: eq(msConnections.tenantId, tenantId),
       });
       if (conn) return;
+      const [admin] = await tx
+        .select({ id: memberships.id })
+        .from(memberships)
+        .where(handoffRequesterAdmin(tenantId, oid))
+        .for("share");
+      if (!admin) return;
 
-      const now = Date.now();
       const existing = await tx.query.consentStates.findFirst({
-        where: and(
-          eq(consentStates.tenantId, tenantId),
-          eq(consentStates.kind, "handoff"),
-          isNull(consentStates.usedAt),
-          gt(consentStates.createdAt, new Date(now - HANDOFF_TTL_MS)),
-        ),
+        where: liveApprovalLinks(tenantId),
       });
       if (existing) return { state: existing.state, created: false };
       const state = HANDOFF_PREFIX + crypto.randomUUID();
@@ -182,7 +215,7 @@ export const createConsentHandoff = async (
         },
       );
     }
-    return result?.state;
+    return result;
   } catch (err) {
     if (!isUndefinedColumn(err)) throw err;
     return undefined;
@@ -196,6 +229,8 @@ export const loadPendingHandoff = async (token: string) => {
   if (
     state?.kind !== "handoff" ||
     !state.tenantId ||
+    !state.tid ||
+    !GUID_PATTERN.test(state.tid) ||
     state.usedAt ||
     Date.now() - state.createdAt.getTime() >= HANDOFF_TTL_MS
   )
@@ -215,9 +250,32 @@ export const loadPendingHandoff = async (token: string) => {
 };
 
 /** Match unspent approval links even before the kind migration. */
-export const pendingApprovalLinks = (tenantId: string) =>
+export const pendingApprovalLinks = (tenantId: string, oid?: string) =>
   and(
     eq(consentStates.tenantId, tenantId),
     isNull(consentStates.usedAt),
     like(consentStates.state, `${HANDOFF_PREFIX}%`),
+    oid ? eq(consentStates.oid, oid) : undefined,
+  );
+
+const liveApprovalLinks = (tenantId: string) =>
+  and(
+    pendingApprovalLinks(tenantId),
+    gt(consentStates.createdAt, new Date(Date.now() - HANDOFF_TTL_MS)),
+  );
+
+export const findApprovalLinkToken = async (tenantId: string) => {
+  const [row] = await db
+    .select({ state: consentStates.state })
+    .from(consentStates)
+    .where(liveApprovalLinks(tenantId))
+    .limit(1);
+  return row?.state;
+};
+
+export const handoffRequesterAdmin = (tenantId: string, oid: string) =>
+  and(
+    eq(memberships.tenantId, tenantId),
+    eq(memberships.oid, oid),
+    inArray(memberships.role, ["admin", "owner"]),
   );

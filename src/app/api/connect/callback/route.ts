@@ -10,20 +10,30 @@ import {
   workspaceCookieOptions,
 } from "~/server/access";
 import { auth } from "~/server/auth";
+import { audit } from "~/server/audit";
 import {
+  allowHandoffRequest,
   handoffFailurePath,
-  readHandoffProof,
+  setHandoffCompletion,
+  takeHandoffProof,
 } from "~/server/auth/consentHandoff";
 import {
   GUID_PATTERN,
   HANDOFF_TTL_MS,
   SELF_CONSENT_TTL_MS,
+  deleteExpiredConsentStates,
+  handoffRequesterAdmin,
   isHandoffToken,
   loadConsentState,
 } from "~/server/consentState";
 import { db } from "~/server/db";
 import { isUniqueViolation } from "~/server/db/errors";
-import { consentStates, msConnections, tenants } from "~/server/db/schema";
+import {
+  consentStates,
+  memberships,
+  msConnections,
+  tenants,
+} from "~/server/db/schema";
 import { verifyManagedConsent } from "~/server/graph/msGraph";
 import { notifyOps } from "~/server/ops";
 import { requestDeadline } from "~/server/sync/deadline";
@@ -85,12 +95,19 @@ export const GET = async (req: NextRequest) => {
         : `/app/connectors/microsoft?error=${code}`,
     );
 
+  const proof = handoff ? await takeHandoffProof() : null;
+  if (handoff && !(await allowHandoffRequest("callback", req.headers))) {
+    return fail("rate_limited");
+  }
   if (!state) return fail("missing_state");
   const stateRow = await loadConsentState(state);
   if (stateRow?.kind !== (handoff ? "handoff" : "self") || stateRow.usedAt) {
     return fail("invalid_state");
   }
   const ttl = handoff ? HANDOFF_TTL_MS : SELF_CONSENT_TTL_MS;
+  await deleteExpiredConsentStates().catch(() => {
+    console.error("[consent] expired state cleanup failed");
+  });
 
   // From here on a real admin is mid-flow, so every rejection is alerted with
   // its reason: the redirect alone leaves no trace of why a connect failed.
@@ -121,12 +138,23 @@ export const GET = async (req: NextRequest) => {
     return reject("expired_state");
   }
 
-  // Validate the consent result BEFORE consuming the nonce, so a declined or
-  // incomplete dialog does not burn the state and the user can simply retry.
-  // The granted tenant may differ from the initiator's home tenant (MSP /
-  // consultant flow): the customer's Global Admin completing the Microsoft
-  // dialog IS the authorization; the initiator becomes the workspace owner.
-  if (error) reject("consent_declined");
+  if (error) {
+    // Record a decline from the initiating browser so this attempt does not
+    // count as a stall. A retry from the connector can issue a fresh state.
+    if (
+      !handoff &&
+      stateRow.oid &&
+      (await auth())?.user?.oid === stateRow.oid
+    ) {
+      await db
+        .update(consentStates)
+        .set({ usedAt: new Date() })
+        .where(
+          and(eq(consentStates.state, state), isNull(consentStates.usedAt)),
+        );
+    }
+    return reject("consent_declined");
+  }
   if (adminConsent !== "True" || !grantedTid) reject("consent_incomplete");
   // grantedTid is consumed below as the workspace tid and flows into the MSAL
   // authority URL; reject anything that is not a well-formed GUID before then.
@@ -138,6 +166,7 @@ export const GET = async (req: NextRequest) => {
     return reject("not_allowed", "state predates Entra sign-in");
   }
   const tenantId = stateRow.tenantId;
+  const approver = proof?.phase === "grant" ? proof : null;
   if (handoff) {
     if (!env.CONNECTOR_CLIENT_ID || !env.CONNECTOR_CLIENT_SECRET) {
       return reject("not_configured");
@@ -146,12 +175,10 @@ export const GET = async (req: NextRequest) => {
     // come from a previous grant, so demand independent proof that this
     // browser authenticated as a Microsoft admin in the exact granted tenant.
     // That proof is bound to this link by the signed short-lived cookie.
-    const proof = await readHandoffProof();
-    if (
-      proof?.phase !== "grant" ||
-      proof.token !== state ||
-      proof.tid !== grantedTid
-    ) {
+    if (!stateRow.tid || stateRow.tid.toLowerCase() !== grantedTid) {
+      return reject("approval_tenant");
+    }
+    if (approver?.token !== state || approver.tid !== grantedTid) {
       return reject("approval_identity");
     }
   } else {
@@ -254,6 +281,16 @@ export const GET = async (req: NextRequest) => {
         );
       }
       if (handoff) {
+        const [requester] = await tx
+          .select({ id: memberships.id })
+          .from(memberships)
+          .where(handoffRequesterAdmin(tenantId, stateRow.oid!))
+          .for("share");
+        if (!requester)
+          return reject(
+            "not_allowed",
+            "requester is no longer a workspace admin",
+          );
         const conn = await tx.query.msConnections.findFirst({
           where: eq(msConnections.tenantId, tenantId),
         });
@@ -294,7 +331,13 @@ export const GET = async (req: NextRequest) => {
     throw err;
   }
 
-  if (handoff) {
+  if (handoff && approver) {
+    await audit(
+      { tenant: { id: tenantId }, user: { oid: approver.oid } },
+      "microsoft_connected_by_approval",
+      { grantedTid },
+    );
+    await setHandoffCompletion(state);
     void notifyOps(
       `workspace ${tenantId} completed Microsoft consent by handoff, first sync starting`,
       {

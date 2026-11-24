@@ -1,10 +1,14 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { ButtonAnchor } from "~/components/ui";
+import { Button } from "~/components/ui";
 import { workspaceLabel } from "~/lib/format";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
-import { handoffFailurePath } from "~/server/auth/consentHandoff";
-import { loadPendingHandoff } from "~/server/consentState";
+import {
+  allowHandoffRequest,
+  handoffFailurePath,
+} from "~/server/auth/consentHandoff";
+import { loadPendingHandoff, requesterLabel } from "~/server/consentState";
 
 export const metadata = { title: "Approve Microsoft 365 access" };
 
@@ -14,6 +18,9 @@ export default async function ApprovePage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
+  if (!(await allowHandoffRequest("review", await headers()))) {
+    redirect(handoffFailurePath("rate_limited"));
+  }
   const handoff = await loadPendingHandoff(token);
   if (!handoff) redirect(handoffFailurePath("invalid_state"));
   const { state, workspace } = handoff;
@@ -25,7 +32,7 @@ export default async function ApprovePage({
       </h1>
       <p className="text-ink-soft text-sm leading-relaxed [overflow-wrap:anywhere]">
         <strong className="text-ink">
-          {state.name ?? (state.email || "A workspace admin")}
+          {requesterLabel(state, "A workspace admin")}
         </strong>{" "}
         requested read-only Microsoft 365 access for the{" "}
         <strong className="text-ink">{workspaceLabel(workspace)}</strong>{" "}
@@ -33,8 +40,8 @@ export default async function ApprovePage({
       </p>
       <p className="text-ink-soft text-sm leading-relaxed">
         Use a Global Administrator or Privileged Role Administrator account in
-        the tenant you want to connect. You will verify your account in
-        Microsoft before showing the consent screen.
+        the requester’s Microsoft tenant. After signing in, you can verify the
+        account, tenant, and workspace before granting consent.
       </p>
       <div className="w-full">
         <h2 className="mb-2 text-sm font-medium">Read-only permissions</h2>
@@ -50,12 +57,12 @@ export default async function ApprovePage({
           ))}
         </ul>
       </div>
-      <ButtonAnchor
-        variant="primary"
-        href={`/api/connect/approve?token=${token}`}
-      >
-        Review and grant in Microsoft
-      </ButtonAnchor>
+      <form action="/api/connect/approve" method="post">
+        <input type="hidden" name="token" value={token} />
+        <Button variant="primary" type="submit">
+          Sign in with Microsoft
+        </Button>
+      </form>
     </div>
   );
 }

@@ -26,6 +26,7 @@ const TENANT_ID = "11111111-1111-1111-1111-00000000000a";
 const HOME_TID = "22222222-2222-2222-2222-00000000000b";
 const VICTIM_TID = "33333333-3333-3333-3333-00000000000c";
 const OID = "44444444-4444-4444-4444-00000000000d";
+const APPROVER_OID = "44444444-4444-4444-4444-00000000001d";
 const HANDOFF = "handoff.55555555-5555-4555-8555-00000000000e";
 const STATE = "55555555-5555-5555-5555-00000000000e";
 
@@ -37,7 +38,9 @@ const verifyManagedConsent = vi.fn();
 const notifyOps = vi.fn<(text: string, opts?: unknown) => Promise<void>>();
 const runSync = vi.fn();
 const setCookie = vi.fn();
-const readHandoffProof = vi.fn();
+const takeHandoffProof = vi.fn();
+const setHandoffCompletion = vi.fn();
+const allowHandoffRequest = vi.fn();
 const after = vi.fn<(task: () => Promise<void>) => void>();
 
 const env = vi.hoisted(
@@ -60,7 +63,9 @@ vi.mock("~/server/access", () => ({
 }));
 vi.mock("~/server/auth/consentHandoff", () => ({
   handoffFailurePath: (code: string) => `/connect/approve/error?error=${code}`,
-  readHandoffProof,
+  takeHandoffProof,
+  setHandoffCompletion,
+  allowHandoffRequest,
 }));
 vi.mock("~/server/auth", () => ({ auth }));
 vi.mock("~/server/graph/msGraph", () => ({ verifyManagedConsent }));
@@ -121,10 +126,12 @@ beforeEach(async () => {
   await currentDb.delete(schema.tenants);
   await currentDb.delete(schema.consentStates);
   vi.clearAllMocks();
-  readHandoffProof.mockResolvedValue({
+  allowHandoffRequest.mockResolvedValue(true);
+  takeHandoffProof.mockResolvedValue({
     phase: "grant",
     token: HANDOFF,
-    tid: VICTIM_TID,
+    tid: HOME_TID,
+    oid: APPROVER_OID,
   });
   env.CONNECTOR_CLIENT_SECRET = "connector-client-secret";
   auth.mockResolvedValue({ user: { oid: OID, tid: HOME_TID, isDemo: false } });
@@ -144,6 +151,12 @@ describe("admin consent handoff", () => {
     await currentDb
       .insert(schema.tenants)
       .values({ id: TENANT_ID, name: "Contoso Test" });
+    await currentDb.insert(schema.memberships).values({
+      tenantId: TENANT_ID,
+      oid: OID,
+      role: "admin",
+      email: "alex@example.com",
+    });
     await currentDb.insert(schema.consentStates).values({
       state: HANDOFF,
       tenantId: TENANT_ID,
@@ -158,26 +171,33 @@ describe("admin consent handoff", () => {
     verifyManagedConsent.mockResolvedValue(true);
   };
 
-  it("binds once, redirects publicly, and schedules first sync without an app session or cookie", async () => {
+  it("binds once, redirects publicly, and schedules first sync without a workspace session", async () => {
     await seedHandoff();
-    await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+    await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
       "redirect:/connect/approve/complete",
     );
     expect(auth).not.toHaveBeenCalled();
     expect(apiAccess).not.toHaveBeenCalled();
     expect(setCookie).not.toHaveBeenCalled();
+    expect(takeHandoffProof).toHaveBeenCalledOnce();
+    expect(setHandoffCompletion).toHaveBeenCalledWith(HANDOFF);
+    expect(await currentDb.query.auditLog.findFirst()).toMatchObject({
+      action: "microsoft_connected_by_approval",
+      actorOid: APPROVER_OID,
+      detail: { grantedTid: HOME_TID },
+    });
     expect(verifyManagedConsent).toHaveBeenCalledWith(
-      VICTIM_TID,
+      HOME_TID,
       expect.any(Number),
     );
     expect(await currentDb.query.tenants.findFirst()).toMatchObject({
       id: TENANT_ID,
-      tid: VICTIM_TID,
+      tid: HOME_TID,
     });
     expect(await currentDb.query.msConnections.findFirst()).toMatchObject({
       tenantId: TENANT_ID,
       mode: "managed",
-      tid: VICTIM_TID,
+      tid: HOME_TID,
     });
     expect(
       (await currentDb.query.consentStates.findFirst())?.usedAt,
@@ -187,7 +207,7 @@ describe("admin consent handoff", () => {
       { logLevel: "info" },
     );
 
-    await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+    await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
       "redirect:/connect/approve/error?error=invalid_state",
     );
     expect(after).toHaveBeenCalledTimes(1);
@@ -203,7 +223,7 @@ describe("admin consent handoff", () => {
     ["invalid_state", { kind: "self" as const }],
   ])("rejects %s before checking Microsoft", async (code, values) => {
     await seedHandoff(values);
-    await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+    await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
       `redirect:/connect/approve/error?error=${code}`,
     );
     expect(verifyManagedConsent).not.toHaveBeenCalled();
@@ -220,14 +240,15 @@ describe("admin consent handoff", () => {
 
   it.each([
     null,
-    { phase: "grant", token: HANDOFF, tid: HOME_TID },
-    { phase: "grant", token: STATE, tid: VICTIM_TID },
+    { phase: "grant", token: HANDOFF, tid: VICTIM_TID },
+    { phase: "confirm", token: HANDOFF, tid: HOME_TID },
+    { phase: "grant", token: STATE, tid: HOME_TID },
   ])(
     "refuses an absent or mismatched tenant admin proof (%j)",
     async (proof) => {
       await seedHandoff();
-      readHandoffProof.mockResolvedValue(proof);
-      await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+      takeHandoffProof.mockResolvedValue(proof);
+      await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
         "redirect:/connect/approve/error?error=approval_identity",
       );
       expect(verifyManagedConsent).not.toHaveBeenCalled();
@@ -237,7 +258,7 @@ describe("admin consent handoff", () => {
   it("requires app-only consent proof even after tenant admin verification", async () => {
     await seedHandoff();
     verifyManagedConsent.mockResolvedValue(false);
-    await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+    await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
       "redirect:/connect/approve/error?error=consent_not_granted",
     );
     expect(await currentDb.query.consentStates.findFirst()).toMatchObject({
@@ -259,8 +280,8 @@ describe("admin consent handoff", () => {
     await seedHandoff();
     await currentDb
       .insert(schema.tenants)
-      .values({ tid: VICTIM_TID, name: "Other Test" });
-    await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+      .values({ tid: HOME_TID, name: "Other Test" });
+    await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
       "redirect:/connect/approve/error?error=tenant_taken",
     );
     expect(await currentDb.query.consentStates.findFirst()).toMatchObject({
@@ -273,13 +294,13 @@ describe("admin consent handoff", () => {
     async (binding) => {
       await seedHandoff();
       if (binding === "tid") {
-        await currentDb.update(schema.tenants).set({ tid: VICTIM_TID });
+        await currentDb.update(schema.tenants).set({ tid: HOME_TID });
       } else {
         await currentDb
           .insert(schema.msConnections)
           .values({ tenantId: TENANT_ID, tid: HOME_TID, mode: "managed" });
       }
-      await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+      await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
         "redirect:/connect/approve/error?error=already_connected",
       );
       expect(await currentDb.query.consentStates.findFirst()).toMatchObject({
@@ -291,8 +312,8 @@ describe("admin consent handoff", () => {
   it("runs first sync once when two handoff callbacks arrive together", async () => {
     await seedHandoff();
     const responses = await Promise.allSettled([
-      GET(callback(VICTIM_TID, HANDOFF)),
-      GET(callback(VICTIM_TID, HANDOFF)),
+      GET(callback(HOME_TID, HANDOFF)),
+      GET(callback(HOME_TID, HANDOFF)),
     ]);
     const redirects = responses.map((result) =>
       result.status === "rejected" ? String(result.reason) : "",
@@ -306,6 +327,51 @@ describe("admin consent handoff", () => {
       ),
     ).toHaveLength(1);
     expect(after).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a grant and admin proof from a tenant other than the requester’s", async () => {
+    await seedHandoff();
+    takeHandoffProof.mockResolvedValue({
+      phase: "grant",
+      token: HANDOFF,
+      tid: VICTIM_TID,
+      oid: APPROVER_OID,
+    });
+    await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+      "redirect:/connect/approve/error?error=approval_tenant",
+    );
+    expect(verifyManagedConsent).not.toHaveBeenCalled();
+    expect(await currentDb.query.msConnections.findFirst()).toBeUndefined();
+  });
+
+  it("rejects a handoff with no recorded requester tenant", async () => {
+    await seedHandoff({ tid: null });
+    await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
+      "redirect:/connect/approve/error?error=approval_tenant",
+    );
+    expect(verifyManagedConsent).not.toHaveBeenCalled();
+  });
+
+  it("rejects a handoff from a requester who lost admin access before binding", async () => {
+    await seedHandoff();
+    verifyManagedConsent.mockImplementationOnce(async () => {
+      await currentDb.update(schema.memberships).set({ role: "viewer" });
+      return true;
+    });
+    await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
+      "redirect:/connect/approve/error?error=not_allowed",
+    );
+    expect(await currentDb.query.msConnections.findFirst()).toBeUndefined();
+    expect(setHandoffCompletion).not.toHaveBeenCalled();
+  });
+
+  it("clears the proof and refuses a throttled callback before checking consent", async () => {
+    allowHandoffRequest.mockResolvedValue(false);
+    await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
+      "redirect:/connect/approve/error?error=rate_limited",
+    );
+    expect(takeHandoffProof).toHaveBeenCalledOnce();
+    expect(verifyManagedConsent).not.toHaveBeenCalled();
   });
 
   it("keeps the legacy self callback live when the kind column is absent", async () => {
@@ -450,7 +516,7 @@ describe("admin-consent callback rejection alerts", () => {
     expect(text).toBe(
       `consent callback rejected: consent_declined for workspace ${TENANT_ID} (Microsoft: access_denied AADSTS65004)`,
     );
-    expect(await stateUsed()).toBe(false);
+    expect(await stateUsed()).toBe(true);
   });
 
   it("does not echo an error value that is not an OAuth code", async () => {

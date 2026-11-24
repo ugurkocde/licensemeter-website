@@ -3,7 +3,27 @@ const messages = new Map([
   ["expired_state", "This approval link expired after 7 days."],
   [
     "approval_identity",
-    "LicenseMeter could not verify a Global Administrator or Privileged Role Administrator account for the tenant.",
+    "LicenseMeter could not verify your Microsoft sign-in for this approval link.",
+  ],
+  [
+    "approval_roles_missing",
+    "Microsoft did not include directory role information in your sign-in. Contact LicenseMeter support for help.",
+  ],
+  [
+    "approval_role_ineligible",
+    "Sign in as a Global Administrator or Privileged Role Administrator in the requester’s Microsoft tenant.",
+  ],
+  [
+    "approval_tenant",
+    "This approval link is for the requester’s Microsoft tenant. Sign in with an account from that tenant.",
+  ],
+  [
+    "rate_limited",
+    "There were too many approval requests. Wait a minute and try again.",
+  ],
+  [
+    "not_allowed",
+    "This approval link is no longer authorized. Ask a workspace admin for a new link.",
   ],
   [
     "not_configured",

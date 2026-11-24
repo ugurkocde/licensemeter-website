@@ -40,6 +40,7 @@ $ErrorActionPreference = "Stop"
 $BaseUrl = $BaseUrl.TrimEnd("/")
 
 Import-Module Microsoft.Graph.Applications -ErrorAction Stop
+Import-Module Microsoft.Graph.Beta.Applications -ErrorAction Stop
 
 Connect-MgGraph -Scopes "Application.ReadWrite.All" -NoWelcome
 
@@ -69,8 +70,9 @@ $resourceAccess = foreach ($value in $connectorRoles) {
 
 # --- 1. Sign-in app -----------------------------------------------------------
 Write-Host "Creating 'LicenseMeter Sign-in'..." -ForegroundColor Cyan
-$signin = New-MgApplication `
+$signin = New-MgBetaApplication `
   -DisplayName "LicenseMeter Sign-in" `
+  -GroupMembershipClaims "DirectoryRole" `
   -SignInAudience "AzureADMultipleOrgs" `
   -Web @{ RedirectUris = @("$BaseUrl/api/auth/callback/microsoft-entra-id") } `
   -OptionalClaims @{

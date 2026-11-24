@@ -8,7 +8,11 @@ import type { AuditAction } from "~/server/types";
  * action it records. Rows cascade-delete with the tenant.
  */
 export const audit = async (
-  ctx: AccessContext,
+  ctx: {
+    tenant: Pick<AccessContext["tenant"], "id">;
+    user: Pick<AccessContext["user"], "oid">;
+    membership?: Pick<AccessContext["membership"], "email">;
+  },
   action: AuditAction,
   detail: Record<string, unknown> = {},
 ): Promise<void> => {
@@ -16,7 +20,7 @@ export const audit = async (
     await db.insert(auditLog).values({
       tenantId: ctx.tenant.id,
       actorOid: ctx.user.oid,
-      actorEmail: ctx.membership.email,
+      actorEmail: ctx.membership?.email,
       action,
       detail,
     });

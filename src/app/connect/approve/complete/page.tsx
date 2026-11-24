@@ -2,16 +2,16 @@ import { redirect } from "next/navigation";
 
 import {
   handoffFailurePath,
-  readHandoffProof,
+  readHandoffCompletion,
 } from "~/server/auth/consentHandoff";
-import { loadConsentState } from "~/server/consentState";
+import { loadConsentState, requesterLabel } from "~/server/consentState";
 
 export const metadata = { title: "Consent granted" };
 
 export default async function ConsentGrantedPage() {
-  const proof = await readHandoffProof();
-  if (proof?.phase !== "grant") redirect(handoffFailurePath("invalid_state"));
-  const state = await loadConsentState(proof.token);
+  const token = await readHandoffCompletion();
+  if (!token) redirect(handoffFailurePath("invalid_state"));
+  const state = await loadConsentState(token);
   if (state?.kind !== "handoff" || !state.usedAt)
     redirect(handoffFailurePath("invalid_state"));
 
@@ -22,7 +22,7 @@ export default async function ConsentGrantedPage() {
       </h1>
       <p className="text-ink-soft text-sm leading-relaxed [overflow-wrap:anywhere]">
         <strong className="text-ink">
-          {state.name ?? (state.email || "The requester")}
+          {requesterLabel(state, "The requester")}
         </strong>{" "}
         will see the data in LicenseMeter after the first sync.
       </p>
