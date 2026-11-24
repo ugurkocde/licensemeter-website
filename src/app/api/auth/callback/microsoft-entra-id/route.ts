@@ -145,7 +145,9 @@ const handleScanCallback = async (
   if (!resolved.ok) return backToConnect(req, resolved.error, "guard matrix");
   const tenantId = resolved.tenantId;
 
-  void notifyOps(`instant scan started for workspace ${tenantId}`);
+  void notifyOps(`instant scan started for workspace ${tenantId}`, {
+    logLevel: "info",
+  });
 
   // The scan runs after the redirect is sent; the connect page polls the
   // sync status exactly like the consent flow's first sync.

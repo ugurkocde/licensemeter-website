@@ -1925,7 +1925,9 @@ export const captureEmail = async (
     })
     .returning({ inserted: sql<boolean>`(xmax = 0)` });
   if (row?.inserted) {
-    void notifyOps("new email signup from the landing page");
+    void notifyOps("new email signup from the landing page", {
+      logLevel: "info",
+    });
   }
   // Duplicates go through the same send path: the welcomeSentAt stamp makes
   // it a no-op once delivered, so resubmitting the form is the natural retry

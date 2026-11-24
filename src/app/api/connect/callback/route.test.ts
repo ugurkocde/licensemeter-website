@@ -5,6 +5,7 @@ import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "~/server/db/schema";
+import type * as OpsModule from "~/server/ops";
 
 /**
  * The admin-consent callback must not bind a Microsoft tenant just because the
@@ -24,7 +25,7 @@ let currentDb: ReturnType<typeof makeDb>;
 const apiAccess = vi.fn();
 const auth = vi.fn();
 const verifyManagedConsent = vi.fn();
-const notifyOps = vi.fn<typeof import("~/server/ops").notifyOps>();
+const notifyOps = vi.fn<typeof OpsModule.notifyOps>();
 const runSync = vi.fn();
 
 const env = vi.hoisted(
@@ -57,7 +58,7 @@ vi.mock("~/server/access", () => ({
 vi.mock("~/server/auth", () => ({ auth }));
 vi.mock("~/server/graph/msGraph", () => ({ verifyManagedConsent }));
 vi.mock("~/server/ops", async (importOriginal) => {
-  const ops = await importOriginal<typeof import("~/server/ops")>();
+  const ops = await importOriginal<typeof OpsModule>();
   return { ...ops, notifyOps: notifyOps.mockImplementation(ops.notifyOps) };
 });
 vi.mock("~/server/sync/runSync", () => ({ runSync }));
