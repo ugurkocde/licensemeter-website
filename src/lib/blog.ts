@@ -28,6 +28,8 @@ export type BlogPost = {
   excerpt: string;
   /** YYYY-MM-DD. */
   publishedOn: string;
+  /** YYYY-MM-DD, when the post was last substantively updated. */
+  updatedOn?: string;
   author: { name: string; role: string; url: string };
   tag: string;
   body: BlogBlock[];

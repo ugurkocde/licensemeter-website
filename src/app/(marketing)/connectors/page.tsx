@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { siteUrl } from "~/env";
+import { publicSiteUrl } from "~/env";
 import { DemoClip } from "~/components/landing/DemoClip";
 import { Pill } from "~/components/ui";
 import { buttonClass } from "~/components/ui";
@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     "Setup guides for every LicenseMeter connector: Adobe, Zoom, Atlassian, Salesforce, OpenAI, Anthropic, ChatGPT and Claude. Read-only credentials, official vendor documentation, what is read and what never is.",
 };
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 /* Static breadcrumb; "<" escaped so nothing can terminate the script. */
 const CONNECTORS_LD = {

@@ -71,7 +71,8 @@ The managed connector requests `User.Read.All`, `AuditLog.Read.All`, `Reports.Re
 | `DATABASE_URL`                                               | PostgreSQL connection using the limited runtime role                            |
 | `AUTH_SECRET`                                                | Session signing secret, at least 32 characters in production                    |
 | `DATA_ENCRYPTION_KEY`                                        | Separate encryption key for connector credentials                               |
-| `APP_BASE_URL`                                               | Canonical deployment origin, HTTPS for public access                            |
+| `APP_BASE_URL`                                               | App origin for callbacks, consent redirects, and app links                     |
+| `PUBLIC_SITE_URL`                                            | Optional HTTP(S) origin for public metadata and status redirects                |
 | `CRON_SECRET`                                                | Bearer secret for scheduled-job routes                                          |
 | `DEMO_MODE`                                                  | `true` enables credentials-free sample-workspace access                         |
 | `SELF_HOSTED`                                                | `true` enables runtime page configuration                                       |
@@ -83,6 +84,8 @@ The managed connector requests `User.Read.All`, `AuditLog.Read.All`, `Reports.Re
 | `ALERT_WEBHOOK_URL`                                          | Optional Teams/Slack incoming webhook for failed syncs and cron errors          |
 | `MS_BYO_ENABLED`                                             | `false` hides the bring-your-own app registration option; on by default         |
 | `BILLING_ENABLED`                                            | Hosted paid plans only; unset gives every workspace every feature               |
+
+The hosted service defaults its public origin to `https://www.licensemeter.com`. A custom `APP_BASE_URL` supplies its own public origin even when `SELF_HOSTED` is unset. When `SELF_HOSTED=true`, the public origin defaults to `APP_BASE_URL`, or `http://localhost:3000` if the app URL is unset. Set `PUBLIC_SITE_URL` to override these defaults. Supply an HTTP(S) origin without a path, query, fragment, or credentials.
 
 `DATA_ENCRYPTION_KEY` is required in production and must differ from `AUTH_SECRET`; the app does not start without it. Keep it fixed once connectors are stored: their secrets are encrypted with the key that was active when they were saved, and a new key cannot decrypt them. If the key must change, disconnect and reconnect every connector afterward. Installations that stored secrets before the key was required (encrypted with a key derived from `AUTH_SECRET`) set `ENCRYPTION_LEGACY_FALLBACK=true` until the daily retention job has re-encrypted them, or run `scripts/reencrypt-connector-secrets.ts`; see `docs/encryption-key-rollout.md`.
 

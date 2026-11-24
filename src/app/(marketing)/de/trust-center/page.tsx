@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { siteUrl } from "~/env";
+import { publicSiteUrl } from "~/env";
 
 import { TrustCenterView } from "../../trust-center/TrustCenterView";
 
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   },
 };
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 export default function TrustCenterPageDe() {
   return (

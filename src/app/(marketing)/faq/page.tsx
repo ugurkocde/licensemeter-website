@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { siteUrl } from "~/env";
+import { publicSiteUrl } from "~/env";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
 import { SUPPORT_MAILTO } from "~/lib/support";
 
@@ -62,7 +62,7 @@ const FAQS = [
   },
 ] as const;
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 /** Stable anchor per question so answers can be deep-linked. */
 const slugify = (s: string): string =>

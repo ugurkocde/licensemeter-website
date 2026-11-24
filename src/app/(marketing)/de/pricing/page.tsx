@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { PricingView } from "~/components/pricing/PricingView";
-import { siteUrl } from "~/env";
+import { publicSiteUrl } from "~/env";
 import { PRICING_CONTENT, PRICING_PATHS } from "~/lib/pricingContent";
 
 import { pricingJsonLd } from "../../pricing/jsonLd";
@@ -29,7 +29,9 @@ export default function PricingPageDe() {
       <PricingView lang="de" />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: pricingJsonLd("de", siteUrl()) }}
+        dangerouslySetInnerHTML={{
+          __html: pricingJsonLd("de", publicSiteUrl()),
+        }}
       />
     </>
   );

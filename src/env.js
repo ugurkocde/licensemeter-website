@@ -1,6 +1,8 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
+import { resolvePublicSiteOrigin } from "./lib/publicSiteOrigin.js";
+
 export const env = createEnv({
   /**
    * Server-side environment variables schema. The app fails the build on invalid env.
@@ -149,13 +151,22 @@ export const env = createEnv({
     RESEND_WEBHOOK_SECRET: z.string().optional(),
 
     /**
-     * Public base URL, used to build the admin-consent redirect URI.
+     * App origin used to build the admin-consent redirect URI.
      * Required on Vercel builds: without it the consent flow would send a
      * relative redirect_uri, which Microsoft rejects.
      */
     APP_BASE_URL: process.env.VERCEL
       ? z.string().url()
       : z.string().url().optional(),
+    /** Optional public origin for search metadata and discovery files. */
+    PUBLIC_SITE_URL: z
+      .string()
+      .url()
+      .regex(
+        /^https?:\/\/[^/?#@\\\s]+\/?$/i,
+        "Must be an HTTP(S) origin without a path, query, fragment, or credentials",
+      )
+      .optional(),
   },
 
   client: {},
@@ -193,6 +204,7 @@ export const env = createEnv({
     DEMO_MODE: process.env.DEMO_MODE,
     TENANT_DB_ROLE: process.env.TENANT_DB_ROLE,
     APP_BASE_URL: process.env.APP_BASE_URL,
+    PUBLIC_SITE_URL: process.env.PUBLIC_SITE_URL,
     ALERT_WEBHOOK_URL: process.env.ALERT_WEBHOOK_URL,
     ALERT_EMAIL: process.env.ALERT_EMAIL,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
@@ -250,11 +262,11 @@ export const marketplaceOfferUrl = () =>
     ? env.MARKETPLACE_OFFER_URL
     : null;
 
-/**
- * Like appBaseUrl but never throws, for sitemap/OG metadata where a localhost
- * fallback during local production builds is harmless.
- */
+/** App links for callers that also run without a configured app origin. */
 export const siteUrl = () => env.APP_BASE_URL ?? "http://localhost:3000";
+
+/** Public metadata uses the hosted origin, or the app origin on self-hosts. */
+export const publicSiteUrl = () => resolvePublicSiteOrigin(env);
 
 export const appBaseUrl = () => {
   if (env.APP_BASE_URL) return env.APP_BASE_URL;

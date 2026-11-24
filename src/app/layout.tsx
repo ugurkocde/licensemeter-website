@@ -6,11 +6,11 @@ import { GeistMono } from "geist/font/mono";
 import { Analytics } from "@vercel/analytics/react";
 import { connection } from "next/server";
 
-import { env, siteUrl } from "~/env";
+import { env, publicSiteUrl } from "~/env";
 import { SITE_DEFINITION, SITE_DESCRIPTION, SITE_TITLE } from "~/lib/site";
 import { SUPPORT_EMAIL } from "~/lib/support";
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 /* Organization + WebSite entities on every page: the anchor Google and AI
  * answer engines use to resolve what LicenseMeter is and who runs it.

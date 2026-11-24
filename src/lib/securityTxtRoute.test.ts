@@ -58,6 +58,8 @@ describe("GET /.well-known/security.txt", () => {
     // The status host is ours; the middleware sends every path but "/" to
     // the canonical site, where the file lists the URL it was fetched from.
     vi.stubEnv("APP_BASE_URL", "https://licensemeter.com");
+    vi.stubEnv("PUBLIC_SITE_URL", undefined);
+    vi.stubEnv("SELF_HOSTED", undefined);
     const res = middleware(
       new NextRequest(
         "https://status.licensemeter.com/.well-known/security.txt",
@@ -66,7 +68,7 @@ describe("GET /.well-known/security.txt", () => {
     );
     expect(res.status).toBe(308);
     expect(res.headers.get("location")).toBe(
-      "https://licensemeter.com/.well-known/security.txt",
+      "https://www.licensemeter.com/.well-known/security.txt",
     );
   });
 });

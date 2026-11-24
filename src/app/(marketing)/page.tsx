@@ -9,7 +9,7 @@ import {
   Terminal,
   TrendingDown,
 } from "lucide-react";
-import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
+import { isDemoMode, signInEnabled, signInPath, publicSiteUrl } from "~/env";
 import { SignInButtons } from "~/components/SignInButtons";
 import { FeatureShowcase } from "~/components/landing/FeatureShowcase";
 import { OrbitHero } from "~/components/landing/OrbitHero";
@@ -39,7 +39,7 @@ const STEPS = [
   },
 ];
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 export const metadata: Metadata = {
   title: { absolute: SITE_TITLE },

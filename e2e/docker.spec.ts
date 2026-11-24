@@ -19,9 +19,17 @@ test("self-hosted image uses runtime configuration and opens the sample tenant",
     "href",
     "https://github.com/ugurkocde/licensemeter-website",
   );
+  const appOrigin = `http://localhost:${process.env.PLAYWRIGHT_PORT ?? "3100"}`;
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     "href",
-    `http://localhost:${process.env.PLAYWRIGHT_PORT ?? "3100"}`,
+    appOrigin,
+  );
+  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute(
+    "content",
+    appOrigin,
+  );
+  expect(await (await request.get("/llms.txt")).text()).toContain(
+    `[Home](${appOrigin}/)`,
   );
   await page
     .getByRole("button", { name: "Open the sample tenant" })

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
+import { isDemoMode, signInEnabled, signInPath, publicSiteUrl } from "~/env";
 import { DemoClip } from "~/components/landing/DemoClip";
 import { SignInButtons } from "~/components/SignInButtons";
 
@@ -29,7 +29,7 @@ export const generateMetadata = async ({
   };
 };
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 export default async function WasteExplainerPage({
   params,

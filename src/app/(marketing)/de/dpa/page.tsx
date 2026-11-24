@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { siteUrl } from "~/env";
+import { publicSiteUrl } from "~/env";
 import { DPA } from "~/lib/dpa";
 
 import { DpaView } from "../../dpa/DpaView";
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   },
 };
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 export default function DpaPageDe() {
   return (

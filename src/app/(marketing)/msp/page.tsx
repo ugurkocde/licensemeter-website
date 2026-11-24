@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { isDemoMode, signInEnabled, signInPath, siteUrl } from "~/env";
+import { isDemoMode, signInEnabled, signInPath, publicSiteUrl } from "~/env";
 import { buttonClass } from "~/components/ui";
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
 import { DEMO_BOOKING_URL, SUPPORT_MAILTO } from "~/lib/support";
@@ -56,7 +56,7 @@ const TRUST_ITEMS = [
   "Disconnecting a workspace deletes its data immediately.",
 ] as const;
 
-const BASE = siteUrl();
+const BASE = publicSiteUrl();
 
 /* Static breadcrumb; "<" escaped so nothing can terminate the script. */
 const MSP_LD = {
