@@ -230,27 +230,50 @@ describe("joinSignals", () => {
   });
 
   it("degrades to no activity signal without P1 and without usage rows or stored activity", () => {
-    const result = joinSignals({
+    const input = {
       hasP1: false,
       graphUsers: [graphUser({})],
       usageRows: [],
       copilotRows: [],
-    });
+    };
+    const result = joinSignals(input);
     // "full" here would flag every user as never active despite zero data.
     expect(result.activitySignal).toBe("none");
     expect(result.copilotSignal).toBe("none");
     expect(result.usageAggregate).toBeUndefined();
+    expect(
+      joinSignals({ ...input, previousActivity: new Map() }).activitySignal,
+    ).toBe("none");
   });
 
-  it("uses unknown coverage when a report outage is detected without P1", () => {
+  it("uses unknown coverage and preserves the Copilot date during an outage without P1", () => {
+    const previousCopilot = "2026-05-01";
     const result = joinSignals({
       hasP1: false,
       graphUsers: [graphUser({})],
       usageRows: [],
       copilotRows: [],
-      previousActivity: new Map(),
+      previousActivity: new Map([
+        [
+          "g-1",
+          {
+            lastActivity: new Date(previousCopilot),
+            workloadActivity: {
+              exchange: null,
+              oneDrive: null,
+              sharePoint: null,
+              teams: null,
+              copilot: previousCopilot,
+            },
+          },
+        ],
+      ]),
     });
     expect(result.activitySignal).toBe("unknown");
+    expect(result.users[0]?.workloadActivity.copilot).toBe(previousCopilot);
+    expect(result.users[0]?.copilotLastActivity).toEqual(
+      new Date(previousCopilot),
+    );
   });
 
   it("keeps the full signal without P1 when joinable usage rows exist", () => {

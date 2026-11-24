@@ -90,7 +90,7 @@ export const joinSignals = (args: {
         storedWorkloads?.sharePoint ??
         null,
       teams: usage?.teamsLastActivityDate ?? storedWorkloads?.teams ?? null,
-      copilot: copilot?.lastActivityDate ?? null,
+      copilot: copilot?.lastActivityDate ?? storedWorkloads?.copilot ?? null,
     };
 
     const lastInteractiveSignIn = toDate(g.signInActivity?.lastSignInDateTime);
@@ -143,7 +143,7 @@ export const joinSignals = (args: {
   // P1 sign-ins still support per-user analysis during a report outage.
   const activitySignal: JoinResult["activitySignal"] = hasP1
     ? "full"
-    : args.previousActivity
+    : args.previousActivity?.size
       ? "unknown"
       : !concealed && usageRows.length > 0
         ? "full"

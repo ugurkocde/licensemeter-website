@@ -896,6 +896,51 @@ describe("runSync with unavailable Microsoft usage data", () => {
       .filter((row) => ["inactive_90d", "never_active"].includes(row.rule))
       .sort((a, b) => a.dedupeKey.localeCompare(b.dedupeKey));
 
+  it("keeps no activity coverage on both an initial and a repeated 403 without report history", async () => {
+    await seedTenant();
+    const denied = {
+      getActiveUserDetail: async () => {
+        throw new GraphHttpError(403, null, "Denied");
+      },
+    };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await sync(denied);
+      expect(
+        result.steps.find((step) => step.step === "usageReports"),
+      ).toMatchObject({
+        status: "warning",
+      });
+      expect(await storedTenant()).toMatchObject({
+        activitySignal: "none",
+        usageReportUnavailable: false,
+      });
+      expect(await activityFindings()).toHaveLength(0);
+    }
+  });
+
+  it("expires report history after 30 days when there are no stored dates or counts", async () => {
+    await seedTenant();
+    const baseline = await sync({
+      getActiveUserDetail: async () => usageReport(directory),
+    });
+    const missing = { getActiveUserDetail: async () => emptyReport };
+    await sync(missing);
+    expect(await storedTenant()).toMatchObject({
+      activitySignal: "unknown",
+      usageReportUnavailable: true,
+    });
+    await currentDb
+      .update(schema.syncRuns)
+      .set({ startedAt: new Date(daysAgo(31)) })
+      .where(eq(schema.syncRuns.id, baseline.runId));
+
+    await sync(missing);
+    expect(await storedTenant()).toMatchObject({
+      activitySignal: "none",
+      usageReportUnavailable: false,
+    });
+  });
+
   it.each(["empty", "denied", "unmatched"])(
     "keeps workload dates and findings without P1 when the report is %s",
     async (kind) => {
@@ -1095,40 +1140,85 @@ describe("runSync with unavailable Microsoft usage data", () => {
     });
   });
 
-  it("retains the last aggregate inactivity finding for a concealed report", async () => {
+  it.each(["license removal", "exclusion"])(
+    "retains the last concealed aggregate during an outage until %s",
+    async (change) => {
+      await seedTenant();
+      const concealed = {
+        listUsers: listUsers([never]),
+        getReportConcealment: async () => true,
+      };
+      await sync({
+        ...concealed,
+        getActiveUserDetail: async () =>
+          usageReport([{ ...never, userPrincipalName: "a".repeat(32) }]),
+      });
+      const aggregate = () =>
+        currentDb.query.findings.findFirst({
+          where: eq(schema.findings.rule, "inactive_90d"),
+        });
+      const before = await aggregate();
+      expect(before).toMatchObject({
+        graphUserId: null,
+        status: "open",
+        detail: { aggregate: true },
+      });
+
+      await sync({
+        ...concealed,
+        getActiveUserDetail: async () => emptyReport,
+      });
+      await runAnalysis(TENANT_ID);
+      expect(await aggregate()).toMatchObject({
+        id: before?.id,
+        status: "open",
+        lastSeenAt: before?.lastSeenAt,
+        detail: { aggregate: true },
+      });
+      expect(await storedTenant()).toMatchObject({
+        concealedNames: true,
+        usageReportUnavailable: true,
+      });
+
+      if (change === "license removal") {
+        await sync({
+          ...concealed,
+          listUsers: listUsers([{ ...never, assignedLicenses: [] }]),
+          getActiveUserDetail: async () => emptyReport,
+        });
+      } else {
+        await currentDb
+          .update(schema.tenants)
+          .set({ findingExclusions: [never.userPrincipalName] });
+        await runAnalysis(TENANT_ID);
+      }
+      expect(await aggregate()).toMatchObject({
+        id: before?.id,
+        status: "resolved",
+      });
+    },
+  );
+
+  it("does not reopen a concealed aggregate during an outage with an empty directory", async () => {
     await seedTenant();
-    const concealed = {
-      listUsers: listUsers([never]),
-      getReportConcealment: async () => true,
-    };
+    const listNoUsers = listUsers([]);
     await sync({
-      ...concealed,
+      listUsers: listNoUsers,
       getActiveUserDetail: async () =>
         usageReport([{ ...never, userPrincipalName: "a".repeat(32) }]),
     });
-    const aggregate = () =>
-      currentDb.query.findings.findFirst({
-        where: eq(schema.findings.rule, "inactive_90d"),
-      });
-    const before = await aggregate();
-    expect(before).toMatchObject({
-      graphUserId: null,
-      status: "open",
-      detail: { aggregate: true },
-    });
+    expect(await activityFindings()).toMatchObject([{ status: "open" }]);
 
-    await sync({ ...concealed, getActiveUserDetail: async () => emptyReport });
-    await runAnalysis(TENANT_ID);
-    expect(await aggregate()).toMatchObject({
-      id: before?.id,
-      status: "open",
-      lastSeenAt: before?.lastSeenAt,
-      detail: { aggregate: true },
+    await sync({
+      listUsers: listNoUsers,
+      getActiveUserDetail: async () => emptyReport,
     });
     expect(await storedTenant()).toMatchObject({
-      concealedNames: true,
+      activitySignal: "none",
       usageReportUnavailable: true,
     });
+    await runAnalysis(TENANT_ID);
+    expect(await activityFindings()).toMatchObject([{ status: "resolved" }]);
   });
 
   it("accepts a report with a licensed match and a deleted user's row", async () => {

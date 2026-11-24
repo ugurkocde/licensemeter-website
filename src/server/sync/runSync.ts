@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, notInArray, sql } from "drizzle-orm";
 
 import { db } from "~/server/db";
 import {
@@ -129,6 +129,7 @@ const emptyUsageMessage = (report: ActiveUserDetailReport): string => {
 };
 
 const INACTIVITY_RULES: WasteRuleId[] = ["inactive_90d", "never_active"];
+const USAGE_REPORT_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 
 const analyzeWasteWithCoverage = async (
   tenantId: string,
@@ -142,17 +143,12 @@ const analyzeWasteWithCoverage = async (
       inArray(findings.status, ["open", "acknowledged"]),
     ),
   });
-  const previousInactivity = new Map(
-    previous.filter((f) => f.graphUserId !== null).map((f) => [f.dedupeKey, f]),
-  );
+  const previousInactivity = new Map(previous.map((f) => [f.dedupeKey, f]));
   const current = analyzeWaste({ ...input, previousInactivity });
-  // Concealed reports can produce an aggregate inactivity finding. An empty
-  // directory response also leaves the stored directory in place.
-  return current.concat(
-    previous.filter(
-      (f) => input.users.length === 0 || f.detail.aggregate === true,
-    ),
-  );
+  // An empty directory response leaves the stored directory in place.
+  return input.users.length === 0
+    ? current.concat(previous.filter((f) => f.graphUserId !== null))
+    : current;
 };
 
 /** Milliseconds since `start`, recorded on every step to diagnose slow syncs. */
@@ -572,11 +568,10 @@ export const runSync = async (
             workloadActivity: true,
           },
         });
-        // Licensing alone does not establish that a tenant uses workloads
-        // covered by this report. Fall back to earlier successful report
-        // steps so tenants whose report had only null dates are covered too.
+        // Stored dates and counts remain useful even during a long outage.
+        // Recent successful report steps also cover reports with only null
+        // dates. That evidence expires after 30 days without fresh rows.
         usageReportUnavailable =
-          !report ||
           (tenant.usageAggregate?.totalCount ?? 0) > 0 ||
           stored.some(({ workloadActivity: w }) =>
             [w?.exchange, w?.oneDrive, w?.sharePoint, w?.teams].some(Boolean),
@@ -586,6 +581,10 @@ export const runSync = async (
               where: and(
                 eq(syncRuns.tenantId, tenantId),
                 inArray(syncRuns.status, ["success", "partial"]),
+                gte(
+                  syncRuns.startedAt,
+                  new Date(now.getTime() - USAGE_REPORT_LOOKBACK_MS),
+                ),
                 sql`jsonb_path_exists(${syncRuns.steps}, '$[*] ? (@.step == "usageReports" && @.status == "ok" && @.count > 0)')`,
               ),
               columns: { id: true },
@@ -1427,7 +1426,10 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     now,
     activitySignal,
     copilotSignal: tenant.copilotSignal ?? "none",
-    usageAggregate: tenant.usageAggregate ?? undefined,
+    // An outage can leave an aggregate stored even when there are no users.
+    usageAggregate: tenant.usageReportUnavailable
+      ? undefined
+      : (tenant.usageAggregate ?? undefined),
     copilotAggregate: tenant.copilotAggregate ?? undefined,
     inactiveDays: tenant.inactiveDays,
     exclusions: tenant.findingExclusions,

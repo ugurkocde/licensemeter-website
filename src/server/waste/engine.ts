@@ -316,6 +316,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
   >();
   const partNumberOf = new Map(skus.map((s) => [s.skuId, s.skuPartNumber]));
   const isExcluded = exclusionMatcher(input.exclusions ?? []);
+  let hasInactivityEligibleUser = false;
 
   for (const u of users) {
     if (u.licenses.length === 0) continue;
@@ -363,6 +364,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
       continue;
     }
 
+    hasInactivityEligibleUser = true;
     const neverActiveKey = key("never_active", u.graphId);
     const inactiveKey = key("inactive_90d", u.graphId);
     const ageDays = u.createdDateTime
@@ -575,11 +577,19 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
     }
   }
 
-  if (input.activitySignal === "none" && input.usageAggregate) {
+  const aggregateInactivityKey = key("inactive_90d", "aggregate", null);
+  if (input.activitySignal === "unknown" && hasInactivityEligibleUser) {
+    const previousAggregate = input.previousInactivity?.get(
+      aggregateInactivityKey,
+    );
+    // Concealed rows cannot be matched to current users to refresh the counts.
+    if (previousAggregate?.detail.aggregate === true)
+      findings.push(previousAggregate);
+  } else if (input.activitySignal === "none" && input.usageAggregate) {
     const { inactiveCount, totalCount } = input.usageAggregate;
     if (inactiveCount > 0) {
       findings.push({
-        dedupeKey: key("inactive_90d", "aggregate", null),
+        dedupeKey: aggregateInactivityKey,
         rule: "inactive_90d",
         graphUserId: null,
         skuId: null,

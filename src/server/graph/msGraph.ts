@@ -949,9 +949,8 @@ export class DelegatedGraphClient implements GraphClient {
   }
 
   async getActiveUserDetail(period: "D90"): Promise<ActiveUserDetailReport> {
-    // Role-bounded: throws GraphHttpError 403 without Reports Reader/Global
-    // Reader. The sync records the failure as a warning and the join treats
-    // the missing rows as "no activity signal", never a thrown scan.
+    // The sync records report failures as warnings and preserves activity
+    // when prior report coverage exists.
     return fetchActiveUserDetail(this.accessToken, period, this.deadline);
   }
 
