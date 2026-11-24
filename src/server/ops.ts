@@ -34,6 +34,8 @@ const escapeHtml = (s: string): string =>
   s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
 export type NotifyOptions = {
+  /** Console log level. Defaults to error. */
+  logLevel?: "error" | "info";
   /** Dedup key: identical keys within the cooldown are suppressed and counted. */
   key?: string;
   /** Cooldown window in ms; only meaningful together with key. */
@@ -76,7 +78,9 @@ export const notifyOps = (
 };
 
 const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
-  console.error(`[ops] ${text}`);
+  // Fail closed: anything other than an explicit "info" logs at error level.
+  if (opts.logLevel === "info") console.info(`[ops] ${text}`);
+  else console.error(`[ops] ${text}`);
 
   // Webhook/email fire only from production deployments. Local dev and
   // preview deploys share the same .env credentials, and a crash on a dev
