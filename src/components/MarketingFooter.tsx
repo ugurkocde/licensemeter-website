@@ -102,7 +102,6 @@ const GERMAN = {
         ["/de/compare/coreview-alternatives", "CoreView-Alternativen"],
         ["/de/compare/cipp", "LicenseMeter vs. CIPP"],
         ["/de/dpa", "Auftragsverarbeitung"],
-        ["/status", "Systemstatus (EN)"],
         ["/faq", "FAQ (EN)"],
       ],
     },

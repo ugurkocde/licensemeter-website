@@ -61,7 +61,8 @@ export const EXTERNAL_STATUS_LINKS = [
     key: "microsoft",
     name: "Microsoft 365 / Entra ID",
     purpose: "Sign-in (Microsoft Entra ID) and Microsoft Graph API",
-    location: "EU Data Boundary; US fallback",
+    // Same wording as the DPA (Annex IV).
+    location: "Customer tenant region",
     statusPageUrl: "https://status.cloud.microsoft/",
   },
 ];

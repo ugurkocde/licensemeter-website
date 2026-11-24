@@ -197,8 +197,8 @@ export default function LandingPage() {
             <p className="text-ink-soft mt-5 max-w-md text-sm leading-7">
               LicenseMeter reads license and activity metadata. It never reads
               mailbox or file content, and never removes a license
-              automatically. Hosted in the EU, with deletion when you
-              disconnect.
+              automatically. Hosted in the EU, and you can delete your workspace
+              and its data at any time.
             </p>
             <Link
               href="/trust-center"

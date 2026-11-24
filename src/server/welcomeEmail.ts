@@ -1,4 +1,5 @@
 import { DEMO_FIGURES, demoEuros } from "~/lib/demoFigures";
+import { BACKUP_RETENTION_DAYS } from "~/lib/retention";
 import {
   EMAIL_COLORS,
   emailAddressText,
@@ -152,7 +153,7 @@ ${CONNECTOR_SCOPES.map(
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 ${fact("No write access in the core connector.", "Remediation ships as PowerShell scripts your admins review and run themselves. Only the optional Software Metering module, if you enable it, writes its own Intune script.")}
 ${fact("Never content.", "License assignments, sign-in activity and usage metadata only. No mailboxes, no files, no messages.")}
-${fact("EU data residency.", "Hosted in Frankfurt; disconnecting deletes all synced data immediately.")}
+${fact("EU data residency.", `Hosted in Frankfurt; deleting the workspace removes all synced data from the live database immediately, and backup copies at the database provider expire after ${BACKUP_RETENTION_DAYS} days.`)}
 </table>
 <p style="margin:14px 0 0 0;font-size:14px;line-height:22px;color:${C.brandStrong}">
 Microsoft requires a Global Administrator or Privileged Role Administrator for

@@ -119,9 +119,9 @@ test("pricing page renders the three plans and is linked from the header", async
     "href",
     /\/pricing$/,
   );
-  await expect(
-    page.locator("main").getByRole("link", { name: "status page" }),
-  ).toHaveAttribute("href", "/status");
+  // The self-probing status page is not a measure of availability, so the
+  // pricing page does not link it.
+  await expect(page.locator('main a[href="/status"]')).toHaveCount(0);
   await expect(
     page
       .locator("main")

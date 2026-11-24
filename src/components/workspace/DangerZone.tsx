@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 
+import { BACKUP_RETENTION_DAYS } from "~/lib/retention";
 import { disconnectTenant } from "~/server/actions";
 import type { ActionResult } from "~/server/actions";
 
@@ -28,9 +29,11 @@ export const DangerZone = ({ tenantName }: { tenantName: string }) => {
       </div>
       <div className="flex flex-col gap-4 px-5 py-4">
         <p className="text-ink-soft max-w-xl text-sm">
-          Disconnecting deletes every synced record for {tenantName}: users,
-          findings, prices, history. The admin consent in your tenant can then
-          be revoked under Enterprise applications.
+          Deleting the workspace removes every synced record for {tenantName}{" "}
+          from the live database: users, findings, prices, history. Copies in
+          the database provider&rsquo;s daily backups expire after{" "}
+          {BACKUP_RETENTION_DAYS} days. The admin consent in your tenant can
+          then be revoked under Enterprise applications.
         </p>
         <form
           action={formAction}
@@ -58,7 +61,7 @@ export const DangerZone = ({ tenantName }: { tenantName: string }) => {
             disabled={pending || !confirmed}
             className="border-danger text-danger-text hover:bg-danger-soft min-h-11 shrink-0 border px-4 py-2 text-xs font-medium tracking-wide uppercase disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {pending ? "Deleting…" : "Delete everything"}
+            {pending ? "Deleting…" : "Delete workspace"}
           </button>
         </form>
         {result && !result.ok && (

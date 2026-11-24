@@ -279,6 +279,12 @@ export const msConnections = pgTable(
     lastVerifiedAt: timestamp("last_verified_at", { withTimezone: true }),
     /** Last test-connection / app-only auth failure, redacted; null when healthy. */
     lastVerifyError: text("last_verify_error"),
+    /**
+     * Regenerated on every connect and credential replacement. A sync only
+     * writes data read under the generation that is still current (see
+     * connectorPurge), so a disconnect and reconnect is always a change.
+     */
+    generation: uuid("generation").notNull().defaultRandom(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -688,6 +694,12 @@ export const adobeConnections = pgTable("adobe_connections", {
   clientSecretEnc: text("client_secret_enc").notNull(),
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
   lastSyncStatus: text("last_sync_status"),
+  /**
+   * Regenerated on every connect and credential replacement. A sync only
+   * writes data read under the generation that is still current (see
+   * connectorPurge), so a disconnect and reconnect is always a change.
+   */
+  generation: uuid("generation").notNull().defaultRandom(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -728,6 +740,12 @@ export const saasConnections = pgTable(
     secretEnc: text("secret_enc").notNull(),
     lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
     lastSyncStatus: text("last_sync_status"),
+    /**
+     * Regenerated on every connect and credential replacement. A sync only
+     * writes data read under the generation that is still current (see
+     * connectorPurge), so a disconnect and reconnect is always a change.
+     */
+    generation: uuid("generation").notNull().defaultRandom(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

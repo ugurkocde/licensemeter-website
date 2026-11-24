@@ -27,7 +27,7 @@ Start with the workspace name, the last successful sync and the provider's conne
 
 Open [Support](https://www.licensemeter.com/support) and include the affected page, provider, approximate time and displayed error. Describe the steps that reproduce the problem. Redact credentials, access tokens and personal information from screenshots or logs.
 
-For provider outages, check the [status page](https://status.licensemeter.com). For a self-hosted instance, inspect your own application, database and scheduler logs as described in the [Docker guide](/self-hosting/).
+For provider outages, check the status pages of the providers involved, such as [Microsoft 365](https://status.cloud.microsoft/), [Vercel](https://www.vercel-status.com), [Supabase](https://status.supabase.com) and [Resend](https://resend-status.com). For a self-hosted instance, inspect your own application, database and scheduler logs as described in the [Docker guide](/self-hosting/).
 
 ## Common questions
 

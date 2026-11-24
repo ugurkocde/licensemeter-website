@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { siteUrl } from "~/env";
+import { BACKUP_RETENTION_DAYS } from "~/lib/retention";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
 import { SUPPORT_MAILTO } from "~/lib/support";
 
@@ -22,15 +23,15 @@ const FAQS = [
   },
   {
     q: "Where is our data stored, and for how long?",
-    a: "In Postgres in the EU (Frankfurt). Data is kept only while your tenant is connected: disconnecting the workspace deletes everything immediately, and you can additionally revoke the enterprise application in Entra ID at any time.",
+    a: `In Postgres in the EU (Frankfurt). Data is kept for as long as the workspace exists, including after a paid plan lapses. Deleting the workspace in Settings removes all synced data from the live database immediately; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days. You can also revoke the enterprise application in Entra ID at any time: that stops our access but deletes nothing.`,
   },
   {
     q: "How are the Adobe, Zoom, Atlassian, Salesforce, OpenAI and Anthropic credentials stored?",
-    a: "Encrypted at rest (AES-256-GCM) and used exclusively to read seat assignments, member lists and daily cost totals, never content or prompts. Disconnecting the connector or the workspace deletes the credentials immediately. The security overview lists what each connector stores.",
+    a: `Encrypted at rest (AES-256-GCM) and used exclusively to read seat assignments, member lists and daily cost totals, never content or prompts. Disconnecting the connector or deleting the workspace removes the credentials from the live database immediately; copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days. The security overview lists what each connector stores.`,
   },
   {
     q: "Who in our company can see the data?",
-    a: "Only people the workspace owner invites, in the role they assign. A viewer has read-only access to dashboards and exports (built for finance); an admin can also run syncs, edit prices, change settings and invite people; an owner can additionally manage other owners and disconnect the workspace. Signing in with an account from your tenant grants nothing by itself.",
+    a: "Only people the workspace owner invites, in the role they assign. A viewer has read-only access to dashboards and exports (built for finance); an admin can also run syncs, edit prices, change settings and invite people; an owner can additionally manage other owners and delete the workspace. Signing in with an account from your tenant grants nothing by itself.",
   },
   {
     q: "Do we need Entra ID P1?",

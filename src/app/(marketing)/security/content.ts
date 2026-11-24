@@ -1,4 +1,5 @@
 import type { DpaLang } from "~/lib/dpa";
+import { BACKUP_RETENTION_DAYS } from "~/lib/retention";
 
 /**
  * Bilingual content for the security overview, following the single-source
@@ -123,14 +124,14 @@ const EN: SecurityContent = {
   },
   residency: {
     title: "Data residency, retention and deletion",
-    body: "Customer application data is stored in the EU in a Supabase Postgres database hosted on AWS eu-central-1 (Frankfurt). Data is retained only while your tenant is connected. Disconnecting the workspace (Settings → Danger zone) deletes all synced data immediately and irreversibly: users, findings, prices, history. Revoking the enterprise application in your Entra ID additionally cuts our access at the source.",
+    body: `Customer application data is stored in the EU in a Supabase Postgres database hosted on AWS eu-central-1 (Frankfurt). Data is kept for as long as the workspace exists, including after a paid plan lapses. Deleting the workspace (Settings → Danger zone → Delete workspace) removes all synced data from the live database immediately: users, findings, prices, history. Copies in the database provider's daily backups expire after ${BACKUP_RETENTION_DAYS} days. Revoking the enterprise application in your Entra ID cuts our access at the source but deletes nothing.`,
   },
   subprocessors: {
     title: "Subprocessors",
     note: {
       pre: "The definitive subprocessor list is part of the ",
       linkText: "DPA",
-      href: "/dpa#annex-3",
+      href: "/dpa#annex-iv",
       post: ".",
     },
   },
@@ -236,14 +237,14 @@ const DE: SecurityContent = {
   },
   residency: {
     title: "Datenhaltung, Aufbewahrung und Löschung",
-    body: "Kundendaten der Anwendung werden in der EU gespeichert, in einer Supabase-Postgres-Datenbank auf AWS eu-central-1 (Frankfurt). Daten werden nur gespeichert, solange Ihr Tenant verbunden ist. Das Trennen des Workspace (Einstellungen → Gefahrenzone) löscht alle synchronisierten Daten sofort und unwiderruflich: Benutzer, Ergebnisse, Preise, Verlauf. Das Widerrufen der Unternehmensanwendung in Ihrem Entra ID unterbindet unseren Zugriff zusätzlich an der Quelle.",
+    body: `Kundendaten der Anwendung werden in der EU gespeichert, in einer Supabase-Postgres-Datenbank auf AWS eu-central-1 (Frankfurt). Daten werden gespeichert, solange der Workspace besteht, auch nach dem Ende eines bezahlten Tarifs. Das Löschen des Workspace (Settings → Danger zone → Delete workspace) entfernt alle synchronisierten Daten sofort aus der Live-Datenbank: Benutzer, Ergebnisse, Preise, Verlauf. Kopien in den täglichen Sicherungen des Datenbankanbieters laufen nach ${BACKUP_RETENTION_DAYS} Tagen ab. Das Widerrufen der Unternehmensanwendung in Ihrem Entra ID unterbindet unseren Zugriff an der Quelle, löscht aber nichts.`,
   },
   subprocessors: {
     title: "Unterauftragsverarbeiter",
     note: {
       pre: "Die maßgebliche Liste der Unterauftragsverarbeiter ist Teil des ",
       linkText: "AVV",
-      href: "/de/dpa#annex-3",
+      href: "/de/dpa#annex-iv",
       post: ".",
     },
   },

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { BACKUP_RETENTION_DAYS } from "~/lib/retention";
 import { SUPPORT_EMAIL } from "~/lib/support";
 
 export const metadata: Metadata = {
@@ -158,10 +159,14 @@ export default function TermsPage() {
       <Section title="9. Term and termination">
         <p>
           The usage relationship runs for an indefinite period. The Customer may
-          end it at any time by disconnecting the workspace; on disconnect, all
-          synchronized data is deleted immediately and in full (see Privacy
-          Policy). The right to extraordinary termination for good cause remains
-          unaffected for both parties.
+          end it at any time by deleting the workspace (Settings, Danger zone,
+          Delete workspace). On deletion, all synchronized data is removed from
+          the live database immediately; copies in the database provider&rsquo;s
+          daily backups expire after {BACKUP_RETENTION_DAYS} days (see Privacy
+          Policy). Revoking the enterprise application in Microsoft Entra ID
+          stops the Provider&rsquo;s access but deletes no data. The right to
+          extraordinary termination for good cause remains unaffected for both
+          parties.
         </p>
       </Section>
 

@@ -61,7 +61,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/support",
     "/connectors",
     ...CONNECTOR_GUIDES.map((g) => `/connectors/${g.slug}`),
-    "/status",
     "/impressum",
     "/privacy",
     "/dpa",

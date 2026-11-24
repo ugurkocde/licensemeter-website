@@ -17,6 +17,12 @@ import {
 } from "~/server/access";
 import { audit } from "~/server/audit";
 import {
+  purgeAdobeSource,
+  purgeMicrosoftSource,
+  purgeSaasSource,
+  withSourceLock,
+} from "~/server/connectorPurge";
+import {
   approveJoinRequestRow,
   declineJoinRequestRow,
   holdsJoinableDomain,
@@ -24,13 +30,10 @@ import {
 import { db } from "~/server/db";
 import {
   adobeConnections,
-  adobeUsers,
-  aiSpendDaily,
   emailBlocks,
   emailSignups,
   findings,
   memberships,
-  meteringConnections,
   msConnections,
   priceBook,
   saasConnections,
@@ -39,7 +42,6 @@ import {
   syncRuns,
   tenants,
   tenantSkus,
-  tenantUsers,
   vendorRenewals,
 } from "~/server/db/schema";
 import {
@@ -56,7 +58,6 @@ import {
 import { parseMembers } from "~/server/saas/parseMembers";
 import { normalizeSalesforceOrgRef } from "~/server/saas/salesforce";
 import { connectorSpec } from "~/lib/connectors";
-import { MICROSOFT_RULES } from "~/lib/rules";
 import { isSupportedCurrency } from "~/lib/currency";
 import { isValidEmailAddress } from "~/lib/emailAddress";
 import {
@@ -1312,24 +1313,29 @@ export const connectAdobe = async (
   }
 
   const adobeAad = secretAad(ctx.tenant.id, "adobe", "clientSecretEnc");
-  await db
-    .insert(adobeConnections)
-    .values({
-      tenantId: ctx.tenant.id,
-      orgId,
-      clientId,
-      clientSecretEnc: encryptSecret(clientSecret, adobeAad),
-    })
-    .onConflictDoUpdate({
-      target: adobeConnections.tenantId,
-      set: {
+  // Under the source lock with a new generation: data a running sync read
+  // under the previous credentials is then never written (see connectorPurge).
+  await withSourceLock(ctx.tenant.id, (tx) =>
+    tx
+      .insert(adobeConnections)
+      .values({
+        tenantId: ctx.tenant.id,
         orgId,
         clientId,
         clientSecretEnc: encryptSecret(clientSecret, adobeAad),
-        lastSyncStatus: null,
-        lastSyncAt: null,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: adobeConnections.tenantId,
+        set: {
+          orgId,
+          clientId,
+          clientSecretEnc: encryptSecret(clientSecret, adobeAad),
+          lastSyncStatus: null,
+          lastSyncAt: null,
+          generation: sql`gen_random_uuid()`,
+        },
+      }),
+  );
   await audit(ctx, "adobe_connected", { orgId });
   // Sync after the response, not inline; see connectSaasConnector.
   after(() => runSync(ctx.tenant.id, { deadline: requestDeadline() }));
@@ -1337,17 +1343,14 @@ export const connectAdobe = async (
   return ok();
 };
 
-/** Remove the Adobe connection and its data; findings auto-resolve. */
+/** Remove the Adobe connection, its synced users and its findings. */
 export const disconnectAdobe = async (): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
   if (ctx.tenant.isDemo)
     return fail("The demo workspace ships with demo Adobe data");
 
-  await db
-    .delete(adobeConnections)
-    .where(eq(adobeConnections.tenantId, ctx.tenant.id));
-  await db.delete(adobeUsers).where(eq(adobeUsers.tenantId, ctx.tenant.id));
+  await purgeAdobeSource(ctx.tenant.id);
   await audit(ctx, "adobe_disconnected", {});
   await runAnalysis(ctx.tenant.id);
   revalidateApp();
@@ -1413,25 +1416,29 @@ export const connectSaasConnector = async (
   }
 
   const saasAad = secretAad(ctx.tenant.id, provider, "secretEnc");
-  await db
-    .insert(saasConnections)
-    .values({
-      tenantId: ctx.tenant.id,
-      provider,
-      orgRef,
-      clientId,
-      secretEnc: encryptSecret(secret, saasAad),
-    })
-    .onConflictDoUpdate({
-      target: [saasConnections.tenantId, saasConnections.provider],
-      set: {
+  // Under the source lock with a new generation (see connectAdobe).
+  await withSourceLock(ctx.tenant.id, (tx) =>
+    tx
+      .insert(saasConnections)
+      .values({
+        tenantId: ctx.tenant.id,
+        provider,
         orgRef,
         clientId,
         secretEnc: encryptSecret(secret, saasAad),
-        lastSyncStatus: null,
-        lastSyncAt: null,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [saasConnections.tenantId, saasConnections.provider],
+        set: {
+          orgRef,
+          clientId,
+          secretEnc: encryptSecret(secret, saasAad),
+          lastSyncStatus: null,
+          lastSyncAt: null,
+          generation: sql`gen_random_uuid()`,
+        },
+      }),
+  );
   await audit(ctx, "connector_connected", { provider, orgRef });
   // Credentials were validated above; the first sync (a full Graph pull plus
   // every connector) runs after the response rather than blocking it, so the
@@ -1442,7 +1449,7 @@ export const connectSaasConnector = async (
   return ok();
 };
 
-/** Remove a SaaS connection and its seats; findings auto-resolve. */
+/** Remove a SaaS connection, its seats and spend, and its findings. */
 export const disconnectSaasConnector = async (
   providerRaw: string,
 ): Promise<ActionResult> => {
@@ -1453,30 +1460,7 @@ export const disconnectSaasConnector = async (
   if (!isSaasProvider(providerRaw)) return fail("Unknown connector");
   const provider = providerRaw;
 
-  await db
-    .delete(saasConnections)
-    .where(
-      and(
-        eq(saasConnections.tenantId, ctx.tenant.id),
-        eq(saasConnections.provider, provider),
-      ),
-    );
-  await db
-    .delete(saasSeats)
-    .where(
-      and(
-        eq(saasSeats.tenantId, ctx.tenant.id),
-        eq(saasSeats.provider, provider),
-      ),
-    );
-  await db
-    .delete(aiSpendDaily)
-    .where(
-      and(
-        eq(aiSpendDaily.tenantId, ctx.tenant.id),
-        eq(aiSpendDaily.provider, provider),
-      ),
-    );
+  await purgeSaasSource(ctx.tenant.id, provider);
   await audit(ctx, "connector_disconnected", { provider });
   await runAnalysis(ctx.tenant.id);
   revalidateApp();
@@ -1640,7 +1624,8 @@ export const connectMicrosoftByo = async (
   // application-level steal guard above (a concurrent connect to the same tid
   // loses the race here rather than corrupting state).
   try {
-    await db.transaction(async (tx) => {
+    // Under the source lock with a new generation (see connectAdobe).
+    await withSourceLock(ctx.tenant.id, async (tx) => {
       await tx
         .insert(msConnections)
         .values({
@@ -1667,6 +1652,7 @@ export const connectMicrosoftByo = async (
             secretExpiresAt,
             lastVerifiedAt: now,
             lastVerifyError: null,
+            generation: sql`gen_random_uuid()`,
           },
         });
 
@@ -1715,38 +1701,9 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
   if (ctx.tenant.isDemo)
     return fail("The demo workspace ships with demo Microsoft data");
 
-  // Remove the connection, release the tid binding, and purge the Microsoft
-  // dataset together. The user/SKU/snapshot rows are the Graph-sourced data the
-  // consent authorized; revoking the connection must remove that PII rather than
-  // leave it (mirrors disconnectAdobe/disconnectSaasConnector clearing their
-  // data). Customer-entered prices (priceBook) are deliberately kept. A partial
-  // delete that left tenants.tid set would let the managed fallback in
-  // resolveMsCredential silently re-enable sync. Findings from the Microsoft
-  // rules carry directory names (UPNs, display names) and are deleted with
-  // the dataset; connector findings stay and re-evaluate on the next analysis.
-  await db.transaction(async (tx) => {
-    await tx
-      .delete(msConnections)
-      .where(eq(msConnections.tenantId, ctx.tenant.id));
-    await tx
-      .delete(meteringConnections)
-      .where(eq(meteringConnections.tenantId, ctx.tenant.id));
-    await tx
-      .delete(findings)
-      .where(
-        and(
-          eq(findings.tenantId, ctx.tenant.id),
-          inArray(findings.rule, MICROSOFT_RULES),
-        ),
-      );
-    await tx.delete(tenantUsers).where(eq(tenantUsers.tenantId, ctx.tenant.id));
-    await tx.delete(tenantSkus).where(eq(tenantSkus.tenantId, ctx.tenant.id));
-    await tx.delete(snapshots).where(eq(snapshots.tenantId, ctx.tenant.id));
-    await tx
-      .update(tenants)
-      .set({ tid: null, consentedAt: null })
-      .where(eq(tenants.id, ctx.tenant.id));
-  });
+  // The Graph-sourced users, licenses, snapshots and Microsoft findings go
+  // with the connection; customer-entered prices stay (see connectorPurge).
+  await purgeMicrosoftSource(ctx.tenant.id);
   await audit(ctx, "microsoft_disconnected", {});
   await runAnalysis(ctx.tenant.id);
   revalidateApp();
@@ -1942,8 +1899,7 @@ export const captureEmail = async (
 export const disconnectTenant = async (): Promise<ActionResult> => {
   const ctx = await apiAccess("owner");
   if (!ctx) return fail("Not allowed");
-  if (ctx.tenant.isDemo)
-    return fail("The demo workspace cannot be disconnected");
+  if (ctx.tenant.isDemo) return fail("The demo workspace cannot be deleted");
 
   const actor = ctx.membership.name ?? ctx.membership.email;
   // Resolve the OTHER admins/owners NOW, while the memberships still exist (they
@@ -1964,7 +1920,12 @@ export const disconnectTenant = async (): Promise<ActionResult> => {
   // useless here. notifyOps is the durable, off-table signal of the deletion.
   void notifyOps(`workspace deleted: ${ctx.tenant.id}`);
 
-  await db.delete(tenants).where(eq(tenants.id, ctx.tenant.id));
+  // Under the source lock, so the deletion waits for a sync's locked writes
+  // (snapshot, then tenant row) instead of taking the rows in the opposite
+  // order and deadlocking with them.
+  await withSourceLock(ctx.tenant.id, (tx) =>
+    tx.delete(tenants).where(eq(tenants.id, ctx.tenant.id)),
+  );
   revalidatePath("/", "layout");
   redirect("/");
 };

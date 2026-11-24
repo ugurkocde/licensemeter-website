@@ -4,6 +4,7 @@ import { appBaseUrl } from "~/env";
 import { GUID } from "~/lib/metering";
 import { apiAccess } from "~/server/access";
 import { audit } from "~/server/audit";
+import { withSourceLock } from "~/server/connectorPurge";
 import { db } from "~/server/db";
 import { meteringConnections, meteringConsentStates } from "~/server/db/schema";
 import { MeteringError, verifyMeteringConsent } from "~/server/metering/graph";
@@ -43,7 +44,11 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     return back(err instanceof MeteringError ? err.code : "consent");
   }
-  const accepted = await db.transaction(async (tx) => {
+  // Under the source lock, like the Microsoft purge and metering disable that
+  // delete the connection: otherwise this transaction (consent state, then
+  // connection) and a delete (connection, then cascade to consent states)
+  // take the rows in opposite order and can deadlock.
+  const accepted = await withSourceLock(ctx.tenant.id, async (tx) => {
     // Consume first, atomically. A disabled/re-enabled connection has a new id
     // and cannot be resurrected with an old callback.
     const [used] = await tx

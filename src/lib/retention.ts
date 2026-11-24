@@ -21,4 +21,11 @@ export const RETENTION_DAYS = {
   emailDeliveries: 400,
 } as const;
 
+/**
+ * How long the database provider keeps its daily backups (Supabase Pro). Not
+ * enforced by us: a deleted workspace is gone from the live database at once,
+ * and its copies in the backups expire with this rotation.
+ */
+export const BACKUP_RETENTION_DAYS = 7;
+
 export const retentionMs = (days: number): number => days * DAY_MS;

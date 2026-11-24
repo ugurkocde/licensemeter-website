@@ -188,26 +188,6 @@ export default async function AppSupportPage() {
                   />
                 </a>
               </li>
-              <li className="py-3">
-                <a
-                  href="/status"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-ink hover:text-brand-text group inline-flex items-start gap-1 font-medium"
-                >
-                  <span>
-                    Service status
-                    <span className="sr-only">, opens in a new tab</span>
-                    <span className="text-ink-soft mt-0.5 block text-xs font-normal">
-                      Check for a current incident or provider issue.
-                    </span>
-                  </span>
-                  <ArrowUpRight
-                    aria-hidden="true"
-                    className="text-sidebar-soft mt-0.5 size-4 shrink-0 transition group-hover:text-current"
-                  />
-                </a>
-              </li>
               <li className="py-3 last:pb-0">
                 <Link
                   href="/app/billing"

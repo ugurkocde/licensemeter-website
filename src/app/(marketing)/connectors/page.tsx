@@ -98,9 +98,9 @@ export default function ConnectorsIndexPage() {
 
       <p className="text-ink-soft mt-8 text-sm">
         All connector credentials are stored encrypted (AES-256-GCM), used
-        read-only and deleted the moment you disconnect. Product names are
-        trademarks of their respective owners; LicenseMeter is independent of
-        all of them.
+        read-only and removed from the live database the moment you disconnect
+        the connector. Product names are trademarks of their respective owners;
+        LicenseMeter is independent of all of them.
       </p>
 
       <section className="border-line bg-subtle mt-12 rounded-2xl border px-6 py-8 sm:px-8">

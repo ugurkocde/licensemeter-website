@@ -2,6 +2,16 @@ import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 
 import { db } from "~/server/db";
 import {
+  adobeToken,
+  currentFindingFilter,
+  microsoftToken,
+  readSourceTokens,
+  saasToken,
+  type SourceTokens,
+  type Tx,
+  withSourceLock,
+} from "~/server/connectorPurge";
+import {
   PSEUDONYMISED_KEY_PREFIX,
   pseudonymisedDedupeKey,
 } from "~/server/retention";
@@ -138,6 +148,8 @@ const syncAiSpend = async (
   client: AiSpendClient,
   now: Date,
   record: (step: SyncStep) => void,
+  /** The connection identity the run read; rows are written only while it holds. */
+  token: string | undefined,
   deadline?: number,
 ): Promise<void> => {
   const step = `${provider}Spend` as const;
@@ -163,30 +175,37 @@ const syncAiSpend = async (
     const rows = await client.getSpend(sinceDay, deadline);
     for (const batch of chunk(rows, 250)) {
       ensureWithinDeadline();
-      await db
-        .insert(aiSpendDaily)
-        .values(
-          batch.map((r) => ({
-            tenantId,
-            provider,
-            day: r.day,
-            category: r.category,
-            amountCents: r.amountCents,
-            syncedAt: now,
-          })),
-        )
-        .onConflictDoUpdate({
-          target: [
-            aiSpendDaily.tenantId,
-            aiSpendDaily.provider,
-            aiSpendDaily.day,
-            aiSpendDaily.category,
-          ],
-          set: {
-            amountCents: sql`excluded.amount_cents`,
-            syncedAt: sql`excluded.synced_at`,
-          },
-        });
+      const written = await withSourceLock(tenantId, async (tx) => {
+        if ((await readSourceTokens(tx, tenantId)).saas[provider] !== token)
+          return false;
+        await tx
+          .insert(aiSpendDaily)
+          .values(
+            batch.map((r) => ({
+              tenantId,
+              provider,
+              day: r.day,
+              category: r.category,
+              amountCents: r.amountCents,
+              syncedAt: now,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: [
+              aiSpendDaily.tenantId,
+              aiSpendDaily.provider,
+              aiSpendDaily.day,
+              aiSpendDaily.category,
+            ],
+            set: {
+              amountCents: sql`excluded.amount_cents`,
+              syncedAt: sql`excluded.synced_at`,
+            },
+          });
+        return true;
+      });
+      // Disconnected meanwhile: nothing more is written.
+      if (!written) break;
     }
     record({
       step,
@@ -223,6 +242,23 @@ export const runSync = async (
     where: eq(tenants.id, tenantId),
   });
   if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
+
+  // The identity of each source as this run reads it. Every write of a
+  // source's data checks, under the workspace's source lock, that the source
+  // is still connected with the same identity; a source disconnected (or
+  // reconnected elsewhere) in between is not written (see connectorPurge).
+  // Microsoft's token comes from the same tenant row the Graph client is
+  // built from (the managed fallback uses tenant.tid), so a disconnect after
+  // that read still counts as a change and the run's writes are dropped.
+  const msConnAtRead = await db.query.msConnections.findFirst({
+    where: eq(msConnections.tenantId, tenantId),
+    columns: { mode: true, tid: true, generation: true },
+  });
+  const readWith: SourceTokens = {
+    microsoft: microsoftToken(tenant.tid, msConnAtRead),
+    adobe: null,
+    saas: {},
+  };
 
   /** True once the request budget is spent: optional sources are skipped. */
   const outOfTime = (): boolean =>
@@ -519,6 +555,7 @@ export const runSync = async (
     const adobeConn = await db.query.adobeConnections.findFirst({
       where: eq(adobeConnections.tenantId, tenantId),
     });
+    readWith.adobe = adobeToken(adobeConn);
     if (tenant.isDemo || adobeConn) {
       adobeActive = true;
       const started = Date.now();
@@ -547,7 +584,12 @@ export const runSync = async (
           await db
             .update(adobeConnections)
             .set({ lastSyncAt: now, lastSyncStatus: "ok" })
-            .where(eq(adobeConnections.tenantId, tenantId));
+            .where(
+              and(
+                eq(adobeConnections.tenantId, tenantId),
+                eq(adobeConnections.generation, adobeConn.generation),
+              ),
+            );
         }
       } catch (err) {
         // adobeActive=false skips persistence/pruning; the stored snapshot is
@@ -573,7 +615,12 @@ export const runSync = async (
           await db
             .update(adobeConnections)
             .set({ lastSyncAt: now, lastSyncStatus: "failed" })
-            .where(eq(adobeConnections.tenantId, tenantId));
+            .where(
+              and(
+                eq(adobeConnections.tenantId, tenantId),
+                eq(adobeConnections.generation, adobeConn.generation),
+              ),
+            );
         }
       }
     }
@@ -595,6 +642,7 @@ export const runSync = async (
       : saasConns.map((c) => c.provider);
     for (const provider of activeSaas) {
       const conn = saasConns.find((c) => c.provider === provider);
+      if (conn) readWith.saas[provider] = saasToken(conn);
       const started = Date.now();
       try {
         if (outOfTime()) {
@@ -627,6 +675,7 @@ export const runSync = async (
               and(
                 eq(saasConnections.tenantId, tenantId),
                 eq(saasConnections.provider, provider),
+                eq(saasConnections.generation, conn.generation),
               ),
             );
         }
@@ -637,6 +686,7 @@ export const runSync = async (
             saasClient as AiSpendClient,
             now,
             record,
+            readWith.saas[provider],
             deadline,
           );
         }
@@ -671,6 +721,7 @@ export const runSync = async (
               and(
                 eq(saasConnections.tenantId, tenantId),
                 eq(saasConnections.provider, provider),
+                eq(saasConnections.generation, conn.generation),
               ),
             );
         }
@@ -734,7 +785,13 @@ export const runSync = async (
       skuTerms?.get(skuId) ?? { trialUnits: 0, nextLifecycleAt: null };
 
     // --- Persist phase (upsert + prune; no destructive window) -------------
-    await db.transaction(async (tx) => {
+    // Licenses and users in one locked transaction, written only while
+    // Microsoft is still connected as it was when the run read it.
+    const microsoftCurrent = await withSourceLock(tenantId, async (tx) => {
+      if (
+        (await readSourceTokens(tx, tenantId)).microsoft !== readWith.microsoft
+      )
+        return false;
       if (skus.length > 0) {
         for (const batch of chunk(skus, 250)) {
           await tx
@@ -782,64 +839,68 @@ export const runSync = async (
             ),
           );
       }
+
+      for (const batch of chunk(joined.users, 250)) {
+        await tx
+          .insert(tenantUsers)
+          .values(
+            batch.map((u) => ({
+              tenantId,
+              graphId: u.graphId,
+              upn: u.upn,
+              mailAliases: u.mailAliases,
+              displayName: u.displayName,
+              accountEnabled: u.accountEnabled,
+              userType: u.userType,
+              createdDateTime: u.createdDateTime,
+              lastInteractiveSignIn: u.lastInteractiveSignIn,
+              lastNonInteractiveSignIn: u.lastNonInteractiveSignIn,
+              lastActivity: u.lastActivity,
+              workloadActivity: u.workloadActivity,
+              licenses: u.licenses,
+              syncedAt: now,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: [tenantUsers.tenantId, tenantUsers.graphId],
+            set: {
+              upn: sql`excluded.upn`,
+              mailAliases: sql`excluded.mail_aliases`,
+              displayName: sql`excluded.display_name`,
+              accountEnabled: sql`excluded.account_enabled`,
+              userType: sql`excluded.user_type`,
+              createdDateTime: sql`excluded.created_date_time`,
+              lastInteractiveSignIn: sql`excluded.last_interactive_sign_in`,
+              lastNonInteractiveSignIn: sql`excluded.last_non_interactive_sign_in`,
+              lastActivity: sql`excluded.last_activity`,
+              workloadActivity: sql`excluded.workload_activity`,
+              licenses: sql`excluded.licenses`,
+              syncedAt: sql`excluded.synced_at`,
+            },
+          });
+      }
+      if (joined.users.length > 0) {
+        await tx
+          .delete(tenantUsers)
+          .where(
+            and(
+              eq(tenantUsers.tenantId, tenantId),
+              notInArray(
+                tenantUsers.graphId,
+                textSet(joined.users.map((u) => u.graphId)),
+              ),
+            ),
+          );
+      }
+      return true;
     });
 
-    for (const batch of chunk(joined.users, 250)) {
-      await db
-        .insert(tenantUsers)
-        .values(
-          batch.map((u) => ({
-            tenantId,
-            graphId: u.graphId,
-            upn: u.upn,
-            mailAliases: u.mailAliases,
-            displayName: u.displayName,
-            accountEnabled: u.accountEnabled,
-            userType: u.userType,
-            createdDateTime: u.createdDateTime,
-            lastInteractiveSignIn: u.lastInteractiveSignIn,
-            lastNonInteractiveSignIn: u.lastNonInteractiveSignIn,
-            lastActivity: u.lastActivity,
-            workloadActivity: u.workloadActivity,
-            licenses: u.licenses,
-            syncedAt: now,
-          })),
-        )
-        .onConflictDoUpdate({
-          target: [tenantUsers.tenantId, tenantUsers.graphId],
-          set: {
-            upn: sql`excluded.upn`,
-            mailAliases: sql`excluded.mail_aliases`,
-            displayName: sql`excluded.display_name`,
-            accountEnabled: sql`excluded.account_enabled`,
-            userType: sql`excluded.user_type`,
-            createdDateTime: sql`excluded.created_date_time`,
-            lastInteractiveSignIn: sql`excluded.last_interactive_sign_in`,
-            lastNonInteractiveSignIn: sql`excluded.last_non_interactive_sign_in`,
-            lastActivity: sql`excluded.last_activity`,
-            workloadActivity: sql`excluded.workload_activity`,
-            licenses: sql`excluded.licenses`,
-            syncedAt: sql`excluded.synced_at`,
-          },
-        });
-    }
-    if (joined.users.length > 0) {
-      await db
-        .delete(tenantUsers)
-        .where(
-          and(
-            eq(tenantUsers.tenantId, tenantId),
-            notInArray(
-              tenantUsers.graphId,
-              textSet(joined.users.map((u) => u.graphId)),
-            ),
-          ),
-        );
-    }
-
-    // Persist Adobe users (upsert + prune) when the connector is active.
+    // Persist Adobe users (upsert + prune) when the connector is active and
+    // still connected as read.
     if (adobeActive) {
-      await db.transaction(async (tx) => {
+      await withSourceLock(tenantId, async (tx) => {
+        if ((await readSourceTokens(tx, tenantId)).adobe !== readWith.adobe)
+          return;
         if (adobeRows.length > 0) {
           for (const batch of chunk(adobeRows, 250)) {
             await tx
@@ -884,7 +945,12 @@ export const runSync = async (
     // Persist SaaS seats (upsert + prune) for providers that fetched cleanly.
     for (const provider of saasPersist) {
       const seats = saasRows.get(provider) ?? [];
-      await db.transaction(async (tx) => {
+      await withSourceLock(tenantId, async (tx) => {
+        if (
+          (await readSourceTokens(tx, tenantId)).saas[provider] !==
+          readWith.saas[provider]
+        )
+          return;
         if (seats.length > 0) {
           for (const batch of chunk(seats, 250)) {
             await tx
@@ -941,108 +1007,123 @@ export const runSync = async (
       });
     }
 
-    // Prefill missing price book rows from the static catalog.
-    const existingPrices = await db.query.priceBook.findMany({
-      where: eq(priceBook.tenantId, tenantId),
-    });
-    const known = new Set(existingPrices.map((p) => p.skuId));
-    // Catalog prices added after a row was prefilled: a row still on the
-    // catalog's old fallback of 0 picks up the new list price. Only rows the
-    // customer never touched (source "default") qualify; any edited price
-    // is "custom" and is never overwritten.
-    const skuIds = new Set(skus.map((s) => s.skuId));
-    for (const p of existingPrices) {
-      if (
-        p.source !== "default" ||
-        p.monthlyPriceCents !== 0 ||
-        !skuIds.has(p.skuId)
-      ) {
-        continue;
-      }
-      const price = skuDefaultPriceCents(p.skuId, tenant.currencyRatePpm);
-      if (price === 0) continue;
-      await db
-        .update(priceBook)
-        .set({ monthlyPriceCents: price, updatedAt: now })
-        .where(
-          and(
-            eq(priceBook.tenantId, tenantId),
-            eq(priceBook.skuId, p.skuId),
-            eq(priceBook.source, "default"),
-            eq(priceBook.monthlyPriceCents, 0),
-          ),
-        );
-    }
-    const missing = skus.filter((s) => !known.has(s.skuId));
-    if (missing.length > 0) {
-      for (const batch of chunk(missing, 250)) {
-        await db.insert(priceBook).values(
-          batch.map((s) => ({
-            tenantId,
-            skuId: s.skuId,
-            monthlyPriceCents: skuDefaultPriceCents(
-              s.skuId,
-              tenant.currencyRatePpm,
+    // Price rows for the products a source returned are written under the
+    // source lock, and only for sources still connected as read.
+    await withSourceLock(tenantId, async (tx) => {
+      const current = await readSourceTokens(tx, tenantId);
+      const microsoftOk =
+        microsoftCurrent && current.microsoft === readWith.microsoft;
+      const adobeOk = current.adobe === readWith.adobe;
+      // Prefill missing price book rows from the static catalog.
+      const existingPrices = await tx.query.priceBook.findMany({
+        where: eq(priceBook.tenantId, tenantId),
+      });
+      const known = new Set(existingPrices.map((p) => p.skuId));
+      // Catalog prices added after a row was prefilled: a row still on the
+      // catalog's old fallback of 0 picks up the new list price. Only rows the
+      // customer never touched (source "default") qualify; any edited price
+      // is "custom" and is never overwritten.
+      const skuIds = new Set(microsoftOk ? skus.map((s) => s.skuId) : []);
+      for (const p of existingPrices) {
+        if (
+          p.source !== "default" ||
+          p.monthlyPriceCents !== 0 ||
+          !skuIds.has(p.skuId)
+        ) {
+          continue;
+        }
+        const price = skuDefaultPriceCents(p.skuId, tenant.currencyRatePpm);
+        if (price === 0) continue;
+        await tx
+          .update(priceBook)
+          .set({ monthlyPriceCents: price, updatedAt: now })
+          .where(
+            and(
+              eq(priceBook.tenantId, tenantId),
+              eq(priceBook.skuId, p.skuId),
+              eq(priceBook.source, "default"),
+              eq(priceBook.monthlyPriceCents, 0),
             ),
-            source: "default" as const,
-          })),
-        );
+          );
       }
-    }
-
-    // Prefill Adobe product prices (demo gets plausible list estimates).
-    const DEMO_ADOBE_PRICES: Record<string, number> = {
-      "Creative Cloud All Apps": 7100,
-      "Acrobat Pro": 2000,
-      Photoshop: 2400,
-    };
-    const adobeProducts = [...new Set(adobeRows.flatMap((u) => u.products))];
-    const missingAdobe = adobeProducts
-      .map(adobePriceKey)
-      .filter((id) => !known.has(id));
-    if (missingAdobe.length > 0) {
-      for (const batch of chunk(missingAdobe, 250)) {
-        await db
-          .insert(priceBook)
-          .values(
-            batch.map((id) => ({
+      const missing = microsoftOk
+        ? skus.filter((s) => !known.has(s.skuId))
+        : [];
+      if (missing.length > 0) {
+        for (const batch of chunk(missing, 250)) {
+          await tx.insert(priceBook).values(
+            batch.map((s) => ({
               tenantId,
-              skuId: id,
-              monthlyPriceCents: tenant.isDemo
-                ? (DEMO_ADOBE_PRICES[id.slice("adobe:".length)] ?? 0)
-                : 0,
+              skuId: s.skuId,
+              monthlyPriceCents: skuDefaultPriceCents(
+                s.skuId,
+                tenant.currencyRatePpm,
+              ),
               source: "default" as const,
             })),
-          )
-          .onConflictDoNothing();
+          );
+        }
       }
-    }
 
-    // Prefill SaaS connector prices (demo gets plausible list estimates).
-    const missingSaas = [...saasRows.entries()]
-      .flatMap(([provider, seats]) =>
-        [...new Set(seats.flatMap((s) => s.products))].map((p) =>
-          saasPriceKey(provider, p),
-        ),
-      )
-      .filter((id) => !known.has(id));
-    if (missingSaas.length > 0) {
-      for (const batch of chunk(missingSaas, 250)) {
-        await db
-          .insert(priceBook)
-          .values(
-            batch.map((id) => ({
-              tenantId,
-              skuId: id,
-              monthlyPriceCents: tenant.isDemo
-                ? (DEMO_SAAS_PRICES[id] ?? 0)
-                : 0,
-              source: "default" as const,
-            })),
-          )
-          .onConflictDoNothing();
+      // Prefill Adobe product prices (demo gets plausible list estimates).
+      const DEMO_ADOBE_PRICES: Record<string, number> = {
+        "Creative Cloud All Apps": 7100,
+        "Acrobat Pro": 2000,
+        Photoshop: 2400,
+      };
+      const adobeProducts = adobeOk
+        ? [...new Set(adobeRows.flatMap((u) => u.products))]
+        : [];
+      const missingAdobe = adobeProducts
+        .map(adobePriceKey)
+        .filter((id) => !known.has(id));
+      if (missingAdobe.length > 0) {
+        for (const batch of chunk(missingAdobe, 250)) {
+          await tx
+            .insert(priceBook)
+            .values(
+              batch.map((id) => ({
+                tenantId,
+                skuId: id,
+                monthlyPriceCents: tenant.isDemo
+                  ? (DEMO_ADOBE_PRICES[id.slice("adobe:".length)] ?? 0)
+                  : 0,
+                source: "default" as const,
+              })),
+            )
+            .onConflictDoNothing();
+        }
       }
-    }
+
+      // Prefill SaaS connector prices (demo gets plausible list estimates).
+      const missingSaas = [...saasRows.entries()]
+        .filter(
+          ([provider]) => current.saas[provider] === readWith.saas[provider],
+        )
+        .flatMap(([provider, seats]) =>
+          [...new Set(seats.flatMap((s) => s.products))].map((p) =>
+            saasPriceKey(provider, p),
+          ),
+        )
+        .filter((id) => !known.has(id));
+      if (missingSaas.length > 0) {
+        for (const batch of chunk(missingSaas, 250)) {
+          await tx
+            .insert(priceBook)
+            .values(
+              batch.map((id) => ({
+                tenantId,
+                skuId: id,
+                monthlyPriceCents: tenant.isDemo
+                  ? (DEMO_SAAS_PRICES[id] ?? 0)
+                  : 0,
+                source: "default" as const,
+              })),
+            )
+            .onConflictDoNothing();
+        }
+      }
+    });
     const prices = Object.fromEntries(
       (
         await db.query.priceBook.findMany({
@@ -1111,65 +1192,78 @@ export const runSync = async (
       durationMs: since(analysisStarted),
     });
 
-    const inserted = await diffFindings(tenantId, allFindings, now);
+    // Findings of a source disconnected while the run was reading it are
+    // dropped under the lock (see connectorPurge).
+    const inserted = await diffFindings(tenantId, allFindings, now, {
+      keep: (tx) => currentFindingFilter(tx, tenantId, readWith),
+    });
     await sendLeakAlert(tenant, inserted, now);
 
     // --- Snapshot + tenant capabilities ------------------------------------
+    // Both derive from the Microsoft read: written under the lock and only
+    // while Microsoft is still connected as read.
     const totalMonthlySpendCents = inventory.reduce(
       (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
       0,
     );
-    const openRows = await db.query.findings.findMany({
-      where: and(
-        eq(findings.tenantId, tenantId),
-        inArray(findings.status, ["open", "acknowledged"]),
-      ),
-    });
-    const totalMonthlyWasteCents = openRows.reduce(
-      (sum, f) => sum + f.monthlyImpactCents,
-      0,
-    );
+    await withSourceLock(tenantId, async (tx) => {
+      if (
+        !microsoftCurrent ||
+        (await readSourceTokens(tx, tenantId)).microsoft !== readWith.microsoft
+      )
+        return;
+      const openRows = await tx.query.findings.findMany({
+        where: and(
+          eq(findings.tenantId, tenantId),
+          inArray(findings.status, ["open", "acknowledged"]),
+        ),
+      });
+      const totalMonthlyWasteCents = openRows.reduce(
+        (sum, f) => sum + f.monthlyImpactCents,
+        0,
+      );
 
-    const day = now.toISOString().slice(0, 10);
-    const purchasedSeats = purchasedSeatsOf(inventory);
-    await db
-      .insert(snapshots)
-      .values({
-        tenantId,
-        day,
-        totalMonthlySpendCents,
-        totalMonthlyWasteCents,
-        purchasedSeats,
-        assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
-        bySku: bySkuOf(inventory),
-      })
-      .onConflictDoUpdate({
-        target: [snapshots.tenantId, snapshots.day],
-        set: {
+      const day = now.toISOString().slice(0, 10);
+      const purchasedSeats = purchasedSeatsOf(inventory);
+      await tx
+        .insert(snapshots)
+        .values({
+          tenantId,
+          day,
           totalMonthlySpendCents,
           totalMonthlyWasteCents,
           purchasedSeats,
           assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
           bySku: bySkuOf(inventory),
-        },
-      });
-
-    // Directory capabilities describe the Microsoft connection; a workspace
-    // without one keeps its stored values untouched.
-    if (client) {
-      await db
-        .update(tenants)
-        .set({
-          hasP1,
-          concealedNames: concealmentSetting ?? joined.concealed,
-          activitySignal: joined.activitySignal,
-          copilotSignal: joined.copilotSignal,
-          usageAggregate: joined.usageAggregate ?? null,
-          copilotAggregate: joined.copilotAggregate ?? null,
-          ...(orgName && !tenant.isDemo ? { name: orgName } : {}),
         })
-        .where(eq(tenants.id, tenantId));
-    }
+        .onConflictDoUpdate({
+          target: [snapshots.tenantId, snapshots.day],
+          set: {
+            totalMonthlySpendCents,
+            totalMonthlyWasteCents,
+            purchasedSeats,
+            assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
+            bySku: bySkuOf(inventory),
+          },
+        });
+
+      // Directory capabilities describe the Microsoft connection; a workspace
+      // without one keeps its stored values untouched.
+      if (client) {
+        await tx
+          .update(tenants)
+          .set({
+            hasP1,
+            concealedNames: concealmentSetting ?? joined.concealed,
+            activitySignal: joined.activitySignal,
+            copilotSignal: joined.copilotSignal,
+            usageAggregate: joined.usageAggregate ?? null,
+            copilotAggregate: joined.copilotAggregate ?? null,
+            ...(orgName && !tenant.isDemo ? { name: orgName } : {}),
+          })
+          .where(eq(tenants.id, tenantId));
+      }
+    });
 
     const status: SyncRunStatus = steps.some((s) => s.status === "failed")
       ? "partial"
@@ -1182,11 +1276,17 @@ export const runSync = async (
     // The Microsoft connection authenticated and pulled data: clear any prior
     // credential error and stamp the verification time (no-op for tenants
     // without an msConnections row).
-    if (client && !tenant.isDemo) {
+    // Only the connection this run read: a replacement keeps its own state.
+    if (client && !tenant.isDemo && msConnAtRead) {
       await db
         .update(msConnections)
         .set({ lastVerifiedAt: new Date(), lastVerifyError: null })
-        .where(eq(msConnections.tenantId, tenantId));
+        .where(
+          and(
+            eq(msConnections.tenantId, tenantId),
+            eq(msConnections.generation, msConnAtRead.generation),
+          ),
+        );
     }
     return { runId, status, steps };
   } catch (err) {
@@ -1195,14 +1295,19 @@ export const runSync = async (
     // managed re-consent needed): record a clean, non-leaking marker on the
     // connection so the dashboard can prompt a re-enter, without crashing the
     // run. The nightly cron catches per-tenant and continues.
-    if (!tenant.isDemo && isAppAuthError(message)) {
+    if (!tenant.isDemo && msConnAtRead && isAppAuthError(message)) {
       await db
         .update(msConnections)
         .set({
           lastVerifyError:
             "Microsoft rejected the stored credential (it may be expired or revoked). Re-enter it on the Microsoft connector page.",
         })
-        .where(eq(msConnections.tenantId, tenantId));
+        .where(
+          and(
+            eq(msConnections.tenantId, tenantId),
+            eq(msConnections.generation, msConnAtRead.generation),
+          ),
+        );
     }
     await log.settled();
     await db
@@ -1230,25 +1335,31 @@ export const runSync = async (
  * price book edits so impact figures update without a Graph round trip.
  * Falls back gracefully when the tenant has never synced.
  */
-export const runAnalysis = async (tenantId: string): Promise<void> => {
-  const tenant = await db.query.tenants.findFirst({
+export const runAnalysis = (tenantId: string): Promise<void> =>
+  // Reads and writes under the source lock, so a disconnect is either fully
+  // before this analysis (its rows are gone) or fully after it (it deletes
+  // the findings written here).
+  withSourceLock(tenantId, (tx) => analyzeStored(tx, tenantId));
+
+const analyzeStored = async (tx: Tx, tenantId: string): Promise<void> => {
+  const tenant = await tx.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
   });
   if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
 
   const [skuRows, userRows, priceRows, adobeRows, saasSeatRows] =
     await Promise.all([
-      db.query.tenantSkus.findMany({
+      tx.query.tenantSkus.findMany({
         where: eq(tenantSkus.tenantId, tenantId),
       }),
-      db.query.tenantUsers.findMany({
+      tx.query.tenantUsers.findMany({
         where: eq(tenantUsers.tenantId, tenantId),
       }),
-      db.query.priceBook.findMany({ where: eq(priceBook.tenantId, tenantId) }),
-      db.query.adobeUsers.findMany({
+      tx.query.priceBook.findMany({ where: eq(priceBook.tenantId, tenantId) }),
+      tx.query.adobeUsers.findMany({
         where: eq(adobeUsersTable.tenantId, tenantId),
       }),
-      db.query.saasSeats.findMany({
+      tx.query.saasSeats.findMany({
         where: eq(saasSeatsTable.tenantId, tenantId),
       }),
     ]);
@@ -1340,13 +1451,14 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     tenantId,
     newFindings.concat(adobeFindings, saasFindings),
     now,
+    { tx },
   );
 
   const totalMonthlySpendCents = skuRows.reduce(
     (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
     0,
   );
-  const openRows = await db.query.findings.findMany({
+  const openRows = await tx.query.findings.findMany({
     where: and(
       eq(findings.tenantId, tenantId),
       inArray(findings.status, ["open", "acknowledged"]),
@@ -1359,7 +1471,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
   const day = now.toISOString().slice(0, 10);
   const purchasedSeats = purchasedSeatsOf(skuRows);
   const assignedSeats = skuRows.reduce((s, x) => s + x.consumedUnits, 0);
-  await db
+  await tx
     .insert(snapshots)
     .values({
       tenantId,
@@ -1399,12 +1511,29 @@ export type InsertedFinding = {
  */
 export const diffFindings = async (
   tenantId: string,
-  newFindings: WasteFinding[],
+  computed: WasteFinding[],
   now: Date,
+  {
+    tx: outer,
+    keep,
+  }: {
+    /** Run inside this transaction, which already holds the source lock. */
+    tx?: Tx;
+    /**
+     * Under the lock: which computed findings may still be written; null
+     * writes none and leaves the stored findings untouched.
+     */
+    keep?: (tx: Tx) => Promise<((f: WasteFinding) => boolean) | null>;
+  } = {},
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
-  // (some inserted/reopened, others never resolved) for the tenant.
-  return db.transaction(async (tx) => {
+  // (some inserted/reopened, others never resolved) for the tenant. It holds
+  // the source lock, so findings of a disconnected source are not written
+  // back (see connectorPurge).
+  const run = async (tx: Tx): Promise<InsertedFinding[]> => {
+    const filter = keep ? await keep(tx) : (f: WasteFinding) => Boolean(f);
+    if (filter === null) return [];
+    const newFindings = computed.filter(filter);
     const existing = await tx.query.findings.findMany({
       where: eq(findings.tenantId, tenantId),
     });
@@ -1478,7 +1607,10 @@ export const diffFindings = async (
               : {}),
           })
           .where(eq(findings.id, f.id));
-      } else if (f.status !== "resolved") {
+      } else if (f.status !== "resolved" && filter(f)) {
+        // A finding of a source that failed the check (its credentials were
+        // replaced during the run, say) is left as it is: this run did not
+        // read that source under its current connection.
         await tx
           .update(findings)
           .set({ status: "resolved", resolvedAt: now })
@@ -1487,7 +1619,8 @@ export const diffFindings = async (
     }
 
     return inserted;
-  });
+  };
+  return outer ? run(outer) : withSourceLock(tenantId, run);
 };
 
 /**

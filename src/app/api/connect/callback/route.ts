@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt } from "drizzle-orm";
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after, type NextRequest } from "next/server";
@@ -10,6 +10,7 @@ import {
   workspaceCookieOptions,
 } from "~/server/access";
 import { auth } from "~/server/auth";
+import { withSourceLock } from "~/server/connectorPurge";
 import { db } from "~/server/db";
 import { consentStates, msConnections, tenants } from "~/server/db/schema";
 import { verifyManagedConsent } from "~/server/graph/msGraph";
@@ -244,7 +245,16 @@ export const GET = async (req: NextRequest) => {
     );
   }
 
-  await db.transaction(async (tx) => {
+  // Under the source lock with a new generation, so a sync that read under a
+  // previous connection never writes its data (see connectorPurge).
+  await withSourceLock(target.id, async (tx) => {
+    await tx
+      .insert(msConnections)
+      .values({ tenantId: target.id, ...managedConnection })
+      .onConflictDoUpdate({
+        target: msConnections.tenantId,
+        set: { ...managedConnection, generation: sql`gen_random_uuid()` },
+      });
     await tx
       .update(tenants)
       .set({
@@ -252,13 +262,6 @@ export const GET = async (req: NextRequest) => {
         consentedAt: new Date(),
       })
       .where(eq(tenants.id, target.id));
-    await tx
-      .insert(msConnections)
-      .values({ tenantId: target.id, ...managedConnection })
-      .onConflictDoUpdate({
-        target: msConnections.tenantId,
-        set: managedConnection,
-      });
   });
   const tenantId = target.id;
 

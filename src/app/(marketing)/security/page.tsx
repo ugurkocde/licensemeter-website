@@ -13,7 +13,7 @@ import { SecurityView } from "./SecurityView";
 export const metadata: Metadata = {
   title: "Security",
   description:
-    "How LicenseMeter accesses Microsoft 365 tenants: read-only Graph permissions for the core app, one separately consented write permission for optional Software Metering, EU-hosted data storage, deletion on disconnect, named subprocessors.",
+    "How LicenseMeter accesses Microsoft 365 tenants: read-only Graph permissions for the core app, one separately consented write permission for optional Software Metering, EU-hosted data storage, workspace deletion at any time, named subprocessors.",
   alternates: {
     canonical: "/security",
     languages: {

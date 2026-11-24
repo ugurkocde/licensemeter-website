@@ -453,6 +453,137 @@ describe("runSync against a deleted tenant", () => {
   });
 });
 
+describe("runSync when Microsoft is disconnected mid-flight", () => {
+  it("writes nothing for Microsoft and leaves a CSV import made in between intact", async () => {
+    await seedTenant({ tid: TID });
+    const { purgeMicrosoftSource } = await import("~/server/connectorPurge");
+    // The owner disconnects Microsoft and an admin imports a CSV directory
+    // right after the run has loaded the tenant row (tid still set), before
+    // it reads anything else.
+    const findTenant = currentDb.query.tenants.findFirst.bind(
+      currentDb.query.tenants,
+    );
+    vi.spyOn(currentDb.query.tenants, "findFirst").mockImplementationOnce(
+      (async (...args: Parameters<typeof findTenant>) => {
+        const row = await findTenant(...args);
+        await purgeMicrosoftSource(TENANT_ID);
+        await currentDb.insert(schema.tenantSkus).values({
+          tenantId: TENANT_ID,
+          skuId: "sku-csv",
+          skuPartNumber: "SPE_E5",
+        });
+        await currentDb.insert(schema.tenantUsers).values({
+          tenantId: TENANT_ID,
+          graphId: "csv-user-1",
+          upn: "csv@contoso.test",
+        });
+        return row;
+      }) as unknown as typeof findTenant,
+    );
+    const client = makeGraphClient();
+
+    await runSync(TENANT_ID, { client });
+
+    const skus = await currentDb.select().from(schema.tenantSkus);
+    const users = await currentDb.select().from(schema.tenantUsers);
+    expect(skus.map((r) => r.skuId)).toEqual(["sku-csv"]);
+    expect(users.map((r) => r.graphId)).toEqual(["csv-user-1"]);
+    expect(await countRows(schema.snapshots)).toBe(0);
+    const tenant = await currentDb.query.tenants.findFirst({
+      where: eq(schema.tenants.id, TENANT_ID),
+    });
+    expect(tenant?.tid).toBeNull();
+    expect(tenant?.activitySignal).toBeNull();
+    const findingRows = await currentDb.select().from(schema.findings);
+    expect(findingRows.some((f) => f.graphUserId === GRAPH_USER.id)).toBe(
+      false,
+    );
+  });
+});
+
+describe("runSync when a connector is reconnected mid-flight", () => {
+  it("does not write what it read under the previous connection", async () => {
+    await seedTenant({ tid: null, consentedAt: null });
+    const { purgeSaasSource } = await import("~/server/connectorPurge");
+    const zoom = {
+      tenantId: TENANT_ID,
+      provider: "zoom" as const,
+      orgRef: "acct-1",
+      clientId: "client",
+      secretEnc: "enc",
+    };
+    await currentDb.insert(schema.saasConnections).values(zoom);
+    // While the run reads Zoom, the admin disconnects it and connects the
+    // same account again: same orgRef, new generation.
+    const getSeats = vi.fn(async () => {
+      await purgeSaasSource(TENANT_ID, "zoom");
+      await currentDb.insert(schema.saasConnections).values(zoom);
+      return [
+        {
+          email: "zoe@contoso.test",
+          displayName: "Zoe",
+          status: "active",
+          products: ["Licensed"],
+          lastActiveAt: new Date(Date.now() - 200 * 24 * 60 * 60 * 1000),
+        },
+      ];
+    });
+    buildSaasClientMock.mockImplementation(() => Promise.resolve({ getSeats }));
+
+    await runSync(TENANT_ID);
+
+    expect(await countRows(schema.saasSeats)).toBe(0);
+    expect(await countRows(schema.findings)).toBe(0);
+    const prices = await currentDb.select().from(schema.priceBook);
+    expect(prices.some((p) => p.skuId.startsWith("zoom:"))).toBe(false);
+    // The new connection itself is kept, and the old run does not stamp it.
+    const conns = await currentDb.select().from(schema.saasConnections);
+    expect(conns).toHaveLength(1);
+    expect(conns[0]!.lastSyncStatus).toBeNull();
+  });
+});
+
+describe("runSync when credentials are replaced mid-flight", () => {
+  it("leaves the connector's existing findings open", async () => {
+    await seedTenant({ tid: null, consentedAt: null });
+    await currentDb.insert(schema.saasConnections).values({
+      tenantId: TENANT_ID,
+      provider: "zoom",
+      orgRef: "acct-1",
+      clientId: "client",
+      secretEnc: "enc",
+    });
+    await currentDb.insert(schema.saasSeats).values({
+      tenantId: TENANT_ID,
+      provider: "zoom",
+      email: "zoe@contoso.test",
+    });
+    await currentDb.insert(schema.findings).values({
+      tenantId: TENANT_ID,
+      dedupeKey: "saas_inactive|zoom:zoe@contoso.test|-",
+      rule: "saas_inactive",
+      title: "Zoom seat unused",
+      detail: { provider: "zoom" },
+    });
+    // The admin replaces the Zoom credentials while the run reads Zoom; the
+    // run then sees no seats at all.
+    const getSeats = vi.fn(async () => {
+      await currentDb
+        .update(schema.saasConnections)
+        .set({ secretEnc: "enc-2", generation: sql`gen_random_uuid()` })
+        .where(eq(schema.saasConnections.tenantId, TENANT_ID));
+      return [];
+    });
+    buildSaasClientMock.mockImplementation(() => Promise.resolve({ getSeats }));
+
+    await runSync(TENANT_ID);
+
+    const [kept] = await currentDb.select().from(schema.findings);
+    expect(kept?.status).toBe("open");
+    expect(await countRows(schema.saasSeats)).toBe(1);
+  });
+});
+
 describe("runSync without a Microsoft connection", () => {
   it("rolls back earlier seat batches when a later batch fails", async () => {
     await seedTenant({ tid: null, consentedAt: null });
