@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "~/server/db";
 import { findings, savingsLedger, tenants } from "~/server/db/schema";
 import type { ResolutionReason } from "~/server/types";
@@ -96,9 +96,10 @@ const ledgerSnapshot = {
 export async function loadRecentSavings(
   tenantId: string,
   currency: string,
-  now = new Date(),
+  cutoff?: Date,
   days = 30,
 ) {
+  const now = cutoff ?? new Date();
   const since = new Date(now.getTime() - days * DAY_MS);
   const [[active], resolved] = await db.transaction(
     async (tx) =>
@@ -115,7 +116,18 @@ export async function loadRecentSavings(
               eq(savingsLedger.currency, currency),
               gte(savingsLedger.realizedAt, since),
               lte(savingsLedger.realizedAt, now),
-              isNull(savingsLedger.reversedAt),
+              cutoff
+                ? and(
+                    or(
+                      isNull(savingsLedger.reversedAt),
+                      gt(savingsLedger.reversedAt, cutoff),
+                    ),
+                    or(
+                      isNull(savingsLedger.replacesEntryId),
+                      lte(savingsLedger.createdAt, cutoff),
+                    ),
+                  )
+                : isNull(savingsLedger.reversedAt),
             ),
           ),
         await noLongerFlagged(tx, tenantId, since, now),

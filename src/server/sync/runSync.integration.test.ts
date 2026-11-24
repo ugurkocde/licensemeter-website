@@ -874,11 +874,15 @@ it("reverses a returned connector seat without a new finding only after a succes
     ...member,
     provider: "zoom",
     tenantId: TENANT_ID,
+    syncedAt: new Date("2026-01-01T00:00:00Z"),
   });
   expect((await runSync(TENANT_ID)).steps).toContainEqual(
     expect.objectContaining({ step: "zoomSeats", status: "warning" }),
   );
   expect(await currentDb.query.savingsLedger.findMany()).toEqual([original]);
+  expect(await currentDb.query.saasSeats.findFirst()).toMatchObject({
+    syncedAt: new Date("2026-01-01T00:00:00Z"),
+  });
   expect(await currentDb.query.findings.findMany()).toEqual([
     expect.objectContaining({ status: "resolved", rule: "saas_inactive" }),
   ]);
@@ -892,4 +896,143 @@ it("reverses a returned connector seat without a new finding only after a succes
   const entries = await currentDb.query.savingsLedger.findMany();
   expect(entries.map((entry) => entry.id)).toEqual([original!.id]);
   expect(entries[0]?.reversedAt).toBeInstanceOf(Date);
+});
+
+it("reverses connector credits for only the returned product, with a subject fallback for legacy credits", async () => {
+  await seedTenant({ tid: null, consentedAt: null });
+  await currentDb.insert(schema.saasConnections).values({
+    tenantId: TENANT_ID,
+    provider: "zoom",
+    orgRef: "fixture",
+    secretEnc: "enc",
+  });
+  await currentDb.insert(schema.priceBook).values([
+    { tenantId: TENANT_ID, skuId: "zoom:Licensed", monthlyPriceCents: 1500 },
+    { tenantId: TENANT_ID, skuId: "zoom:Add-on", monthlyPriceCents: 900 },
+  ]);
+  const inactive: SaasSeat = {
+    email: "member@example.test",
+    displayName: null,
+    status: "active",
+    products: ["Licensed", "Add-on"],
+    lastActiveAt: new Date(Date.now() - 200 * 86_400_000),
+  };
+  const getSeats = vi
+    .fn<() => Promise<SaasSeat[]>>()
+    .mockResolvedValueOnce([inactive])
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([{ ...inactive, products: ["LICENSED"] }])
+    .mockResolvedValueOnce([
+      { ...inactive, products: ["Add-on"], lastActiveAt: new Date() },
+    ]);
+  buildSaasClientMock.mockResolvedValue({ getSeats });
+
+  await runSync(TENANT_ID);
+  await runSync(TENANT_ID);
+  const entries = await currentDb.query.savingsLedger.findMany();
+  expect(entries).toHaveLength(2);
+  expect(entries).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        product: "licensed",
+        seats: 1,
+        monthlyCents: 1500,
+      }),
+      expect.objectContaining({
+        product: "add-on",
+        seats: 1,
+        monthlyCents: 900,
+      }),
+    ]),
+  );
+  const [first] = entries;
+  const [legacy] = await currentDb
+    .insert(schema.savingsLedger)
+    .values({
+      ...first!,
+      id: undefined,
+      product: null,
+      findingId: null,
+    })
+    .returning({ id: schema.savingsLedger.id });
+
+  await runSync(TENANT_ID);
+  expect(await currentDb.query.findings.findMany()).toEqual([
+    expect.objectContaining({ id: first!.findingId, status: "open" }),
+  ]);
+  const afterReturn = await currentDb.query.savingsLedger.findMany();
+  const active = afterReturn.filter(({ reversedAt }) => reversedAt === null);
+  expect(active.map(({ product }) => product)).toEqual(["add-on"]);
+  for (const id of [
+    legacy!.id,
+    entries.find(({ product }) => product === "licensed")!.id,
+  ]) {
+    expect(
+      afterReturn.find((entry) => entry.id === id)?.reversedAt,
+    ).toBeInstanceOf(Date);
+  }
+
+  await runSync(TENANT_ID);
+  expect(
+    (await currentDb.query.savingsLedger.findMany()).find(
+      ({ product }) => product === "add-on",
+    )?.reversedAt,
+  ).toBeInstanceOf(Date);
+});
+
+it("persists and verifies a successful connector fetch even when its status write fails", async () => {
+  await seedTenant({ tid: null, consentedAt: null });
+  await currentDb.insert(schema.saasConnections).values({
+    tenantId: TENANT_ID,
+    provider: "zoom",
+    orgRef: "fixture",
+    secretEnc: "enc",
+  });
+  await currentDb.insert(schema.priceBook).values({
+    tenantId: TENANT_ID,
+    skuId: "zoom:Licensed",
+    monthlyPriceCents: 1500,
+  });
+  const getSeats = vi
+    .fn<() => Promise<SaasSeat[]>>()
+    .mockResolvedValueOnce([
+      {
+        email: "member@example.test",
+        displayName: null,
+        status: "active",
+        products: ["Licensed"],
+        lastActiveAt: new Date(Date.now() - 200 * 86_400_000),
+      },
+    ])
+    .mockResolvedValueOnce([]);
+  buildSaasClientMock.mockResolvedValue({ getSeats });
+  await runSync(TENANT_ID);
+  expect(await countRows(schema.saasSeats)).toBe(1);
+
+  await currentDb.execute(
+    sql`alter table saas_connections add constraint fixture_reject_status check (last_sync_status is distinct from 'ok') not valid`,
+  );
+  const warn = vi.spyOn(console, "warn").mockReturnValue(undefined);
+  try {
+    expect(
+      (await runSync(TENANT_ID)).steps.filter(
+        ({ step }) => step === "zoomSeats",
+      ),
+    ).toEqual([expect.objectContaining({ status: "ok", count: 0 })]);
+    expect(warn).toHaveBeenCalledWith(
+      "[sync] connector status write failed",
+      "zoom",
+      expect.any(String),
+    );
+  } finally {
+    warn.mockRestore();
+  }
+  expect(await countRows(schema.saasSeats)).toBe(0);
+  expect(await currentDb.query.savingsLedger.findMany()).toEqual([
+    expect.objectContaining({
+      product: "licensed",
+      reason: "license_removed",
+      monthlyCents: 1500,
+    }),
+  ]);
 });

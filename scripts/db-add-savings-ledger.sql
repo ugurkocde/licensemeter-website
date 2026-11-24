@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS public."savings_ledger" (
 	"rule" text NOT NULL,
 	"vendor" text NOT NULL,
 	"sku_id" text,
+	"product" text,
 	"seats" integer NOT NULL,
 	"subject_key" text,
 	"reason" text NOT NULL,
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS public."savings_ledger" (
 );
 
 ALTER TABLE public."savings_ledger" ADD COLUMN IF NOT EXISTS "replaces_entry_id" uuid;
+ALTER TABLE public."savings_ledger" ADD COLUMN IF NOT EXISTS "product" text;
 
 ALTER TABLE "findings" ADD COLUMN IF NOT EXISTS "resolution_reason" text;
 CREATE INDEX IF NOT EXISTS "savings_ledger_tenant_realized_idx" ON "savings_ledger" USING btree ("tenant_id","realized_at");

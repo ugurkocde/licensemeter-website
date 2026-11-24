@@ -50,6 +50,7 @@ export type ReclaimedSeats = {
   monthlyCents: number;
   seats: number;
   skuId: string | null;
+  product?: string;
 };
 
 type Resolution =
@@ -57,6 +58,9 @@ type Resolution =
   | { reason: SavingsReason; entries: ReclaimedSeats[] };
 
 export const normalizedEmail = (email: string) => email.trim().toLowerCase();
+
+export const normalizedProduct = (product: string) =>
+  product.trim().toLowerCase();
 
 export const findingEmail = (f: Finding) =>
   typeof f.detail.upn === "string" ? normalizedEmail(f.detail.upn) : undefined;
@@ -70,6 +74,8 @@ const strings = (value: unknown): string[] =>
   Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+
+export const findingProducts = (f: Finding) => strings(f.detail.products);
 
 export const findingLicenses = (f: Finding) => {
   const results = new Map<string, number>();
@@ -159,7 +165,8 @@ export function resolutionOf(state: WorkspaceState) {
         return seat ? [seat] : [];
       });
       const seat = matchingSeats[0];
-      const products = [...new Set(strings(d.products))];
+      const products = findingProducts(f);
+      const productKeys = new Set(products.map(normalizedProduct));
       const isImport = CONNECTORS.some(
         (connector) =>
           connector.provider === source && connector.kind === "import",
@@ -168,7 +175,9 @@ export function resolutionOf(state: WorkspaceState) {
         (row) =>
           isImport ||
           (row.status === "active" &&
-            row.products.some((product) => products.includes(product))),
+            row.products.some((product) =>
+              productKeys.has(normalizedProduct(product)),
+            )),
       );
       if (
         !stillHeld &&
@@ -176,18 +185,23 @@ export function resolutionOf(state: WorkspaceState) {
         verifiedSources?.has(source) &&
         products.length > 0
       ) {
-        const priced = products
-          .map((product) => prices[`${source}:${product}`] ?? 0)
-          .filter((cents) => cents > 0);
-        const monthlyCents = Math.min(
-          f.monthlyImpactCents,
-          priced.reduce((sum, cents) => sum + cents, 0),
-        );
-        if (monthlyCents > 0 && (source === "adobe" || billsPerSeat(source))) {
-          return {
-            reason: "license_removed",
-            entries: [{ monthlyCents, seats: priced.length, skuId: null }],
-          };
+        if (source === "adobe" || billsPerSeat(source)) {
+          const entries: ReclaimedSeats[] = [];
+          const credited = new Set<string>();
+          let remaining = f.monthlyImpactCents;
+          for (const name of products) {
+            const product = normalizedProduct(name);
+            const monthlyCents = Math.min(
+              remaining,
+              prices[`${source}:${name}`] ?? 0,
+            );
+            if (!product || credited.has(product) || monthlyCents <= 0)
+              continue;
+            entries.push({ monthlyCents, seats: 1, skuId: null, product });
+            credited.add(product);
+            remaining -= monthlyCents;
+          }
+          if (entries.length) return { reason: "license_removed", entries };
         }
       }
       if (seat && seatExcluded(seat)) return { reason: "excluded" };

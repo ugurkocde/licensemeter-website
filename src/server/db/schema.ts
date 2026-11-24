@@ -637,6 +637,7 @@ export const savingsLedger = pgTable(
     rule: text("rule").$type<WasteRuleId>().notNull(),
     vendor: text("vendor").notNull(),
     skuId: text("sku_id"),
+    product: text("product"),
     seats: integer("seats").notNull(),
     subjectKey: text("subject_key"),
     replacesEntryId: uuid("replaces_entry_id"),

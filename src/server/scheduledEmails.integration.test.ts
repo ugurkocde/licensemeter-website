@@ -230,7 +230,7 @@ describe("runDigestJob", () => {
     }
   });
 
-  it("uses the reclaimed ledger count with the reclaimed amount", async () => {
+  it("uses the reclaimed count and amount active at the digest cutoff", async () => {
     await seedMember("admin@example.test");
     await seedFinding();
     await currentDb.insert(schema.findings).values(
@@ -245,17 +245,31 @@ describe("runDigestJob", () => {
         resolvedAt: NOW,
       })),
     );
-    await currentDb.insert(schema.savingsLedger).values({
+    const credit = {
       tenantId: TENANT_ID,
-      rule: "shelfware",
+      rule: "shelfware" as const,
       vendor: "Microsoft",
       skuId: "05e9a617-0261-4cee-bb44-138d3ef5d965",
       seats: 1,
       monthlyCents: 3670,
-      reason: "seats_reduced",
+      reason: "seats_reduced" as const,
       currency: "EUR",
       realizedAt: NOW,
-    });
+    };
+    const afterCutoff = new Date(NOW.getTime() + 1);
+    const [original] = await currentDb
+      .insert(schema.savingsLedger)
+      .values({ ...credit, reversedAt: afterCutoff })
+      .returning({ id: schema.savingsLedger.id });
+    await currentDb.insert(schema.savingsLedger).values([
+      { ...credit, reversedAt: NOW },
+      {
+        ...credit,
+        monthlyCents: 1200,
+        replacesEntryId: original!.id,
+        createdAt: afterCutoff,
+      },
+    ]);
     expect(await runDigestJob({ now: NOW })).toMatchObject({ sent: 1 });
     expect(sendEmailMock.mock.calls[0]?.[0].html).toContain("1 reclaimed");
     expect(sendEmailMock.mock.calls[0]?.[0].html).toMatch(/36[.,]70/);

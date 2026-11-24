@@ -1188,6 +1188,209 @@ it("commits a partially invalid paste without awarding a removal credit", async 
   expect(await entriesFor()).toEqual([]);
 });
 
+it.each([
+  "oversized paste",
+  "unclosed quote",
+  "currency change",
+  "ledger failure",
+])(
+  "preserves the roster and savings when a replacement import hits a %s",
+  async (failure) => {
+    const { importSeats } = await import("~/server/actions");
+    await currentDb.insert(schema.priceBook).values({
+      tenantId: TENANT,
+      skuId: "chatgpt:Plan",
+      monthlyPriceCents: 2500,
+    });
+    const form = new FormData();
+    form.set("provider", "chatgpt");
+    form.set(
+      "csv",
+      "Email,Plan,Last active\nmember@example.test,Plan,2024-01-01",
+    );
+    expect(await importSeats(form)).toMatchObject({ ok: true, imported: 1 });
+    const original = await currentDb.query.saasSeats.findMany();
+    expect(await openFindings()).toEqual([
+      expect.objectContaining({ rule: "saas_inactive" }),
+    ]);
+
+    const replacement = "Email,Plan\nreplacement@example.test,Other";
+    form.set("csv", replacement);
+    if (failure === "oversized paste") {
+      form.set("csv", replacement + "x".repeat(1_000_000));
+      expect(await importSeats(form)).toMatchObject({
+        ok: false,
+        error:
+          "The paste is too large. Import the complete member export in one paste.",
+      });
+    } else if (failure === "unclosed quote") {
+      form.set(
+        "csv",
+        'Email,Plan\nreplacement@example.test,"Other\nmember@example.test,Plan',
+      );
+      expect(await importSeats(form)).toMatchObject({
+        ok: false,
+        error:
+          "The member export contains an unclosed quote. Paste the complete export again.",
+      });
+    } else if (failure === "currency change") {
+      const realTransaction = currentDb.transaction.bind(currentDb);
+      const transaction = vi
+        .spyOn(currentDb, "transaction")
+        .mockImplementationOnce(async (fn, config) => {
+          await currentDb.update(schema.tenants).set({ currency: "USD" });
+          return realTransaction(fn, config);
+        });
+      try {
+        expect(await importSeats(form)).toMatchObject({
+          ok: false,
+          error: "The workspace currency changed. Retry the import.",
+        });
+      } finally {
+        transaction.mockRestore();
+      }
+    } else {
+      await currentDb.execute(
+        sql`alter table savings_ledger add constraint fixture_reject_credit check (false)`,
+      );
+      await expect(importSeats(form)).rejects.toThrow("insert into");
+      await currentDb.execute(
+        sql`alter table savings_ledger drop constraint fixture_reject_credit`,
+      );
+    }
+
+    expect(await currentDb.query.saasSeats.findMany()).toEqual(original);
+    expect(await openFindings()).toEqual([
+      expect.objectContaining({ rule: "saas_inactive" }),
+    ]);
+    expect(await currentDb.query.priceBook.findMany()).toEqual([
+      expect.objectContaining({ skuId: "chatgpt:Plan" }),
+    ]);
+    expect(await entriesFor()).toEqual([]);
+
+    form.set("csv", replacement);
+    expect(await importSeats(form)).toMatchObject({ ok: true, imported: 1 });
+    expect(await importSeats(form)).toMatchObject({ ok: true, imported: 1 });
+    expect(await currentDb.query.saasSeats.findMany()).toEqual([
+      expect.objectContaining({ email: "replacement@example.test" }),
+    ]);
+    expect(await activeEntries()).toEqual([
+      expect.objectContaining({
+        currency: failure === "currency change" ? "USD" : "EUR",
+        product: "plan",
+        reason: "license_removed",
+        seats: 1,
+        monthlyCents: 2500,
+      }),
+    ]);
+  },
+);
+
+it("reverses only the returned SKU when a multi-license finding reopens", async () => {
+  const disabled = graphUser("member", "member@example.test", {
+    accountEnabled: false,
+    assignedLicenses: [
+      { skuId: E3, disabledPlans: [] },
+      { skuId: INTUNE_SUITE, disabledPlans: [] },
+    ],
+  });
+  const run = async (e3Assigned: boolean, intuneAssigned: boolean) =>
+    runSync(TENANT, {
+      client: client(
+        [
+          sku(E3, "SPE_E3", 2, Number(e3Assigned)),
+          sku(
+            INTUNE_SUITE,
+            "Microsoft_Intune_Suite",
+            2,
+            Number(intuneAssigned),
+          ),
+        ],
+        {},
+        [
+          {
+            ...disabled,
+            assignedLicenses: disabled.assignedLicenses.filter(({ skuId }) =>
+              skuId === E3 ? e3Assigned : intuneAssigned,
+            ),
+          },
+        ],
+      ),
+    });
+  await run(true, true);
+  const finding = (await openFindings()).find(
+    ({ rule }) => rule === "disabled_account_with_license",
+  )!;
+  await run(false, false);
+  expect(await activeEntries()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ findingId: finding.id, skuId: E3 }),
+      expect.objectContaining({ findingId: finding.id, skuId: INTUNE_SUITE }),
+    ]),
+  );
+  await run(true, false);
+  expect(await openFindings()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: finding.id, status: "open" }),
+    ]),
+  );
+  expect(await activeEntries()).toEqual([
+    expect.objectContaining({ findingId: finding.id, skuId: INTUNE_SUITE }),
+  ]);
+  expect(
+    (await entriesFor()).find(({ skuId }) => skuId === E3)?.reversedAt,
+  ).toBeInstanceOf(Date);
+});
+
+it.each([8, 10])(
+  "credits flagged removals from a fully assigned 10-seat SKU only if paid seats drop to %i",
+  async (paid) => {
+    const retained = Array.from({ length: 8 }, (_, i) =>
+      graphUser(`retained-${i}`, `retained-${i}@example.test`),
+    );
+    const disabled = Array.from({ length: 2 }, (_, i) =>
+      graphUser(`disabled-${i}`, `disabled-${i}@example.test`, {
+        accountEnabled: false,
+      }),
+    );
+    await runSync(TENANT, {
+      client: client([sku(E3, "SPE_E3", 10, 10)], {}, [
+        ...retained,
+        ...disabled,
+      ]),
+    });
+    expect((await openFindings()).map(({ rule }) => rule)).toEqual([
+      "disabled_account_with_license",
+      "disabled_account_with_license",
+    ]);
+
+    const replacements =
+      paid === 10
+        ? [
+            graphUser("replacement-1", "replacement-1@example.test"),
+            graphUser("replacement-2", "replacement-2@example.test"),
+          ]
+        : [];
+    const after = client([sku(E3, "SPE_E3", paid, paid)], {}, [
+      ...retained,
+      ...replacements,
+    ]);
+    await runSync(TENANT, { client: after });
+    await runSync(TENANT, { client: after });
+    const entries = await activeEntries();
+    expect(entries).toHaveLength(10 - paid);
+    for (const entry of entries) {
+      expect(entry).toMatchObject({
+        skuId: E3,
+        seats: 1,
+        reason: "seats_reduced",
+        monthlyCents: 3670,
+      });
+    }
+    expect(await entriesFor()).toHaveLength(10 - paid);
+  },
+);
+
 it("counts a same-sync reassignment under No seat released using a read-only ledger snapshot", async () => {
   const { loadRecentSavings, loadSavingsLedger, RESOLUTION_LABELS } =
     await import("~/server/savings/ledger");

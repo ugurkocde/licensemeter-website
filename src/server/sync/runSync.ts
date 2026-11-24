@@ -43,6 +43,7 @@ import {
   IMPORT_PROVIDERS,
   SAAS_PROVIDERS,
   type AiSpendClient,
+  type SaasClient,
 } from "~/server/saas/registry";
 import { decryptSecret, secretAad } from "~/server/crypto";
 import type { AdobeUser, SaasProvider, SaasSeat } from "~/server/types";
@@ -618,6 +619,7 @@ export const runSync = async (
     for (const provider of activeSaas) {
       const conn = saasConns.find((c) => c.provider === provider);
       const started = Date.now();
+      let live: { client: SaasClient; seats: SaasSeat[] } | undefined;
       try {
         if (outOfTime()) {
           throw new Error("Sync deadline reached; using stored data");
@@ -632,36 +634,10 @@ export const runSync = async (
                 secretAad(conn!.tenantId, conn!.provider, "secretEnc"),
               ),
             });
-        const seats = mergeSaasSeats(await saasClient.getSeats());
-        saasRows.set(provider, seats);
-        saasPersist.add(provider);
-        record({
-          step: `${provider}Seats`,
-          status: "ok",
-          count: seats.length,
-          durationMs: since(started),
-        });
-        if (conn) {
-          await db
-            .update(saasConnections)
-            .set({ lastSyncAt: now, lastSyncStatus: "ok" })
-            .where(
-              and(
-                eq(saasConnections.tenantId, tenantId),
-                eq(saasConnections.provider, provider),
-              ),
-            );
-        }
-        if (provider === "openai" || provider === "anthropic") {
-          await syncAiSpend(
-            tenantId,
-            provider,
-            saasClient as AiSpendClient,
-            now,
-            record,
-            deadline,
-          );
-        }
+        live = {
+          client: saasClient,
+          seats: mergeSaasSeats(await saasClient.getSeats()),
+        };
       } catch (err) {
         record({
           step: `${provider}Seats`,
@@ -685,17 +661,46 @@ export const runSync = async (
             lastActiveAt: r.lastActiveAt,
           })),
         );
-        if (conn) {
+      }
+      if (live) {
+        saasRows.set(provider, live.seats);
+        saasPersist.add(provider);
+        record({
+          step: `${provider}Seats`,
+          status: "ok",
+          count: live.seats.length,
+          durationMs: since(started),
+        });
+      }
+
+      if (conn) {
+        try {
           await db
             .update(saasConnections)
-            .set({ lastSyncAt: now, lastSyncStatus: "failed" })
+            .set({ lastSyncAt: now, lastSyncStatus: live ? "ok" : "failed" })
             .where(
               and(
                 eq(saasConnections.tenantId, tenantId),
                 eq(saasConnections.provider, provider),
               ),
             );
+        } catch (err) {
+          console.warn(
+            "[sync] connector status write failed",
+            provider,
+            opsErrorText(err),
+          );
         }
+      }
+      if (live && (provider === "openai" || provider === "anthropic")) {
+        await syncAiSpend(
+          tenantId,
+          provider,
+          live.client as AiSpendClient,
+          now,
+          record,
+          deadline,
+        );
       }
     }
 
@@ -1325,25 +1330,45 @@ export const runAnalysis = async (
     verifiedSources?: ReadonlySet<SeatSource>;
     previousInactiveDays?: number;
   } = {},
+  replacement?: {
+    expectedCurrency: string;
+    persist: (tx: SyncTransaction) => Promise<void>;
+  },
 ): Promise<void> => {
-  const tenant = await db.query.tenants.findFirst({
-    where: eq(tenants.id, tenantId),
-  });
-  if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
+  return db.transaction(async (tx) => {
+    const tenant = await lockAnalysisTenant(
+      tx,
+      tenantId,
+      replacement?.expectedCurrency,
+    );
+    if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
+    if (replacement) await replacement.persist(tx);
 
+    await analyzeStoredInventory(tx, tenant, changes);
+  });
+};
+
+async function analyzeStoredInventory(
+  tx: SyncTransaction,
+  tenant: typeof tenants.$inferSelect,
+  changes: NonNullable<Parameters<typeof runAnalysis>[1]>,
+) {
+  const tenantId = tenant.id;
   const [skuRows, userRows, priceRows, adobeRows, saasSeatRows] =
     await Promise.all([
-      db.query.tenantSkus.findMany({
+      tx.query.tenantSkus.findMany({
         where: eq(tenantSkus.tenantId, tenantId),
       }),
-      db.query.tenantUsers.findMany({
+      tx.query.tenantUsers.findMany({
         where: eq(tenantUsers.tenantId, tenantId),
       }),
-      db.query.priceBook.findMany({ where: eq(priceBook.tenantId, tenantId) }),
-      db.query.adobeUsers.findMany({
+      tx.query.priceBook.findMany({
+        where: eq(priceBook.tenantId, tenantId),
+      }),
+      tx.query.adobeUsers.findMany({
         where: eq(adobeUsersTable.tenantId, tenantId),
       }),
-      db.query.saasSeats.findMany({
+      tx.query.saasSeats.findMany({
         where: eq(saasSeatsTable.tenantId, tenantId),
       }),
     ]);
@@ -1434,8 +1459,10 @@ export const runAnalysis = async (
       }),
   );
 
-  await diffFindings(
+  await reconcileFindings(
+    tx,
     tenantId,
+    tenant,
     newFindings.concat(adobeFindings, saasFindings),
     now,
     {
@@ -1447,7 +1474,6 @@ export const runAnalysis = async (
       now,
       inactiveDays: tenant.inactiveDays,
       exclusions: tenant.findingExclusions,
-      analysisCurrency: tenant.currency,
       ...changes,
     },
   );
@@ -1456,7 +1482,7 @@ export const runAnalysis = async (
     { skus: skuRows, adobe: adobeRows, saas: groupSaasSeats(saasSeatRows) },
     priceRows,
   ).totalCents;
-  const openRows = await db.query.findings.findMany({
+  const openRows = await tx.query.findings.findMany({
     where: and(
       eq(findings.tenantId, tenantId),
       inArray(findings.status, ["open", "acknowledged"]),
@@ -1469,7 +1495,7 @@ export const runAnalysis = async (
   const day = now.toISOString().slice(0, 10);
   const purchasedSeats = purchasedSeatsOf(skuRows);
   const assignedSeats = skuRows.reduce((s, x) => s + x.consumedUnits, 0);
-  await db
+  await tx
     .insert(snapshots)
     .values({
       tenantId,
@@ -1490,7 +1516,7 @@ export const runAnalysis = async (
         bySku: bySkuOf(skuRows),
       },
     });
-};
+}
 
 /** A finding row genuinely inserted by diffFindings (first appearance, not a reopen/update). */
 export type InsertedFinding = {
@@ -1502,7 +1528,7 @@ export type InsertedFinding = {
 
 type SyncTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-class AnalysisCurrencyChanged extends Error {
+export class AnalysisCurrencyChanged extends Error {
   constructor() {
     super(
       "The workspace currency changed during analysis. Run sync again to refresh findings.",
@@ -1516,7 +1542,7 @@ async function lockAnalysisTenant(
   expectedCurrency?: string,
 ) {
   const [tenant] = await tx
-    .select({ currency: tenants.currency })
+    .select()
     .from(tenants)
     .where(eq(tenants.id, tenantId))
     .for("update");
@@ -1549,184 +1575,202 @@ export const diffFindings = async (
       state?.analysisCurrency,
     );
     if (persistInventory) await persistInventory(tx);
-    const classify = state && resolutionOf(state);
-    const entries: (typeof savingsLedger.$inferInsert)[] = [];
-    const reopened = new Set<string>();
-    const subjects = savingsSubjects(tenantId, state);
-    const existing = await tx.query.findings.findMany({
-      where: eq(findings.tenantId, tenantId),
-    });
-    const existingByKey = new Map(existing.map((f) => [f.dedupeKey, f]));
-    const newByKey = new Map(newFindings.map((f) => [f.dedupeKey, f]));
-    // A finding pseudonymised by the retention job stores the hash of a key
-    // that embedded an email address. When that seat shows up again it
-    // reopens the same row (and gets its plain key back below) instead of
-    // inserting a second one.
-    const newByStoredKey = new Map(
-      newFindings.map((f) => [pseudonymisedDedupeKey(f.dedupeKey), f]),
-    );
-
-    const toInsert = newFindings.filter(
-      (f) =>
-        !existingByKey.has(f.dedupeKey) &&
-        !existingByKey.has(pseudonymisedDedupeKey(f.dedupeKey)),
-    );
-    const opened = [...toInsert];
-    const inserted: InsertedFinding[] = [];
-    for (const batch of chunk(toInsert, 250)) {
-      const rows = await tx
-        .insert(findings)
-        .values(
-          batch.map((f) => ({
-            tenantId,
-            dedupeKey: f.dedupeKey,
-            rule: f.rule,
-            graphUserId: f.graphUserId,
-            skuId: f.skuId,
-            title: f.title,
-            detail: f.detail,
-            monthlyImpactCents: f.monthlyImpactCents,
-            status: "open" as const,
-            firstSeenAt: now,
-            lastSeenAt: now,
-          })),
-        )
-        .returning({
-          id: findings.id,
-          rule: findings.rule,
-          title: findings.title,
-          monthlyImpactCents: findings.monthlyImpactCents,
-        });
-      inserted.push(...rows);
-    }
-
-    for (const f of existing) {
-      if (f.lastSeenAt > now || (f.resolvedAt && f.resolvedAt > now)) continue;
-      // A row still holding the plain key takes precedence: the pseudonymised
-      // row of the same key then stays as it is, so the plain key is never
-      // assigned twice (findings_tenant_dedupe_idx).
-      const viaHash = f.dedupeKey.startsWith(PSEUDONYMISED_KEY_PREFIX)
-        ? newByStoredKey.get(f.dedupeKey)
-        : undefined;
-      const fresh =
-        newByKey.get(f.dedupeKey) ??
-        (viaHash && !existingByKey.has(viaHash.dedupeKey)
-          ? viaHash
-          : undefined);
-      // A purchase cut can reclaim some shelfware while the finding stays
-      // open. Classify against its previous detail before refreshing it.
-      const resolution =
-        f.status !== "resolved" && (!fresh || f.rule === "shelfware")
-          ? classify?.(f)
-          : undefined;
-      if (fresh) {
-        if (f.status === "resolved") {
-          reopened.add(f.id);
-          opened.push(fresh);
-        }
-        await tx
-          .update(findings)
-          .set({
-            dedupeKey: fresh.dedupeKey,
-            title: fresh.title,
-            detail: fresh.detail,
-            graphUserId: fresh.graphUserId,
-            monthlyImpactCents: fresh.monthlyImpactCents,
-            lastSeenAt: now,
-            ...(f.status === "resolved"
-              ? {
-                  status: "open" as const,
-                  resolvedAt: null,
-                  resolutionReason: null,
-                }
-              : {}),
-          })
-          .where(eq(findings.id, f.id));
-      } else if (
-        f.status !== "resolved" &&
-        !(preserveMicrosoft && findingSource(f) === "microsoft")
-      ) {
-        const reason = resolution?.reason ?? "other";
-        await tx
-          .update(findings)
-          .set({
-            status: "resolved",
-            resolvedAt: now,
-            resolutionReason: reason,
-          })
-          .where(eq(findings.id, f.id));
-      }
-      if (!resolution || !("entries" in resolution) || !lockedTenant) continue;
-      const source = findingSource(f);
-      // Keep pseudonymous keys for both the connector account and any known
-      // directory identity so a returned seat can be matched by either.
-      const subjectKeys =
-        resolution.reason === "license_removed" ? [...subjects(f)] : [];
-      if (resolution.reason === "license_removed" && subjectKeys.length === 0)
-        continue;
-      const subjectKey = subjectKeys.length > 0 ? subjectKeys.join(",") : null;
-      for (const entry of resolution.entries) {
-        if (entry.monthlyCents <= 0) continue;
-        // The ledger stores Microsoft product GUIDs and no imported labels.
-        if (
-          source === "microsoft" &&
-          !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(
-            entry.skuId ?? "",
-          )
-        )
-          continue;
-        entries.push({
-          ...entry,
-          tenantId,
-          findingId: f.id,
-          rule: f.rule,
-          vendor: vendorLabel(source),
-          subjectKey,
-          reason: resolution.reason,
-          currency: lockedTenant.currency,
-          realizedAt: now,
-        });
-      }
-    }
-
-    const active = await tx.query.savingsLedger.findMany({
-      where: and(
-        eq(savingsLedger.tenantId, tenantId),
-        isNull(savingsLedger.reversedAt),
-        lte(savingsLedger.realizedAt, now),
-      ),
-      orderBy: [asc(savingsLedger.realizedAt), asc(savingsLedger.id)],
-    });
-    const { reversed, additions } = reconcileSavings(
-      active,
-      entries,
-      opened,
-      reopened,
-      state,
-      subjects,
+    return reconcileFindings(
+      tx,
       tenantId,
+      lockedTenant,
+      newFindings,
       now,
+      state,
+      preserveMicrosoft,
     );
-    for (const batch of chunk([...reversed], 250)) {
-      await tx
-        .update(savingsLedger)
-        .set({
-          reversedAt: sql`greatest(${savingsLedger.realizedAt}, ${now.toISOString()}::timestamptz)`,
-        })
-        .where(
-          and(
-            eq(savingsLedger.tenantId, tenantId),
-            inArray(savingsLedger.id, batch),
-            isNull(savingsLedger.reversedAt),
-          ),
-        );
-    }
-    for (const batch of chunk(additions, 250))
-      await tx.insert(savingsLedger).values(batch);
-
-    return inserted;
   });
 };
+
+async function reconcileFindings(
+  tx: SyncTransaction,
+  tenantId: string,
+  lockedTenant: Pick<typeof tenants.$inferSelect, "currency"> | undefined,
+  newFindings: WasteFinding[],
+  now: Date,
+  state?: Parameters<typeof resolutionOf>[0],
+  preserveMicrosoft = false,
+): Promise<InsertedFinding[]> {
+  const classify = state && resolutionOf(state);
+  const entries: (typeof savingsLedger.$inferInsert)[] = [];
+  const reopened = new Set<string>();
+  const subjects = savingsSubjects(tenantId, state);
+  const existing = await tx.query.findings.findMany({
+    where: eq(findings.tenantId, tenantId),
+  });
+  const existingByKey = new Map(existing.map((f) => [f.dedupeKey, f]));
+  const newByKey = new Map(newFindings.map((f) => [f.dedupeKey, f]));
+  // A finding pseudonymised by the retention job stores the hash of a key
+  // that embedded an email address. When that seat shows up again it
+  // reopens the same row (and gets its plain key back below) instead of
+  // inserting a second one.
+  const newByStoredKey = new Map(
+    newFindings.map((f) => [pseudonymisedDedupeKey(f.dedupeKey), f]),
+  );
+
+  const toInsert = newFindings.filter(
+    (f) =>
+      !existingByKey.has(f.dedupeKey) &&
+      !existingByKey.has(pseudonymisedDedupeKey(f.dedupeKey)),
+  );
+  const opened = [...toInsert];
+  const inserted: InsertedFinding[] = [];
+  for (const batch of chunk(toInsert, 250)) {
+    const rows = await tx
+      .insert(findings)
+      .values(
+        batch.map((f) => ({
+          tenantId,
+          dedupeKey: f.dedupeKey,
+          rule: f.rule,
+          graphUserId: f.graphUserId,
+          skuId: f.skuId,
+          title: f.title,
+          detail: f.detail,
+          monthlyImpactCents: f.monthlyImpactCents,
+          status: "open" as const,
+          firstSeenAt: now,
+          lastSeenAt: now,
+        })),
+      )
+      .returning({
+        id: findings.id,
+        rule: findings.rule,
+        title: findings.title,
+        monthlyImpactCents: findings.monthlyImpactCents,
+      });
+    inserted.push(...rows);
+  }
+
+  for (const f of existing) {
+    if (f.lastSeenAt > now || (f.resolvedAt && f.resolvedAt > now)) continue;
+    // A row still holding the plain key takes precedence: the pseudonymised
+    // row of the same key then stays as it is, so the plain key is never
+    // assigned twice (findings_tenant_dedupe_idx).
+    const viaHash = f.dedupeKey.startsWith(PSEUDONYMISED_KEY_PREFIX)
+      ? newByStoredKey.get(f.dedupeKey)
+      : undefined;
+    const fresh =
+      newByKey.get(f.dedupeKey) ??
+      (viaHash && !existingByKey.has(viaHash.dedupeKey) ? viaHash : undefined);
+    // A purchase cut can reclaim some shelfware while the finding stays
+    // open. Classify against its previous detail before refreshing it.
+    const resolution =
+      f.status !== "resolved" && (!fresh || f.rule === "shelfware")
+        ? classify?.(f)
+        : undefined;
+    if (fresh) {
+      if (f.status === "resolved") {
+        reopened.add(f.id);
+        opened.push(fresh);
+      }
+      await tx
+        .update(findings)
+        .set({
+          dedupeKey: fresh.dedupeKey,
+          title: fresh.title,
+          detail: fresh.detail,
+          graphUserId: fresh.graphUserId,
+          monthlyImpactCents: fresh.monthlyImpactCents,
+          lastSeenAt: now,
+          ...(f.status === "resolved"
+            ? {
+                status: "open" as const,
+                resolvedAt: null,
+                resolutionReason: null,
+              }
+            : {}),
+        })
+        .where(eq(findings.id, f.id));
+    } else if (
+      f.status !== "resolved" &&
+      !(preserveMicrosoft && findingSource(f) === "microsoft")
+    ) {
+      const reason = resolution?.reason ?? "other";
+      await tx
+        .update(findings)
+        .set({
+          status: "resolved",
+          resolvedAt: now,
+          resolutionReason: reason,
+        })
+        .where(eq(findings.id, f.id));
+    }
+    if (!resolution || !("entries" in resolution) || !lockedTenant) continue;
+    const source = findingSource(f);
+    // Keep pseudonymous keys for both the connector account and any known
+    // directory identity so a returned seat can be matched by either.
+    const subjectKeys =
+      resolution.reason === "license_removed" ? [...subjects(f)] : [];
+    if (resolution.reason === "license_removed" && subjectKeys.length === 0)
+      continue;
+    const subjectKey = subjectKeys.length > 0 ? subjectKeys.join(",") : null;
+    for (const entry of resolution.entries) {
+      if (entry.monthlyCents <= 0) continue;
+      // Only stable SKU IDs identify Microsoft products in the ledger.
+      if (
+        source === "microsoft" &&
+        !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(
+          entry.skuId ?? "",
+        )
+      )
+        continue;
+      entries.push({
+        ...entry,
+        tenantId,
+        findingId: f.id,
+        rule: f.rule,
+        vendor: vendorLabel(source),
+        subjectKey,
+        reason: resolution.reason,
+        currency: lockedTenant.currency,
+        realizedAt: now,
+      });
+    }
+  }
+
+  const active = await tx.query.savingsLedger.findMany({
+    where: and(
+      eq(savingsLedger.tenantId, tenantId),
+      isNull(savingsLedger.reversedAt),
+      lte(savingsLedger.realizedAt, now),
+    ),
+    orderBy: [asc(savingsLedger.realizedAt), asc(savingsLedger.id)],
+  });
+  const { reversed, additions } = reconcileSavings(
+    active,
+    entries,
+    opened,
+    reopened,
+    state,
+    subjects,
+    tenantId,
+    now,
+  );
+  for (const batch of chunk([...reversed], 250)) {
+    await tx
+      .update(savingsLedger)
+      .set({
+        reversedAt: sql`greatest(${savingsLedger.realizedAt}, ${now.toISOString()}::timestamptz)`,
+      })
+      .where(
+        and(
+          eq(savingsLedger.tenantId, tenantId),
+          inArray(savingsLedger.id, batch),
+          isNull(savingsLedger.reversedAt),
+        ),
+      );
+  }
+  for (const batch of chunk(additions, 250))
+    await tx.insert(savingsLedger).values(batch);
+
+  return inserted;
+}
 
 /**
  * Immediate email when a sync inserts new offboarding-leak findings, the

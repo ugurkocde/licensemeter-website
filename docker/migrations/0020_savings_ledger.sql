@@ -5,6 +5,7 @@ CREATE TABLE "savings_ledger" (
 	"rule" text NOT NULL,
 	"vendor" text NOT NULL,
 	"sku_id" text,
+	"product" text,
 	"seats" integer NOT NULL,
 	"subject_key" text,
 	"replaces_entry_id" uuid,

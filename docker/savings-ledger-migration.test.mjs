@@ -20,6 +20,14 @@ test("self-host migration and hosted script can coexist and preserve ledger rete
   assert.ok(
     dockerConstraints.some((row) => row.conname === replacementConstraint),
   );
+  const productColumn = async () =>
+    (
+      await client.query(
+        "SELECT data_type, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'savings_ledger' AND column_name = 'product'",
+      )
+    ).rows;
+  const productShape = [{ data_type: "text", is_nullable: "YES" }];
+  assert.deepEqual(await productColumn(), productShape);
   const hosted = await readFile("scripts/db-add-savings-ledger.sql", "utf8");
   const indexAt = hosted.indexOf("CREATE INDEX CONCURRENTLY");
   assert.ok(indexAt > hosted.indexOf("COMMIT;"));
@@ -33,9 +41,12 @@ test("self-host migration and hosted script can coexist and preserve ledger rete
     await client.exec(hosted.slice(indexAt));
   };
   // Also upgrade the earlier hosted shape without replacing its table.
-  await client.exec("ALTER TABLE savings_ledger DROP COLUMN replaces_entry_id");
+  await client.exec(
+    "ALTER TABLE savings_ledger DROP COLUMN replaces_entry_id, DROP COLUMN product",
+  );
   await client.exec("GRANT SELECT ON savings_ledger TO anon, authenticated");
   await applyHosted();
+  assert.deepEqual(await productColumn(), productShape);
   for (const role of ["anon", "authenticated"]) {
     const { rows } = await client.query(
       "SELECT has_table_privilege($1, 'savings_ledger', 'SELECT') AS allowed",
@@ -49,6 +60,7 @@ test("self-host migration and hosted script can coexist and preserve ledger rete
   );
   await applyHosted();
   await applyHosted();
+  assert.deepEqual(await productColumn(), productShape);
   const { rows: constraints } = await client.query(
     "SELECT conname, convalidated FROM pg_constraint WHERE conrelid = 'savings_ledger'::regclass OR conname = 'findings_resolution_reason_check'",
   );

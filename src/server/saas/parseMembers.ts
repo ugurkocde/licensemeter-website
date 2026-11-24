@@ -115,7 +115,19 @@ export const parseMembers = (text: string): ParsedMembers => {
   if (input === "")
     return { error: "Paste the member table including its header row" };
 
-  const [headerCells = [], ...dataRows] = parseCsv(normalizeDelimiters(input));
+  let unclosedQuote = false;
+  const [headerCells = [], ...dataRows] = parseCsv(
+    normalizeDelimiters(input),
+    () => {
+      unclosedQuote = true;
+    },
+  );
+  if (unclosedQuote) {
+    return {
+      error:
+        "The member export contains an unclosed quote. Paste the complete export again.",
+    };
+  }
   const headers = headerCells.map((h) => h.trim().toLowerCase());
   const emailCol = findColumn(headers, /e-?mail/);
   if (emailCol < 0)

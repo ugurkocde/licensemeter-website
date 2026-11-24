@@ -2842,6 +2842,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "product": {
+          "name": "product",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "seats": {
           "name": "seats",
           "type": "integer",

@@ -16,7 +16,9 @@ import {
   directoryAddresses,
   findingEmail,
   findingLicenses,
+  findingProducts,
   normalizedEmail,
+  normalizedProduct,
   type resolutionOf,
 } from "./resolution";
 
@@ -51,9 +53,9 @@ export function savingsSubjects(tenantId: string, state?: State) {
 
 const subjectProduct = (
   vendor: string,
-  skuId: string | null,
+  product: string | null,
   subject: string,
-) => JSON.stringify([vendor, skuId, subject]);
+) => JSON.stringify([vendor, product, subject]);
 
 export function reconcileSavings(
   active: ActiveEntry[],
@@ -76,7 +78,9 @@ export function reconcileSavings(
     const vendor = vendorLabel(findingSource(finding));
     if (state && vendor !== microsoft && !verifiedVendors.has(vendor)) continue;
     const products =
-      vendor === microsoft ? [...findingLicenses(finding).keys()] : [null];
+      vendor === microsoft
+        ? [...findingLicenses(finding).keys()]
+        : [null, ...findingProducts(finding).map(normalizedProduct)];
     for (const subject of subjects(finding))
       for (const product of products)
         affectedSubjects.add(subjectProduct(vendor, product, subject));
@@ -107,20 +111,33 @@ export function reconcileSavings(
     const vendor = vendorLabel(source);
     const trackedVendor = tracked.get(vendor);
     if (!trackedVendor || !state?.verifiedSources?.has(source)) return;
-    const addresses = new Set(
-      rows
-        .filter((row) => row.status === "active" && row.products.length > 0)
-        .map((row) => normalizedEmail(row.email)),
-    );
-    const mark = (scope: string, identity: string) => {
+    const productsByAddress = new Map<string, Set<string>>();
+    const mark = (
+      scope: string,
+      identity: string,
+      products: ReadonlySet<string>,
+    ) => {
       const key = savingsSubjectKey(tenantId, scope, identity);
-      if (trackedVendor.has(key))
-        affectedSubjects.add(subjectProduct(vendor, null, key));
+      if (!trackedVendor.has(key)) return;
+      affectedSubjects.add(subjectProduct(vendor, null, key));
+      for (const product of products)
+        affectedSubjects.add(subjectProduct(vendor, product, key));
     };
-    for (const address of addresses) mark(source, address);
+    for (const row of rows) {
+      if (row.status !== "active" || row.products.length === 0) continue;
+      const address = normalizedEmail(row.email);
+      const products = productsByAddress.get(address) ?? new Set<string>();
+      for (const product of row.products)
+        products.add(normalizedProduct(product));
+      productsByAddress.set(address, products);
+    }
+    for (const [address, products] of productsByAddress)
+      mark(source, address, products);
     for (const user of state.users) {
-      if (directoryAddresses(user).some((address) => addresses.has(address)))
-        mark("directory", user.graphId);
+      for (const address of directoryAddresses(user)) {
+        const products = productsByAddress.get(address);
+        if (products) mark("directory", user.graphId, products);
+      }
     }
   };
   if (state) {
@@ -131,11 +148,11 @@ export function reconcileSavings(
   const removedVendors = new Set(state?.removedSources?.map(vendorLabel));
   const seen = new Set<string>();
   const version = `${savingsSubjectVersion()}:`;
-  const keysOf = (entry: Entry) =>
+  const productOf = (entry: Entry) => entry.skuId ?? entry.product ?? null;
+  const keysOf = (entry: Entry, product = productOf(entry)) =>
     entry.subjectKey
       ?.split(",")
-      .map((key) => subjectProduct(entry.vendor, entry.skuId ?? null, key)) ??
-    [];
+      .map((key) => subjectProduct(entry.vendor, product, key)) ?? [];
   for (const entry of active) {
     const keys = keysOf(entry);
     // A rotated secret (or a pre-version key) makes live verification
@@ -143,6 +160,7 @@ export function reconcileSavings(
     const obsoleteKey =
       entry.subjectKey && !entry.subjectKey.startsWith(version);
     const reopenedSeat =
+      productOf(entry) === null &&
       entry.findingId !== null &&
       reopened.has(entry.findingId) &&
       (!state ||
@@ -161,7 +179,10 @@ export function reconcileSavings(
 
   const additions = candidates.filter((entry) => {
     const keys = keysOf(entry);
-    if (keys.some((key) => seen.has(key) || affectedSubjects.has(key)))
+    if (
+      keys.some((key) => seen.has(key) || affectedSubjects.has(key)) ||
+      (entry.product && keysOf(entry, null).some((key) => seen.has(key)))
+    )
       return false;
     for (const key of keys) seen.add(key);
     return true;
@@ -268,18 +289,23 @@ export function reconcileSavings(
         }
       }
 
-      let used = 0;
+      const base = Math.min(purchase?.seats ?? 0, drop);
+      const used = Math.min(drop - base, removals.length, release);
       if (purchase) {
         const unitPrice = purchase.monthlyCents / purchase.seats;
-        const base = Math.min(purchase.seats, drop);
-        used = Math.min(drop - base, removals.length, release);
         purchase.seats = base + used;
         purchase.monthlyCents = purchase.seats * unitPrice;
         if (purchase.seats === 0) discarded.add(purchase);
       }
       let freed = Math.min(idle, release - used);
       for (const [index, removal] of removals.entries()) {
-        if (index < used || freed < removal.seats) discarded.add(removal);
+        if (index < used) {
+          if (purchase) discarded.add(removal);
+          else {
+            removal.reason = "seats_reduced";
+            removal.subjectKey = null;
+          }
+        } else if (freed < removal.seats) discarded.add(removal);
         else freed -= removal.seats;
       }
     }

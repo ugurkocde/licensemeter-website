@@ -93,7 +93,11 @@ import {
 } from "~/server/workspaceEmail";
 import { byoConnectorEnabled, siteUrl } from "~/env";
 import { reverseDisconnectedSavings } from "~/server/savings/ledger";
-import { runAnalysis, runSync } from "~/server/sync/runSync";
+import {
+  AnalysisCurrencyChanged,
+  runAnalysis,
+  runSync,
+} from "~/server/sync/runSync";
 import { requestDeadline } from "~/server/sync/deadline";
 import { fetchEcbReferenceRates } from "~/server/exchangeRates";
 import type {
@@ -1833,7 +1837,9 @@ export const importSeats = async (
   if (text.trim() === "") return none(fail("Paste the member table first"));
   if (text.length > 1_000_000)
     return none(
-      fail("Paste is too large. Split the export and import it in parts"),
+      fail(
+        "The paste is too large. Import the complete member export in one paste.",
+      ),
     );
 
   const parsed = parseMembers(text);
@@ -1857,46 +1863,57 @@ export const importSeats = async (
     syncedAt: now,
   }));
 
-  await db.transaction(async (tx) => {
-    await tx
-      .delete(saasSeats)
-      .where(
-        and(
-          eq(saasSeats.tenantId, ctx.tenant.id),
-          eq(saasSeats.provider, provider),
-        ),
-      );
-    for (const batch of chunk(rows, 250)) {
-      await tx.insert(saasSeats).values(batch);
-    }
+  try {
+    await runAnalysis(
+      ctx.tenant.id,
+      parsed.invalid.length === 0
+        ? { verifiedSources: new Set([provider]) }
+        : {},
+      {
+        expectedCurrency: ctx.tenant.currency,
+        persist: async (tx) => {
+          await tx
+            .delete(saasSeats)
+            .where(
+              and(
+                eq(saasSeats.tenantId, ctx.tenant.id),
+                eq(saasSeats.provider, provider),
+              ),
+            );
+          for (const batch of chunk(rows, 250)) {
+            await tx.insert(saasSeats).values(batch);
+          }
 
-    // Prefill price keys for the imported products so they appear on the
-    // licenses page; admins enter real per-seat prices there.
-    const products = [...new Set(rows.flatMap((r) => r.products))];
-    if (products.length > 0) {
-      await tx
-        .insert(priceBook)
-        .values(
-          products.map((p) => ({
-            tenantId: ctx.tenant.id,
-            skuId: `${provider}:${p}`,
-            monthlyPriceCents: 0,
-            source: "default" as const,
-          })),
-        )
-        .onConflictDoNothing();
-    }
-  });
+          // Prefill price keys for the imported products so they appear on the
+          // licenses page; admins enter real per-seat prices there.
+          const products = [...new Set(rows.flatMap((r) => r.products))];
+          if (products.length > 0) {
+            await tx
+              .insert(priceBook)
+              .values(
+                products.map((p) => ({
+                  tenantId: ctx.tenant.id,
+                  skuId: `${provider}:${p}`,
+                  monthlyPriceCents: 0,
+                  source: "default" as const,
+                })),
+              )
+              .onConflictDoNothing();
+          }
+        },
+      },
+    );
+  } catch (err) {
+    if (err instanceof AnalysisCurrencyChanged)
+      return none(fail("The workspace currency changed. Retry the import."));
+    throw err;
+  }
 
   await audit(ctx, "seats_imported", {
     provider,
     imported: rows.length,
     invalid: parsed.invalid.length,
   });
-  await runAnalysis(
-    ctx.tenant.id,
-    parsed.invalid.length === 0 ? { verifiedSources: new Set([provider]) } : {},
-  );
   revalidateApp();
   return { ok: true, imported: rows.length, invalid: parsed.invalid.length };
 };
