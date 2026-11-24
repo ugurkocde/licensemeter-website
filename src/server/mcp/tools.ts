@@ -13,13 +13,13 @@ import {
 } from "~/server/db/schema";
 import type { Entitlement } from "~/server/entitlement";
 import { historyStartDay } from "~/server/history";
+import { loadLicenseSpend } from "~/server/waste/spendStore";
 import { loadWasteHistory } from "~/server/historyStore";
 import type { FindingStatus, WasteRuleId } from "~/server/types";
 import {
   idleSeatsOf,
   isShelfwareExempt,
   paidSeatsOf,
-  spendSeatsOf,
 } from "~/server/waste/engine";
 
 /**
@@ -83,7 +83,7 @@ const getWasteSummary: Tool = {
     name: "get_waste_summary",
     title: "Waste summary",
     description:
-      "Current monthly license waste of this workspace: the total, the split by category, the number of open findings, the currency and when data was last synced. Matches the Overview page.",
+      "Current purchased-seat spend and monthly license waste across providers, with waste by category, open findings, currency and data freshness. Matches the Overview page.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -98,7 +98,7 @@ const getWasteSummary: Tool = {
     // Imports never get syncRuns rows; their freshness is the import time.
     const isImported = !ctx.tenant.consentedAt && !ctx.tenant.isDemo;
 
-    const [ruleAgg, lastRun, importedUser] = await Promise.all([
+    const [ruleAgg, lastRun, importedUser, { spend }] = await Promise.all([
       db
         .select({
           rule: findings.rule,
@@ -125,6 +125,7 @@ const getWasteSummary: Tool = {
             columns: { syncedAt: true },
           })
         : Promise.resolve(undefined),
+      loadLicenseSpend(tenantId),
     ]);
 
     const monthlyWasteCents = ruleAgg.reduce((sum, r) => sum + r.cents, 0);
@@ -136,6 +137,7 @@ const getWasteSummary: Tool = {
       ok: true,
       data: {
         currency: ctx.tenant.currency,
+        monthly_spend: amount(spend.totalCents),
         monthly_waste: amount(monthlyWasteCents),
         annualized_waste: amount(monthlyWasteCents * 12),
         open_findings: ruleAgg.reduce((sum, r) => sum + r.count, 0),
@@ -275,6 +277,9 @@ const listFindings: Tool = {
             monthly_amount: amount(f.monthlyImpactCents),
             affected_count: affectedCount(f),
             status: f.status,
+            ...(f.status === "resolved"
+              ? { resolution_reason: f.resolutionReason }
+              : {}),
             first_seen: f.firstSeenAt.toISOString().slice(0, 10),
             last_seen: f.lastSeenAt.toISOString().slice(0, 10),
             ...(includeUsers && !aggregate && typeof upn === "string"
@@ -399,7 +404,7 @@ const listLicenses: Tool = {
     // The same exemption as Overview and the CSV export: free, viral and
     // capacity sentinel SKUs are not part of the inventory.
     const rows = skus
-      .filter((s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled))
+      .filter((s) => !isShelfwareExempt(s.skuPartNumber, s.skuId))
       .map((s) => {
         const price = priceBySku.get(s.skuId) ?? 0;
         // Paid seats only; over-assigned SKUs clamp to 0 like the table.
@@ -428,7 +433,7 @@ const listLicenses: Tool = {
           assigned: sku.consumedUnits,
           unused,
           monthly_price: amount(price),
-          monthly_spend: amount(spendSeatsOf(sku) * price),
+          monthly_spend: amount(paidSeatsOf(sku) * price),
           monthly_cost_of_unused: amount(unusedCents),
         })),
       },

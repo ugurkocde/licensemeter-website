@@ -48,17 +48,28 @@ import { loadWasteHistory } from "~/server/historyStore";
 import {
   isShelfwareExempt,
   paidSeatsOf,
-  spendSeatsOf,
   unpricedSkuCount,
 } from "~/server/waste/engine";
 import {
   findings,
-  priceBook,
   syncRuns,
-  tenantSkus,
   tenantUsers,
   vendorRenewals,
 } from "~/server/db/schema";
+
+import { loadRecentSavings } from "~/server/savings/ledger";
+import {
+  comparableWaste,
+  findingSource,
+  priceConfidence,
+  vendorLabel,
+} from "~/server/waste/spend";
+import { loadLicenseSpend } from "~/server/waste/spendStore";
+import { hasFeature } from "~/server/entitlement";
+import {
+  PriceConfidenceBadge,
+  PriceConfidenceLocked,
+} from "~/components/workspace/PriceConfidence";
 
 export const metadata: Metadata = { title: "Overview" };
 
@@ -143,8 +154,7 @@ export default async function OverviewPage({
   );
 
   const [
-    skus,
-    prices,
+    { skus, prices, spend },
     topFindings,
     ruleAgg,
     lastRun,
@@ -153,8 +163,7 @@ export default async function OverviewPage({
     resolvedSavings,
     upcomingRenewals,
   ] = await Promise.all([
-    db.query.tenantSkus.findMany({ where: eq(tenantSkus.tenantId, tenantId) }),
-    db.query.priceBook.findMany({ where: eq(priceBook.tenantId, tenantId) }),
+    loadLicenseSpend(tenantId),
     // Only the rows the dashboard actually renders ("Largest open findings").
     // Headline figures come from the grouped aggregate below, so a large
     // tenant never streams every finding row into the page.
@@ -168,12 +177,13 @@ export default async function OverviewPage({
     db
       .select({
         rule: findings.rule,
+        provider: sql<string | null>`${findings.detail}->>'provider'`,
         count: sql<number>`count(*)::int`,
         cents: sql<number>`coalesce(sum(${findings.monthlyImpactCents}), 0)::int`,
       })
       .from(findings)
       .where(openFindingsWhere)
-      .groupBy(findings.rule),
+      .groupBy(findings.rule, sql`${findings.detail}->>'provider'`),
     db.query.syncRuns.findFirst({
       where: eq(syncRuns.tenantId, tenantId),
       orderBy: desc(syncRuns.startedAt),
@@ -187,20 +197,7 @@ export default async function OverviewPage({
     // Every day inside the plan's history window, newest first, reversed
     // below into ascending order for the chart.
     loadWasteHistory(tenantId, ctx.entitlement),
-    db
-      .select({
-        count: sql<number>`count(*)::int`,
-        cents: sql<number>`coalesce(sum(${findings.monthlyImpactCents}), 0)::int`,
-      })
-      .from(findings)
-      .where(
-        and(
-          eq(findings.tenantId, tenantId),
-          eq(findings.status, "resolved"),
-          gte(findings.resolvedAt, new Date(Date.now() - 30 * 86_400_000)),
-        ),
-      )
-      .then((rows) => rows[0] ?? { count: 0, cents: 0 }),
+    loadRecentSavings(tenantId, currency),
     db.query.vendorRenewals.findMany({
       where: and(
         eq(vendorRenewals.tenantId, tenantId),
@@ -222,15 +219,19 @@ export default async function OverviewPage({
   // the spend total, the assigned-seat count and the inventory table all
   // reconciled to one set of SKUs.
   const realSkus = skus.filter(
-    (s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled),
+    (s) => !isShelfwareExempt(s.skuPartNumber, s.skuId),
   );
 
-  // Seats on trial cost nothing, so spend counts paid assignments only.
-  const spendOf = (s: (typeof realSkus)[number]) =>
-    spendSeatsOf(s) * (priceBySku.get(s.skuId) ?? 0);
-  const monthlySpend = realSkus.reduce((sum, s) => sum + spendOf(s), 0);
+  const spendBySku = new Map(spend.rows.map((row) => [row.skuId, row.cents]));
+  const monthlySpend = spend.totalCents;
   const monthlyWaste = ruleAgg.reduce((sum, r) => sum + r.cents, 0);
-  const wasteShare = monthlySpend > 0 ? (monthlyWaste / monthlySpend) * 100 : 0;
+  const wasteShare =
+    monthlySpend > 0
+      ? (comparableWaste(monthlyWaste, monthlySpend) / monthlySpend) * 100
+      : 0;
+  const confidence = hasFeature(ctx.entitlement, "savingsLedger")
+    ? priceConfidence(spend)
+    : null;
 
   // Inventory rows for the dashboard table, sorted client-side (default: spend
   // descending). Pre-shaped here so the client component stays serializable.
@@ -240,19 +241,24 @@ export default async function OverviewPage({
     partNumber: s.skuPartNumber,
     purchased: paidSeatsOf(s),
     assigned: s.consumedUnits,
-    spendCents: spendOf(s),
+    spendCents: spendBySku.get(s.skuId) ?? 0,
   }));
 
   const priceRowsBySku = new Map(prices.map((p) => [p.skuId, p]));
   const priceCoverage = calculatePriceCoverage(
-    realSkus.map((s) => {
-      const price = priceRowsBySku.get(s.skuId);
-      return {
-        seats: spendSeatsOf(s),
-        priceCents: price?.monthlyPriceCents ?? 0,
-        source: price?.source,
-      };
-    }),
+    confidence
+      ? spend.rows
+      : realSkus.map((s) => {
+          const price = priceRowsBySku.get(s.skuId);
+          return {
+            seats:
+              s.trialUnits > 0
+                ? Math.min(s.consumedUnits, paidSeatsOf(s))
+                : s.consumedUnits,
+            priceCents: price?.monthlyPriceCents ?? 0,
+            source: price?.source,
+          };
+        }),
   );
   const unpricedSkus = unpricedSkuCount(
     realSkus,
@@ -266,6 +272,12 @@ export default async function OverviewPage({
   );
   const noticeDaysUntil =
     renewalDays === null ? null : renewalDays - (nextRenewal?.noticeDays ?? 0);
+  const renewalRules = ruleAgg.filter(({ rule, provider }) => {
+    const vendor = vendorLabel(findingSource({ rule, detail: { provider } }));
+    return vendor.toLowerCase() === nextRenewal?.vendor.trim().toLowerCase();
+  });
+  const renewalCount = renewalRules.reduce((sum, row) => sum + row.count, 0);
+  const renewalWaste = renewalRules.reduce((sum, row) => sum + row.cents, 0);
   const openCount = ruleAgg.reduce((sum, r) => sum + r.count, 0);
 
   // A partial sync finished but some steps degraded to warnings/failures (e.g.
@@ -284,32 +296,32 @@ export default async function OverviewPage({
   // Drill-down rows for each metric card. Each breakdown is derived from the
   // exact same inputs as the headline figure, so the rows always sum to the
   // number on the card.
-  const assignedSeats = realSkus.reduce((s, x) => s + x.consumedUnits, 0);
+  const purchasedSeats = spend.rows.reduce((sum, row) => sum + row.seats, 0);
 
   // Spend by product: zero-cost SKUs (free/viral sentinels) drop out, leaving
   // only rows that actually contribute to monthly spend.
-  const spendRows: BreakdownRow[] = realSkus
-    .map((s) => ({
-      sku: s,
-      price: priceBySku.get(s.skuId) ?? 0,
-      cents: spendOf(s),
-    }))
-    .filter((r) => r.cents > 0)
+  const spendRows: BreakdownRow[] = spend.rows
+    .filter((row) => row.cents > 0)
     .sort((a, b) => b.cents - a.cents)
-    .map((r) => ({
-      label: r.sku.displayName ?? r.sku.skuPartNumber,
-      sub: `${fmtNumber(spendSeatsOf(r.sku), currency)} × ${fmtMoney(
-        r.price,
-        currency,
-      )}`,
-      value: fmtMoney(r.cents, currency),
+    .map((row) => ({
+      label:
+        row.vendor === "microsoft"
+          ? (realSkus.find((sku) => sku.skuId === row.skuId)?.displayName ??
+            row.name)
+          : `${vendorLabel(row.vendor)} · ${row.name}`,
+      sub: `${fmtNumber(row.seats, currency)} × ${fmtMoney(row.priceCents, currency)}`,
+      value: fmtMoney(row.cents, currency),
     }));
 
   // Findings grouped by rule, the shared basis for the waste, annualized-waste
   // and open-findings breakdowns.
   const byRule = new Map<WasteRuleId, { count: number; cents: number }>();
   for (const r of ruleAgg) {
-    byRule.set(r.rule, { count: r.count, cents: r.cents });
+    const previous = byRule.get(r.rule);
+    byRule.set(r.rule, {
+      count: (previous?.count ?? 0) + r.count,
+      cents: (previous?.cents ?? 0) + r.cents,
+    });
   }
   const ruleEntries = [...byRule.entries()].sort(
     (a, b) => b[1].cents - a[1].cents || b[1].count - a[1].count,
@@ -343,15 +355,20 @@ export default async function OverviewPage({
       key: "spend",
       label: "Monthly license spend",
       value: fmtMoney(monthlySpend, currency),
-      sub: `${fmtNumber(assignedSeats, currency)} assigned seats`,
+      sub: `${fmtNumber(purchasedSeats, currency)} paid or active seats`,
+      note: confidence ? (
+        <PriceConfidenceBadge confidence={confidence} />
+      ) : (
+        <PriceConfidenceLocked />
+      ),
       tone: "ink",
       explainer:
-        "Assigned seats × the monthly price of each product, summed across your license inventory.",
+        "Purchased Microsoft seats and active seats at other vendors × their monthly prices.",
       detail: {
         formula:
-          "For every product we multiply the seats assigned to people by that product's monthly price, then add them up.",
+          "Purchased Microsoft seats include idle seats and exclude trials and free products. Other vendors use active entitlements where purchased totals are unavailable. API usage charges are separate.",
         source:
-          "Seat counts come from your latest sync; prices come from your price book (your custom price, or the Microsoft list price as a fallback).",
+          "Seat counts come from your latest sync or import. Prices come from your price book.",
         columns: ["Product (seats × price)", "Spend / mo"],
         rows: spendRows,
         totalLabel: "Total monthly spend",
@@ -367,7 +384,7 @@ export default async function OverviewPage({
       tone: "waste",
       note: !priceCoverage.complete ? (
         <>
-          Estimated at list prices.{" "}
+          Includes list estimates or unpriced seats.{" "}
           <Link
             href="/app/licenses"
             className="hover:text-ink underline underline-offset-4"
@@ -377,12 +394,12 @@ export default async function OverviewPage({
         </>
       ) : null,
       explainer:
-        "The monthly cost of every open finding added together. This is the spend you could reclaim.",
+        "Open findings across all providers, as a share of paid seat spend across the same providers.",
       detail: {
         formula:
           "Each open or acknowledged finding carries the monthly cost of the wasted seat. Monthly waste is the sum of those costs, grouped here by the rule that flagged them.",
         source:
-          "Findings are raised during sync by the detection rules; resolved findings are excluded. Costs reuse the same prices as monthly spend.",
+          "Findings are raised during sync by the detection rules; resolved findings are excluded. The share is capped at 100% when findings from an older sync exceed the current seat spend.",
         columns: ["Rule", "Impact / mo"],
         rows: wasteRows,
         totalLabel: "Total monthly waste",
@@ -433,28 +450,43 @@ export default async function OverviewPage({
     },
     {
       key: "savings",
-      label: "Verified savings (30d)",
+      label: "Realized savings (30d)",
       value: fmtMoney(resolvedSavings.cents, currency),
-      sub: `${fmtNumber(resolvedSavings.count, currency)} confirmed ${resolvedSavings.count === 1 ? "resolution" : "resolutions"}`,
+      sub: `${fmtNumber(resolvedSavings.reclaimed, currency)} reclaimed, ${fmtNumber(resolvedSavings.noLongerFlagged, currency)} no longer flagged`,
       tone: "ink",
+      note: (
+        <Link className="underline underline-offset-4" href="/app/savings">
+          Savings ledger
+        </Link>
+      ),
       explainer:
-        "Monthly recurring waste that disappeared after a later sync confirmed the affected license was reclaimed.",
+        "Monthly value of licenses removed and purchased seats reduced in the last 30 days, while the savings are still active.",
       detail: {
         formula:
-          "Monthly impact from findings automatically resolved during the last 30 days.",
+          "Adds the monthly value of licenses removed and purchased seats reduced in the last 30 days. A reopened finding stops contributing.",
         source:
-          "A later sync must confirm the waste condition no longer exists; acknowledging a finding does not count as savings.",
+          "A sync or a fresh seat import must confirm the change. Removing a license frees a seat for reuse. Reducing purchases lowers seat commitments. Other resolutions are counted separately.",
         columns: ["Measure", "Value"],
         rows: [
           {
-            label: "Annualized recurring savings",
-            sub: `${fmtMoney(resolvedSavings.cents, currency)}/mo × 12`,
-            value: fmtMoney(resolvedSavings.cents * 12, currency),
+            label: "Reclaimed findings",
+            value: fmtNumber(resolvedSavings.reclaimed, currency),
           },
+          {
+            label: "No longer flagged",
+            value: fmtNumber(resolvedSavings.noLongerFlagged, currency),
+          },
+          ...(resolvedSavings.reasonNotRecorded > 0
+            ? [
+                {
+                  label: "Reason not recorded",
+                  value: fmtNumber(resolvedSavings.reasonNotRecorded, currency),
+                },
+              ]
+            : []),
         ],
-        totalLabel: "Verified monthly savings",
+        totalLabel: "Realized monthly value",
         totalValue: fmtMoney(resolvedSavings.cents, currency),
-        emptyText: "No findings were confirmed resolved in the last 30 days.",
       },
     },
   ];
@@ -565,12 +597,16 @@ export default async function OverviewPage({
                   </div>
                   <p className="text-ink-soft mt-1 text-sm">
                     {nextRenewal?.contractName}.{" "}
-                    {fmtNumber(openCount, currency)} open{" "}
-                    {openCount === 1 ? "finding" : "findings"} worth{" "}
+                    {fmtNumber(renewalCount, currency)} open{" "}
+                    {renewalCount === 1 ? "finding" : "findings"} for this
+                    vendor worth{" "}
                     <span className="text-waste-text font-medium">
-                      {fmtMoney(monthlyWaste, currency)}/mo
+                      {fmtMoney(renewalWaste, currency)}/mo
                     </span>
-                    . Reclaim these seats before you re-commit.
+                    .{" "}
+                    {renewalCount > 0
+                      ? "Review these seats before renewing."
+                      : ""}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -590,11 +626,13 @@ export default async function OverviewPage({
         </section>
       )}
 
-      {!priceCoverage.complete && priceCoverage.totalProducts > 0 && (
-        <section className="rise rise-2 mt-6">
-          <PriceAccuracyCard coverage={priceCoverage} />
-        </section>
-      )}
+      {!confidence &&
+        !priceCoverage.complete &&
+        priceCoverage.totalProducts > 0 && (
+          <section className="rise rise-2 mt-6">
+            <PriceAccuracyCard coverage={priceCoverage} />
+          </section>
+        )}
 
       <section className="rise rise-3 mt-8">
         <div className="flex items-baseline justify-between gap-4">

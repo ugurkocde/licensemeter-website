@@ -136,22 +136,42 @@ const key = (
   skuId?: string | null,
 ) => `${rule}|${userId ?? "-"}|${skuId ?? "-"}`;
 
-/** Capacity-style allotments (10k+ "seats") are licensing plumbing, not purchases. */
-const SHELFWARE_CAPACITY_THRESHOLD = 5000;
-
-/**
- * True for free/viral/capacity SKUs that Microsoft auto-provisions into every
- * tenant (e.g. WINDOWS_STORE's 1,000,000 prepaid units, FLOW_FREE). These carry
- * no cost and represent no purchase, so they are excluded from shelfware
- * findings and the dashboard license inventory. "Free" comes from the catalog
- * (isKnownFreeSku), the one source of truth shared with the user rules.
- */
+/** Catalog-identified free, viral and capacity products carry no seat cost. */
 export const isShelfwareExempt = (
   skuPartNumber: string,
-  prepaidEnabled: number,
-): boolean =>
-  isKnownFreeSku(null, skuPartNumber) ||
-  prepaidEnabled >= SHELFWARE_CAPACITY_THRESHOLD;
+  skuId?: string,
+): boolean => isKnownFreeSku(skuId ?? null, skuPartNumber);
+
+/** One billable license per SKU, including older rows with repeated paths. */
+export const uniqueLicenses = (
+  licenses: readonly UserLicense[],
+): UserLicense[] => {
+  const bySku = new Map<string, UserLicense>();
+  for (const license of licenses) {
+    const existing = bySku.get(license.skuId);
+    const assignedVia = [
+      ...new Set([
+        ...(existing?.assignedVia ?? []),
+        ...(license.assignedVia ?? [license.assignedByGroup]),
+      ]),
+    ];
+    const disabledPlans = existing
+      ? existing.disabledPlans.filter((plan) =>
+          license.disabledPlans.includes(plan),
+        )
+      : license.disabledPlans;
+    bySku.set(license.skuId, {
+      ...license,
+      assignedByGroup: assignedVia.includes(null)
+        ? null
+        : (assignedVia[0] ?? null),
+      assignedVia,
+      disabledPlans,
+      state: existing?.state === "Active" ? existing.state : license.state,
+    });
+  }
+  return [...bySku.values()];
+};
 
 type SeatCounts = {
   prepaidEnabled: number;
@@ -167,35 +187,23 @@ export const paidSeatsOf = (s: Omit<SeatCounts, "consumedUnits">): number =>
 export const idleSeatsOf = (s: SeatCounts): number =>
   Math.max(0, paidSeatsOf(s) - s.consumedUnits);
 
-/**
- * Assigned seats that cost money. Without trial seats this is the consumed
- * count exactly as Microsoft reports it, over-assignment included. With trial
- * seats only the paid seats can be billed: min(consumed, paid), so a SKU that
- * is fully on trial never has spend, however many users hold it.
- */
-export const spendSeatsOf = (s: SeatCounts): number =>
-  (s.trialUnits ?? 0) > 0
-    ? Math.min(s.consumedUnits, paidSeatsOf(s))
-    : s.consumedUnits;
-
-/**
- * Monthly price of one assignment, for rules that price individual users.
- * Which assignment sits on a trial seat is unknowable, so on SKUs with trial
- * seats the paid spend is spread over every assignment (rounded down, so the
- * per-user amounts never add up to more than the paid spend). SKUs without
- * trial seats keep their price unchanged.
- */
+/** Spread the billed assignment budget over all observed assignments. */
 export const assignmentPrices = (
-  skus: readonly (SeatCounts & { skuId: string })[],
+  skus: readonly (SeatCounts & { skuId: string; skuPartNumber?: string })[],
   prices: Record<string, number>,
+  observed = new Map<string, number>(),
 ): Record<string, number> => {
-  const out = { ...prices };
+  const out: Record<string, number> = {};
   for (const s of skus) {
-    if ((s.trialUnits ?? 0) <= 0) continue;
-    const price = prices[s.skuId] ?? 0;
+    const assignments = Math.max(s.consumedUnits, observed.get(s.skuId) ?? 0);
+    const paid = paidSeatsOf(s);
+    const billableAssigned = paid - idleSeatsOf(s);
     out[s.skuId] =
-      s.consumedUnits > 0
-        ? Math.floor((price * spendSeatsOf(s)) / s.consumedUnits)
+      assignments > 0 && !isKnownFreeSku(s.skuId, s.skuPartNumber)
+        ? Math.floor(
+            (Math.max(0, prices[s.skuId] ?? 0) * billableAssigned) /
+              assignments,
+          )
         : 0;
   }
   return out;
@@ -203,9 +211,8 @@ export const assignmentPrices = (
 
 /**
  * One user's licenses priced exactly as the findings price them: the
- * trial-aware assignment price per license (assignmentPrices) and their sum.
- * `onTrialSku` marks licenses of SKUs that have trial seats. SKUs without
- * trial seats keep their price book value.
+ * assignment price per license and their sum. `onTrialSku` marks licenses
+ * of SKUs that have trial seats.
  */
 export const userLicensePricing = (
   licenses: readonly { skuId: string }[],
@@ -219,10 +226,10 @@ export const userLicensePricing = (
   const trialSkus = new Set(
     skus.filter((s) => (s.trialUnits ?? 0) > 0).map((s) => s.skuId),
   );
-  const rows = licenses.map((l) => ({
-    skuId: l.skuId,
-    monthlyPriceCents: assigned[l.skuId] ?? 0,
-    onTrialSku: trialSkus.has(l.skuId),
+  const rows = [...new Set(licenses.map((l) => l.skuId))].map((skuId) => ({
+    skuId,
+    monthlyPriceCents: assigned[skuId] ?? 0,
+    onTrialSku: trialSkus.has(skuId),
   }));
   return {
     rows,
@@ -241,9 +248,8 @@ export const unpricedSkuCount = (
 ): number =>
   skus.filter(
     (s) =>
-      (paidSeatsOf(s) > 0 || spendSeatsOf(s) > 0) &&
-      !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled) &&
-      !isKnownFreeSku(s.skuId, s.skuPartNumber) &&
+      paidSeatsOf(s) > 0 &&
+      !isShelfwareExempt(s.skuPartNumber, s.skuId) &&
       priceCents(s.skuId) <= 0,
   ).length;
 
@@ -257,15 +263,14 @@ export const unpricedSkuCount = (
 export const purchasedSeatsOf = (
   skus: readonly {
     skuPartNumber: string;
+    skuId?: string;
     prepaidEnabled: number;
     trialUnits?: number;
   }[],
 ): number =>
   skus.reduce(
     (sum, s) =>
-      isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled)
-        ? sum
-        : sum + paidSeatsOf(s),
+      isShelfwareExempt(s.skuPartNumber, s.skuId) ? sum : sum + paidSeatsOf(s),
     0,
   );
 
@@ -284,6 +289,7 @@ const licenseDetail = (
     name: skuDisplayName(l.skuId),
     monthlyPriceCents: prices[l.skuId] ?? 0,
     assignedByGroup: l.assignedByGroup,
+    assignedVia: l.assignedVia,
   }));
 
 const userDetail = (u: WasteUser, prices: Record<string, number>) => ({
@@ -295,11 +301,21 @@ const userDetail = (u: WasteUser, prices: Record<string, number>) => ({
 
 /** Pure rule evaluation over a tenant snapshot. Persistence and diffing live in the sync layer. */
 export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
-  const { users, skus, now } = input;
-  /** List prices: what an idle paid seat costs (shelfware). */
+  const { skus, now } = input;
+  const users = [
+    ...new Map(input.users.map((u) => [u.graphId, u])).values(),
+  ].map((u) => ({ ...u, licenses: uniqueLicenses(u.licenses) }));
+  const observed = new Map<string, number>();
+  for (const user of users) {
+    for (const { skuId } of user.licenses) {
+      observed.set(skuId, (observed.get(skuId) ?? 0) + 1);
+    }
+  }
+  let copilotAlreadyPriced = 0;
+  /** Full unit price of an idle purchased seat. */
   const listPrices = input.prices;
   /** Per-assignment prices: what one user's license costs (every user rule). */
-  const prices = assignmentPrices(skus, listPrices);
+  const prices = assignmentPrices(skus, listPrices, observed);
   const inactiveThreshold = input.inactiveDays ?? INACTIVE_DAYS;
   const findings: WasteFinding[] = [];
   /** SKU -> enabled users with disabled service plans, and users per plan. */
@@ -339,6 +355,8 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
         detail: userDetail(u, prices),
         monthlyImpactCents: licenseCost(u.licenses, prices),
       });
+      if (u.licenses.some((l) => l.skuId === COPILOT_SKU_ID))
+        copilotAlreadyPriced++;
       continue; // avoid double-flagging the same seat via inactivity rules
     }
 
@@ -353,6 +371,8 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
         detail: userDetail(u, prices),
         monthlyImpactCents: licenseCost(u.licenses, prices),
       });
+      if (u.licenses.some((l) => l.skuId === COPILOT_SKU_ID))
+        copilotAlreadyPriced++;
       continue;
     }
 
@@ -371,6 +391,8 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
           detail: { ...userDetail(u, prices), accountAgeDays: ageDays },
           monthlyImpactCents: licenseCost(u.licenses, prices),
         });
+        if (u.licenses.some((l) => l.skuId === COPILOT_SKU_ID))
+          copilotAlreadyPriced++;
         continue;
       }
 
@@ -384,9 +406,15 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
             graphUserId: u.graphId,
             skuId: null,
             title: `No activity for ${inactiveDays} days: ${u.displayName ?? u.upn}`,
-            detail: { ...userDetail(u, prices), inactiveDays },
+            detail: {
+              ...userDetail(u, prices),
+              inactiveDays,
+              inactiveThreshold,
+            },
             monthlyImpactCents: licenseCost(u.licenses, prices),
           });
+          if (u.licenses.some((l) => l.skuId === COPILOT_SKU_ID))
+            copilotAlreadyPriced++;
           continue;
         }
       }
@@ -420,6 +448,10 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
           displayName: u.displayName,
           pairs,
           redundantSkuIds: [...redundantIds],
+          licenses: licenseDetail(
+            u.licenses.filter((l) => redundantIds.has(l.skuId)),
+            prices,
+          ),
         },
         monthlyImpactCents: [...redundantIds].reduce(
           (sum, id) => sum + (prices[id] ?? 0),
@@ -462,6 +494,10 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
             upn: u.upn,
             displayName: u.displayName,
             copilotLastActivity: u.copilotLastActivity?.toISOString() ?? null,
+            licenses: licenseDetail(
+              u.licenses.filter((license) => license.skuId === COPILOT_SKU_ID),
+              prices,
+            ),
           },
           monthlyImpactCents: prices[COPILOT_SKU_ID] ?? 0,
         });
@@ -472,7 +508,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
   // Rule 4: shelfware, paid seats nobody is assigned to. Trial seats are
   // not paid, so a SKU that is fully on trial never yields a finding.
   for (const sku of skus) {
-    if (isShelfwareExempt(sku.skuPartNumber, sku.prepaidEnabled)) continue;
+    if (isShelfwareExempt(sku.skuPartNumber, sku.skuId)) continue;
     const unassigned = idleSeatsOf(sku);
     if (unassigned > 0) {
       findings.push({
@@ -485,11 +521,13 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
           skuId: sku.skuId,
           skuPartNumber: sku.skuPartNumber,
           purchased: paidSeatsOf(sku),
+          unitPriceCents: Math.max(0, listPrices[sku.skuId] ?? 0),
           ...(sku.trialUnits ? { trialSeats: sku.trialUnits } : {}),
           assigned: sku.consumedUnits,
           unassigned,
         },
-        monthlyImpactCents: unassigned * (listPrices[sku.skuId] ?? 0),
+        monthlyImpactCents:
+          unassigned * Math.max(0, listPrices[sku.skuId] ?? 0),
       });
     }
   }
@@ -528,6 +566,13 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
   if (input.copilotSignal === "aggregate" && input.copilotAggregate) {
     const { inactiveCount, totalCount } = input.copilotAggregate;
     if (inactiveCount > 0) {
+      const consumed =
+        skus.find((s) => s.skuId === COPILOT_SKU_ID)?.consumedUnits ?? 0;
+      const remaining = Math.max(
+        0,
+        Math.max(consumed, observed.get(COPILOT_SKU_ID) ?? 0) -
+          copilotAlreadyPriced,
+      );
       findings.push({
         dedupeKey: key("copilot_unused", "aggregate", COPILOT_SKU_ID),
         rule: "copilot_unused",
@@ -535,7 +580,8 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
         skuId: COPILOT_SKU_ID,
         title: `${inactiveCount} of ${totalCount} Copilot seats show no usage`,
         detail: { aggregate: true, inactiveCount, totalCount },
-        monthlyImpactCents: inactiveCount * (prices[COPILOT_SKU_ID] ?? 0),
+        monthlyImpactCents:
+          Math.min(remaining, inactiveCount) * (prices[COPILOT_SKU_ID] ?? 0),
       });
     }
   }

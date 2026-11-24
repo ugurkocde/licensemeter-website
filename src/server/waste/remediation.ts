@@ -10,6 +10,7 @@ type LicenseDetail = {
   skuId: string;
   name?: string;
   assignedByGroup?: string | null;
+  assignedVia?: (string | null)[];
 };
 
 type RemediationDetail = {
@@ -111,23 +112,6 @@ export const generateRemediationScript = (rows: FindingRow[]): string => {
         continue;
       }
 
-      if (f.rule === "overlapping_licenses" && detail.upn) {
-        const upn = oneLine(detail.upn).replaceAll("'", "''");
-        const redundant = (detail.redundantSkuIds ?? []).filter((id) =>
-          SKU_ID_PATTERN.test(id),
-        );
-        lines.push(`# ${oneLine(f.title)}`);
-        if (redundant.length > 0) {
-          lines.push(
-            `Set-MgUserLicense -UserId '${upn}' -RemoveLicenses @(${redundant
-              .map((id) => `'${id}'`)
-              .join(", ")}) -AddLicenses @()`,
-          );
-        }
-        lines.push("");
-        continue;
-      }
-
       if (detail.aggregate) {
         lines.push(
           `# ${oneLine(f.title)}`,
@@ -146,24 +130,37 @@ export const generateRemediationScript = (rows: FindingRow[]): string => {
       const upn = oneLine(detail.upn).replaceAll("'", "''");
 
       const licenses: LicenseDetail[] =
-        detail.licenses ?? (f.skuId ? [{ skuId: f.skuId }] : []);
+        detail.licenses ??
+        (f.rule === "overlapping_licenses"
+          ? (detail.redundantSkuIds ?? []).map((skuId) => ({ skuId }))
+          : f.skuId
+            ? [{ skuId: f.skuId }]
+            : []);
       // Sku ids come from stored finding detail; only GUID-shaped values may
       // be interpolated into the generated PowerShell.
-      const direct = licenses.filter(
-        (l) => !l.assignedByGroup && SKU_ID_PATTERN.test(l.skuId),
+      const assignments = licenses.flatMap((l) =>
+        (l.assignedVia ?? [l.assignedByGroup ?? null]).map((group) => ({
+          ...l,
+          group,
+        })),
       );
-      const viaGroup = licenses.filter((l) => l.assignedByGroup);
+      const direct = new Set(
+        assignments
+          .filter((l) => l.group === null && SKU_ID_PATTERN.test(l.skuId))
+          .map((l) => l.skuId),
+      );
+      const viaGroup = assignments.filter((l) => l.group !== null);
 
-      if (direct.length > 0) {
-        const skuList = direct.map((l) => `'${l.skuId}'`).join(", ");
+      if (direct.size > 0) {
+        const skuList = [...direct].map((skuId) => `'${skuId}'`).join(", ");
         lines.push(
           `Set-MgUserLicense -UserId '${upn}' -RemoveLicenses @(${skuList}) -AddLicenses @()`,
         );
       }
       for (const l of viaGroup) {
         lines.push(
-          `# ${oneLine(skuDisplayName(l.skuId, l.name))} is inherited from group ${oneLine(l.assignedByGroup ?? "")} -`,
-          `#   remove '${upn}' from that group instead of unassigning directly.`,
+          `# ${oneLine(skuDisplayName(l.skuId, l.name))} is inherited from group ${oneLine(l.group ?? "")} -`,
+          `#   remove '${upn}' from that group to remove this inherited assignment.`,
         );
       }
       lines.push("");

@@ -1,3 +1,5 @@
+import { loadRecentSavings } from "~/server/savings/ledger";
+import { loadLicenseSpend } from "~/server/waste/spendStore";
 import { and, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
 
 import { env, siteUrl } from "~/env";
@@ -292,6 +294,12 @@ const digestForTenant = async (
   if (audience.recipients.length === 0 && audience.optedOut === 0) return;
 
   const delta = computeDigestDelta([...open, ...resolvedRecent], now);
+  const realized = await loadRecentSavings(
+    tenant.id,
+    tenant.currency,
+    now,
+    DELTA_WINDOW_MS / 86_400_000,
+  );
   const renewalLine = renewalDigestLine(renewals, now);
   // AI API spend is metered in USD by the providers and never converted,
   // so the line is formatted in USD regardless of the workspace currency.
@@ -330,7 +338,7 @@ const digestForTenant = async (
         allClearHtml({
           tenantName,
           resolvedCount: delta.resolvedCount,
-          resolvedImpact: fmtMoney(delta.resolvedCents, tenant.currency),
+          resolvedImpact: fmtMoney(realized.cents, tenant.currency),
           renewalLine: renewalLine
             ? `${renewalLine}. You go in clean.`
             : undefined,
@@ -341,7 +349,7 @@ const digestForTenant = async (
     };
   } else {
     const wasteCents = latest?.totalMonthlyWasteCents ?? 0;
-    const openCents = open.reduce((s, f) => s + f.monthlyImpactCents, 0);
+    const { spend } = await loadLicenseSpend(tenant.id);
     // New findings lead the subject; otherwise fall back to the standing
     // totals. With unpriced SKUs the waste is 0. Lead with the findings
     // count instead of an underwhelming zero.
@@ -358,10 +366,7 @@ const digestForTenant = async (
         digestHtml({
           tenantName,
           currency: tenant.currency,
-          monthlySpend: fmtMoney(
-            latest?.totalMonthlySpendCents ?? 0,
-            tenant.currency,
-          ),
+          monthlySpend: fmtMoney(spend.totalCents, tenant.currency),
           monthlyWaste: fmtMoney(
             latest?.totalMonthlyWasteCents ?? 0,
             tenant.currency,
@@ -375,11 +380,9 @@ const digestForTenant = async (
             newCount: delta.newCount,
             newImpact: fmtMoney(delta.newCents, tenant.currency),
             resolvedCount: delta.resolvedCount,
-            resolvedImpact: fmtMoney(delta.resolvedCents, tenant.currency),
+            resolvedImpact: fmtMoney(realized.cents, tenant.currency),
           },
-          renewalLine: renewalLine
-            ? `${renewalLine}, with ${open.length} open finding${open.length === 1 ? "" : "s"} worth ${fmtMoney(openCents, tenant.currency)}/mo to reclaim before you re-commit.`
-            : undefined,
+          renewalLine: renewalLine ?? undefined,
           aiSpendLine,
           appUrl: siteUrl(),
           footer,

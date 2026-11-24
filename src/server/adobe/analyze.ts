@@ -30,7 +30,7 @@ export const analyzeAdobeWaste = (
     if (adobe.status !== "active") continue;
     const email = adobe.email.toLowerCase();
     const entra = entraByEmail.get(email);
-    const monthlyImpactCents = adobe.products.reduce(
+    const monthlyImpactCents = [...new Set(adobe.products)].reduce(
       (sum, p) => sum + (prices[adobePriceKey(p)] ?? 0),
       0,
     );

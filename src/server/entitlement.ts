@@ -10,6 +10,7 @@ export type Plan = "free" | PaidPlan;
 export const FEATURES = [
   "signedDpa",
   "history24",
+  "savingsLedger",
   "mcp",
   "metering",
   "whiteLabel",
@@ -23,6 +24,7 @@ export type Feature = (typeof FEATURES)[number];
 const PRO_FEATURES: readonly Feature[] = [
   "signedDpa",
   "history24",
+  "savingsLedger",
   "mcp",
   "metering",
   "whiteLabel",

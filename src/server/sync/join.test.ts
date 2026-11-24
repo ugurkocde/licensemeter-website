@@ -319,6 +319,7 @@ describe("joinSignals", () => {
       {
         skuId: E3,
         assignedByGroup: "group-1",
+        assignedVia: ["group-1"],
         disabledPlans: [],
         state: "Active",
       },
@@ -385,4 +386,28 @@ describe("demo tenant end-to-end analysis", () => {
       client.listUsers({ includeSignInActivity: false }),
     ).resolves.toHaveLength(155);
   });
+});
+
+it.each([
+  [null, "group-a"],
+  ["group-a", "group-b"],
+])("combines assignment paths %s and %s for the same SKU", (first, second) => {
+  const joined = joinSignals({
+    graphUsers: [
+      graphUser({
+        licenseAssignmentStates: [first, second].map((assignedByGroup) => ({
+          skuId: E3,
+          assignedByGroup,
+          disabledPlans: [],
+          state: "Active",
+        })),
+      }),
+    ],
+    usageRows: [],
+    copilotRows: [],
+    hasP1: true,
+  });
+  expect(joined.users[0]?.licenses).toEqual([
+    expect.objectContaining({ skuId: E3, assignedVia: [first, second] }),
+  ]);
 });

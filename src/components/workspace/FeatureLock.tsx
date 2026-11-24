@@ -49,10 +49,12 @@ export const PlanBadge = ({
 export const FeatureLockPanel = ({
   feature,
   overQuantity = false,
+  actionLabel,
 }: {
   feature: Feature;
   /** The account has an MSP plan, but this workspace is beyond its quantity. */
   overQuantity?: boolean;
+  actionLabel?: string;
 }) => {
   const { label, description } = featureCopy(feature);
   const plan = planName(planFor(feature));
@@ -82,7 +84,9 @@ export const FeatureLockPanel = ({
         variant="primary"
         className="mt-4"
       >
-        {overQuantity ? "Review your plan" : `Upgrade to ${plan}`}
+        {overQuantity
+          ? "Review your plan"
+          : (actionLabel ?? `Upgrade to ${plan}`)}
       </ButtonLink>
     </section>
   );

@@ -44,6 +44,19 @@ export async function loadEntitlement(
   tenant: TenantRow,
   now: Date = new Date(),
 ): Promise<Entitlement> {
+  if (
+    tenant.isDemo &&
+    process.env.NODE_ENV === "development" &&
+    process.env.DEMO_FREE_PLAN === "true"
+  ) {
+    return entitlementOf({
+      tenant: { isDemo: false },
+      record: null,
+      covered: true,
+      billingEnabled: true,
+      now,
+    });
+  }
   const enabled = billingEnabled();
   const resolve = (
     record: Parameters<typeof entitlementOf>[0]["record"],

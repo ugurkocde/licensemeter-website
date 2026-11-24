@@ -24,6 +24,8 @@ import type {
   EntitlementSource,
   EntitlementStatus,
   FindingStatus,
+  ResolutionReason,
+  SavingsReason,
   JoinRequestStatus,
   MembershipRole,
   RemediationStatus,
@@ -595,6 +597,7 @@ export const findings = pgTable(
       .notNull()
       .defaultNow(),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolutionReason: text("resolution_reason").$type<ResolutionReason>(),
   },
   (t) => [
     uniqueIndex("findings_tenant_dedupe_idx").on(t.tenantId, t.dedupeKey),
@@ -606,6 +609,11 @@ export const findings = pgTable(
     index("findings_assignee_idx").on(t.assigneeMembershipId),
     // Backs the user-detail page, which lists findings for one user.
     index("findings_tenant_user_idx").on(t.tenantId, t.graphUserId),
+    index("findings_tenant_resolved_at_idx").on(t.tenantId, t.resolvedAt),
+    check(
+      "findings_resolution_reason_check",
+      sql`${t.resolutionReason} in ('license_removed', 'seats_reduced', 'excluded', 'threshold_changed', 'activity_resumed', 'seats_assigned', 'source_removed', 'price_changed', 'other')`,
+    ),
     check("findings_monthly_impact_nonneg", sql`${t.monthlyImpactCents} >= 0`),
     check(
       "findings_remediation_status_check",
@@ -613,6 +621,44 @@ export const findings = pgTable(
     ),
   ],
 );
+
+/** Financial history without person identifiers, retained for the workspace lifetime. */
+export const savingsLedger = pgTable(
+  "savings_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    findingId: uuid("finding_id").references(() => findings.id, {
+      onDelete: "set null",
+    }),
+    rule: text("rule").$type<WasteRuleId>().notNull(),
+    vendor: text("vendor").notNull(),
+    skuId: text("sku_id"),
+    reason: text("reason").$type<SavingsReason>().notNull(),
+    monthlyCents: integer("monthly_cents").notNull(),
+    currency: text("currency").notNull(),
+    realizedAt: timestamp("realized_at", { withTimezone: true }).notNull(),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("savings_ledger_tenant_realized_idx").on(t.tenantId, t.realizedAt),
+    index("savings_ledger_finding_idx").on(t.findingId),
+    check("savings_ledger_monthly_nonneg", sql`${t.monthlyCents} >= 0`),
+    check(
+      "savings_ledger_reason_check",
+      sql`${t.reason} in ('license_removed', 'seats_reduced')`,
+    ),
+    check(
+      "savings_ledger_reversal_check",
+      sql`${t.reversedAt} >= ${t.realizedAt}`,
+    ),
+  ],
+).enableRLS();
 
 /** Contract and notice-period calendar across Microsoft and SaaS vendors. */
 export const vendorRenewals = pgTable(

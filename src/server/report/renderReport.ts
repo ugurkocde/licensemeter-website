@@ -4,12 +4,12 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { fmtDate, fmtMoney, workspaceLabel } from "~/lib/format";
 import { RULE_META } from "~/lib/rules";
 import { db } from "~/server/db";
-import { findings, priceBook, tenants, tenantSkus } from "~/server/db/schema";
+import { findings, tenants } from "~/server/db/schema";
 import type { ReportBranding } from "~/server/report/brandStyle";
 import { reportFilename } from "~/server/report/filename";
 import { WasteReport } from "~/server/report/WasteReport";
 import type { WasteRuleId } from "~/server/types";
-import { spendSeatsOf } from "~/server/waste/engine";
+import { loadLicenseSpend } from "~/server/waste/spendStore";
 
 export type WasteReportPdf = {
   buffer: Buffer;
@@ -37,9 +37,8 @@ export const renderWasteReportPdf = async (
   if (!tenant) throw new Error(`unknown tenant ${tenantId}`);
   const currency = tenant.currency;
 
-  const [skus, prices, open] = await Promise.all([
-    db.query.tenantSkus.findMany({ where: eq(tenantSkus.tenantId, tenantId) }),
-    db.query.priceBook.findMany({ where: eq(priceBook.tenantId, tenantId) }),
+  const [{ spend }, open] = await Promise.all([
+    loadLicenseSpend(tenantId),
     db.query.findings.findMany({
       where: and(
         eq(findings.tenantId, tenantId),
@@ -49,11 +48,7 @@ export const renderWasteReportPdf = async (
     }),
   ]);
 
-  const priceBySku = new Map(prices.map((p) => [p.skuId, p.monthlyPriceCents]));
-  const monthlySpend = skus.reduce(
-    (sum, s) => sum + spendSeatsOf(s) * (priceBySku.get(s.skuId) ?? 0),
-    0,
-  );
+  const monthlySpend = spend.totalCents;
   const monthlyWaste = open.reduce((sum, f) => sum + f.monthlyImpactCents, 0);
 
   const byRule = new Map<WasteRuleId, { count: number; impact: number }>();

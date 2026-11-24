@@ -618,7 +618,7 @@ describe("tools", () => {
           assigned: 6,
           unused: 4,
           monthly_price: 10,
-          monthly_spend: 60,
+          monthly_spend: 100,
           monthly_cost_of_unused: 40,
         },
       ],

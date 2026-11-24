@@ -708,3 +708,71 @@ describe("addresses shared by several directory users", () => {
     },
   );
 });
+
+it("records reclaimed monthly value atomically and reverses it on reappearance", async () => {
+  const { loadRecentSavings, loadSavingsLedger } =
+    await import("~/server/savings/ledger");
+  const active = graphUser("active", "active@example.test");
+  const disabled = graphUser("disabled", "disabled@example.test", {
+    accountEnabled: false,
+  });
+  const before = client([sku(E3, "SPE_E3", 4, 2)], {}, [active, disabled]);
+  const after = client([sku(E3, "SPE_E3", 1, 1)], {}, [active]);
+  await runSync(TENANT, { client: before });
+  await runSync(TENANT, { client: after });
+  await runSync(TENANT, { client: after });
+  const entries = await currentDb.select().from(schema.savingsLedger);
+  expect(entries).toHaveLength(2);
+  expect(entries).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        reason: "license_removed",
+        monthlyCents: 3670,
+        skuId: E3,
+        reversedAt: null,
+      }),
+      expect.objectContaining({
+        reason: "seats_reduced",
+        monthlyCents: 7340,
+        skuId: E3,
+        reversedAt: null,
+      }),
+    ]),
+  );
+  expect(await loadRecentSavings(TENANT, "EUR")).toEqual({
+    cents: 11010,
+    reclaimed: 2,
+    noLongerFlagged: 0,
+    reasonNotRecorded: 0,
+  });
+  expect((await loadSavingsLedger(TENANT, "EUR")).runRate).toBe(11010);
+
+  await runSync(TENANT, { client: before });
+  expect(await loadRecentSavings(TENANT, "EUR")).toEqual({
+    cents: 0,
+    reclaimed: 0,
+    noLongerFlagged: 0,
+    reasonNotRecorded: 0,
+  });
+  expect(
+    (await currentDb.select().from(schema.savingsLedger)).every(
+      (entry) => entry.reversedAt !== null,
+    ),
+  ).toBe(true);
+  expect(
+    (await openFindings()).every(
+      (finding) => finding.resolutionReason === null,
+    ),
+  ).toBe(true);
+});
+
+it("prorates accrued savings using the actual days in each UTC month", async () => {
+  const { accruedSavings } = await import("~/server/savings/ledger");
+  expect(
+    accruedSavings(
+      1000,
+      new Date("2026-01-16T12:00:00Z"),
+      new Date("2026-02-15T00:00:00Z"),
+    ),
+  ).toBe(1000);
+});

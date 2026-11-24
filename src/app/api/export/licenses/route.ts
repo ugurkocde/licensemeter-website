@@ -11,7 +11,6 @@ import {
   idleSeatsOf,
   isShelfwareExempt,
   paidSeatsOf,
-  spendSeatsOf,
 } from "~/server/waste/engine";
 
 export const GET = async () => {
@@ -36,7 +35,7 @@ export const GET = async () => {
     // capacity sentinels (WINDOWS_STORE, FLOW_FREE, etc.) so the export lists only
     // the real, purchased SKUs the user sees on screen.
     const visibleSkus = skus.filter(
-      (s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled),
+      (s) => !isShelfwareExempt(s.skuPartNumber, s.skuId),
     );
 
     const csv = toCsv([
@@ -61,7 +60,7 @@ export const GET = async () => {
           s.consumedUnits,
           available,
           centsToDecimal(price),
-          centsToDecimal(spendSeatsOf(s) * price),
+          centsToDecimal(paidSeatsOf(s) * price),
           centsToDecimal(available * price),
         ];
       }),

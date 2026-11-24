@@ -6,7 +6,7 @@ import {
   COPILOT_SKU_ID,
   isShelfwareExempt,
   purchasedSeatsOf,
-  spendSeatsOf,
+  paidSeatsOf,
   unpricedSkuCount,
   userLicensePricing,
   type WasteInput,
@@ -45,7 +45,23 @@ const user = (overrides: Partial<WasteUser>): WasteUser => ({
 const run = (overrides: Partial<WasteInput>) =>
   analyzeWaste({
     users: [],
-    skus: [],
+    skus: Object.keys(overrides.prices ?? PRICES).map((skuId) => {
+      const count =
+        overrides.users?.filter((user) =>
+          user.licenses.some((license) => license.skuId === skuId),
+        ).length ?? 0;
+      const seats =
+        count ||
+        (skuId === COPILOT_SKU_ID
+          ? (overrides.copilotAggregate?.totalCount ?? 0)
+          : 0);
+      return {
+        skuId,
+        skuPartNumber: "PRODUCT",
+        prepaidEnabled: seats,
+        consumedUnits: seats,
+      };
+    }),
     prices: PRICES,
     now: NOW,
     activitySignal: "full",
@@ -331,12 +347,6 @@ describe("shelfware", () => {
           prepaidEnabled: 10_000,
           consumedUnits: 1,
         },
-        {
-          skuId: "capacity-sku",
-          skuPartNumber: "SOME_FUTURE_CAPACITY_SKU",
-          prepaidEnabled: 50_000,
-          consumedUnits: 3,
-        },
       ],
     });
     expect(findings).toHaveLength(0);
@@ -372,14 +382,19 @@ describe("purchasedSeatsOf", () => {
     expect(seats).toBe(26);
   });
 
-  it("drops capacity-style allotments at or above the threshold", () => {
-    expect(
-      purchasedSeatsOf([
-        { skuPartNumber: "SPE_E5", prepaidEnabled: 100 },
-        { skuPartNumber: "SOME_FUTURE_CAPACITY_SKU", prepaidEnabled: 50_000 },
-      ]),
-    ).toBe(100);
-  });
+  it.each([4_999, 5_000, 50_000])(
+    "counts a paid SKU with %i seats",
+    (seats) => {
+      const sku = {
+        skuId: E3,
+        skuPartNumber: "SPE_E3",
+        prepaidEnabled: seats,
+        consumedUnits: 0,
+      };
+      expect(purchasedSeatsOf([sku])).toBe(seats);
+      expect(run({ skus: [sku] })[0]?.monthlyImpactCents).toBe(seats * 3670);
+    },
+  );
 
   it("is zero for an empty tenant", () => {
     expect(purchasedSeatsOf([])).toBe(0);
@@ -388,21 +403,16 @@ describe("purchasedSeatsOf", () => {
 
 describe("isShelfwareExempt (dashboard license inventory filter)", () => {
   it("hides Microsoft's free/viral/capacity sentinels", () => {
-    expect(isShelfwareExempt("WINDOWS_STORE", 1_000_000)).toBe(true);
-    expect(isShelfwareExempt("FLOW_FREE", 10_000)).toBe(true);
+    expect(isShelfwareExempt("WINDOWS_STORE")).toBe(true);
+    expect(isShelfwareExempt("FLOW_FREE")).toBe(true);
   });
 
   it("keeps real purchased SKUs (the rows worth showing)", () => {
     // Same live 25-user tenant: EMS, Developerpack E5 and the over-assigned
     // Intune Suite are real licenses and stay in the inventory table.
-    expect(isShelfwareExempt("EMS", 1)).toBe(false);
-    expect(isShelfwareExempt("DEVELOPERPACK_E5", 25)).toBe(false);
-    expect(isShelfwareExempt("Microsoft_Intune_Suite", 0)).toBe(false);
-  });
-
-  it("treats any 5,000+ seat allotment as capacity plumbing", () => {
-    expect(isShelfwareExempt("SOME_FUTURE_CAPACITY_SKU", 5_000)).toBe(true);
-    expect(isShelfwareExempt("SOME_FUTURE_CAPACITY_SKU", 4_999)).toBe(false);
+    expect(isShelfwareExempt("EMS")).toBe(false);
+    expect(isShelfwareExempt("DEVELOPERPACK_E5")).toBe(false);
+    expect(isShelfwareExempt("Microsoft_Intune_Suite")).toBe(false);
   });
 });
 
@@ -551,11 +561,10 @@ describe("trial seats", () => {
     ).toBe(100);
   });
 
-  it("does not count assignments on trial seats as spend", () => {
-    expect(spendSeatsOf(sku(125, 110, 25))).toBe(100);
-    expect(spendSeatsOf(sku(25, 20, 25))).toBe(0);
-    // Without trials an over-assigned SKU keeps Microsoft's consumed count.
-    expect(spendSeatsOf(sku(10, 12))).toBe(12);
+  it("counts paid purchases independently of assignments", () => {
+    expect(paidSeatsOf(sku(125, 110, 25))).toBe(100);
+    expect(paidSeatsOf(sku(25, 20, 25))).toBe(0);
+    expect(paidSeatsOf(sku(10, 12))).toBe(10);
   });
 });
 
@@ -685,7 +694,7 @@ describe("assigned trial licenses", () => {
     expect(finding!.monthlyImpactCents).toBe(0);
   });
 
-  it("leaves SKUs without trial seats exactly as before", () => {
+  it("caps over-assigned SKUs at paid spend even without trials", () => {
     const users = [
       disabledE3,
       user({ graphId: "u-2", licenses: [lic(COPILOT_SKU_ID)] }),
@@ -695,7 +704,7 @@ describe("assigned trial licenses", () => {
       skus: [e3(10, 12), { ...copilot(5, 0), prepaidEnabled: 5 }],
     });
     const without = run({ users });
-    expect(withSkus.map((f) => f.monthlyImpactCents)).toEqual([3670, 2810]);
+    expect(withSkus.map((f) => f.monthlyImpactCents)).toEqual([3058, 2810]);
     expect(without.map((f) => f.monthlyImpactCents)).toEqual([3670, 2810]);
   });
 });
@@ -714,7 +723,7 @@ describe("over-assigned trial SKUs", () => {
   });
 
   it("never invents paid spend on a trial-only SKU", () => {
-    expect(spendSeatsOf(seats(25, 30, 25))).toBe(0);
+    expect(paidSeatsOf(seats(25, 30, 25))).toBe(0);
     expect(purchasedSeatsOf([seats(25, 30, 25)])).toBe(0);
     expect(
       unpricedSkuCount(
@@ -729,16 +738,6 @@ describe("over-assigned trial SKUs", () => {
       ),
     ).toBe(0);
     expect(run({ skus: [seats(25, 30, 25)] })).toEqual([]);
-  });
-
-  it("caps a mixed SKU's spend at its paid seats", () => {
-    expect(spendSeatsOf(seats(125, 140, 25))).toBe(100);
-    expect(spendSeatsOf(seats(125, 60, 25))).toBe(60);
-  });
-
-  it("keeps Microsoft's consumed count when there are no trial seats", () => {
-    expect(spendSeatsOf(seats(10, 12))).toBe(12);
-    expect(spendSeatsOf(seats(10, 8))).toBe(8);
   });
 });
 
@@ -770,7 +769,7 @@ describe("userLicensePricing (user detail page)", () => {
     expect(pricing.totalCents).toBe(finding!.monthlyImpactCents);
   });
 
-  it("shows the price book value for SKUs without trial seats", () => {
+  it("caps over-assigned SKUs and values licenses missing inventory at zero", () => {
     expect(
       userLicensePricing(
         [lic(E3), lic(COPILOT_SKU_ID)],
@@ -779,10 +778,28 @@ describe("userLicensePricing (user detail page)", () => {
       ),
     ).toEqual({
       rows: [
-        { skuId: E3, monthlyPriceCents: 3670, onTrialSku: false },
-        { skuId: COPILOT_SKU_ID, monthlyPriceCents: 2810, onTrialSku: false },
+        { skuId: E3, monthlyPriceCents: 3058, onTrialSku: false },
+        { skuId: COPILOT_SKU_ID, monthlyPriceCents: 0, onTrialSku: false },
       ],
-      totalCents: 3670 + 2810,
+      totalCents: 3058,
     });
   });
+});
+
+it.each([
+  [null, "group-a"],
+  ["group-a", "group-b"],
+])("prices legacy repeated SKU paths %s and %s once", (first, second) => {
+  const [finding] = run({
+    users: [
+      user({
+        accountEnabled: false,
+        licenses: [lic(E3, first), lic(E3, second)],
+      }),
+    ],
+  });
+  expect(finding?.monthlyImpactCents).toBe(3670);
+  expect(finding?.detail.licenses).toEqual([
+    expect.objectContaining({ skuId: E3, assignedVia: [first, second] }),
+  ]);
 });

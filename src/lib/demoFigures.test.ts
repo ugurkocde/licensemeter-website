@@ -14,7 +14,8 @@ import { meteringDemo } from "~/server/metering/demo";
 import { summarize } from "~/server/metering/summary";
 import { joinSignals } from "~/server/sync/join";
 import { analyzeWaste, type WasteFinding } from "~/server/waste/engine";
-import type { WasteRuleId } from "~/server/types";
+import { licenseSpend } from "~/server/waste/spend";
+import type { SaasProvider, SaasSeat, WasteRuleId } from "~/server/types";
 import { DEMO_FIGURES } from "./demoFigures";
 
 /* Mirrors the DEMO_ADOBE_PRICES prefill in runSync.ts, which cannot be
@@ -60,14 +61,15 @@ const recompute = async () => {
   };
   const now = new Date();
 
+  const inventory = skus.map((s) => ({
+    skuId: s.skuId,
+    skuPartNumber: s.skuPartNumber,
+    prepaidEnabled: s.prepaidUnits.enabled,
+    consumedUnits: s.consumedUnits,
+  }));
   const graphFindings = analyzeWaste({
     users: joined.users,
-    skus: skus.map((s) => ({
-      skuId: s.skuId,
-      skuPartNumber: s.skuPartNumber,
-      prepaidEnabled: s.prepaidUnits.enabled,
-      consumedUnits: s.consumedUnits,
-    })),
+    skus: inventory,
     prices,
     now,
     activitySignal: joined.activitySignal,
@@ -83,29 +85,29 @@ const recompute = async () => {
     displayName: u.displayName,
     accountEnabled: u.accountEnabled,
   }));
-  const adobeFindings = analyzeAdobeWaste(
-    await new DemoAdobeClient().getUsers(),
-    identities,
-    prices,
-  );
+  const adobe = await new DemoAdobeClient().getUsers();
+  const adobeFindings = analyzeAdobeWaste(adobe, identities, prices);
   const saasFindings: WasteFinding[] = [];
+  const saas = new Map<SaasProvider, SaasSeat[]>();
   for (const provider of SAAS_PROVIDERS) {
+    const seats = await demoSaasClient(provider).getSeats();
+    saas.set(provider, seats);
     saasFindings.push(
-      ...analyzeSaasWaste(
-        provider,
-        await demoSaasClient(provider).getSeats(),
-        identities,
-        prices,
-        { inactiveDays: INACTIVE_DAYS, now },
-      ),
+      ...analyzeSaasWaste(provider, seats, identities, prices, {
+        inactiveDays: INACTIVE_DAYS,
+        now,
+      }),
     );
   }
 
   const findings = graphFindings.concat(adobeFindings, saasFindings);
-  const monthlySpendCents = skus.reduce(
-    (sum, s) => sum + s.consumedUnits * (prices[s.skuId] ?? 0),
-    0,
-  );
+  const monthlySpendCents = licenseSpend(
+    { skus: inventory, adobe, saas },
+    Object.entries(prices).map(([skuId, monthlyPriceCents]) => ({
+      skuId,
+      monthlyPriceCents,
+    })),
+  ).totalCents;
   return { orgName, users: graphUsers.length, findings, monthlySpendCents };
 };
 

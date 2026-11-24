@@ -1,0 +1,7 @@
+{
+  "title": "Track realized license savings",
+  "summary": "The overview now counts confirmed license removals and purchase reductions as savings, and compares waste with purchased seat spend. Pro adds a 24-month savings ledger and shows how much spend uses the prices you entered.",
+  "type": "improved",
+  "publishedOn": "2026-11-24",
+  "idempotencyKey": "licensemeter:realized-savings-ledger"
+}

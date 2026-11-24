@@ -35,6 +35,7 @@ import {
   priceBook,
   saasConnections,
   saasSeats,
+  savingsLedger,
   snapshots,
   syncRuns,
   tenants,
@@ -135,7 +136,11 @@ export const setFindingStatus = async (
     .update(findings)
     .set({ status })
     .where(
-      and(eq(findings.id, findingId), eq(findings.tenantId, ctx.tenant.id)),
+      and(
+        eq(findings.id, findingId),
+        eq(findings.tenantId, ctx.tenant.id),
+        inArray(findings.status, ["open", "acknowledged"]),
+      ),
     )
     .returning({ id: findings.id });
   if (updated.length === 0) return fail("Finding not found");
@@ -162,7 +167,13 @@ export const bulkSetFindingStatus = async (
   const updated = await db
     .update(findings)
     .set({ status })
-    .where(and(inArray(findings.id, ids), eq(findings.tenantId, ctx.tenant.id)))
+    .where(
+      and(
+        inArray(findings.id, ids),
+        eq(findings.tenantId, ctx.tenant.id),
+        inArray(findings.status, ["open", "acknowledged"]),
+      ),
+    )
     .returning({ id: findings.id });
   await audit(ctx, "findings_bulk_updated", { count: updated.length, status });
   revalidateApp();
@@ -861,7 +872,9 @@ export const setInactiveDays = async (
     .set({ inactiveDays: days })
     .where(eq(tenants.id, ctx.tenant.id));
   await audit(ctx, "threshold_changed", { inactiveDays: days });
-  await runAnalysis(ctx.tenant.id);
+  await runAnalysis(ctx.tenant.id, {
+    previousInactiveDays: ctx.tenant.inactiveDays,
+  });
   revalidateApp();
   return ok();
 };
@@ -1201,7 +1214,13 @@ export const setCurrency = async (
 
   try {
     await db.transaction(async (tx) => {
+      await tx
+        .select({ id: tenants.id })
+        .from(tenants)
+        .where(eq(tenants.id, ctx.tenant.id))
+        .for("update");
       const convertedPrice = sql<number>`round(${priceBook.monthlyPriceCents}::numeric * ${rate})::integer`;
+      const convertedSavings = sql<number>`round(${savingsLedger.monthlyCents}::numeric * ${rate})::integer`;
       const convertedImpact = sql<number>`round(${findings.monthlyImpactCents}::numeric * ${rate})::integer`;
       const convertedSpend = sql<number>`round(${snapshots.totalMonthlySpendCents}::numeric * ${rate})::integer`;
       const convertedWaste = sql<number>`round(${snapshots.totalMonthlyWasteCents}::numeric * ${rate})::integer`;
@@ -1215,6 +1234,15 @@ export const setCurrency = async (
         .update(findings)
         .set({ monthlyImpactCents: convertedImpact })
         .where(eq(findings.tenantId, ctx.tenant.id));
+      await tx
+        .update(savingsLedger)
+        .set({ monthlyCents: convertedSavings, currency })
+        .where(
+          and(
+            eq(savingsLedger.tenantId, ctx.tenant.id),
+            eq(savingsLedger.currency, from),
+          ),
+        );
       await tx
         .update(snapshots)
         .set({
@@ -1349,7 +1377,7 @@ export const disconnectAdobe = async (): Promise<ActionResult> => {
     .where(eq(adobeConnections.tenantId, ctx.tenant.id));
   await db.delete(adobeUsers).where(eq(adobeUsers.tenantId, ctx.tenant.id));
   await audit(ctx, "adobe_disconnected", {});
-  await runAnalysis(ctx.tenant.id);
+  await runAnalysis(ctx.tenant.id, { removedSources: ["adobe"] });
   revalidateApp();
   return ok();
 };
@@ -1478,7 +1506,7 @@ export const disconnectSaasConnector = async (
       ),
     );
   await audit(ctx, "connector_disconnected", { provider });
-  await runAnalysis(ctx.tenant.id);
+  await runAnalysis(ctx.tenant.id, { removedSources: [provider] });
   revalidateApp();
   return ok();
 };
@@ -1849,7 +1877,7 @@ export const importSeats = async (
     imported: rows.length,
     invalid: parsed.invalid.length,
   });
-  await runAnalysis(ctx.tenant.id);
+  await runAnalysis(ctx.tenant.id, { verifiedSources: new Set([provider]) });
   revalidateApp();
   return { ok: true, imported: rows.length, invalid: parsed.invalid.length };
 };
@@ -1875,7 +1903,7 @@ export const clearImportedSeats = async (
       ),
     );
   await audit(ctx, "seats_import_cleared", { provider });
-  await runAnalysis(ctx.tenant.id);
+  await runAnalysis(ctx.tenant.id, { removedSources: [provider] });
   revalidateApp();
   return ok();
 };

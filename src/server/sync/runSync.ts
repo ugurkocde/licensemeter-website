@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
 
 import { db } from "~/server/db";
 import {
@@ -17,6 +17,7 @@ import {
   saasConnections,
   saasSeats as saasSeatsTable,
   snapshots,
+  savingsLedger,
   syncRuns,
   tenantSkus,
   tenants,
@@ -75,9 +76,19 @@ import {
   analyzeWaste,
   paidSeatsOf,
   purchasedSeatsOf,
-  spendSeatsOf,
   type WasteFinding,
 } from "~/server/waste/engine";
+
+import { resolutionOf } from "~/server/savings/resolution";
+import {
+  comparableWaste,
+  findingSource,
+  groupSaasSeats,
+  licenseSpend,
+  vendorLabel,
+  type SeatSource,
+} from "~/server/waste/spend";
+import { loadLicenseSpend } from "~/server/waste/spendStore";
 
 const chunk = <T>(arr: T[], size: number): T[][] => {
   const out: T[][] = [];
@@ -733,6 +744,13 @@ export const runSync = async (
     const termsOf = (skuId: string): SkuTerms =>
       skuTerms?.get(skuId) ?? { trialUnits: 0, nextLifecycleAt: null };
 
+    // An empty SKU response is confirmed only when a populated directory
+    // also has no assignments. Otherwise keep the previous inventory.
+    const verifiedMicrosoft = Boolean(
+      client &&
+      graphUsers.length &&
+      (skus.length || joined.users.every((user) => user.licenses.length === 0)),
+    );
     // --- Persist phase (upsert + prune; no destructive window) -------------
     await db.transaction(async (tx) => {
       if (skus.length > 0) {
@@ -770,15 +788,18 @@ export const runSync = async (
             });
         }
       }
-      // Prune only when Graph returned data; an empty result keeps the last
-      // known inventory instead of wiping it (defensive against odd responses).
-      if (skus.length > 0) {
+      if (verifiedMicrosoft) {
         await tx
           .delete(tenantSkus)
           .where(
             and(
               eq(tenantSkus.tenantId, tenantId),
-              notInArray(tenantSkus.skuId, textSet(skus.map((s) => s.skuId))),
+              skus.length > 0
+                ? notInArray(
+                    tenantSkus.skuId,
+                    textSet(skus.map((s) => s.skuId)),
+                  )
+                : undefined,
             ),
           );
       }
@@ -984,7 +1005,11 @@ export const runSync = async (
               s.skuId,
               tenant.currencyRatePpm,
             ),
-            source: "default" as const,
+            source:
+              tenant.isDemo &&
+              s.skuId === "05e9a617-0261-4cee-bb44-138d3ef5d965"
+                ? ("custom" as const)
+                : ("default" as const),
           })),
         );
       }
@@ -1103,7 +1128,10 @@ export const runSync = async (
         { inactiveDays: tenant.inactiveDays, now },
       ),
     );
-    const allFindings = newFindings.concat(adobeFindings, saasFindings);
+    const allFindings = (verifiedMicrosoft ? newFindings : []).concat(
+      adobeFindings,
+      saasFindings,
+    );
     record({
       step: "wasteAnalysis",
       status: "ok",
@@ -1111,23 +1139,41 @@ export const runSync = async (
       durationMs: since(analysisStarted),
     });
 
-    const inserted = await diffFindings(tenantId, allFindings, now);
+    const verifiedSources = new Set<SeatSource>(saasPersist);
+    if (adobeActive) verifiedSources.add("adobe");
+    if (verifiedMicrosoft) verifiedSources.add("microsoft");
+    const inserted = await diffFindings(
+      tenantId,
+      allFindings,
+      now,
+      {
+        users: joined.users,
+        skus: inventory,
+        adobe: adobeRows,
+        saas: saasRows,
+        prices,
+        now,
+        inactiveDays: tenant.inactiveDays,
+        exclusions: tenant.findingExclusions,
+        verifiedSources,
+      },
+      !verifiedSources.has("microsoft"),
+    );
+
     await sendLeakAlert(tenant, inserted, now);
 
     // --- Snapshot + tenant capabilities ------------------------------------
-    const totalMonthlySpendCents = inventory.reduce(
-      (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
-      0,
-    );
+    const { spend } = await loadLicenseSpend(tenantId);
+    const totalMonthlySpendCents = spend.totalCents;
     const openRows = await db.query.findings.findMany({
       where: and(
         eq(findings.tenantId, tenantId),
         inArray(findings.status, ["open", "acknowledged"]),
       ),
     });
-    const totalMonthlyWasteCents = openRows.reduce(
-      (sum, f) => sum + f.monthlyImpactCents,
-      0,
+    const totalMonthlyWasteCents = comparableWaste(
+      openRows.reduce((sum, f) => sum + f.monthlyImpactCents, 0),
+      totalMonthlySpendCents,
     );
 
     const day = now.toISOString().slice(0, 10);
@@ -1230,7 +1276,14 @@ export const runSync = async (
  * price book edits so impact figures update without a Graph round trip.
  * Falls back gracefully when the tenant has never synced.
  */
-export const runAnalysis = async (tenantId: string): Promise<void> => {
+export const runAnalysis = async (
+  tenantId: string,
+  changes: {
+    removedSources?: SeatSource[];
+    verifiedSources?: ReadonlySet<SeatSource>;
+    previousInactiveDays?: number;
+  } = {},
+): Promise<void> => {
   const tenant = await db.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
   });
@@ -1259,7 +1312,8 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     skuRows.length === 0 &&
     userRows.length === 0 &&
     adobeRows.length === 0 &&
-    saasSeatRows.length === 0
+    saasSeatRows.length === 0 &&
+    !changes.removedSources?.length
   )
     return;
 
@@ -1268,20 +1322,22 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     priceRows.map((p) => [p.skuId, p.monthlyPriceCents]),
   );
 
+  const users = userRows.map((r) => ({
+    mailAliases: r.mailAliases,
+    graphId: r.graphId,
+    upn: r.upn,
+    displayName: r.displayName,
+    accountEnabled: r.accountEnabled,
+    userType: r.userType,
+    createdDateTime: r.createdDateTime,
+    lastActivity: r.lastActivity,
+    copilotLastActivity: r.workloadActivity?.copilot
+      ? new Date(r.workloadActivity.copilot)
+      : null,
+    licenses: r.licenses,
+  }));
   const newFindings = analyzeWaste({
-    users: userRows.map((r) => ({
-      graphId: r.graphId,
-      upn: r.upn,
-      displayName: r.displayName,
-      accountEnabled: r.accountEnabled,
-      userType: r.userType,
-      createdDateTime: r.createdDateTime,
-      lastActivity: r.lastActivity,
-      copilotLastActivity: r.workloadActivity?.copilot
-        ? new Date(r.workloadActivity.copilot)
-        : null,
-      licenses: r.licenses,
-    })),
+    users,
     skus: skuRows,
     prices,
     now,
@@ -1340,21 +1396,32 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     tenantId,
     newFindings.concat(adobeFindings, saasFindings),
     now,
+    {
+      users,
+      skus: skuRows,
+      adobe: adobeRows,
+      saas: groupSaasSeats(saasSeatRows),
+      prices,
+      now,
+      inactiveDays: tenant.inactiveDays,
+      exclusions: tenant.findingExclusions,
+      ...changes,
+    },
   );
 
-  const totalMonthlySpendCents = skuRows.reduce(
-    (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
-    0,
-  );
+  const totalMonthlySpendCents = licenseSpend(
+    { skus: skuRows, adobe: adobeRows, saas: groupSaasSeats(saasSeatRows) },
+    priceRows,
+  ).totalCents;
   const openRows = await db.query.findings.findMany({
     where: and(
       eq(findings.tenantId, tenantId),
       inArray(findings.status, ["open", "acknowledged"]),
     ),
   });
-  const totalMonthlyWasteCents = openRows.reduce(
-    (sum, f) => sum + f.monthlyImpactCents,
-    0,
+  const totalMonthlyWasteCents = comparableWaste(
+    openRows.reduce((sum, f) => sum + f.monthlyImpactCents, 0),
+    totalMonthlySpendCents,
   );
   const day = now.toISOString().slice(0, 10);
   const purchasedSeats = purchasedSeatsOf(skuRows);
@@ -1401,10 +1468,20 @@ export const diffFindings = async (
   tenantId: string,
   newFindings: WasteFinding[],
   now: Date,
+  state?: Parameters<typeof resolutionOf>[0],
+  preserveMicrosoft = false,
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
   // (some inserted/reopened, others never resolved) for the tenant.
   return db.transaction(async (tx) => {
+    const [lockedTenant] = await tx
+      .select({ currency: tenants.currency })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .for("update");
+    const classify = state && resolutionOf(state);
+    const entries: (typeof savingsLedger.$inferInsert)[] = [];
+    const reopened: string[] = [];
     const existing = await tx.query.findings.findMany({
       where: eq(findings.tenantId, tenantId),
     });
@@ -1452,6 +1529,7 @@ export const diffFindings = async (
     }
 
     for (const f of existing) {
+      if (f.lastSeenAt > now || (f.resolvedAt && f.resolvedAt > now)) continue;
       // A row still holding the plain key takes precedence: the pseudonymised
       // row of the same key then stays as it is, so the plain key is never
       // assigned twice (findings_tenant_dedupe_idx).
@@ -1464,6 +1542,7 @@ export const diffFindings = async (
           ? viaHash
           : undefined);
       if (fresh) {
+        if (f.status === "resolved") reopened.push(f.id);
         await tx
           .update(findings)
           .set({
@@ -1474,17 +1553,67 @@ export const diffFindings = async (
             monthlyImpactCents: fresh.monthlyImpactCents,
             lastSeenAt: now,
             ...(f.status === "resolved"
-              ? { status: "open" as const, resolvedAt: null }
+              ? {
+                  status: "open" as const,
+                  resolvedAt: null,
+                  resolutionReason: null,
+                }
               : {}),
           })
           .where(eq(findings.id, f.id));
-      } else if (f.status !== "resolved") {
+      } else if (
+        f.status !== "resolved" &&
+        !(preserveMicrosoft && findingSource(f) === "microsoft")
+      ) {
+        const resolution = classify?.(f) ?? { reason: "other" as const };
+        const { reason, monthlyCents, skuId } = resolution;
         await tx
           .update(findings)
-          .set({ status: "resolved", resolvedAt: now })
+          .set({
+            status: "resolved",
+            resolvedAt: now,
+            resolutionReason: reason,
+          })
           .where(eq(findings.id, f.id));
+        if (
+          (reason === "license_removed" || reason === "seats_reduced") &&
+          lockedTenant
+        ) {
+          entries.push({
+            tenantId,
+            findingId: f.id,
+            rule: f.rule,
+            vendor: vendorLabel(findingSource(f)),
+            // Persist only a product GUID, never a customer-defined label.
+            skuId:
+              skuId &&
+              /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(skuId)
+                ? skuId
+                : null,
+            reason,
+            monthlyCents: monthlyCents ?? 0,
+            currency: lockedTenant.currency,
+            realizedAt: now,
+          });
+        }
       }
     }
+    for (const batch of chunk(reopened, 250)) {
+      await tx
+        .update(savingsLedger)
+        .set({
+          reversedAt: sql`greatest(${savingsLedger.realizedAt}, ${now.toISOString()}::timestamptz)`,
+        })
+        .where(
+          and(
+            eq(savingsLedger.tenantId, tenantId),
+            inArray(savingsLedger.findingId, batch),
+            isNull(savingsLedger.reversedAt),
+          ),
+        );
+    }
+    for (const batch of chunk(entries, 250))
+      await tx.insert(savingsLedger).values(batch);
 
     return inserted;
   });

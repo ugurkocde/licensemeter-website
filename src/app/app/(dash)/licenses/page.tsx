@@ -19,7 +19,6 @@ import {
   idleSeatsOf,
   isShelfwareExempt,
   paidSeatsOf,
-  spendSeatsOf,
   unpricedSkuCount,
 } from "~/server/waste/engine";
 import { saasPriceKey } from "~/server/saas/analyze";
@@ -117,7 +116,7 @@ export default async function LicensesPage({
   // prepaid units, FLOW_FREE, etc.) so this table matches Overview's inventory
   // and the licenses CSV export, which both apply the same exemption.
   const realSkus = skus.filter(
-    (s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled),
+    (s) => !isShelfwareExempt(s.skuPartNumber, s.skuId),
   );
   const allSorted = [...realSkus].sort((a, b) =>
     (a.displayName ?? a.skuPartNumber).localeCompare(
@@ -129,7 +128,7 @@ export default async function LicensesPage({
   // Over-assigned SKUs (assigned > purchased) have no spare seats; clamp to 0.
   const unassignedOf = idleSeatsOf;
   const spendOf = (s: (typeof allSorted)[number]) =>
-    spendSeatsOf(s) * (priceRows.get(s.skuId)?.monthlyPriceCents ?? 0);
+    paidSeatsOf(s) * (priceRows.get(s.skuId)?.monthlyPriceCents ?? 0);
   const totals = allSorted.reduce(
     (acc, s) => ({
       purchased: acc.purchased + paidSeatsOf(s),
@@ -142,7 +141,10 @@ export default async function LicensesPage({
 
   const coverageProducts = [
     ...allSorted.map((s) => ({
-      seats: spendSeatsOf(s),
+      seats:
+        s.trialUnits > 0
+          ? Math.min(s.consumedUnits, paidSeatsOf(s))
+          : s.consumedUnits,
       priceCents: priceRows.get(s.skuId)?.monthlyPriceCents ?? 0,
       source: priceRows.get(s.skuId)?.source,
     })),

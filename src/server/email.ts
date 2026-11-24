@@ -264,7 +264,7 @@ const deltaBlock = (delta: {
       : "No new findings since last week.";
   const resolved =
     delta.resolvedCount > 0
-      ? ` ${delta.resolvedCount} resolved (${emailAmount(`${delta.resolvedImpact}/mo`)} freed).`
+      ? ` ${delta.resolvedCount} resolved (${emailAmount(`${delta.resolvedImpact}/mo`)} reclaimed).`
       : "";
   return emailText(`${fresh}${resolved}`, { tone: "ink", size: "lead" });
 };
@@ -367,7 +367,7 @@ ${emailText("No open findings. Nothing new leaked this week.", { tone: "ink", si
 ${
   args.resolvedCount > 0
     ? emailText(
-        `${args.resolvedCount} finding${args.resolvedCount === 1 ? "" : "s"} resolved in the last 7 days (${escapeHtml(args.resolvedImpact)}/mo freed).`,
+        `${args.resolvedCount} finding${args.resolvedCount === 1 ? "" : "s"} resolved in the last 7 days (${escapeHtml(args.resolvedImpact)}/mo reclaimed).`,
       )
     : ""
 }
