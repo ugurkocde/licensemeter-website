@@ -81,6 +81,13 @@ const config = {
           },
         ],
       },
+      {
+        source: "/connect/approve/:path*",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "private, no-store" },
+        ],
+      },
     ];
   },
 };

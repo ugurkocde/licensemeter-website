@@ -3,7 +3,7 @@ import "~/styles/globals.css";
 import { type Metadata, type Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
-import { Analytics } from "@vercel/analytics/react";
+import { SiteAnalytics } from "~/components/SiteAnalytics";
 import { connection } from "next/server";
 
 import { env, publicSiteUrl } from "~/env";
@@ -128,7 +128,7 @@ export default async function RootLayout({
             __html: JSON.stringify(SITE_LD).replaceAll("<", "\\u003c"),
           }}
         />
-        {process.env.VERCEL === "1" && <Analytics />}
+        {process.env.VERCEL === "1" && <SiteAnalytics />}
       </body>
     </html>
   );

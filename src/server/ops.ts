@@ -189,17 +189,21 @@ export const sendDemoOpenDigest = async (): Promise<void> => {
 };
 
 const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
-  // Fail closed: anything other than an explicit "info" logs at error level.
-  if (opts.logLevel === "info") console.info(`[ops] ${text}`);
-  else console.error(`[ops] ${text}`);
+  // Keyed info notices are also deduplicated in the logs, where teams
+  // without an ops delivery channel still see them.
+  const dedupInfo =
+    opts.logLevel === "info" &&
+    Boolean(opts.key && opts.cooldownMs) &&
+    !opts.countForDigest;
+  if (opts.logLevel === "info") {
+    if (!dedupInfo) console.info(`[ops] ${text}`);
+  } else {
+    console.error(`[ops] ${text}`);
+  }
 
-  // Webhook/email fire only from production deployments. Local dev and
-  // preview deploys share the same .env credentials, and a crash on a dev
-  // machine must not page anyone: NODE_ENV gates dev, and on Vercel the
-  // VERCEL_ENV system var additionally gates preview deploys (unset on
-  // self-hosted installs, where production alerts must flow). Raw
-  // process.env: system vars, not in the env schema.
-  if (!isProductionDeployment()) return;
+  // Only production deployments send to Teams, Slack or email.
+  const production = isProductionDeployment();
+  if (!production && !dedupInfo) return;
   if (opts.countForDigest) {
     if (opts.key) return countDigestEvent(opts.key);
     console.error("[ops] digest event requires a key");
@@ -207,7 +211,7 @@ const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
   }
 
   const channels = alertChannels();
-  if (!channels.webhook && !channels.email) return;
+  if (!dedupInfo && !channels.webhook && !channels.email) return;
 
   let suffix = "";
   if (opts.key && opts.cooldownMs) {
@@ -247,7 +251,8 @@ const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
     }
   }
 
-  await sendToChannels(text, suffix, opts, channels);
+  if (dedupInfo) console.info(`[ops] ${text}${suffix}`);
+  if (production) await sendToChannels(text, suffix, opts, channels);
 };
 
 const sendToChannels = async (

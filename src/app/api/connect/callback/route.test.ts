@@ -1,8 +1,16 @@
 import { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import * as schema from "~/server/db/schema";
 
@@ -18,14 +26,19 @@ const TENANT_ID = "11111111-1111-1111-1111-00000000000a";
 const HOME_TID = "22222222-2222-2222-2222-00000000000b";
 const VICTIM_TID = "33333333-3333-3333-3333-00000000000c";
 const OID = "44444444-4444-4444-4444-00000000000d";
+const HANDOFF = "handoff.55555555-5555-4555-8555-00000000000e";
 const STATE = "55555555-5555-5555-5555-00000000000e";
 
-let currentDb: ReturnType<typeof makeDb>;
+const client = new PGlite();
+const currentDb = drizzle(client, { schema });
 const apiAccess = vi.fn();
 const auth = vi.fn();
 const verifyManagedConsent = vi.fn();
 const notifyOps = vi.fn<(text: string, opts?: unknown) => Promise<void>>();
 const runSync = vi.fn();
+const setCookie = vi.fn();
+const readHandoffProof = vi.fn();
+const after = vi.fn<(task: () => Promise<void>) => void>();
 
 const env = vi.hoisted(
   (): {
@@ -39,53 +52,36 @@ const env = vi.hoisted(
   }),
 );
 vi.mock("~/env", () => ({ env }));
-vi.mock("~/server/db", () => ({
-  db: new Proxy(
-    {},
-    {
-      get: (_t, prop) =>
-        (currentDb as unknown as Record<string | symbol, unknown>)[prop],
-    },
-  ),
-  schema,
-}));
+vi.mock("~/server/db", () => ({ db: currentDb, schema }));
 vi.mock("~/server/access", () => ({
   apiAccess,
   WORKSPACE_COOKIE: "lm_ws",
   workspaceCookieOptions: () => ({}),
+}));
+vi.mock("~/server/auth/consentHandoff", () => ({
+  handoffFailurePath: (code: string) => `/connect/approve/error?error=${code}`,
+  readHandoffProof,
 }));
 vi.mock("~/server/auth", () => ({ auth }));
 vi.mock("~/server/graph/msGraph", () => ({ verifyManagedConsent }));
 vi.mock("~/server/ops", () => ({ notifyOps }));
 vi.mock("~/server/sync/runSync", () => ({ runSync }));
 vi.mock("next/headers", () => ({
-  cookies: async () => ({ set: () => undefined }),
+  cookies: async () => ({ set: setCookie }),
 }));
 vi.mock("next/navigation", () => ({
   redirect: (to: string) => {
     throw new Error(`redirect:${to}`);
   },
 }));
-vi.mock("next/server", () => ({ after: () => undefined }));
+vi.mock("next/server", () => ({ after }));
 
 const { GET } = await import("./route");
 
-let cachedDdl: string[] | null = null;
-async function schemaDdl(): Promise<string[]> {
-  cachedDdl ??= await generateMigration(
-    generateDrizzleJson({}),
-    generateDrizzleJson(schema),
-  );
-  return cachedDdl;
-}
-function makeDb(client: PGlite) {
-  return drizzle(client, { schema });
-}
-
-const callback = (tid: string) =>
+const callback = (tid: string, state = STATE) =>
   ({
     nextUrl: new URL(
-      `http://localhost/api/connect/callback?state=${STATE}&tenant=${tid}&admin_consent=True`,
+      `http://localhost/api/connect/callback?state=${state}&tenant=${tid}&admin_consent=True`,
     ),
   }) as never;
 
@@ -113,17 +109,221 @@ const seedState = async (email = "admin@example.com") => {
   });
 };
 
+beforeAll(async () => {
+  const ddl = await generateMigration(
+    generateDrizzleJson({}),
+    generateDrizzleJson(schema),
+  );
+  for (const stmt of ddl) await client.exec(stmt);
+});
+
 beforeEach(async () => {
-  const client = new PGlite();
-  for (const stmt of await schemaDdl()) await client.exec(stmt);
-  currentDb = makeDb(client);
+  await currentDb.delete(schema.tenants);
+  await currentDb.delete(schema.consentStates);
   vi.clearAllMocks();
+  readHandoffProof.mockResolvedValue({
+    phase: "grant",
+    token: HANDOFF,
+    tid: VICTIM_TID,
+  });
   env.CONNECTOR_CLIENT_SECRET = "connector-client-secret";
   auth.mockResolvedValue({ user: { oid: OID, tid: HOME_TID, isDemo: false } });
   apiAccess.mockResolvedValue({
     user: { oid: OID, isDemo: false },
     tenant: { id: TENANT_ID, tid: null, isDemo: false },
     membership: { oid: OID, tenantId: TENANT_ID },
+  });
+});
+
+afterAll(async () => client.close());
+
+describe("admin consent handoff", () => {
+  const seedHandoff = async (
+    values: Partial<typeof schema.consentStates.$inferInsert> = {},
+  ) => {
+    await currentDb
+      .insert(schema.tenants)
+      .values({ id: TENANT_ID, name: "Contoso Test" });
+    await currentDb.insert(schema.consentStates).values({
+      state: HANDOFF,
+      tenantId: TENANT_ID,
+      oid: OID,
+      tid: HOME_TID,
+      kind: "handoff",
+      email: "alex@example.com",
+      name: "Alex Rivera",
+      createdAt: new Date(Date.now() - 6 * 86_400_000),
+      ...values,
+    });
+    verifyManagedConsent.mockResolvedValue(true);
+  };
+
+  it("binds once, redirects publicly, and schedules first sync without an app session or cookie", async () => {
+    await seedHandoff();
+    await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+      "redirect:/connect/approve/complete",
+    );
+    expect(auth).not.toHaveBeenCalled();
+    expect(apiAccess).not.toHaveBeenCalled();
+    expect(setCookie).not.toHaveBeenCalled();
+    expect(verifyManagedConsent).toHaveBeenCalledWith(
+      VICTIM_TID,
+      expect.any(Number),
+    );
+    expect(await currentDb.query.tenants.findFirst()).toMatchObject({
+      id: TENANT_ID,
+      tid: VICTIM_TID,
+    });
+    expect(await currentDb.query.msConnections.findFirst()).toMatchObject({
+      tenantId: TENANT_ID,
+      mode: "managed",
+      tid: VICTIM_TID,
+    });
+    expect(
+      (await currentDb.query.consentStates.findFirst())?.usedAt,
+    ).toBeInstanceOf(Date);
+    expect(notifyOps).toHaveBeenCalledWith(
+      expect.stringContaining(`workspace ${TENANT_ID} completed`),
+      { logLevel: "info" },
+    );
+
+    await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+      "redirect:/connect/approve/error?error=invalid_state",
+    );
+    expect(after).toHaveBeenCalledTimes(1);
+    await after.mock.calls[0]![0]();
+    expect(runSync).toHaveBeenCalledWith(TENANT_ID, {
+      deadline: expect.any(Number) as number,
+    });
+  });
+
+  it.each([
+    ["expired_state", { createdAt: new Date(Date.now() - 8 * 86_400_000) }],
+    ["invalid_state", { usedAt: new Date() }],
+    ["invalid_state", { kind: "self" as const }],
+  ])("rejects %s before checking Microsoft", async (code, values) => {
+    await seedHandoff(values);
+    await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+      `redirect:/connect/approve/error?error=${code}`,
+    );
+    expect(verifyManagedConsent).not.toHaveBeenCalled();
+  });
+
+  it("refuses a handoff when the managed app is unavailable", async () => {
+    await seedHandoff();
+    env.CONNECTOR_CLIENT_SECRET = undefined;
+    await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
+      "redirect:/connect/approve/error?error=not_configured",
+    );
+    expect(verifyManagedConsent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    null,
+    { phase: "grant", token: HANDOFF, tid: HOME_TID },
+    { phase: "grant", token: STATE, tid: VICTIM_TID },
+  ])(
+    "refuses an absent or mismatched tenant admin proof (%j)",
+    async (proof) => {
+      await seedHandoff();
+      readHandoffProof.mockResolvedValue(proof);
+      await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+        "redirect:/connect/approve/error?error=approval_identity",
+      );
+      expect(verifyManagedConsent).not.toHaveBeenCalled();
+    },
+  );
+
+  it("requires app-only consent proof even after tenant admin verification", async () => {
+    await seedHandoff();
+    verifyManagedConsent.mockResolvedValue(false);
+    await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+      "redirect:/connect/approve/error?error=consent_not_granted",
+    );
+    expect(await currentDb.query.consentStates.findFirst()).toMatchObject({
+      usedAt: null,
+    });
+  });
+
+  it("leaves a declined handoff unused and returns a public failure", async () => {
+    await seedHandoff();
+    await expect(
+      GET(callbackWith(`state=${HANDOFF}&error=access_denied`)),
+    ).rejects.toThrow("redirect:/connect/approve/error?error=consent_declined");
+    expect(await currentDb.query.consentStates.findFirst()).toMatchObject({
+      usedAt: null,
+    });
+  });
+
+  it("refuses to take a tenant from another workspace", async () => {
+    await seedHandoff();
+    await currentDb
+      .insert(schema.tenants)
+      .values({ tid: VICTIM_TID, name: "Other Test" });
+    await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+      "redirect:/connect/approve/error?error=tenant_taken",
+    );
+    expect(await currentDb.query.consentStates.findFirst()).toMatchObject({
+      usedAt: null,
+    });
+  });
+
+  it.each(["tid", "connection"])(
+    "refuses to replace an existing %s",
+    async (binding) => {
+      await seedHandoff();
+      if (binding === "tid") {
+        await currentDb.update(schema.tenants).set({ tid: VICTIM_TID });
+      } else {
+        await currentDb
+          .insert(schema.msConnections)
+          .values({ tenantId: TENANT_ID, tid: HOME_TID, mode: "managed" });
+      }
+      await expect(GET(callback(VICTIM_TID, HANDOFF))).rejects.toThrow(
+        "redirect:/connect/approve/error?error=already_connected",
+      );
+      expect(await currentDb.query.consentStates.findFirst()).toMatchObject({
+        usedAt: null,
+      });
+    },
+  );
+
+  it("runs first sync once when two handoff callbacks arrive together", async () => {
+    await seedHandoff();
+    const responses = await Promise.allSettled([
+      GET(callback(VICTIM_TID, HANDOFF)),
+      GET(callback(VICTIM_TID, HANDOFF)),
+    ]);
+    const redirects = responses.map((result) =>
+      result.status === "rejected" ? String(result.reason) : "",
+    );
+    expect(
+      redirects.filter((url) => url.endsWith("/connect/approve/complete")),
+    ).toHaveLength(1);
+    expect(
+      redirects.filter((url) =>
+        /error=(invalid_state|already_connected)$/.test(url),
+      ),
+    ).toHaveLength(1);
+    expect(after).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the legacy self callback live when the kind column is absent", async () => {
+    await seedState();
+    await currentDb.execute(sql`alter table consent_states drop column kind`);
+    try {
+      verifyManagedConsent.mockResolvedValue(true);
+      await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
+        "redirect:/app/connectors/microsoft?status=syncing",
+      );
+      expect(await currentDb.query.tenants.findFirst()).toMatchObject({
+        tid: VICTIM_TID,
+      });
+    } finally {
+      await currentDb.execute(
+        sql`alter table consent_states add column kind text not null default 'self'`,
+      );
+    }
   });
 });
 
