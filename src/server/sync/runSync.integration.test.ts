@@ -6,6 +6,7 @@ import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "~/server/db/schema";
+import { PremiumLicenseRequiredError } from "~/server/graph/types";
 import type {
   GraphClient,
   GraphSubscribedSku,
@@ -225,6 +226,19 @@ const GRAPH_USER: GraphUser = {
   },
 };
 
+const usageReport = (users: GraphUser[], date: string | null = null) => ({
+  rows: users.map((user) => ({
+    userPrincipalName: user.userPrincipalName,
+    exchangeLastActivityDate: date,
+    oneDriveLastActivityDate: null,
+    sharePointLastActivityDate: null,
+    teamsLastActivityDate: null,
+  })),
+  hasHeader: true,
+  dataRowCount: users.length,
+  reportRefreshDate: null,
+});
+
 /** A healthy fake Graph client; overrides let a test hook individual calls. */
 function makeGraphClient(overrides: Partial<GraphClient> = {}): GraphClient {
   return {
@@ -232,7 +246,9 @@ function makeGraphClient(overrides: Partial<GraphClient> = {}): GraphClient {
     getSubscribedSkus: vi.fn(() => Promise.resolve([SKU])),
     getReportConcealment: vi.fn(() => Promise.resolve<boolean | null>(false)),
     listUsers: vi.fn(() => Promise.resolve([GRAPH_USER])),
-    getActiveUserDetail: vi.fn(() => Promise.resolve([])),
+    getActiveUserDetail: vi.fn(() =>
+      Promise.resolve(usageReport([GRAPH_USER])),
+    ),
     getCopilotUsage: vi.fn(() => Promise.resolve([])),
     ...overrides,
   };
@@ -315,7 +331,7 @@ function makeCtx(
 }
 
 // Imported after the mocks are registered (top-level vi.mock is hoisted).
-const { runSync } = await import("~/server/sync/runSync");
+const { runAnalysis, runSync } = await import("~/server/sync/runSync");
 const { disconnectMicrosoft, disconnectTenant } =
   await import("~/server/actions");
 
@@ -683,7 +699,7 @@ describe("runSync live step progress", () => {
           midRun = await getRuns();
           expect(midRun[0]!.steps.map((s) => s.step)).toContain("users");
         });
-        return [];
+        return usageReport([GRAPH_USER]);
       }),
     });
 
@@ -827,5 +843,178 @@ describe("disconnectTenant during a running sync", () => {
     await expect(disconnectTenant()).rejects.toThrow("NEXT_REDIRECT:/");
     expect(await countRows(schema.tenants)).toBe(0);
     expect(await getRuns()).toHaveLength(0);
+  });
+});
+
+describe("runSync with an empty Microsoft usage report", () => {
+  const emptyReport = { ...usageReport([]), bodyBytes: 42 };
+
+  it.each([true, false])(
+    "preserves activity and findings with sign-in coverage: %s",
+    async (hasP1) => {
+      await seedTenant();
+      const daysAgo = (days: number) =>
+        new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+      const active = { ...GRAPH_USER, signInActivity: null };
+      const otherUser = (id: string) => ({
+        ...active,
+        id,
+        userPrincipalName: `${id}@example.test`,
+      });
+      const inactive = otherUser("inactive");
+      const never = otherUser("never");
+      const originalUsers = [active, inactive, never];
+      const allUsers = [...originalUsers, otherUser("new-license")];
+      const listUsers =
+        (users: GraphUser[]) =>
+        async ({
+          includeSignInActivity,
+        }: {
+          includeSignInActivity: boolean;
+        }) => {
+          if (!hasP1 && includeSignInActivity)
+            throw new PremiumLicenseRequiredError();
+          return users;
+        };
+      const prior = await runSync(TENANT_ID, {
+        client: makeGraphClient({
+          listUsers: listUsers(originalUsers),
+          getActiveUserDetail: async () => ({
+            ...usageReport(originalUsers),
+            rows: [
+              ...usageReport([active], daysAgo(2)).rows,
+              ...usageReport([inactive], daysAgo(120)).rows,
+              ...usageReport([never]).rows,
+            ],
+          }),
+        }),
+      });
+      expect(
+        prior.steps.find((step) => step.step === "usageReports"),
+      ).toMatchObject({ status: "ok", count: 3 });
+      const activeRow = () =>
+        currentDb.query.tenantUsers.findFirst({
+          where: eq(schema.tenantUsers.graphId, active.id),
+        });
+      const previousActivity = await activeRow();
+      expect(previousActivity?.workloadActivity?.exchange).toBe(daysAgo(2));
+      const activityFindings = async () =>
+        (await currentDb.query.findings.findMany())
+          .filter((row) => ["inactive_90d", "never_active"].includes(row.rule))
+          .sort((a, b) => a.rule.localeCompare(b.rule));
+      const before = await activityFindings();
+      expect(before.map((f) => [f.rule, f.graphUserId, f.status])).toEqual([
+        ["inactive_90d", inactive.id, "open"],
+        ["never_active", never.id, "open"],
+      ]);
+
+      const empty = await runSync(TENANT_ID, {
+        client: makeGraphClient({
+          listUsers: listUsers(allUsers),
+          getActiveUserDetail: async () => emptyReport,
+        }),
+      });
+      expect(
+        empty.steps.find((step) => step.step === "usageReports"),
+      ).toMatchObject({
+        status: "warning",
+        count: 0,
+        message:
+          "Microsoft returned an empty usage report (header only, 42 bytes)",
+      });
+      expect(
+        (await getRuns()).find((run) => run.id === empty.runId)?.steps,
+      ).toEqual(empty.steps);
+      expect(await activeRow()).toMatchObject({
+        workloadActivity: previousActivity?.workloadActivity,
+        lastActivity: previousActivity?.lastActivity,
+      });
+      expect(await activityFindings()).toEqual(before);
+      await runAnalysis(TENANT_ID);
+      expect(await activityFindings()).toEqual(before);
+
+      // A licensing change still resolves the corresponding finding during the outage.
+      const unlicensed = { ...inactive, assignedLicenses: [] };
+      const changedUsers = allUsers.map((user) =>
+        user.id === inactive.id ? unlicensed : user,
+      );
+      const emptyAgain = await runSync(TENANT_ID, {
+        client: makeGraphClient({
+          listUsers: listUsers(changedUsers),
+          getActiveUserDetail: async () => ({
+            ...emptyReport,
+            dataRowCount: 1,
+            reportRefreshDate: daysAgo(1),
+          }),
+        }),
+      });
+      expect(
+        emptyAgain.steps.find((step) => step.step === "usageReports")?.message,
+      ).toBe(
+        `Microsoft returned an empty usage report (no user rows, report refresh date ${daysAgo(1)}, 42 bytes)`,
+      );
+      const afterLicenseRemoval = await activityFindings();
+      expect(afterLicenseRemoval[0]?.status).toBe("resolved");
+      expect(afterLicenseRemoval[1]).toEqual(before[1]);
+
+      await runSync(TENANT_ID, {
+        client: makeGraphClient({
+          listUsers: listUsers(allUsers),
+          getActiveUserDetail: async () => usageReport(allUsers, daysAgo(1)),
+        }),
+      });
+      expect((await activityFindings()).map((f) => [f.id, f.status])).toEqual(
+        before.map((f) => [f.id, "resolved"]),
+      );
+    },
+  );
+
+  it("retains the last aggregate inactivity finding for a concealed report", async () => {
+    await seedTenant();
+    await runSync(TENANT_ID, {
+      client: makeGraphClient({
+        listUsers: async ({ includeSignInActivity }) => {
+          if (includeSignInActivity) throw new PremiumLicenseRequiredError();
+          return [GRAPH_USER];
+        },
+        getReportConcealment: async () => true,
+        getActiveUserDetail: async () =>
+          usageReport([{ ...GRAPH_USER, userPrincipalName: "a".repeat(32) }]),
+      }),
+    });
+    const aggregate = () =>
+      currentDb.query.findings.findFirst({
+        where: eq(schema.findings.rule, "inactive_90d"),
+      });
+    const before = await aggregate();
+    expect(before).toMatchObject({
+      graphUserId: null,
+      status: "open",
+      detail: { aggregate: true },
+    });
+
+    await runSync(TENANT_ID, {
+      client: makeGraphClient({ getActiveUserDetail: async () => emptyReport }),
+    });
+    expect(await aggregate()).toEqual(before);
+    await runAnalysis(TENANT_ID);
+    expect(await aggregate()).toEqual(before);
+  });
+
+  it("accepts an empty report for a directory with no licensed users", async () => {
+    await seedTenant();
+    const result = await runSync(TENANT_ID, {
+      client: makeGraphClient({
+        listUsers: async () => [{ ...GRAPH_USER, assignedLicenses: [] }],
+        getSubscribedSkus: async () => [{ ...SKU, consumedUnits: 0 }],
+        getActiveUserDetail: async () => emptyReport,
+      }),
+    });
+    expect(
+      result.steps.find((step) => step.step === "usageReports"),
+    ).toMatchObject({
+      status: "ok",
+      count: 0,
+    });
   });
 });

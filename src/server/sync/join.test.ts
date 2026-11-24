@@ -329,7 +329,7 @@ describe("joinSignals", () => {
 describe("demo tenant end-to-end analysis", () => {
   const runDemo = async () => {
     const client = new DemoGraphClient({ now: NOW });
-    const [skus, graphUsers, usageRows, copilotRows] = await Promise.all([
+    const [skus, graphUsers, usageReport, copilotRows] = await Promise.all([
       client.getSubscribedSkus(),
       client.listUsers({ includeSignInActivity: true }),
       client.getActiveUserDetail("D90"),
@@ -337,7 +337,7 @@ describe("demo tenant end-to-end analysis", () => {
     ]);
     const joined = joinSignals({
       graphUsers,
-      usageRows,
+      usageRows: usageReport.rows,
       copilotRows,
       hasP1: true,
     });

@@ -45,6 +45,7 @@ import {
 import {
   GraphHttpError,
   PremiumLicenseRequiredError,
+  type ActiveUserDetailReport,
   type CopilotUsageRow,
   type GraphClient,
   type GraphSubscribedSku,
@@ -70,13 +71,19 @@ import {
 } from "~/server/sync/subscriptionTerms";
 import { connectorSeatExclusion } from "~/server/sync/connectorExclusions";
 import { directoryIdentitiesOf, joinSignals } from "~/server/sync/join";
-import type { SyncRunStatus, SyncStep, WasteRuleId } from "~/server/types";
+import type {
+  ActivitySignal,
+  SyncRunStatus,
+  SyncStep,
+  WasteRuleId,
+} from "~/server/types";
 import {
   analyzeWaste,
   paidSeatsOf,
   purchasedSeatsOf,
   spendSeatsOf,
   type WasteFinding,
+  type WasteInput,
 } from "~/server/waste/engine";
 
 const chunk = <T>(arr: T[], size: number): T[][] => {
@@ -104,6 +111,48 @@ const bySkuOf = (
       { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
     ]),
   );
+
+const emptyUsageMessage = (report: ActiveUserDetailReport): string => {
+  const reason = !report.hasHeader
+    ? "no CSV header"
+    : report.dataRowCount === 0
+      ? "header only"
+      : "no user rows";
+  const details = [reason];
+  if (report.reportRefreshDate)
+    details.push(`report refresh date ${report.reportRefreshDate}`);
+  if (report.bodyBytes !== undefined) details.push(`${report.bodyBytes} bytes`);
+  return `Microsoft returned an empty usage report (${details.join(", ")})`;
+};
+
+const INACTIVITY_RULES: WasteRuleId[] = ["inactive_90d", "never_active"];
+
+const analyzeWasteWithCoverage = async (
+  tenantId: string,
+  input: WasteInput,
+) => {
+  if (input.activitySignal !== "unknown") return analyzeWaste(input);
+  const previous = await db.query.findings.findMany({
+    where: and(
+      eq(findings.tenantId, tenantId),
+      inArray(findings.rule, INACTIVITY_RULES),
+      inArray(findings.status, ["open", "acknowledged"]),
+    ),
+  });
+  const previousInactivity = new Map(
+    previous
+      .filter((f) => f.graphUserId !== null)
+      .map((f) => [f.graphUserId!, f]),
+  );
+  const current = analyzeWaste({ ...input, previousInactivity });
+  // Concealed reports can produce an aggregate inactivity finding. An empty
+  // directory response also leaves the stored directory in place.
+  return current.concat(
+    previous.filter(
+      (f) => input.users.length === 0 || f.detail.aggregate === true,
+    ),
+  );
+};
 
 /** Milliseconds since `start`, recorded on every step to diagnose slow syncs. */
 const since = (start: number): number => Date.now() - start;
@@ -317,6 +366,7 @@ export const runSync = async (
     let graphUsers: GraphUser[] = [];
     let hasP1 = true;
     let usageRows: UsageReportRow[] = [];
+    let emptyUsageReport = false;
     let copilotRows: CopilotUsageRow[] = [];
 
     if (!client) {
@@ -478,10 +528,16 @@ export const runSync = async (
 
       started = Date.now();
       try {
-        usageRows = await client.getActiveUserDetail("D90");
+        const report = await client.getActiveUserDetail("D90");
+        usageRows = report.rows;
+        emptyUsageReport =
+          usageRows.length === 0 &&
+          (skus.some((sku) => sku.consumedUnits > 0) ||
+            graphUsers.some((user) => user.assignedLicenses.length > 0));
         record({
           step: "usageReports",
-          status: "ok",
+          status: emptyUsageReport ? "warning" : "ok",
+          message: emptyUsageReport ? emptyUsageMessage(report) : undefined,
           count: usageRows.length,
           durationMs: since(started),
         });
@@ -714,7 +770,25 @@ export const runSync = async (
 
     // --- Join + analyze ---------------------------------------------------
     const analysisStarted = Date.now();
-    const joined = joinSignals({ graphUsers, usageRows, copilotRows, hasP1 });
+    const storedActivity = emptyUsageReport
+      ? await db.query.tenantUsers.findMany({
+          where: eq(tenantUsers.tenantId, tenantId),
+          columns: {
+            graphId: true,
+            lastActivity: true,
+            workloadActivity: true,
+          },
+        })
+      : undefined;
+    const joined = joinSignals({
+      graphUsers,
+      usageRows,
+      copilotRows,
+      hasP1,
+      previousActivity:
+        storedActivity &&
+        new Map(storedActivity.map((user) => [user.graphId, user])),
+    });
 
     // A failed subscriptions read keeps the trial seats and renewal dates of
     // the last successful one.
@@ -1058,7 +1132,7 @@ export const runSync = async (
       consumedUnits: s.consumedUnits,
       trialUnits: termsOf(s.skuId).trialUnits,
     }));
-    const newFindings = analyzeWaste({
+    const newFindings = await analyzeWasteWithCoverage(tenantId, {
       users: joined.users,
       skus: inventory,
       prices,
@@ -1111,7 +1185,12 @@ export const runSync = async (
       durationMs: since(analysisStarted),
     });
 
-    const inserted = await diffFindings(tenantId, allFindings, now);
+    const inserted = await diffFindings(
+      tenantId,
+      allFindings,
+      now,
+      joined.activitySignal,
+    );
     await sendLeakAlert(tenant, inserted, now);
 
     // --- Snapshot + tenant capabilities ------------------------------------
@@ -1161,10 +1240,18 @@ export const runSync = async (
         .update(tenants)
         .set({
           hasP1,
-          concealedNames: concealmentSetting ?? joined.concealed,
+          concealedNames:
+            concealmentSetting ??
+            (joined.concealed
+              ? true
+              : emptyUsageReport
+                ? tenant.concealedNames
+                : false),
           activitySignal: joined.activitySignal,
           copilotSignal: joined.copilotSignal,
-          usageAggregate: joined.usageAggregate ?? null,
+          usageAggregate: emptyUsageReport
+            ? tenant.usageAggregate
+            : (joined.usageAggregate ?? null),
           copilotAggregate: joined.copilotAggregate ?? null,
           ...(orgName && !tenant.isDemo ? { name: orgName } : {}),
         })
@@ -1268,7 +1355,11 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     priceRows.map((p) => [p.skuId, p.monthlyPriceCents]),
   );
 
-  const newFindings = analyzeWaste({
+  // Older workspaces predate the stored coverage signal.
+  const activitySignal =
+    tenant.activitySignal ??
+    (tenant.hasP1 || tenant.concealedNames === false ? "full" : "none");
+  const newFindings = await analyzeWasteWithCoverage(tenantId, {
     users: userRows.map((r) => ({
       graphId: r.graphId,
       upn: r.upn,
@@ -1285,13 +1376,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     skus: skuRows,
     prices,
     now,
-    // Prefer the signal recorded by the last sync; the boolean derivation is
-    // only a fallback for tenants synced before the column existed. Unknown
-    // concealment (null) is treated as concealed: conservative, no false
-    // per-user inactivity findings.
-    activitySignal:
-      tenant.activitySignal ??
-      (tenant.hasP1 || tenant.concealedNames === false ? "full" : "none"),
+    activitySignal,
     copilotSignal: tenant.copilotSignal ?? "none",
     usageAggregate: tenant.usageAggregate ?? undefined,
     copilotAggregate: tenant.copilotAggregate ?? undefined,
@@ -1340,6 +1425,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     tenantId,
     newFindings.concat(adobeFindings, saasFindings),
     now,
+    activitySignal,
   );
 
   const totalMonthlySpendCents = skuRows.reduce(
@@ -1401,6 +1487,7 @@ export const diffFindings = async (
   tenantId: string,
   newFindings: WasteFinding[],
   now: Date,
+  activitySignal?: ActivitySignal,
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
   // (some inserted/reopened, others never resolved) for the tenant.
@@ -1464,6 +1551,9 @@ export const diffFindings = async (
           ? viaHash
           : undefined);
       if (fresh) {
+        // Carry existing inactivity findings through without recording a new observation.
+        if (activitySignal === "unknown" && INACTIVITY_RULES.includes(f.rule))
+          continue;
         await tx
           .update(findings)
           .set({

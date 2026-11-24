@@ -31,6 +31,11 @@ export type JoinedUser = WasteUser & {
   workloadActivity: WorkloadActivity;
 };
 
+type StoredActivity = {
+  workloadActivity: WorkloadActivity | null;
+  lastActivity: Date | null;
+};
+
 export type JoinResult = {
   users: JoinedUser[];
   hasP1: boolean;
@@ -53,6 +58,7 @@ export const joinSignals = (args: {
   usageRows: UsageReportRow[];
   copilotRows: CopilotUsageRow[];
   hasP1: boolean;
+  previousActivity?: ReadonlyMap<string, StoredActivity>;
 }): JoinResult => {
   const { graphUsers, usageRows, copilotRows, hasP1 } = args;
 
@@ -72,11 +78,18 @@ export const joinSignals = (args: {
     const usage = concealed ? undefined : usageByUpn.get(upnKey);
     const copilot = concealed ? undefined : copilotByUpn.get(upnKey);
 
+    const previous = args.previousActivity?.get(g.id);
+    const storedWorkloads = previous?.workloadActivity;
     const workloadActivity: WorkloadActivity = {
-      exchange: usage?.exchangeLastActivityDate ?? null,
-      oneDrive: usage?.oneDriveLastActivityDate ?? null,
-      sharePoint: usage?.sharePointLastActivityDate ?? null,
-      teams: usage?.teamsLastActivityDate ?? null,
+      exchange:
+        usage?.exchangeLastActivityDate ?? storedWorkloads?.exchange ?? null,
+      oneDrive:
+        usage?.oneDriveLastActivityDate ?? storedWorkloads?.oneDrive ?? null,
+      sharePoint:
+        usage?.sharePointLastActivityDate ??
+        storedWorkloads?.sharePoint ??
+        null,
+      teams: usage?.teamsLastActivityDate ?? storedWorkloads?.teams ?? null,
       copilot: copilot?.lastActivityDate ?? null,
     };
 
@@ -86,6 +99,7 @@ export const joinSignals = (args: {
     );
 
     const lastActivity = maxDate(
+      previous?.lastActivity ?? null,
       lastInteractiveSignIn,
       lastNonInteractiveSignIn,
       toDate(workloadActivity.exchange),
@@ -130,8 +144,11 @@ export const joinSignals = (args: {
   // reports exist. No sign-ins AND no usage rows (report unavailable, e.g.
   // a delegated scan without a reports-capable role) means no signal at all:
   // "full" here would flag every user as never active.
-  const activitySignal: JoinResult["activitySignal"] =
-    hasP1 || (!concealed && usageRows.length > 0) ? "full" : "none";
+  const activitySignal: JoinResult["activitySignal"] = args.previousActivity
+    ? "unknown"
+    : hasP1 || (!concealed && usageRows.length > 0)
+      ? "full"
+      : "none";
 
   const copilotSignal: JoinResult["copilotSignal"] =
     copilotRows.length === 0 ? "none" : concealed ? "aggregate" : "per-user";

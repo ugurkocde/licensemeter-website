@@ -59,6 +59,8 @@ export type UserLicense = {
   state: string;
 };
 
+export type ActivitySignal = "full" | "none" | "unknown";
+
 /** ISO date (yyyy-mm-dd) of the last activity per workload, null when never active. */
 export type WorkloadActivity = {
   exchange: string | null;

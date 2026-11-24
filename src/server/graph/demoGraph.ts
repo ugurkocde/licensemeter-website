@@ -5,7 +5,7 @@ import {
   type GraphSubscribedSku,
   type GraphSubscription,
   type GraphUser,
-  type UsageReportRow,
+  type ActiveUserDetailReport,
 } from "./types";
 
 /**
@@ -178,20 +178,24 @@ export class DemoGraphClient implements GraphClient {
     );
   }
 
-  getActiveUserDetail(_period: "D90"): Promise<UsageReportRow[]> {
-    return Promise.resolve(
-      this.users
-        .filter((u) => u.hasMailbox)
-        .map((u, i) => ({
-          userPrincipalName: this.concealed
-            ? concealedId(i)
-            : u.graph.userPrincipalName,
-          exchangeLastActivityDate: isoDay(u.lastActivity),
-          oneDriveLastActivityDate: isoDay(u.lastActivity),
-          sharePointLastActivityDate: null,
-          teamsLastActivityDate: isoDay(u.lastActivity),
-        })),
-    );
+  getActiveUserDetail(_period: "D90"): Promise<ActiveUserDetailReport> {
+    const rows = this.users
+      .filter((u) => u.hasMailbox)
+      .map((u, i) => ({
+        userPrincipalName: this.concealed
+          ? concealedId(i)
+          : u.graph.userPrincipalName,
+        exchangeLastActivityDate: isoDay(u.lastActivity),
+        oneDriveLastActivityDate: isoDay(u.lastActivity),
+        sharePointLastActivityDate: null,
+        teamsLastActivityDate: isoDay(u.lastActivity),
+      }));
+    return Promise.resolve({
+      rows,
+      hasHeader: true,
+      dataRowCount: rows.length,
+      reportRefreshDate: isoDay(this.now),
+    });
   }
 
   getCopilotUsage(_period: "D90"): Promise<CopilotUsageRow[]> {

@@ -4,7 +4,12 @@ import {
   SERVICE_PLAN_NAMES,
   skuDisplayName,
 } from "~/server/graph/skuCatalog";
-import type { AggregateUsage, UserLicense, WasteRuleId } from "~/server/types";
+import type {
+  ActivitySignal,
+  AggregateUsage,
+  UserLicense,
+  WasteRuleId,
+} from "~/server/types";
 
 /** Detection thresholds (days). */
 export const INACTIVE_DAYS = 90;
@@ -109,8 +114,10 @@ export type WasteInput = {
    * "full": per-user activity is reliable (Entra P1 sign-ins and/or joinable usage reports).
    * "none": no per-user activity signal (no P1 and concealed reports); per-user
    * inactivity rules are skipped and an aggregate finding is emitted instead.
+   * "unknown": the usage report was empty, so eligible inactivity findings carry forward.
    */
-  activitySignal: "full" | "none";
+  activitySignal: ActivitySignal;
+  previousInactivity?: ReadonlyMap<string, WasteFinding>;
   copilotSignal: "per-user" | "aggregate" | "none";
   usageAggregate?: AggregateUsage;
   copilotAggregate?: AggregateUsage;
@@ -353,6 +360,12 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
         detail: userDetail(u, prices),
         monthlyImpactCents: licenseCost(u.licenses, prices),
       });
+      continue;
+    }
+
+    const previousInactivity = input.previousInactivity?.get(u.graphId);
+    if (input.activitySignal === "unknown" && previousInactivity) {
+      findings.push(previousInactivity);
       continue;
     }
 

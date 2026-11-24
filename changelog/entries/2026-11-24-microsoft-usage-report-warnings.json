@@ -1,0 +1,7 @@
+{
+  "title": "Keep activity when Microsoft 365 usage reports are empty",
+  "summary": "LicenseMeter keeps the last known activity and pauses inactivity finding updates when Microsoft returns an empty report. The Microsoft 365 connector page explains when data is missing and how to turn off concealed names for per-user reporting.",
+  "type": "fixed",
+  "publishedOn": "2026-11-24",
+  "idempotencyKey": "licensemeter:microsoft-usage-report-warnings"
+}
