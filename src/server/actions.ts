@@ -92,6 +92,7 @@ import {
   workspaceAdminEmails,
 } from "~/server/workspaceEmail";
 import { byoConnectorEnabled, siteUrl } from "~/env";
+import { reverseDisconnectedSavings } from "~/server/savings/ledger";
 import { runAnalysis, runSync } from "~/server/sync/runSync";
 import { requestDeadline } from "~/server/sync/deadline";
 import { fetchEcbReferenceRates } from "~/server/exchangeRates";
@@ -1372,10 +1373,13 @@ export const disconnectAdobe = async (): Promise<ActionResult> => {
   if (ctx.tenant.isDemo)
     return fail("The demo workspace ships with demo Adobe data");
 
-  await db
-    .delete(adobeConnections)
-    .where(eq(adobeConnections.tenantId, ctx.tenant.id));
-  await db.delete(adobeUsers).where(eq(adobeUsers.tenantId, ctx.tenant.id));
+  await db.transaction(async (tx) => {
+    await reverseDisconnectedSavings(tx, ctx.tenant.id, "adobe");
+    await tx
+      .delete(adobeConnections)
+      .where(eq(adobeConnections.tenantId, ctx.tenant.id));
+    await tx.delete(adobeUsers).where(eq(adobeUsers.tenantId, ctx.tenant.id));
+  });
   await audit(ctx, "adobe_disconnected", {});
   await runAnalysis(ctx.tenant.id, { removedSources: ["adobe"] });
   revalidateApp();
@@ -1481,30 +1485,33 @@ export const disconnectSaasConnector = async (
   if (!isSaasProvider(providerRaw)) return fail("Unknown connector");
   const provider = providerRaw;
 
-  await db
-    .delete(saasConnections)
-    .where(
-      and(
-        eq(saasConnections.tenantId, ctx.tenant.id),
-        eq(saasConnections.provider, provider),
-      ),
-    );
-  await db
-    .delete(saasSeats)
-    .where(
-      and(
-        eq(saasSeats.tenantId, ctx.tenant.id),
-        eq(saasSeats.provider, provider),
-      ),
-    );
-  await db
-    .delete(aiSpendDaily)
-    .where(
-      and(
-        eq(aiSpendDaily.tenantId, ctx.tenant.id),
-        eq(aiSpendDaily.provider, provider),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    await reverseDisconnectedSavings(tx, ctx.tenant.id, provider);
+    await tx
+      .delete(saasConnections)
+      .where(
+        and(
+          eq(saasConnections.tenantId, ctx.tenant.id),
+          eq(saasConnections.provider, provider),
+        ),
+      );
+    await tx
+      .delete(saasSeats)
+      .where(
+        and(
+          eq(saasSeats.tenantId, ctx.tenant.id),
+          eq(saasSeats.provider, provider),
+        ),
+      );
+    await tx
+      .delete(aiSpendDaily)
+      .where(
+        and(
+          eq(aiSpendDaily.tenantId, ctx.tenant.id),
+          eq(aiSpendDaily.provider, provider),
+        ),
+      );
+  });
   await audit(ctx, "connector_disconnected", { provider });
   await runAnalysis(ctx.tenant.id, { removedSources: [provider] });
   revalidateApp();
@@ -1753,6 +1760,7 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
   // rules carry directory names (UPNs, display names) and are deleted with
   // the dataset; connector findings stay and re-evaluate on the next analysis.
   await db.transaction(async (tx) => {
+    await reverseDisconnectedSavings(tx, ctx.tenant.id, "microsoft");
     await tx
       .delete(msConnections)
       .where(eq(msConnections.tenantId, ctx.tenant.id));
@@ -1843,34 +1851,36 @@ export const importSeats = async (
     syncedAt: now,
   }));
 
-  await db
-    .delete(saasSeats)
-    .where(
-      and(
-        eq(saasSeats.tenantId, ctx.tenant.id),
-        eq(saasSeats.provider, provider),
-      ),
-    );
-  for (const batch of chunk(rows, 250)) {
-    await db.insert(saasSeats).values(batch);
-  }
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(saasSeats)
+      .where(
+        and(
+          eq(saasSeats.tenantId, ctx.tenant.id),
+          eq(saasSeats.provider, provider),
+        ),
+      );
+    for (const batch of chunk(rows, 250)) {
+      await tx.insert(saasSeats).values(batch);
+    }
 
-  // Prefill price keys for the imported products so they appear on the
-  // licenses page; admins enter real per-seat prices there.
-  const products = [...new Set(rows.flatMap((r) => r.products))];
-  if (products.length > 0) {
-    await db
-      .insert(priceBook)
-      .values(
-        products.map((p) => ({
-          tenantId: ctx.tenant.id,
-          skuId: `${provider}:${p}`,
-          monthlyPriceCents: 0,
-          source: "default" as const,
-        })),
-      )
-      .onConflictDoNothing();
-  }
+    // Prefill price keys for the imported products so they appear on the
+    // licenses page; admins enter real per-seat prices there.
+    const products = [...new Set(rows.flatMap((r) => r.products))];
+    if (products.length > 0) {
+      await tx
+        .insert(priceBook)
+        .values(
+          products.map((p) => ({
+            tenantId: ctx.tenant.id,
+            skuId: `${provider}:${p}`,
+            monthlyPriceCents: 0,
+            source: "default" as const,
+          })),
+        )
+        .onConflictDoNothing();
+    }
+  });
 
   await audit(ctx, "seats_imported", {
     provider,
@@ -1894,14 +1904,17 @@ export const clearImportedSeats = async (
     return fail("Unknown connector");
   const provider = providerRaw;
 
-  await db
-    .delete(saasSeats)
-    .where(
-      and(
-        eq(saasSeats.tenantId, ctx.tenant.id),
-        eq(saasSeats.provider, provider),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    await reverseDisconnectedSavings(tx, ctx.tenant.id, provider);
+    await tx
+      .delete(saasSeats)
+      .where(
+        and(
+          eq(saasSeats.tenantId, ctx.tenant.id),
+          eq(saasSeats.provider, provider),
+        ),
+      );
+  });
   await audit(ctx, "seats_import_cleared", { provider });
   await runAnalysis(ctx.tenant.id, { removedSources: [provider] });
   revalidateApp();

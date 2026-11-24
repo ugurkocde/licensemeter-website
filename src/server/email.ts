@@ -249,7 +249,7 @@ you are unsure. Never forward this email.`,
   });
 
 /**
- * "N new findings since last week (+X/mo). M resolved (Y/mo freed)." The
+ * "N new findings since last week (+X/mo). M reclaimed (Y/mo)." The
  * money figures arrive pre-formatted. Zero-count parts degrade gracefully.
  */
 const deltaBlock = (delta: {
@@ -264,7 +264,7 @@ const deltaBlock = (delta: {
       : "No new findings since last week.";
   const resolved =
     delta.resolvedCount > 0
-      ? ` ${delta.resolvedCount} resolved (${emailAmount(`${delta.resolvedImpact}/mo`)} reclaimed).`
+      ? ` ${delta.resolvedCount} reclaimed (${emailAmount(`${delta.resolvedImpact}/mo`)}).`
       : "";
   return emailText(`${fresh}${resolved}`, { tone: "ink", size: "lead" });
 };
@@ -350,7 +350,7 @@ ${emailButton(emailAppLink(args.appUrl, "/app/findings"), "Open the findings")}`
  */
 export const allClearHtml = (args: {
   tenantName: string;
-  /** Findings resolved in the last 7 days; the line is omitted when 0. */
+  /** Reclaimed entries recorded in the last 7 days; the line is omitted when 0. */
   resolvedCount: number;
   resolvedImpact: string;
   renewalLine?: string;
@@ -367,7 +367,7 @@ ${emailText("No open findings. Nothing new leaked this week.", { tone: "ink", si
 ${
   args.resolvedCount > 0
     ? emailText(
-        `${args.resolvedCount} finding${args.resolvedCount === 1 ? "" : "s"} resolved in the last 7 days (${escapeHtml(args.resolvedImpact)}/mo reclaimed).`,
+        `${args.resolvedCount} saving${args.resolvedCount === 1 ? "" : "s"} confirmed in the last 7 days (${escapeHtml(args.resolvedImpact)}/mo reclaimed).`,
       )
     : ""
 }

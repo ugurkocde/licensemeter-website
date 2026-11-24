@@ -9,6 +9,7 @@ import type { ReportBranding } from "~/server/report/brandStyle";
 import { reportFilename } from "~/server/report/filename";
 import { WasteReport } from "~/server/report/WasteReport";
 import type { WasteRuleId } from "~/server/types";
+import { comparableWaste } from "~/server/waste/spend";
 import { loadLicenseSpend } from "~/server/waste/spendStore";
 
 export type WasteReportPdf = {
@@ -49,7 +50,10 @@ export const renderWasteReportPdf = async (
   ]);
 
   const monthlySpend = spend.totalCents;
-  const monthlyWaste = open.reduce((sum, f) => sum + f.monthlyImpactCents, 0);
+  const monthlyWaste = comparableWaste(
+    open.reduce((sum, f) => sum + f.monthlyImpactCents, 0),
+    monthlySpend,
+  );
 
   const byRule = new Map<WasteRuleId, { count: number; impact: number }>();
   for (const f of open) {

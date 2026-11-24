@@ -35,7 +35,14 @@ const shelfware = {
   graphUserId: null,
   skuId,
   monthlyImpactCents: 400,
-  detail: { purchased: 10, assigned: 8, unassigned: 2, unitPriceCents: 200 },
+  detail: {
+    purchased: 10,
+    prepaidEnabled: 10,
+    trialUnits: 0,
+    assigned: 8,
+    unassigned: 2,
+    unitPriceCents: 200,
+  },
 };
 const sku = {
   skuId,
@@ -63,8 +70,7 @@ it("records removal when the user is gone or no longer holds the SKU", () => {
   for (const users of [[], [{ ...member, licenses: [] }]]) {
     expect(classify({ users })(finding)).toEqual({
       reason: "license_removed",
-      monthlyCents: 200,
-      skuId,
+      entries: [{ monthlyCents: 200, skuId, seats: 1 }],
     });
   }
 });
@@ -73,14 +79,13 @@ it("caps a purchased reduction at the previously flagged seats", () => {
     classify({ skus: [{ ...sku, prepaidEnabled: 5 }] })(shelfware),
   ).toEqual({
     reason: "seats_reduced",
-    monthlyCents: 400,
-    skuId,
+    entries: [{ monthlyCents: 400, skuId, seats: 2 }],
   });
   expect(
     classify({ skus: [{ ...sku, prepaidEnabled: 9, consumedUnits: 9 }] })(
       shelfware,
     ),
-  ).toMatchObject({ monthlyCents: 200 });
+  ).toMatchObject({ entries: [{ monthlyCents: 200 }] });
 });
 it("recognizes exclusions", () => {
   expect(classify({ exclusions: [member.upn] })(finding).reason).toBe(
@@ -120,4 +125,72 @@ it("records unknown resolutions as other, including an unverified source", () =>
   expect(
     classify({ users: [], verifiedSources: new Set() })(finding).reason,
   ).toBe("other");
+});
+
+it("does not credit when trial data appears with prepaid seats unchanged", () => {
+  expect(classify({ skus: [{ ...sku, trialUnits: 2 }] })(shelfware)).toEqual({
+    reason: "other",
+  });
+});
+
+it("does not credit legacy shelfware without the prepaid baseline", () => {
+  const detail = {
+    purchased: 10,
+    assigned: 8,
+    unassigned: 2,
+    unitPriceCents: 200,
+  };
+  expect(classify({ skus: [] })({ ...shelfware, detail })).toEqual({
+    reason: "other",
+  });
+});
+
+it("splits a multi-SKU removal and skips unpriced licenses", () => {
+  const detail = {
+    licenses: [
+      { skuId, monthlyPriceCents: 200 },
+      { skuId: "second", monthlyPriceCents: 100 },
+      { skuId: "unpriced", monthlyPriceCents: 0 },
+    ],
+  };
+  expect(
+    classify({ users: [] })({ ...finding, detail, monthlyImpactCents: 300 }),
+  ).toEqual({
+    reason: "license_removed",
+    entries: [
+      { skuId, seats: 1, monthlyCents: 200 },
+      { skuId: "second", seats: 1, monthlyCents: 100 },
+    ],
+  });
+});
+
+it("finds a renamed CSV seat through the former address of an orphaned finding", () => {
+  const currentAddress = "member@new.example.test";
+  const resolution = classify({
+    users: [{ ...member, upn: currentAddress, mailAliases: [member.upn] }],
+    saas: new Map([
+      [
+        "chatgpt",
+        [
+          {
+            email: currentAddress,
+            products: ["Renamed"],
+            status: "active",
+            displayName: null,
+            lastActiveAt: null,
+          },
+        ],
+      ],
+    ]),
+    prices: { "chatgpt:Original": 200 },
+    verifiedSources: new Set(["chatgpt"]),
+  });
+  expect(
+    resolution({
+      ...finding,
+      rule: "saas_orphaned",
+      graphUserId: null,
+      detail: { upn: member.upn, provider: "chatgpt", products: ["Original"] },
+    }),
+  ).toEqual({ reason: "activity_resumed" });
 });

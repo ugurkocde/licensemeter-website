@@ -29,7 +29,8 @@ import {
   welcomeTourSteps,
 } from "~/components/workspace/tourSteps";
 import { fmtAgo, fmtDate, fmtMoney, fmtNumber } from "~/lib/format";
-import { calculatePriceCoverage } from "~/lib/priceCoverage";
+import { sameRenewalVendor } from "~/lib/renewalVendor";
+import { calculatePriceCoverage, priceAccuracySku } from "~/lib/priceCoverage";
 import { syncStatusRun } from "~/lib/syncStatusRun";
 import { ALL_RULES, RULE_META } from "~/lib/rules";
 import { upgradePath } from "~/lib/upgrade";
@@ -61,11 +62,10 @@ import { loadRecentSavings } from "~/server/savings/ledger";
 import {
   comparableWaste,
   findingSource,
-  priceConfidence,
   vendorLabel,
 } from "~/server/waste/spend";
 import { loadLicenseSpend } from "~/server/waste/spendStore";
-import { hasFeature } from "~/server/entitlement";
+import { overviewPriceConfidence } from "~/server/savings/pageData";
 import {
   PriceConfidenceBadge,
   PriceConfidenceLocked,
@@ -224,14 +224,16 @@ export default async function OverviewPage({
 
   const spendBySku = new Map(spend.rows.map((row) => [row.skuId, row.cents]));
   const monthlySpend = spend.totalCents;
-  const monthlyWaste = ruleAgg.reduce((sum, r) => sum + r.cents, 0);
-  const wasteShare =
-    monthlySpend > 0
-      ? (comparableWaste(monthlyWaste, monthlySpend) / monthlySpend) * 100
-      : 0;
-  const confidence = hasFeature(ctx.entitlement, "savingsLedger")
-    ? priceConfidence(spend)
-    : null;
+  const monthlyWaste = comparableWaste(
+    ruleAgg.reduce((sum, r) => sum + r.cents, 0),
+    monthlySpend,
+  );
+  const wasteShare = monthlySpend > 0 ? (monthlyWaste / monthlySpend) * 100 : 0;
+  const confidence = overviewPriceConfidence(
+    ctx.entitlement,
+    spend,
+    ctx.tenant.currencyRatePpm,
+  );
 
   // Inventory rows for the dashboard table, sorted client-side (default: spend
   // descending). Pre-shaped here so the client component stays serializable.
@@ -246,19 +248,17 @@ export default async function OverviewPage({
 
   const priceRowsBySku = new Map(prices.map((p) => [p.skuId, p]));
   const priceCoverage = calculatePriceCoverage(
-    confidence
-      ? spend.rows
-      : realSkus.map((s) => {
-          const price = priceRowsBySku.get(s.skuId);
-          return {
-            seats:
-              s.trialUnits > 0
-                ? Math.min(s.consumedUnits, paidSeatsOf(s))
-                : s.consumedUnits,
-            priceCents: price?.monthlyPriceCents ?? 0,
-            source: price?.source,
-          };
-        }),
+    skus.filter(priceAccuracySku).map((s) => {
+      const price = priceRowsBySku.get(s.skuId);
+      return {
+        seats:
+          s.trialUnits > 0
+            ? Math.min(s.consumedUnits, paidSeatsOf(s))
+            : s.consumedUnits,
+        priceCents: price?.monthlyPriceCents ?? 0,
+        source: price?.source,
+      };
+    }),
   );
   const unpricedSkus = unpricedSkuCount(
     realSkus,
@@ -274,7 +274,7 @@ export default async function OverviewPage({
     renewalDays === null ? null : renewalDays - (nextRenewal?.noticeDays ?? 0);
   const renewalRules = ruleAgg.filter(({ rule, provider }) => {
     const vendor = vendorLabel(findingSource({ rule, detail: { provider } }));
-    return vendor.toLowerCase() === nextRenewal?.vendor.trim().toLowerCase();
+    return nextRenewal && sameRenewalVendor(vendor, nextRenewal.vendor);
   });
   const renewalCount = renewalRules.reduce((sum, row) => sum + row.count, 0);
   const renewalWaste = renewalRules.reduce((sum, row) => sum + row.cents, 0);
@@ -397,9 +397,9 @@ export default async function OverviewPage({
         "Open findings across all providers, as a share of paid seat spend across the same providers.",
       detail: {
         formula:
-          "Each open or acknowledged finding carries the monthly cost of the wasted seat. Monthly waste is the sum of those costs, grouped here by the rule that flagged them.",
+          "Monthly waste adds the cost of open and acknowledged findings and caps the total at monthly spend.",
         source:
-          "Findings are raised during sync by the detection rules; resolved findings are excluded. The share is capped at 100% when findings from an older sync exceed the current seat spend.",
+          "Findings are raised during sync by the detection rules; resolved findings are excluded. The waste total and its share use current seat spend as the upper limit.",
         columns: ["Rule", "Impact / mo"],
         rows: wasteRows,
         totalLabel: "Total monthly waste",
@@ -463,27 +463,23 @@ export default async function OverviewPage({
         "Monthly value of licenses removed and purchased seats reduced in the last 30 days, while the savings are still active.",
       detail: {
         formula:
-          "Adds the monthly value of licenses removed and purchased seats reduced in the last 30 days. A reopened finding stops contributing.",
+          "Adds the monthly value of licenses removed and purchased seats reduced in the last 30 days. Savings stop contributing when the underlying change can no longer be verified.",
         source:
           "A sync or a fresh seat import must confirm the change. Removing a license frees a seat for reuse. Reducing purchases lowers seat commitments. Other resolutions are counted separately.",
         columns: ["Measure", "Value"],
         rows: [
           {
-            label: "Reclaimed findings",
+            label: "Reclaimed ledger entries",
             value: fmtNumber(resolvedSavings.reclaimed, currency),
           },
           {
             label: "No longer flagged",
             value: fmtNumber(resolvedSavings.noLongerFlagged, currency),
+            sub:
+              resolvedSavings.reasonNotRecorded > 0
+                ? `Reason not recorded (${fmtNumber(resolvedSavings.reasonNotRecorded, currency)})`
+                : undefined,
           },
-          ...(resolvedSavings.reasonNotRecorded > 0
-            ? [
-                {
-                  label: "Reason not recorded",
-                  value: fmtNumber(resolvedSavings.reasonNotRecorded, currency),
-                },
-              ]
-            : []),
         ],
         totalLabel: "Realized monthly value",
         totalValue: fmtMoney(resolvedSavings.cents, currency),
@@ -626,13 +622,11 @@ export default async function OverviewPage({
         </section>
       )}
 
-      {!confidence &&
-        !priceCoverage.complete &&
-        priceCoverage.totalProducts > 0 && (
-          <section className="rise rise-2 mt-6">
-            <PriceAccuracyCard coverage={priceCoverage} />
-          </section>
-        )}
+      {!priceCoverage.complete && priceCoverage.totalProducts > 0 && (
+        <section className="rise rise-2 mt-6">
+          <PriceAccuracyCard coverage={priceCoverage} />
+        </section>
+      )}
 
       <section className="rise rise-3 mt-8">
         <div className="flex items-baseline justify-between gap-4">
@@ -689,7 +683,10 @@ export default async function OverviewPage({
         points={history.map((s) => ({
           day: s.day,
           spendCents: s.totalMonthlySpendCents,
-          wasteCents: s.totalMonthlyWasteCents,
+          wasteCents: comparableWaste(
+            s.totalMonthlyWasteCents,
+            s.totalMonthlySpendCents,
+          ),
         }))}
       />
 

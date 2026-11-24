@@ -24,9 +24,11 @@ export function PriceConfidenceBadge({
 }: {
   confidence: ReturnType<typeof priceConfidence>;
 }) {
-  const { customPercent, estimatePercent, unpricedSeats } = confidence;
+  const { customPercent, estimatePercent, unpricedPercent } = confidence;
   const tone =
-    customPercent >= 80 ? "moss" : customPercent >= 40 ? "gold" : "slate";
+    customPercent >= 70 ? "moss" : customPercent >= 40 ? "gold" : "slate";
+  const level =
+    customPercent >= 70 ? "High" : customPercent >= 40 ? "Moderate" : "Low";
   return (
     <details>
       <summary className="cursor-pointer">
@@ -34,13 +36,13 @@ export function PriceConfidenceBadge({
           tone={tone}
           className="max-w-full !whitespace-normal !normal-case"
         >
-          Price confidence: {customPercent}% real prices
+          Price confidence: {level} ({customPercent}% from your prices)
         </Pill>
       </summary>
       <p className="text-ink-soft mt-2 text-xs leading-relaxed">
-        {customPercent}% of priced spend uses your prices. {estimatePercent}%
-        uses list estimates. {unpricedSeats.toLocaleString()} seats have a zero
-        or missing price.{" "}
+        Your prices {customPercent}% · List estimates {estimatePercent}% ·
+        Unpriced {unpricedPercent}%. Shares are weighted by purchased seats and
+        estimated list prices.{" "}
         <Link className="underline underline-offset-4" href="/app/licenses">
           Edit prices
         </Link>

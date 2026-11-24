@@ -1,4 +1,14 @@
-import { and, eq, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  notInArray,
+  sql,
+} from "drizzle-orm";
 
 import { db } from "~/server/db";
 import {
@@ -79,6 +89,7 @@ import {
   type WasteFinding,
 } from "~/server/waste/engine";
 
+import { reconcileSavings, savingsSubjects } from "~/server/savings/reconcile";
 import { resolutionOf } from "~/server/savings/resolution";
 import {
   comparableWaste,
@@ -727,22 +738,32 @@ export const runSync = async (
     const analysisStarted = Date.now();
     const joined = joinSignals({ graphUsers, usageRows, copilotRows, hasP1 });
 
+    const previousSkus = client
+      ? await db.query.tenantSkus.findMany({
+          where: eq(tenantSkus.tenantId, tenantId),
+          columns: {
+            skuId: true,
+            skuPartNumber: true,
+            prepaidEnabled: true,
+            consumedUnits: true,
+            trialUnits: true,
+            nextLifecycleAt: true,
+          },
+        })
+      : [];
+
     // A failed subscriptions read keeps the trial seats and renewal dates of
     // the last successful one.
-    if (skuTerms === null) {
-      const stored = await db.query.tenantSkus.findMany({
-        where: eq(tenantSkus.tenantId, tenantId),
-        columns: { skuId: true, trialUnits: true, nextLifecycleAt: true },
-      });
-      skuTerms = new Map(
-        stored.map((r) => [
+    const resolvedSkuTerms =
+      skuTerms ??
+      new Map(
+        previousSkus.map((r) => [
           r.skuId,
           { trialUnits: r.trialUnits, nextLifecycleAt: r.nextLifecycleAt },
         ]),
       );
-    }
     const termsOf = (skuId: string): SkuTerms =>
-      skuTerms?.get(skuId) ?? { trialUnits: 0, nextLifecycleAt: null };
+      resolvedSkuTerms.get(skuId) ?? { trialUnits: 0, nextLifecycleAt: null };
 
     // An empty SKU response is confirmed only when a populated directory
     // also has no assignments. Otherwise keep the previous inventory.
@@ -1147,8 +1168,14 @@ export const runSync = async (
       allFindings,
       now,
       {
-        users: joined.users,
+        users: graphUsers.length
+          ? joined.users
+          : directory.map((user) => ({
+              ...user,
+              copilotLastActivity: null,
+            })),
         skus: inventory,
+        previousSkus,
         adobe: adobeRows,
         saas: saasRows,
         prices,
@@ -1481,7 +1508,8 @@ export const diffFindings = async (
       .for("update");
     const classify = state && resolutionOf(state);
     const entries: (typeof savingsLedger.$inferInsert)[] = [];
-    const reopened: string[] = [];
+    const reopened = new Set<string>();
+    const subjects = savingsSubjects(tenantId, state);
     const existing = await tx.query.findings.findMany({
       where: eq(findings.tenantId, tenantId),
     });
@@ -1500,6 +1528,7 @@ export const diffFindings = async (
         !existingByKey.has(f.dedupeKey) &&
         !existingByKey.has(pseudonymisedDedupeKey(f.dedupeKey)),
     );
+    const opened = [...toInsert];
     const inserted: InsertedFinding[] = [];
     for (const batch of chunk(toInsert, 250)) {
       const rows = await tx
@@ -1542,7 +1571,10 @@ export const diffFindings = async (
           ? viaHash
           : undefined);
       if (fresh) {
-        if (f.status === "resolved") reopened.push(f.id);
+        if (f.status === "resolved") {
+          reopened.add(f.id);
+          opened.push(fresh);
+        }
         await tx
           .update(findings)
           .set({
@@ -1566,7 +1598,7 @@ export const diffFindings = async (
         !(preserveMicrosoft && findingSource(f) === "microsoft")
       ) {
         const resolution = classify?.(f) ?? { reason: "other" as const };
-        const { reason, monthlyCents, skuId } = resolution;
+        const { reason } = resolution;
         await tx
           .update(findings)
           .set({
@@ -1575,30 +1607,61 @@ export const diffFindings = async (
             resolutionReason: reason,
           })
           .where(eq(findings.id, f.id));
-        if (
-          (reason === "license_removed" || reason === "seats_reduced") &&
-          lockedTenant
-        ) {
-          entries.push({
-            tenantId,
-            findingId: f.id,
-            rule: f.rule,
-            vendor: vendorLabel(findingSource(f)),
-            // Persist only a product GUID, never a customer-defined label.
-            skuId:
-              skuId &&
-              /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(skuId)
-                ? skuId
-                : null,
-            reason,
-            monthlyCents: monthlyCents ?? 0,
-            currency: lockedTenant.currency,
-            realizedAt: now,
-          });
+        if ("entries" in resolution && lockedTenant) {
+          const source = findingSource(f);
+          for (const entry of resolution.entries) {
+            if (entry.monthlyCents <= 0) continue;
+            // The ledger stores Microsoft product GUIDs and no imported labels.
+            if (
+              source === "microsoft" &&
+              !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(
+                entry.skuId ?? "",
+              )
+            )
+              continue;
+            entries.push({
+              ...entry,
+              tenantId,
+              findingId: f.id,
+              rule: f.rule,
+              vendor: vendorLabel(source),
+              subjectKey:
+                reason === "license_removed"
+                  ? subjects(f).values().next().value
+                  : null,
+              reason: resolution.reason,
+              currency: lockedTenant.currency,
+              realizedAt: now,
+            });
+          }
         }
       }
     }
-    for (const batch of chunk(reopened, 250)) {
+
+    const active =
+      opened.length ||
+      entries.length ||
+      state?.verifiedSources?.has("microsoft") ||
+      state?.removedSources?.length
+        ? await tx.query.savingsLedger.findMany({
+            where: and(
+              eq(savingsLedger.tenantId, tenantId),
+              isNull(savingsLedger.reversedAt),
+              lte(savingsLedger.realizedAt, now),
+            ),
+            orderBy: [asc(savingsLedger.realizedAt), asc(savingsLedger.id)],
+          })
+        : [];
+    const { reversed, additions } = reconcileSavings(
+      active,
+      entries,
+      opened,
+      reopened,
+      state,
+      subjects,
+      tenantId,
+    );
+    for (const batch of chunk([...reversed], 250)) {
       await tx
         .update(savingsLedger)
         .set({
@@ -1607,12 +1670,12 @@ export const diffFindings = async (
         .where(
           and(
             eq(savingsLedger.tenantId, tenantId),
-            inArray(savingsLedger.findingId, batch),
+            inArray(savingsLedger.id, batch),
             isNull(savingsLedger.reversedAt),
           ),
         );
     }
-    for (const batch of chunk(entries, 250))
+    for (const batch of chunk(additions, 250))
       await tx.insert(savingsLedger).values(batch);
 
     return inserted;

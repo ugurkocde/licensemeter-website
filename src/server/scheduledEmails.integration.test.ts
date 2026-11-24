@@ -230,6 +230,37 @@ describe("runDigestJob", () => {
     }
   });
 
+  it("uses the reclaimed ledger count with the reclaimed amount", async () => {
+    await seedMember("admin@example.test");
+    await seedFinding();
+    await currentDb.insert(schema.findings).values(
+      ["first-exclusion", "second-exclusion"].map((dedupeKey) => ({
+        tenantId: TENANT_ID,
+        dedupeKey,
+        rule: "shelfware" as const,
+        title: "Idle seats",
+        monthlyImpactCents: 9000,
+        status: "resolved" as const,
+        resolutionReason: "excluded" as const,
+        resolvedAt: NOW,
+      })),
+    );
+    await currentDb.insert(schema.savingsLedger).values({
+      tenantId: TENANT_ID,
+      rule: "shelfware",
+      vendor: "Microsoft",
+      skuId: "05e9a617-0261-4cee-bb44-138d3ef5d965",
+      seats: 1,
+      monthlyCents: 3670,
+      reason: "seats_reduced",
+      currency: "EUR",
+      realizedAt: NOW,
+    });
+    expect(await runDigestJob({ now: NOW })).toMatchObject({ sent: 1 });
+    expect(sendEmailMock.mock.calls[0]?.[0].html).toContain("1 reclaimed");
+    expect(sendEmailMock.mock.calls[0]?.[0].html).toMatch(/36[.,]70/);
+  });
+
   it("skips and counts an address the provider reported as permanently failing", async () => {
     await seedMember("anna@contoso.test");
     await seedMember("Bounced@contoso.test");

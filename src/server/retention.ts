@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 
 import { and, eq, isNotNull, lt, lte, or, sql } from "drizzle-orm";
 
+import { env } from "~/env";
 import { RETENTION_DAYS, retentionMs } from "~/lib/retention";
 import { RULE_META } from "~/lib/rules";
 import { db } from "~/server/db";
@@ -36,6 +37,19 @@ export const pseudonymisedDedupeKey = (key: string): string =>
     ? PSEUDONYMISED_KEY_PREFIX +
       createHash("sha256").update(key, "utf8").digest("hex")
     : key;
+
+/** Pseudonymous, non-reversible identifier scoped to a workspace and identity type. */
+export const savingsSubjectKey = (
+  tenantId: string,
+  scope: string,
+  identity: string,
+): string => {
+  const data = JSON.stringify(["savings-ledger", tenantId, scope, identity]);
+  const secret = env.AUTH_SECRET;
+  return (secret ? createHmac("sha256", secret) : createHash("sha256"))
+    .update(data, "utf8")
+    .digest("hex");
+};
 
 const hashedKeySql = sql`case when position('@' in ${findings.dedupeKey}) > 0 then '${sql.raw(PSEUDONYMISED_KEY_PREFIX)}' || encode(sha256(convert_to(${findings.dedupeKey}, 'UTF8')), 'hex') else ${findings.dedupeKey} end`;
 

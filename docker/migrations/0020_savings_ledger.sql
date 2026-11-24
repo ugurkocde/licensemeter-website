@@ -5,12 +5,15 @@ CREATE TABLE "savings_ledger" (
 	"rule" text NOT NULL,
 	"vendor" text NOT NULL,
 	"sku_id" text,
+	"seats" integer NOT NULL,
+	"subject_key" text,
 	"reason" text NOT NULL,
 	"monthly_cents" integer NOT NULL,
 	"currency" text NOT NULL,
 	"realized_at" timestamp with time zone NOT NULL,
 	"reversed_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "savings_ledger_seats_positive" CHECK ("savings_ledger"."seats" > 0),
 	CONSTRAINT "savings_ledger_monthly_nonneg" CHECK ("savings_ledger"."monthly_cents" >= 0),
 	CONSTRAINT "savings_ledger_reason_check" CHECK ("savings_ledger"."reason" in ('license_removed', 'seats_reduced')),
 	CONSTRAINT "savings_ledger_reversal_check" CHECK ("savings_ledger"."reversed_at" >= "savings_ledger"."realized_at")
@@ -30,6 +33,12 @@ REVOKE ALL ON TABLE public.savings_ledger FROM PUBLIC;
 --> statement-breakpoint
 DO $$
 BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    REVOKE ALL ON TABLE public.savings_ledger FROM anon;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    REVOKE ALL ON TABLE public.savings_ledger FROM authenticated;
+  END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'licensemeter_app') THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON public.savings_ledger TO licensemeter_app;
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'savings_ledger' AND policyname = 'app_all') THEN

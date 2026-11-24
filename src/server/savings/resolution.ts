@@ -1,12 +1,14 @@
+import { CONNECTORS } from "~/lib/connectors";
 import { exclusionMatcher } from "~/lib/findingExclusions";
 import type {
   AdobeUser,
   ResolutionReason,
+  SavingsReason,
   SaasProvider,
   SaasSeat,
 } from "~/server/types";
 import { connectorSeatExclusion } from "~/server/sync/connectorExclusions";
-import type { DirectoryRow } from "~/server/sync/join";
+import { addressClaimantsOf, type DirectoryRow } from "~/server/sync/join";
 import {
   COPILOT_INACTIVE_DAYS,
   INACTIVE_DAYS,
@@ -31,6 +33,7 @@ type WorkspaceState = {
   users: readonly (DirectoryRow &
     Pick<WasteUser, "licenses" | "lastActivity" | "copilotLastActivity">)[];
   skus: readonly WasteSku[];
+  previousSkus?: readonly WasteSku[];
   adobe: readonly AdobeUser[];
   saas: ReadonlyMap<SaasProvider, readonly SaasSeat[]>;
   prices: Record<string, number>;
@@ -42,11 +45,24 @@ type WorkspaceState = {
   previousInactiveDays?: number;
 };
 
-type Resolution = {
-  reason: ResolutionReason;
-  monthlyCents?: number;
-  skuId?: string | null;
+export type ReclaimedSeats = {
+  monthlyCents: number;
+  seats: number;
+  skuId: string | null;
 };
+
+type Resolution =
+  | { reason: Exclude<ResolutionReason, SavingsReason> }
+  | { reason: SavingsReason; entries: ReclaimedSeats[] };
+
+export const normalizedEmail = (email: string) => email.trim().toLowerCase();
+
+export const findingEmail = (f: Finding) =>
+  typeof f.detail.upn === "string" ? normalizedEmail(f.detail.upn) : undefined;
+
+export const directoryAddresses = (user: DirectoryRow) =>
+  [user.upn, ...(user.mailAliases ?? [])].map(normalizedEmail);
+
 const dayMs = 86_400_000;
 
 const strings = (value: unknown): string[] =>
@@ -54,7 +70,7 @@ const strings = (value: unknown): string[] =>
     ? value.filter((item): item is string => typeof item === "string")
     : [];
 
-const oldLicenses = (f: Finding) => {
+export const findingLicenses = (f: Finding) => {
   const results = new Map<string, number>();
   if (f.skuId && f.graphUserId) results.set(f.skuId, f.monthlyImpactCents);
   if (Array.isArray(f.detail.licenses)) {
@@ -71,6 +87,11 @@ const oldLicenses = (f: Finding) => {
         results.set(license.skuId, license.monthlyPriceCents);
       }
     }
+  }
+  const redundant = strings(f.detail.redundantSkuIds);
+  for (const skuId of redundant) {
+    if (!results.has(skuId))
+      results.set(skuId, redundant.length === 1 ? f.monthlyImpactCents : 0);
   }
   return results;
 };
@@ -94,25 +115,21 @@ export function resolutionOf(state: WorkspaceState) {
   const seatsBySource = new Map(
     [...saas].map(([source, seats]) => [
       source,
-      new Map(seats.map((seat) => [seat.email.toLowerCase(), seat])),
+      new Map(seats.map((seat) => [normalizedEmail(seat.email), seat])),
     ]),
   );
   const adobeByEmail = new Map(
-    adobe.map((seat) => [seat.email.toLowerCase(), seat]),
+    adobe.map((seat) => [normalizedEmail(seat.email), seat]),
   );
   const excluded = exclusionMatcher(exclusions);
   const seatExcluded = connectorSeatExclusion(exclusions, users);
-  const directoryEmails = new Set(
-    users
-      .flatMap((u) => [u.upn, ...(u.mailAliases ?? [])])
-      .map((email) => email.toLowerCase()),
-  );
+  const directoryClaims = addressClaimantsOf(users);
   return (f: Finding): Resolution => {
     const source = findingSource(f);
     if (removedSources?.includes(source)) return { reason: "source_removed" };
     const user = f.graphUserId ? usersById.get(f.graphUserId) : undefined;
     const d = f.detail;
-    const email = typeof d.upn === "string" ? d.upn.toLowerCase() : undefined;
+    const email = findingEmail(f);
     const pastThreshold =
       typeof d.inactiveThreshold === "number"
         ? d.inactiveThreshold
@@ -127,25 +144,49 @@ export function resolutionOf(state: WorkspaceState) {
       keys.every((key) => prices[key] === 0);
 
     if (source !== "microsoft") {
-      const seat = email
-        ? source === "adobe"
-          ? adobeByEmail.get(email)
-          : seatsBySource.get(source)?.get(email)
-        : undefined;
+      const byEmail =
+        source === "adobe" ? adobeByEmail : seatsBySource.get(source);
+      const people = user
+        ? [user]
+        : ((email ? directoryClaims.get(email)?.all : undefined) ?? []);
+      const addresses = new Set([
+        ...(email ? [email] : []),
+        ...people.flatMap(directoryAddresses),
+      ]);
+      const matchingSeats = [...addresses].flatMap((address) => {
+        const seat = byEmail?.get(address);
+        return seat ? [seat] : [];
+      });
+      const seat = matchingSeats[0];
       const products = [...new Set(strings(d.products))];
-      const removed = products.filter(
-        (product) => !seat?.products.includes(product),
+      const isImport = CONNECTORS.some(
+        (connector) =>
+          connector.provider === source && connector.kind === "import",
       );
-      if (email && verifiedSources?.has(source) && removed.length > 0) {
-        const keys = removed.map((product) => `${source}:${product}`);
-        const monthlyCents =
-          source === "adobe" || billsPerSeat(source)
-            ? Math.min(
-                f.monthlyImpactCents,
-                keys.reduce((sum, key) => sum + (prices[key] ?? 0), 0),
-              )
-            : 0;
-        return { reason: "license_removed", monthlyCents, skuId: null };
+      const stillHeld = matchingSeats.some(
+        (row) =>
+          isImport ||
+          row.products.some((product) => products.includes(product)),
+      );
+      if (
+        !stillHeld &&
+        email &&
+        verifiedSources?.has(source) &&
+        products.length > 0
+      ) {
+        const priced = products
+          .map((product) => prices[`${source}:${product}`] ?? 0)
+          .filter((cents) => cents > 0);
+        const monthlyCents = Math.min(
+          f.monthlyImpactCents,
+          priced.reduce((sum, cents) => sum + cents, 0),
+        );
+        if (monthlyCents > 0 && (source === "adobe" || billsPerSeat(source))) {
+          return {
+            reason: "license_removed",
+            entries: [{ monthlyCents, seats: priced.length, skuId: null }],
+          };
+        }
       }
       if (seat && seatExcluded(seat)) return { reason: "excluded" };
       const activity =
@@ -168,7 +209,7 @@ export function resolutionOf(state: WorkspaceState) {
       }
       if (
         (f.rule.endsWith("_disabled_in_entra") && user?.accountEnabled) ||
-        (f.rule.endsWith("_orphaned") && email && directoryEmails.has(email))
+        (f.rule.endsWith("_orphaned") && email && directoryClaims.has(email))
       ) {
         return { reason: "activity_resumed" };
       }
@@ -181,21 +222,23 @@ export function resolutionOf(state: WorkspaceState) {
 
     if (f.rule === "shelfware" && f.skuId) {
       const sku = skusById.get(f.skuId);
-      const purchased = typeof d.purchased === "number" ? d.purchased : 0;
+      if (typeof d.prepaidEnabled !== "number") return { reason: "other" };
       const previouslyFlagged =
         typeof d.unassigned === "number" ? d.unassigned : 0;
-      const dropped = purchased - (sku ? paidSeatsOf(sku) : 0);
-      if (verifiedSources?.has(source) && dropped > 0) {
-        const unitPrice =
-          typeof d.unitPriceCents === "number"
-            ? d.unitPriceCents
-            : previouslyFlagged > 0
-              ? Math.floor(f.monthlyImpactCents / previouslyFlagged)
-              : 0;
+      const dropped = d.prepaidEnabled - (sku?.prepaidEnabled ?? 0);
+      const oldTrialUnits = typeof d.trialUnits === "number" ? d.trialUnits : 0;
+      const paidDrop =
+        paidSeatsOf({
+          prepaidEnabled: d.prepaidEnabled,
+          trialUnits: oldTrialUnits,
+        }) - (sku ? paidSeatsOf(sku) : 0);
+      const seats = Math.min(dropped, paidDrop, previouslyFlagged);
+      const unitPrice =
+        typeof d.unitPriceCents === "number" ? d.unitPriceCents : 0;
+      if (verifiedSources?.has(source) && seats > 0 && unitPrice > 0) {
         return {
           reason: "seats_reduced",
-          monthlyCents: Math.min(dropped, previouslyFlagged) * unitPrice,
-          skuId: f.skuId,
+          entries: [{ monthlyCents: seats * unitPrice, seats, skuId: f.skuId }],
         };
       }
       if (
@@ -207,37 +250,18 @@ export function resolutionOf(state: WorkspaceState) {
       return { reason: priceZero([f.skuId]) ? "price_changed" : "other" };
     }
 
-    const licenses = oldLicenses(f);
-    // Older overlap rows carry one total for several products. Avoid assigning
-    // that value to a partial removal without per-product evidence.
-    const redundant = strings(d.redundantSkuIds);
-    if (!user && licenses.size === 0 && redundant.length > 1) {
-      // The entire old bundle is gone. Its aggregate value is all we know.
-      const value = f.monthlyImpactCents;
-      if (f.graphUserId && verifiedSources?.has(source))
-        return { reason: "license_removed", monthlyCents: value };
-    }
-    for (const skuId of redundant) {
-      if (!licenses.has(skuId))
-        licenses.set(skuId, redundant.length === 1 ? f.monthlyImpactCents : 0);
-    }
-    const removed = [...licenses].filter(
-      ([skuId]) => !user?.licenses.some((license) => license.skuId === skuId),
-    );
-    if (
-      f.graphUserId &&
-      verifiedSources?.has(source) &&
-      (!user || removed.length)
-    ) {
-      const monthlyCents = Math.min(
-        f.monthlyImpactCents,
-        removed.reduce((sum, [, cents]) => sum + cents, 0),
-      );
-      return {
-        reason: "license_removed",
-        monthlyCents,
-        skuId: removed.length === 1 ? removed[0]![0] : null,
-      };
+    const licenses = findingLicenses(f);
+    if (f.graphUserId && verifiedSources?.has(source)) {
+      let remaining = f.monthlyImpactCents;
+      const entries: ReclaimedSeats[] = [];
+      for (const [skuId, cents] of licenses) {
+        if (user?.licenses.some((license) => license.skuId === skuId)) continue;
+        const monthlyCents = Math.min(remaining, cents);
+        if (monthlyCents <= 0) continue;
+        entries.push({ skuId, seats: 1, monthlyCents });
+        remaining -= monthlyCents;
+      }
+      if (entries.length) return { reason: "license_removed", entries };
     }
     if (user && excluded(user)) return { reason: "excluded" };
     if (

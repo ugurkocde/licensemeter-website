@@ -13,6 +13,7 @@ import {
 } from "~/server/db/schema";
 import type { Entitlement } from "~/server/entitlement";
 import { historyStartDay } from "~/server/history";
+import { comparableWaste } from "~/server/waste/spend";
 import { loadLicenseSpend } from "~/server/waste/spendStore";
 import { loadWasteHistory } from "~/server/historyStore";
 import type { FindingStatus, WasteRuleId } from "~/server/types";
@@ -128,7 +129,10 @@ const getWasteSummary: Tool = {
       loadLicenseSpend(tenantId),
     ]);
 
-    const monthlyWasteCents = ruleAgg.reduce((sum, r) => sum + r.cents, 0);
+    const monthlyWasteCents = comparableWaste(
+      ruleAgg.reduce((sum, r) => sum + r.cents, 0),
+      spend.totalCents,
+    );
     const lastSync = isImported
       ? (importedUser?.syncedAt ?? null)
       : (lastRun?.finishedAt ?? null);

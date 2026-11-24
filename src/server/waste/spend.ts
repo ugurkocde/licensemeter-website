@@ -5,6 +5,7 @@ import type {
   SaasSeat,
   WasteRuleId,
 } from "~/server/types";
+import { skuDefaultPriceCents } from "~/server/graph/skuCatalog";
 import { isShelfwareExempt, paidSeatsOf, type WasteSku } from "./engine";
 
 export type SeatSource = "microsoft" | "adobe" | SaasProvider;
@@ -102,22 +103,43 @@ export function licenseSpend(
   return { rows, totalCents: rows.reduce((sum, row) => sum + row.cents, 0) };
 }
 
-export function priceConfidence(spend: ReturnType<typeof licenseSpend>) {
-  const customCents = spend.rows.reduce(
-    (sum, row) => sum + (row.source === "custom" ? row.cents : 0),
-    0,
-  );
+/** Weight each purchased seat by its list price, independently of negotiated prices. */
+export function priceConfidence(
+  spend: ReturnType<typeof licenseSpend>,
+  currencyRatePpm = 1_000_000,
+) {
+  const rows = spend.rows.map((row) => ({
+    ...row,
+    listCents:
+      skuDefaultPriceCents(row.skuId, currencyRatePpm) ||
+      (row.source === "default" ? row.priceCents : 0),
+  }));
+  const listed = rows.filter((row) => row.listCents > 0);
+  const listedSeats = listed.reduce((sum, row) => sum + row.seats, 0);
+  // Use the inventory's average list price where there is no catalog value.
+  // With no list prices available, every seat gets equal weight.
+  const fallback = listedSeats
+    ? listed.reduce((sum, row) => sum + row.seats * row.listCents, 0) /
+      listedSeats
+    : 1;
+  let custom = 0;
+  let estimated = 0;
+  let unpriced = 0;
+  for (const row of rows) {
+    const weight = row.seats * (row.listCents || fallback);
+    if (row.priceCents <= 0) unpriced += weight;
+    else if (row.source === "custom") custom += weight;
+    else estimated += weight;
+  }
+  const total = custom + estimated + unpriced;
+  const customPercent = total ? Math.round((custom * 100) / total) : 0;
+  const pricedPercent = total
+    ? Math.round(((custom + estimated) * 100) / total)
+    : 0;
   return {
-    customPercent: spend.totalCents
-      ? Math.round((customCents * 100) / spend.totalCents)
-      : 0,
-    estimatePercent: spend.totalCents
-      ? 100 - Math.round((customCents * 100) / spend.totalCents)
-      : 0,
-    unpricedSeats: spend.rows.reduce(
-      (sum, row) => sum + (row.priceCents === 0 ? row.seats : 0),
-      0,
-    ),
+    customPercent,
+    estimatePercent: pricedPercent - customPercent,
+    unpricedPercent: total ? 100 - pricedPercent : 0,
   };
 }
 

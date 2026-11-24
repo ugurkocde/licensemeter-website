@@ -149,6 +149,7 @@ const seedDemoShowcase = async (tenantId: string): Promise<void> => {
           skuId,
           reason,
           monthlyCents: amount,
+          seats: Math.max(1, Math.round(amount / 3670)),
           currency: "EUR",
           realizedAt: date,
           reversedAt:

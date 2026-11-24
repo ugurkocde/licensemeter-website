@@ -1,6 +1,9 @@
 import { and, eq } from "drizzle-orm";
+import type * as NextNavigation from "next/navigation";
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { entitlementOf } from "~/server/entitlement";
 import * as schema from "~/server/db/schema";
 import {
   GraphHttpError,
@@ -25,6 +28,8 @@ import {
 
 let currentDb: TestDb;
 
+vi.mock("server-only", () => ({}));
+
 vi.mock("~/env", () => ({
   env: { NODE_ENV: "test", AUTH_SECRET: "test-secret-test-secret-test-secret" },
   byoConnectorEnabled: () => true,
@@ -41,6 +46,36 @@ vi.mock("~/server/db", () => ({
     },
   ),
   schema,
+}));
+
+let uiPaid = false;
+vi.mock("~/server/access", () => ({
+  apiAccess: async () => ({
+    tenant: await currentDb.query.tenants.findFirst({
+      where: eq(schema.tenants.id, TENANT),
+    }),
+  }),
+  requireAccess: async () => ({
+    tenant: await currentDb.query.tenants.findFirst({
+      where: eq(schema.tenants.id, TENANT),
+    }),
+    entitlement: entitlementOf({
+      tenant: { isDemo: false },
+      record: null,
+      covered: true,
+      billingEnabled: !uiPaid,
+      now: new Date(),
+    }),
+    user: { isDemo: false },
+    membership: {},
+  }),
+  hasRole: () => false,
+}));
+vi.mock("~/server/audit", () => ({ audit: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/navigation", async (load) => ({
+  ...(await load<typeof NextNavigation>()),
+  useRouter: () => ({ refresh: vi.fn() }),
 }));
 
 vi.mock("~/server/ops", () => ({ notifyOps: vi.fn(() => Promise.resolve()) }));
@@ -709,70 +744,352 @@ describe("addresses shared by several directory users", () => {
   );
 });
 
-it("records reclaimed monthly value atomically and reverses it on reappearance", async () => {
-  const { loadRecentSavings, loadSavingsLedger } =
-    await import("~/server/savings/ledger");
-  const active = graphUser("active", "active@example.test");
-  const disabled = graphUser("disabled", "disabled@example.test", {
-    accountEnabled: false,
-  });
-  const before = client([sku(E3, "SPE_E3", 4, 2)], {}, [active, disabled]);
-  const after = client([sku(E3, "SPE_E3", 1, 1)], {}, [active]);
-  await runSync(TENANT, { client: before });
-  await runSync(TENANT, { client: after });
-  await runSync(TENANT, { client: after });
-  const entries = await currentDb.select().from(schema.savingsLedger);
-  expect(entries).toHaveLength(2);
-  expect(entries).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        reason: "license_removed",
-        monthlyCents: 3670,
-        skuId: E3,
-        reversedAt: null,
-      }),
+const entriesFor = () => currentDb.select().from(schema.savingsLedger);
+const activeEntries = async () =>
+  (await entriesFor()).filter((entry) => entry.reversedAt === null);
+
+it.each(["same sync", "sequential syncs"])(
+  "credits exactly three seats for a four-to-one purchase cut in %s",
+  async (sequence) => {
+    const { loadRecentSavings, loadSavingsLedger } =
+      await import("~/server/savings/ledger");
+    const active = graphUser("active", "active@example.test");
+    const disabled = graphUser("disabled", "disabled@example.test", {
+      accountEnabled: false,
+    });
+    const before = client([sku(E3, "SPE_E3", 4, 2)], {}, [active, disabled]);
+    const after = client([sku(E3, "SPE_E3", 1, 1)], {}, [active]);
+    await runSync(TENANT, { client: before });
+    if (sequence === "sequential syncs") {
+      await runSync(TENANT, {
+        client: client([sku(E3, "SPE_E3", 4, 1)], {}, [active]),
+      });
+      const initialCredit = await activeEntries();
+      expect(initialCredit).toEqual([
+        expect.objectContaining({
+          reason: "license_removed",
+          seats: 1,
+          skuId: E3,
+          monthlyCents: 3670,
+        }),
+      ]);
+      expect(initialCredit[0]?.subjectKey).toMatch(/^[0-9a-f]{64}$/);
+    }
+    await runSync(TENANT, { client: after });
+    await runSync(TENANT, { client: after });
+    expect(await activeEntries()).toEqual([
       expect.objectContaining({
         reason: "seats_reduced",
-        monthlyCents: 7340,
+        seats: 3,
         skuId: E3,
-        reversedAt: null,
+        monthlyCents: 11010,
       }),
-    ]),
-  );
-  expect(await loadRecentSavings(TENANT, "EUR")).toEqual({
-    cents: 11010,
-    reclaimed: 2,
-    noLongerFlagged: 0,
-    reasonNotRecorded: 0,
-  });
-  expect((await loadSavingsLedger(TENANT, "EUR")).runRate).toBe(11010);
+    ]);
+    if (sequence === "sequential syncs") {
+      expect(
+        (await entriesFor()).find((entry) => entry.reason === "license_removed")
+          ?.reversedAt,
+      ).toBeInstanceOf(Date);
+    }
+    expect(await loadRecentSavings(TENANT, "EUR")).toEqual({
+      cents: 11010,
+      reclaimed: 1,
+      noLongerFlagged: 0,
+      reasonNotRecorded: 0,
+    });
+    expect((await loadSavingsLedger(TENANT, "EUR")).runRate).toBe(11010);
 
-  await runSync(TENANT, { client: before });
-  expect(await loadRecentSavings(TENANT, "EUR")).toEqual({
-    cents: 0,
-    reclaimed: 0,
-    noLongerFlagged: 0,
-    reasonNotRecorded: 0,
+    await runSync(TENANT, { client: before });
+    expect(await activeEntries()).toEqual([]);
+  },
+);
+
+it("reverses a removal when a different rule opens for the same person and SKU", async () => {
+  const old = graphUser("member", "member@example.test", {
+    accountEnabled: false,
+  });
+  await runSync(TENANT, {
+    client: client([sku(E3, "SPE_E3", 4, 1)], {}, [old]),
+  });
+  await runSync(TENANT, {
+    client: client([sku(E3, "SPE_E3", 4, 0)], {}, [
+      { ...old, assignedLicenses: [] },
+    ]),
+  });
+  expect(await activeEntries()).toEqual([
+    expect.objectContaining({ reason: "license_removed", seats: 1 }),
+  ]);
+
+  const inactive = {
+    ...old,
+    accountEnabled: true,
+    signInActivity: {
+      lastSignInDateTime: "2024-02-01T00:00:00Z",
+      lastNonInteractiveSignInDateTime: null,
+    },
+  };
+  await runSync(TENANT, {
+    client: client([sku(E3, "SPE_E3", 4, 1)], {}, [inactive]),
   });
   expect(
-    (await currentDb.select().from(schema.savingsLedger)).every(
-      (entry) => entry.reversedAt !== null,
-    ),
+    (await openFindings()).some((row) => row.rule === "inactive_90d"),
   ).toBe(true);
-  expect(
-    (await openFindings()).every(
-      (finding) => finding.resolutionReason === null,
-    ),
-  ).toBe(true);
+  expect(await activeEntries()).toEqual([]);
 });
 
-it("prorates accrued savings using the actual days in each UTC month", async () => {
-  const { accruedSavings } = await import("~/server/savings/ledger");
+it("keeps the 24-month series and list bounded while accruing old savings", async () => {
+  const { loadSavingsLedger } = await import("~/server/savings/ledger");
+  await currentDb.insert(schema.savingsLedger).values([
+    {
+      tenantId: TENANT,
+      rule: "shelfware",
+      vendor: "Microsoft",
+      skuId: E3,
+      seats: 1,
+      reason: "seats_reduced",
+      monthlyCents: 1000,
+      currency: "EUR",
+      realizedAt: new Date("2023-01-16T12:00:00Z"),
+      reversedAt: new Date("2023-02-15T00:00:00Z"),
+    },
+    {
+      tenantId: TENANT,
+      rule: "shelfware",
+      vendor: "Microsoft",
+      skuId: E3,
+      seats: 1,
+      reason: "seats_reduced",
+      monthlyCents: 2000,
+      currency: "EUR",
+      realizedAt: new Date("2026-01-16T12:00:00Z"),
+    },
+  ]);
+  const ledger = await loadSavingsLedger(
+    TENANT,
+    "EUR",
+    new Date("2026-02-15T00:00:00Z"),
+  );
+  expect(ledger.entries).toEqual([
+    expect.objectContaining({ monthlyCents: 2000 }),
+  ]);
+  expect(ledger.series).toHaveLength(24);
+  expect(ledger.series.at(-2)).toEqual({ month: "2026-01", cents: 2000 });
+  expect(ledger.cumulative).toBe(3000);
+  expect(ledger.runRate).toBe(2000);
+});
+
+it("caps report waste at comparable purchased spend", async () => {
+  const { renderWasteReportPdf } = await import("~/server/report/renderReport");
+  await runSync(TENANT, { client: client([sku(E3, "SPE_E3", 1, 0)]) });
+  await currentDb
+    .update(schema.findings)
+    .set({ monthlyImpactCents: 100000 })
+    .where(eq(schema.findings.tenantId, TENANT));
+  const pdf = await renderWasteReportPdf(TENANT);
+  expect(pdf).toMatchObject({
+    monthlySpendCents: 3670,
+    monthlyWasteCents: 3670,
+  });
+});
+
+it("does not credit an unchanged Adobe product after an email domain change", async () => {
+  const before = graphUser("member", "member@old.example.test", {
+    accountEnabled: false,
+  });
+  await runSync(TENANT, {
+    client: client([sku(E3, "SPE_E3", 1, 1)], {}, [before]),
+  });
+  const originalSeat = {
+    tenantId: TENANT,
+    email: before.userPrincipalName,
+    products: ["Product"],
+    status: "active",
+  };
+  await currentDb.insert(schema.adobeUsers).values(originalSeat);
+  await currentDb.insert(schema.priceBook).values({
+    tenantId: TENANT,
+    skuId: "adobe:Product",
+    monthlyPriceCents: 2500,
+  });
+  await runAnalysis(TENANT);
+  const original = (await openFindings()).find(
+    (row) => row.rule === "adobe_disabled_in_entra",
+  )!;
+  expect(original.monthlyImpactCents).toBe(2500);
+  await currentDb.update(schema.tenantUsers).set({
+    upn: "member@new.example.test",
+    mailAliases: ["alias@new.example.test"],
+    accountEnabled: true,
+  });
+  await currentDb
+    .update(schema.adobeUsers)
+    .set({ email: "alias@new.example.test" });
+  await runAnalysis(TENANT, { verifiedSources: new Set(["adobe"]) });
   expect(
-    accruedSavings(
-      1000,
-      new Date("2026-01-16T12:00:00Z"),
-      new Date("2026-02-15T00:00:00Z"),
-    ),
-  ).toBe(1000);
+    (
+      await currentDb.query.findings.findFirst({
+        where: eq(schema.findings.id, original.id),
+      })
+    )?.resolutionReason,
+  ).toBe("activity_resumed");
+  expect(await entriesFor()).toEqual([]);
+});
+
+it("does not credit a product-label rename on CSV re-import", async () => {
+  const { importSeats } = await import("~/server/actions");
+  const person = graphUser("member", "member@example.test", {
+    accountEnabled: false,
+  });
+  await runSync(TENANT, {
+    client: client([sku(E3, "SPE_E3", 1, 1)], {}, [person]),
+  });
+  await currentDb.insert(schema.priceBook).values({
+    tenantId: TENANT,
+    skuId: "chatgpt:Original",
+    monthlyPriceCents: 2500,
+  });
+  const importProduct = async (product: string) => {
+    const form = new FormData();
+    form.set("provider", "chatgpt");
+    form.set("csv", `Email,Plan\n${person.userPrincipalName},${product}`);
+    expect(await importSeats(form)).toMatchObject({ ok: true, imported: 1 });
+  };
+  await importProduct("Original");
+  const original = (await openFindings()).find(
+    (row) => row.rule === "saas_disabled_in_entra",
+  )!;
+  expect(original.monthlyImpactCents).toBe(2500);
+  await currentDb.update(schema.tenantUsers).set({ accountEnabled: true });
+  await importProduct("Renamed");
+  expect(
+    (
+      await currentDb.query.findings.findFirst({
+        where: eq(schema.findings.id, original.id),
+      })
+    )?.resolutionReason,
+  ).toBe("activity_resumed");
+  expect(await entriesFor()).toEqual([]);
+});
+
+it.each(["Microsoft", "Adobe", "Zoom", "ChatGPT"])(
+  "reverses only %s ledger entries when its source disconnects",
+  async (vendor) => {
+    const {
+      clearImportedSeats,
+      disconnectAdobe,
+      disconnectMicrosoft,
+      disconnectSaasConnector,
+    } = await import("~/server/actions");
+    const [finding] = await currentDb
+      .insert(schema.findings)
+      .values({
+        tenantId: TENANT,
+        rule: "shelfware",
+        dedupeKey: "shelfware-test",
+        title: "Idle seats",
+        status: "resolved",
+      })
+      .returning();
+    const sourceEntries = [
+      {
+        vendor: "Microsoft",
+        rule: "shelfware",
+        findingId: finding!.id,
+        skuId: E3,
+      },
+      { vendor: "Adobe", rule: "adobe_disabled_in_entra" },
+      { vendor: "Zoom", rule: "saas_disabled_in_entra" },
+      { vendor: "ChatGPT", rule: "saas_disabled_in_entra" },
+    ] as const;
+    await currentDb.insert(schema.savingsLedger).values(
+      sourceEntries.map((entry) => ({
+        ...entry,
+        tenantId: TENANT,
+        seats: 1,
+        monthlyCents: 1000,
+        currency: "EUR",
+        reason: "license_removed" as const,
+        realizedAt: new Date("2026-01-01T00:00:00Z"),
+      })),
+    );
+    const disconnect = {
+      Microsoft: disconnectMicrosoft,
+      Adobe: disconnectAdobe,
+      Zoom: () => disconnectSaasConnector("zoom"),
+      ChatGPT: () => clearImportedSeats("chatgpt"),
+    };
+    expect(await disconnect[vendor as keyof typeof disconnect]()).toEqual({
+      ok: true,
+    });
+    const entries = await entriesFor();
+    expect(entries).toHaveLength(4);
+    expect(
+      entries.find((entry) => entry.vendor === vendor)?.reversedAt,
+    ).toBeInstanceOf(Date);
+    expect(
+      entries
+        .filter((entry) => entry.reversedAt === null)
+        .map((entry) => entry.vendor)
+        .sort(),
+    ).toEqual(
+      sourceEntries
+        .map((entry) => entry.vendor)
+        .filter((source) => source !== vendor)
+        .sort(),
+    );
+    if (vendor === "Microsoft")
+      expect(
+        entries.find((entry) => entry.vendor === vendor)?.findingId,
+      ).toBeNull();
+  },
+);
+
+it("renders Free overview and savings without Pro confidence or ledger rows, and caps overview waste", async () => {
+  const { default: OverviewPage } = await import("~/app/app/(dash)/page");
+  const { default: SavingsPage } =
+    await import("~/app/app/(dash)/savings/page");
+  const ledgerModule = await import("~/server/savings/ledger");
+  const ledgerSpy = vi.spyOn(ledgerModule, "loadSavingsLedger");
+  try {
+    await runSync(TENANT, { client: client([sku(E3, "SPE_E3", 1, 0)]) });
+    await currentDb
+      .update(schema.findings)
+      .set({ monthlyImpactCents: 100000 })
+      .where(eq(schema.findings.tenantId, TENANT));
+    await currentDb.insert(schema.savingsLedger).values({
+      tenantId: TENANT,
+      rule: "shelfware",
+      vendor: "Fixture vendor",
+      seats: 1,
+      monthlyCents: 1000,
+      currency: "EUR",
+      reason: "seats_reduced",
+      realizedAt: new Date(),
+    });
+    const overview = renderToStaticMarkup(
+      await OverviewPage({ searchParams: Promise.resolve({}) }),
+    );
+    const savings = renderToStaticMarkup(await SavingsPage());
+    for (const html of [overview, savings]) {
+      expect(html).toContain("Start 30-day trial");
+      expect(html).not.toMatch(
+        /from your prices|List estimates|Fixture vendor|Ledger entries/,
+      );
+    }
+    expect(ledgerSpy).not.toHaveBeenCalled();
+    expect(overview).toContain("Price accuracy");
+    expect(overview).toContain("100.0% of spend");
+
+    uiPaid = true;
+    const proOverview = renderToStaticMarkup(
+      await OverviewPage({ searchParams: Promise.resolve({}) }),
+    );
+    const proSavings = renderToStaticMarkup(await SavingsPage());
+    expect(proOverview).toContain("Price accuracy");
+    expect(proOverview).toContain("from your prices");
+    expect(proSavings).toContain("Fixture vendor");
+  } finally {
+    uiPaid = false;
+    ledgerSpy.mockRestore();
+  }
 });

@@ -273,6 +273,9 @@ export const TrendChart = ({
           </a>
         </div>
       </div>
+      <p className="text-ink-soft mt-2 text-xs">
+        New snapshots count purchased seats in spend.
+      </p>
       {windowUpgradeHref && <HistoryWindowHint href={windowUpgradeHref} />}
     </section>
   );

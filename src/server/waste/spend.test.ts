@@ -83,9 +83,9 @@ it("combines paid and active provider seats and counts zero prices by seat", () 
   ).toBeLessThanOrEqual(spend.totalCents);
   expect(spend.totalCents).toBe(1000);
   expect(priceConfidence(spend)).toEqual({
-    customPercent: 88,
-    estimatePercent: 12,
-    unpricedSeats: 1,
+    customPercent: 82,
+    estimatePercent: 9,
+    unpricedPercent: 9,
   });
   expect(
     priceConfidence(
@@ -94,7 +94,7 @@ it("combines paid and active provider seats and counts zero prices by seat", () 
   ).toEqual({
     customPercent: 0,
     estimatePercent: 0,
-    unpricedSeats: 8,
+    unpricedPercent: 100,
   });
 });
 
@@ -145,4 +145,24 @@ it("never prices more waste than paid spend across purchase, assignment and tria
       ]).totalCents,
     );
   }
+});
+
+it("weights a catalog seat by list price even when the entered price is zero", () => {
+  const e3 = "05e9a617-0261-4cee-bb44-138d3ef5d965";
+  const spend = licenseSpend(
+    {
+      skus: [{ ...sku, skuId: e3, skuPartNumber: "SPE_E3", prepaidEnabled: 1 }],
+      adobe: [seat],
+      saas: new Map(),
+    },
+    [
+      { skuId: e3, source: "custom", monthlyPriceCents: 0 },
+      { skuId: "adobe:Standard", source: "default", monthlyPriceCents: 367 },
+    ],
+  );
+  expect(priceConfidence(spend)).toEqual({
+    customPercent: 0,
+    estimatePercent: 9,
+    unpricedPercent: 91,
+  });
 });

@@ -521,6 +521,8 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
           skuId: sku.skuId,
           skuPartNumber: sku.skuPartNumber,
           purchased: paidSeatsOf(sku),
+          prepaidEnabled: sku.prepaidEnabled,
+          trialUnits: sku.trialUnits ?? 0,
           unitPriceCents: Math.max(0, listPrices[sku.skuId] ?? 0),
           ...(sku.trialUnits ? { trialSeats: sku.trialUnits } : {}),
           assigned: sku.consumedUnits,

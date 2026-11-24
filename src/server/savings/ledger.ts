@@ -1,7 +1,37 @@
 import { and, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { db } from "~/server/db";
-import { findings, savingsLedger } from "~/server/db/schema";
+import { findings, savingsLedger, tenants } from "~/server/db/schema";
 import type { ResolutionReason } from "~/server/types";
+
+import { vendorLabel, type SeatSource } from "~/server/waste/spend";
+
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export async function reverseDisconnectedSavings(
+  tx: Transaction,
+  tenantId: string,
+  source: SeatSource,
+  now = new Date(),
+) {
+  await tx
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .for("update");
+  // A disconnected source can no longer verify any active savings.
+  await tx
+    .update(savingsLedger)
+    .set({
+      reversedAt: sql`greatest(${savingsLedger.realizedAt}, ${now.toISOString()}::timestamptz)`,
+    })
+    .where(
+      and(
+        eq(savingsLedger.tenantId, tenantId),
+        eq(savingsLedger.vendor, vendorLabel(source)),
+        isNull(savingsLedger.reversedAt),
+      ),
+    );
+}
 
 export const DAY_MS = 86_400_000;
 export const RESOLUTION_LABELS: Record<
@@ -75,23 +105,14 @@ export async function loadRecentSavings(
 const monthStart = (date: Date, offset = 0) =>
   new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + offset, 1));
 
-export function accruedSavings(
-  monthlyCents: number,
-  start: Date,
-  end: Date,
-): number {
-  let accrued = 0;
-  for (let cursor = start; cursor < end;) {
-    const month = monthStart(cursor);
-    const next = monthStart(cursor, 1);
-    const segmentEnd = new Date(Math.min(end.getTime(), next.getTime()));
-    accrued +=
-      (monthlyCents * (segmentEnd.getTime() - cursor.getTime())) /
-      (next.getTime() - month.getTime());
-    cursor = segmentEnd;
-  }
-  return accrued;
-}
+// Express each UTC timestamp in whole calendar months plus its fraction of
+// the current month. Subtracting two positions prorates even partial months.
+const monthPosition = (date: ReturnType<typeof sql>) => {
+  const start = sql`date_trunc('month', ${date})`;
+  return sql`(extract(year from ${date}) * 12 + extract(month from ${date})
+    + extract(epoch from (${date} - ${start}))
+      / extract(epoch from (${start} + interval '1 month' - ${start})))`;
+};
 
 /** Call only after checking the workspace's savingsLedger entitlement. */
 export async function loadSavingsLedger(
@@ -105,28 +126,48 @@ export async function loadSavingsLedger(
       .slice(0, 7),
   );
   const since = monthStart(now, -23);
-  const [entries, resolved] = await Promise.all([
+  const start = monthPosition(
+    sql`(${savingsLedger.realizedAt} at time zone 'UTC')`,
+  );
+  const end = monthPosition(
+    sql`(least(${savingsLedger.reversedAt}, ${now.toISOString()}::timestamptz) at time zone 'UTC')`,
+  );
+  const scope = and(
+    eq(savingsLedger.tenantId, tenantId),
+    eq(savingsLedger.currency, currency),
+    lte(savingsLedger.realizedAt, now),
+  );
+  const [entries, resolved, [totals]] = await Promise.all([
     db.query.savingsLedger.findMany({
-      where: and(
-        eq(savingsLedger.tenantId, tenantId),
-        eq(savingsLedger.currency, currency),
-        lte(savingsLedger.realizedAt, now),
-      ),
+      where: and(scope, gte(savingsLedger.realizedAt, since)),
+      columns: {
+        id: true,
+        rule: true,
+        vendor: true,
+        skuId: true,
+        reason: true,
+        monthlyCents: true,
+        currency: true,
+        realizedAt: true,
+        reversedAt: true,
+      },
       orderBy: [desc(savingsLedger.realizedAt), desc(savingsLedger.id)],
     }),
     noLongerFlagged(tenantId, since, now),
+    db
+      .select({
+        runRate: sql<number>`coalesce(sum(${savingsLedger.monthlyCents}) filter (
+        where ${savingsLedger.reversedAt} is null or ${savingsLedger.reversedAt} > ${now.toISOString()}::timestamptz
+      ), 0)::float8`,
+        cumulative: sql<number>`coalesce(round(sum(${savingsLedger.monthlyCents} * (${end} - ${start}))), 0)::float8`,
+      })
+      .from(savingsLedger)
+      .where(scope),
   ]);
   const buckets = new Map<string, number>();
-  let runRate = 0;
-  let cumulative = 0;
   for (const entry of entries) {
     const month = entry.realizedAt.toISOString().slice(0, 7);
     buckets.set(month, (buckets.get(month) ?? 0) + entry.monthlyCents);
-    if (!entry.reversedAt) runRate += entry.monthlyCents;
-    const until = new Date(
-      Math.min(now.getTime(), entry.reversedAt?.getTime() ?? Infinity),
-    );
-    cumulative += accruedSavings(entry.monthlyCents, entry.realizedAt, until);
   }
   const series = months.map((month) => ({
     month,
@@ -135,9 +176,9 @@ export async function loadSavingsLedger(
   return {
     realizedThisMonth: series.at(-1)?.cents ?? 0,
     series,
-    runRate,
-    cumulative: Math.round(cumulative),
-    entries: entries.filter((entry) => entry.realizedAt >= since),
+    runRate: totals?.runRate ?? 0,
+    cumulative: totals?.cumulative ?? 0,
+    entries,
     noLongerFlagged: resolved,
   };
 }

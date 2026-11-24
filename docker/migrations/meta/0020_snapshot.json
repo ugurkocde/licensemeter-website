@@ -2842,6 +2842,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "seats": {
+          "name": "seats",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_key": {
+          "name": "subject_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "reason": {
           "name": "reason",
           "type": "text",
@@ -2950,6 +2962,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "savings_ledger_seats_positive": {
+          "name": "savings_ledger_seats_positive",
+          "value": "\"savings_ledger\".\"seats\" > 0"
+        },
         "savings_ledger_monthly_nonneg": {
           "name": "savings_ledger_monthly_nonneg",
           "value": "\"savings_ledger\".\"monthly_cents\" >= 0"

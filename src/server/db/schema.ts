@@ -622,7 +622,7 @@ export const findings = pgTable(
   ],
 );
 
-/** Financial history without person identifiers, retained for the workspace lifetime. */
+/** Financial history without raw person identifiers, retained for the workspace lifetime. */
 export const savingsLedger = pgTable(
   "savings_ledger",
   {
@@ -636,6 +636,8 @@ export const savingsLedger = pgTable(
     rule: text("rule").$type<WasteRuleId>().notNull(),
     vendor: text("vendor").notNull(),
     skuId: text("sku_id"),
+    seats: integer("seats").notNull(),
+    subjectKey: text("subject_key"),
     reason: text("reason").$type<SavingsReason>().notNull(),
     monthlyCents: integer("monthly_cents").notNull(),
     currency: text("currency").notNull(),
@@ -648,6 +650,7 @@ export const savingsLedger = pgTable(
   (t) => [
     index("savings_ledger_tenant_realized_idx").on(t.tenantId, t.realizedAt),
     index("savings_ledger_finding_idx").on(t.findingId),
+    check("savings_ledger_seats_positive", sql`${t.seats} > 0`),
     check("savings_ledger_monthly_nonneg", sql`${t.monthlyCents} >= 0`),
     check(
       "savings_ledger_reason_check",

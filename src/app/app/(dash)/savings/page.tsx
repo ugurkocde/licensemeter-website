@@ -9,11 +9,9 @@ import {
 import { fmtDate, fmtMoney, fmtNumber } from "~/lib/format";
 import { RULE_META } from "~/lib/rules";
 import { requireAccess } from "~/server/access";
-import { hasFeature } from "~/server/entitlement";
 import { skuDisplayName } from "~/server/graph/skuCatalog";
-import { loadSavingsLedger, RESOLUTION_LABELS } from "~/server/savings/ledger";
-import { priceConfidence } from "~/server/waste/spend";
-import { loadLicenseSpend } from "~/server/waste/spendStore";
+import { RESOLUTION_LABELS } from "~/server/savings/ledger";
+import { loadSavingsPageData } from "~/server/savings/pageData";
 
 export const metadata: Metadata = { title: "Savings ledger" };
 
@@ -29,7 +27,8 @@ export default async function SavingsPage() {
     <h1 className="font-display text-3xl tracking-tight">Savings ledger</h1>
   );
 
-  if (!hasFeature(entitlement, "savingsLedger")) {
+  const data = await loadSavingsPageData(entitlement, tenant);
+  if (!data) {
     return (
       <div className="mx-auto flex max-w-5xl flex-col gap-6">
         {heading}
@@ -42,10 +41,7 @@ export default async function SavingsPage() {
     );
   }
 
-  const [ledger, { spend }] = await Promise.all([
-    loadSavingsLedger(tenant.id, tenant.currency),
-    loadLicenseSpend(tenant.id),
-  ]);
+  const { ledger, confidence } = data;
   const currency = tenant.currency;
   const max = Math.max(1, ...ledger.series.map((point) => point.cents));
   const metrics = [
@@ -62,7 +58,7 @@ export default async function SavingsPage() {
     [
       "Cumulative savings",
       ledger.cumulative,
-      "Estimated value accrued by day until reversal or today.",
+      "Value accrued since tracking started, through reversal or today.",
     ],
   ] as const;
 
@@ -70,7 +66,7 @@ export default async function SavingsPage() {
     <div className="mx-auto grid max-w-5xl min-w-0 grid-cols-1 gap-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         {heading}
-        <PriceConfidenceBadge confidence={priceConfidence(spend)} />
+        <PriceConfidenceBadge confidence={confidence} />
       </header>
       <dl className="border-line bg-line grid gap-px border sm:grid-cols-3">
         {metrics.map(([label, cents, definition]) => (

@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "~/server/db/schema";
@@ -508,6 +509,22 @@ describe("tools", () => {
     expect(JSON.parse(content[0]!.text)).toEqual(
       body.result?.structuredContent,
     );
+  });
+
+  it("caps summary waste when stored findings exceed purchased spend", async () => {
+    await currentDb
+      .update(schema.findings)
+      .set({ monthlyImpactCents: 100000000 })
+      .where(eq(schema.findings.tenantId, tenantA.id));
+    const { body } = await callTool(tokenA, "get_waste_summary");
+    const summary = body.result?.structuredContent as {
+      monthly_spend: number;
+      monthly_waste: number;
+      annualized_waste: number;
+    };
+    expect(summary.monthly_spend).toBeGreaterThan(0);
+    expect(summary.monthly_waste).toBe(summary.monthly_spend);
+    expect(summary.annualized_waste).toBeCloseTo(summary.monthly_spend * 12);
   });
 
   it("list_findings leaves out every user identifier by default", async () => {

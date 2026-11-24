@@ -11,7 +11,7 @@ import { UnpricedNotice } from "~/components/workspace/UnpricedNotice";
 import { ButtonAnchor, Pill, buttonClass } from "~/components/ui";
 import { CONNECTORS } from "~/lib/connectors";
 import { fmtMoney, fmtNumber } from "~/lib/format";
-import { calculatePriceCoverage } from "~/lib/priceCoverage";
+import { calculatePriceCoverage, priceAccuracySku } from "~/lib/priceCoverage";
 import { adobePriceKey } from "~/server/adobe/analyze";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
@@ -140,7 +140,7 @@ export default async function LicensesPage({
   );
 
   const coverageProducts = [
-    ...allSorted.map((s) => ({
+    ...skus.filter(priceAccuracySku).map((s) => ({
       seats:
         s.trialUnits > 0
           ? Math.min(s.consumedUnits, paidSeatsOf(s))
