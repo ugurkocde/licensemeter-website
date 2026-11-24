@@ -38,8 +38,7 @@ describe("input parsing", () => {
 });
 
 describe("DEMO_WASTE_PCT", () => {
-  it("matches the demo tenant the marketing pages quote (38 percent)", () => {
-    // 297,986 / 787,200, recomputed so the slider hint cannot go stale.
-    expect(DEMO_WASTE_PCT).toBe(38);
+  it("matches the Microsoft-only share of demo spend (31 percent)", () => {
+    expect(DEMO_WASTE_PCT).toBe(31);
   });
 });

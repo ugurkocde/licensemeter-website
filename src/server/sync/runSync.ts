@@ -74,7 +74,7 @@ import type { SyncRunStatus, SyncStep, WasteRuleId } from "~/server/types";
 import {
   analyzeWaste,
   assignedSeatsOf,
-  billedSeatsOf,
+  monthlyBilledSpendOf,
   isShelfwareExempt,
   paidSeatsOf,
   purchasedSeatsOf,
@@ -1119,9 +1119,9 @@ export const runSync = async (
     await sendLeakAlert(tenant, inserted, now);
 
     // --- Snapshot + tenant capabilities ------------------------------------
-    const totalMonthlySpendCents = inventory.reduce(
-      (sum, s) => sum + billedSeatsOf(s) * (prices[s.skuId] ?? 0),
-      0,
+    const totalMonthlySpendCents = monthlyBilledSpendOf(
+      inventory,
+      (skuId) => prices[skuId] ?? 0,
     );
     const openRows = await db.query.findings.findMany({
       where: and(
@@ -1347,9 +1347,9 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     now,
   );
 
-  const totalMonthlySpendCents = skuRows.reduce(
-    (sum, s) => sum + billedSeatsOf(s) * (prices[s.skuId] ?? 0),
-    0,
+  const totalMonthlySpendCents = monthlyBilledSpendOf(
+    skuRows,
+    (skuId) => prices[skuId] ?? 0,
   );
   const openRows = await db.query.findings.findMany({
     where: and(

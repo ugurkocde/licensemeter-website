@@ -31,7 +31,7 @@ const HEADLINE_STATS = [
   },
   { label: "Findings", value: String(DEMO_FIGURES.findingsCount) },
   {
-    label: "Recoverable / month",
+    label: "Recoverable across all connectors / month",
     value: `€ ${demoEuros(DEMO_FIGURES.monthlyWasteCents)}`,
   },
 ] as const;

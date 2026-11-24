@@ -9,7 +9,7 @@ import type { ReportBranding } from "~/server/report/brandStyle";
 import { reportFilename } from "~/server/report/filename";
 import { WasteReport } from "~/server/report/WasteReport";
 import type { WasteRuleId } from "~/server/types";
-import { billedSeatsOf } from "~/server/waste/engine";
+import { monthlyBilledSpendOf } from "~/server/waste/engine";
 
 export type WasteReportPdf = {
   buffer: Buffer;
@@ -50,9 +50,9 @@ export const renderWasteReportPdf = async (
   ]);
 
   const priceBySku = new Map(prices.map((p) => [p.skuId, p.monthlyPriceCents]));
-  const monthlySpend = skus.reduce(
-    (sum, s) => sum + billedSeatsOf(s) * (priceBySku.get(s.skuId) ?? 0),
-    0,
+  const monthlySpend = monthlyBilledSpendOf(
+    skus,
+    (skuId) => priceBySku.get(skuId) ?? 0,
   );
   const monthlyWaste = open.reduce((sum, f) => sum + f.monthlyImpactCents, 0);
 

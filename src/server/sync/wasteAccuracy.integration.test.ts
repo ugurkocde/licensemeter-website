@@ -15,6 +15,7 @@ import {
   tenantId,
   type TestDb,
 } from "~/server/mcp/testHarness";
+import { isShelfwareExempt, monthlyBilledSpendOf } from "~/server/waste/engine";
 
 /**
  * Sync accuracy against a real PGlite database: catalog price refresh, trial
@@ -58,6 +59,7 @@ vi.mock("~/server/graph/msConnection", () => ({
 }));
 
 const { runAnalysis, runSync } = await import("~/server/sync/runSync");
+const { renderWasteReportPdf } = await import("~/server/report/renderReport");
 
 const E3 = "05e9a617-0261-4cee-bb44-138d3ef5d965"; // 36.70 EUR in the catalog
 const INTUNE_SUITE = "a929cd4d-8672-47c9-8664-159c1f322ba8"; // 9.40 EUR
@@ -501,8 +503,17 @@ describe("same-day snapshots", () => {
   it("recalculates billed spend and comparable seat totals on sync and reanalysis", async () => {
     const seats = [
       sku(E3, "SPE_E3", 125, 90),
-      sku("sku-flow-free", "FLOW_FREE", 10_000, 117),
+      sku("sku-flow-free", "FLOW_FREE", 200, 117),
+      sku("sku-capacity", "EXAMPLE_CAPACITY", 5_000, 3),
     ];
+    await currentDb.insert(schema.priceBook).values(
+      seats.slice(1).map(({ skuId }) => ({
+        tenantId: TENANT,
+        skuId,
+        monthlyPriceCents: 500,
+        source: "custom" as const,
+      })),
+    );
     await runSync(TENANT, { client: client(seats) });
     expect(await snapshot()).toMatchObject({
       purchasedSeats: 125,
@@ -548,6 +559,30 @@ describe("same-day snapshots", () => {
     expect((await snapshot()).bySku).toEqual({
       [E3]: { purchased: 75, assigned: 90 },
     });
+
+    const skus = await currentDb.query.tenantSkus.findMany({
+      where: eq(schema.tenantSkus.tenantId, TENANT),
+    });
+    const prices = await currentDb.query.priceBook.findMany({
+      where: eq(schema.priceBook.tenantId, TENANT),
+    });
+    const priceBySku = new Map(
+      prices.map((p) => [p.skuId, p.monthlyPriceCents]),
+    );
+    expect(priceBySku.get("sku-flow-free")).toBe(500);
+    expect(priceBySku.get("sku-capacity")).toBe(500);
+    // Overview and Licenses pass the filtered inventory to the same helper.
+    const visibleSkus = skus.filter(
+      (s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled),
+    );
+    const inventorySpend = monthlyBilledSpendOf(
+      visibleSkus,
+      (skuId) => priceBySku.get(skuId) ?? 0,
+    );
+    const pdf = await renderWasteReportPdf(TENANT);
+    expect(pdf.buffer.subarray(0, 4).toString()).toBe("%PDF");
+    expect(pdf.monthlySpendCents).toBe(inventorySpend);
+    expect((await snapshot()).totalMonthlySpendCents).toBe(inventorySpend);
   });
 });
 

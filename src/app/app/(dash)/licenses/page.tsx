@@ -20,6 +20,7 @@ import {
   billedSeatsOf,
   idleSeatsOf,
   isShelfwareExempt,
+  monthlyBilledSpendOf,
   paidSeatsOf,
   purchasedSeatsOf,
   unpricedSkuCount,
@@ -132,19 +133,15 @@ export default async function LicensesPage({
   const unassignedOf = idleSeatsOf;
   const spendOf = (s: (typeof allSorted)[number]) =>
     billedSeatsOf(s) * (priceRows.get(s.skuId)?.monthlyPriceCents ?? 0);
-  const totals = allSorted.reduce(
-    (acc, s) => ({
-      ...acc,
-      unassigned: acc.unassigned + unassignedOf(s),
-      spendCents: acc.spendCents + spendOf(s),
-    }),
-    {
-      purchased: purchasedSeatsOf(allSorted),
-      assigned: assignedSeatsOf(allSorted),
-      unassigned: 0,
-      spendCents: 0,
-    },
-  );
+  const totals = {
+    purchased: purchasedSeatsOf(allSorted),
+    assigned: assignedSeatsOf(allSorted),
+    unassigned: allSorted.reduce((sum, s) => sum + unassignedOf(s), 0),
+    spendCents: monthlyBilledSpendOf(
+      allSorted,
+      (skuId) => priceRows.get(skuId)?.monthlyPriceCents ?? 0,
+    ),
+  };
 
   const coverageProducts = [
     ...allSorted.map((s) => ({

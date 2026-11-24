@@ -7,11 +7,12 @@
 import { DEMO_FIGURES } from "~/lib/demoFigures";
 
 /**
- * Waste share of the demo tenant, recomputed from the tested demo figures so
+ * Microsoft waste share of the demo tenant, computed from tested demo figures so
  * the slider hint can never drift from what the live demo actually shows.
  */
 export const DEMO_WASTE_PCT = Math.round(
-  (DEMO_FIGURES.monthlyWasteCents / DEMO_FIGURES.monthlySpendCents) * 100,
+  (DEMO_FIGURES.microsoftMonthlyWasteCents / DEMO_FIGURES.monthlySpendCents) *
+    100,
 );
 
 /** "36,70" or "36.70" → 3670 cents; anything unparseable or negative → 0. */

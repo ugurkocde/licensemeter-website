@@ -34,9 +34,9 @@ it("allows 100% without changing the label for unpriced findings", () => {
   ).toBe("100.0% of spend");
 });
 
-it("asks for a sync when Microsoft waste exceeds recorded spend", () => {
+it("describes Microsoft waste above recorded spend without suggesting an action", () => {
   expect(wasteShareLabel(100, [{ rule: "shelfware", cents: 101 }])).toBe(
-    "More than recorded spend. Run a sync to refresh.",
+    "More than recorded spend",
   );
 });
 

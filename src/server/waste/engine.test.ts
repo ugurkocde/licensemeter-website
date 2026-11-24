@@ -211,6 +211,35 @@ describe("copilot_unused", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]!.monthlyImpactCents).toBe(5 * 2810);
   });
+
+  it.each([
+    [5, 1],
+    [2, 0],
+  ])(
+    "conservatively prices %i concealed inactive seats after user findings",
+    (inactiveCount, pricedInactiveCount) => {
+      const licenses = [lic(COPILOT_SKU_ID)];
+      const findings = run({
+        copilotSignal: "aggregate",
+        copilotAggregate: { inactiveCount, totalCount: 10 },
+        users: [
+          user({ graphId: "disabled", accountEnabled: false, licenses }),
+          user({ graphId: "guest", userType: "Guest", licenses }),
+          user({ graphId: "never-active", lastActivity: null, licenses }),
+          user({ graphId: "inactive", lastActivity: daysAgo(100), licenses }),
+          user({ graphId: "active", licenses }),
+          user({ graphId: "without-copilot", accountEnabled: false }),
+        ],
+      });
+      expect(findings.filter((f) => f.rule !== "copilot_unused")).toHaveLength(
+        5,
+      );
+      expect(findings.find((f) => f.rule === "copilot_unused")).toMatchObject({
+        detail: { inactiveCount, pricedInactiveCount, totalCount: 10 },
+        monthlyImpactCents: pricedInactiveCount * 2810,
+      });
+    },
+  );
 });
 
 describe("overlapping_licenses", () => {
@@ -395,8 +424,8 @@ describe("billedSeatsOf", () => {
     ["idle seats on a mixed subscription", "SPE_E3", 15, 1, 5, 10],
     ["assigned trial seats", "SPE_E3", 15, 12, 5, 10],
     ["trial-only subscription", "SPE_E3", 5, 5, 5, 0],
-    ["free SKU", "FLOW_FREE", 10, 1, 0, 1],
-    ["capacity SKU", "EXAMPLE_CAPACITY", 5_000, 3, 0, 3],
+    ["free SKU", "FLOW_FREE", 10, 1, 0, 0],
+    ["capacity SKU", "EXAMPLE_CAPACITY", 5_000, 3, 0, 0],
   ])(
     "counts %s correctly",
     (

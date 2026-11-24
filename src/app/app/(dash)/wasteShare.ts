@@ -18,7 +18,7 @@ export const wasteShareLabel = (
   }
 
   if (microsoftWaste > monthlySpend) {
-    return "More than recorded spend. Run a sync to refresh.";
+    return "More than recorded spend";
   }
 
   const percent = ((microsoftWaste / monthlySpend) * 100).toFixed(1);

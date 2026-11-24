@@ -49,6 +49,7 @@ import { loadWasteHistory } from "~/server/historyStore";
 import {
   billedSeatsOf,
   isShelfwareExempt,
+  monthlyBilledSpendOf,
   paidSeatsOf,
   unpricedSkuCount,
 } from "~/server/waste/engine";
@@ -228,7 +229,10 @@ export default async function OverviewPage({
 
   const spendOf = (s: (typeof realSkus)[number]) =>
     billedSeatsOf(s) * (priceBySku.get(s.skuId) ?? 0);
-  const monthlySpend = realSkus.reduce((sum, s) => sum + spendOf(s), 0);
+  const monthlySpend = monthlyBilledSpendOf(
+    realSkus,
+    (skuId) => priceBySku.get(skuId) ?? 0,
+  );
   const monthlyWaste = ruleAgg.reduce((sum, r) => sum + r.cents, 0);
 
   // Inventory rows for the dashboard table, sorted client-side (default: spend
@@ -381,7 +385,7 @@ export default async function OverviewPage({
         formula:
           "Each open or acknowledged finding carries the monthly cost of the wasted seat. Monthly waste is the sum of those costs, grouped here by the rule that flagged them.",
         source:
-          "Sync values open and acknowledged findings using the price book. The percentage uses Microsoft findings only and requires recorded Microsoft spend. If Microsoft waste exceeds recorded spend, run a sync to refresh the figures.",
+          "Findings use prices from the workspace price book. The percentage uses Microsoft findings only and requires recorded Microsoft spend.",
         columns: ["Rule", "Impact / mo"],
         rows: wasteRows,
         totalLabel: "Total monthly waste",

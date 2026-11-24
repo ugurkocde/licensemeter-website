@@ -32,6 +32,7 @@ const DETAIL_LABELS: Record<string, string> = {
   topDisabledPlans: "Most often disabled",
   trialSeats: "Trial seats (not counted)",
   inactiveCount: "Inactive seats",
+  pricedInactiveCount: "Inactive seats included in this estimate",
   totalCount: "Total seats",
   hint: "Recommended next step",
   pairs: "Overlapping products",

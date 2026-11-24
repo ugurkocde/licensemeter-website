@@ -192,7 +192,7 @@ const seedDemoHistory = async (tenantId: string): Promise<void> => {
         200_000,
       ),
       purchasedSeats: 300,
-      assignedSeats: 263,
+      assignedSeats: DEMO_FIGURES.assignedSeats,
       bySku: {},
     };
   });

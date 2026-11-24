@@ -182,13 +182,19 @@ type InventorySeatCounts = SeatCounts & { skuPartNumber: string };
 
 /**
  * Seats included in monthly spend, including paid seats without an assignment.
- * Shelfware-exempt SKUs, including the 5,000-seat capacity heuristic, count
- * only paid assignments.
+ * Free and capacity SKUs are excluded, as in the license inventory.
  */
 export const billedSeatsOf = (s: InventorySeatCounts): number =>
   isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled)
-    ? spendSeatsOf(s)
+    ? 0
     : Math.max(paidSeatsOf(s), spendSeatsOf(s));
+
+/** Monthly spend in cents across the billable inventory. */
+export const monthlyBilledSpendOf = (
+  skus: readonly (InventorySeatCounts & { skuId: string })[],
+  priceOf: (skuId: string) => number,
+): number =>
+  skus.reduce((sum, s) => sum + billedSeatsOf(s) * priceOf(s.skuId), 0);
 
 /**
  * Monthly price of one assignment, for rules that price individual users.
@@ -325,6 +331,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
   const prices = assignmentPrices(skus, listPrices);
   const inactiveThreshold = input.inactiveDays ?? INACTIVE_DAYS;
   const findings: WasteFinding[] = [];
+  let copilotSeatsCoveredByUserFindings = 0;
   /** SKU -> enabled users with disabled service plans, and users per plan. */
   const planDisables = new Map<
     string,
@@ -350,9 +357,11 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
     ) {
       continue;
     }
+    const hasCopilot = u.licenses.some((l) => l.skuId === COPILOT_SKU_ID);
 
     // Rule 1: disabled account still holding licenses (offboarding leak).
     if (!u.accountEnabled) {
+      if (hasCopilot) copilotSeatsCoveredByUserFindings++;
       findings.push({
         dedupeKey: key("disabled_account_with_license", u.graphId),
         rule: "disabled_account_with_license",
@@ -367,6 +376,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
 
     // Rule 6: licensed guest account.
     if (u.userType === "Guest") {
+      if (hasCopilot) copilotSeatsCoveredByUserFindings++;
       findings.push({
         dedupeKey: key("licensed_guest", u.graphId),
         rule: "licensed_guest",
@@ -385,6 +395,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
         ? daysBetween(u.createdDateTime, now)
         : Infinity;
       if (u.lastActivity === null && ageDays >= NEVER_ACTIVE_MIN_AGE_DAYS) {
+        if (hasCopilot) copilotSeatsCoveredByUserFindings++;
         findings.push({
           dedupeKey: key("never_active", u.graphId),
           rule: "never_active",
@@ -401,6 +412,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
       if (u.lastActivity !== null) {
         const inactiveDays = daysBetween(u.lastActivity, now);
         if (inactiveDays > inactiveThreshold) {
+          if (hasCopilot) copilotSeatsCoveredByUserFindings++;
           findings.push({
             dedupeKey: key("inactive_90d", u.graphId),
             rule: "inactive_90d",
@@ -467,10 +479,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
     }
 
     // Rule 5: Copilot seat without Copilot usage (per-user signal available).
-    if (
-      input.copilotSignal === "per-user" &&
-      u.licenses.some((l) => l.skuId === COPILOT_SKU_ID)
-    ) {
+    if (input.copilotSignal === "per-user" && hasCopilot) {
       const idle =
         u.copilotLastActivity === null ||
         daysBetween(u.copilotLastActivity, now) > COPILOT_INACTIVE_DAYS;
@@ -551,14 +560,25 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
   if (input.copilotSignal === "aggregate" && input.copilotAggregate) {
     const { inactiveCount, totalCount } = input.copilotAggregate;
     if (inactiveCount > 0) {
+      // Concealment prevents identifying the overlap. Price only the seats
+      // that cannot already be covered by directory-based user findings.
+      const pricedInactiveCount = Math.max(
+        0,
+        inactiveCount - copilotSeatsCoveredByUserFindings,
+      );
       findings.push({
         dedupeKey: key("copilot_unused", "aggregate", COPILOT_SKU_ID),
         rule: "copilot_unused",
         graphUserId: null,
         skuId: COPILOT_SKU_ID,
         title: `${inactiveCount} of ${totalCount} Copilot seats show no usage`,
-        detail: { aggregate: true, inactiveCount, totalCount },
-        monthlyImpactCents: inactiveCount * (prices[COPILOT_SKU_ID] ?? 0),
+        detail: {
+          aggregate: true,
+          inactiveCount,
+          totalCount,
+          ...(pricedInactiveCount < inactiveCount && { pricedInactiveCount }),
+        },
+        monthlyImpactCents: pricedInactiveCount * (prices[COPILOT_SKU_ID] ?? 0),
       });
     }
   }

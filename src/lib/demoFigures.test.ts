@@ -15,11 +15,14 @@ import { summarize } from "~/server/metering/summary";
 import { joinSignals } from "~/server/sync/join";
 import {
   analyzeWaste,
+  assignedSeatsOf,
   billedSeatsOf,
+  monthlyBilledSpendOf,
   type WasteFinding,
 } from "~/server/waste/engine";
 import type { WasteRuleId } from "~/server/types";
 import { DEMO_FIGURES } from "./demoFigures";
+import { MICROSOFT_RULES } from "./rules";
 
 /* Mirrors the DEMO_ADOBE_PRICES prefill in runSync.ts, which cannot be
  * imported here because it lives next to the db-coupled sync code. */
@@ -111,16 +114,16 @@ const recompute = async () => {
     (sum, sku) => sum + billedSeatsOf(sku),
     0,
   );
-  const monthlySpendCents = inventory.reduce(
-    (sum, s) => sum + billedSeatsOf(s) * (prices[s.skuId] ?? 0),
-    0,
-  );
   return {
     orgName,
     users: graphUsers.length,
     findings,
-    monthlySpendCents,
+    monthlySpendCents: monthlyBilledSpendOf(
+      inventory,
+      (skuId) => prices[skuId] ?? 0,
+    ),
     billedSeats,
+    assignedSeats: assignedSeatsOf(inventory),
   };
 };
 
@@ -137,11 +140,16 @@ describe("DEMO_FIGURES matches the recomputed demo tenant analysis", () => {
   });
 
   it("totals", async () => {
-    const { findings, monthlySpendCents, billedSeats } = await recompute();
+    const { findings, monthlySpendCents, billedSeats, assignedSeats } =
+      await recompute();
     expect(findings.reduce((s, f) => s + f.monthlyImpactCents, 0)).toBe(
       DEMO_FIGURES.monthlyWasteCents,
     );
+    expect(sumByRules(findings, MICROSOFT_RULES)).toBe(
+      DEMO_FIGURES.microsoftMonthlyWasteCents,
+    );
     expect(billedSeats).toBe(300);
+    expect(assignedSeats).toBe(DEMO_FIGURES.assignedSeats);
     expect(monthlySpendCents).toBe(DEMO_FIGURES.monthlySpendCents);
     expect(findings).toHaveLength(DEMO_FIGURES.findingsCount);
   });

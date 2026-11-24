@@ -17,7 +17,7 @@ A workspace contains one set of connected data, prices, members, settings and fi
 
 | Metric | Meaning |
 | --- | --- |
-| Monthly license spend | Billed Microsoft seats multiplied by the configured monthly product prices. Billed seats include paid seats without an assignment. Trial seats are free. For over-assigned SKUs without trial seats, spend uses the assigned count. |
+| Monthly license spend | Billed Microsoft seats multiplied by the configured monthly product prices. Billed seats include paid seats without an assignment and exclude trial seats and free and capacity SKUs. For over-assigned SKUs without trial seats, spend uses the assigned count. |
 | Monthly waste | Estimated monthly impact of unresolved findings, based on the price book |
 | Annualized waste | Monthly waste multiplied by twelve, assuming nothing changes |
 | Open findings | Unresolved findings, including acknowledged items |
