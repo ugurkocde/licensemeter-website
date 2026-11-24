@@ -92,6 +92,7 @@ import {
   workspaceAdminEmails,
 } from "~/server/workspaceEmail";
 import { byoConnectorEnabled, siteUrl } from "~/env";
+import { importEarnsCredits } from "~/server/savings/importTrust";
 import { reverseDisconnectedSavings } from "~/server/savings/ledger";
 import {
   AnalysisCurrencyChanged,
@@ -1863,12 +1864,26 @@ export const importSeats = async (
     syncedAt: now,
   }));
 
+  const previousSeats = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(saasSeats)
+    .where(
+      and(
+        eq(saasSeats.tenantId, ctx.tenant.id),
+        eq(saasSeats.provider, provider),
+      ),
+    )
+    .then((r) => r[0]?.n ?? 0);
+  const verified = importEarnsCredits({
+    invalidRows: parsed.invalid.length,
+    previousSeats,
+    importedSeats: rows.length,
+  });
+
   try {
     await runAnalysis(
       ctx.tenant.id,
-      parsed.invalid.length === 0
-        ? { verifiedSources: new Set([provider]) }
-        : {},
+      verified ? { verifiedSources: new Set([provider]) } : {},
       {
         expectedCurrency: ctx.tenant.currency,
         persist: async (tx) => {
