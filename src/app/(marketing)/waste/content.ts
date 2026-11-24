@@ -191,10 +191,10 @@ Get-MgUser -All -Filter "signInActivity/lastSignInDateTime le $cutoff" -Property
     name: "Unassigned paid seats",
     metaTitle: "Unassigned Microsoft 365 licenses (shelfware)",
     metaDescription:
-      "How purchased Microsoft 365 seats end up assigned to nobody, how to compare prepaidUnits against consumedUnits with Get-MgSubscribedSku, and how LicenseMeter prices shelfware per SKU.",
+      "Find unused Microsoft 365 licenses by comparing purchased and assigned seats per SKU with Get-MgSubscribedSku.",
     h1: "Unassigned Microsoft 365 licenses, the shelfware problem",
     intro:
-      "Shelfware is waste at the subscription level rather than the user level: seats you purchased that are assigned to nobody at all. No user is involved, so no user-centric report will ever surface it. The gap only shows when purchased and assigned counts are compared per SKU.",
+      "Unused Microsoft 365 licenses show up as purchased seats assigned to nobody or as seats still assigned to disabled, inactive, or never-active accounts. At the subscription level, find unassigned paid seats by comparing prepaidUnits.enabled with consumedUnits for each SKU using Get-MgSubscribedSku. This page covers unassigned seats, and the related explainers cover licenses still assigned to users.",
     summary:
       "Purchased seats assigned to nobody: prepaid units minus consumed units, per SKU.",
     what: {
