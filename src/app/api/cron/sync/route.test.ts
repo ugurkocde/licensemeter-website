@@ -124,6 +124,27 @@ describe("GET /api/cron/sync", () => {
     expect(body).toMatchObject({ dispatched: 0, synced: 3 });
   });
 
+  it("reports a tenant lock timeout separately from a running sync", async () => {
+    vi.stubEnv("VERCEL", "");
+    runSync
+      .mockResolvedValueOnce({ runId: null, status: "running", steps: [] })
+      .mockResolvedValueOnce({
+        runId: "in-flight",
+        status: "running",
+        steps: [],
+      });
+
+    expect(await (await GET(req())).json()).toMatchObject({
+      synced: 2,
+      results: expect.arrayContaining([
+        { tenantId: "t1", status: "tenant_lock_timeout" },
+        { tenantId: "t2", status: "running" },
+      ]) as unknown,
+      unsynced: [],
+    });
+    expect(notifyOps).not.toHaveBeenCalled();
+  });
+
   it("syncs in-process on Vercel when APP_BASE_URL is missing", async () => {
     vi.stubEnv("VERCEL", "1");
     delete env.APP_BASE_URL;

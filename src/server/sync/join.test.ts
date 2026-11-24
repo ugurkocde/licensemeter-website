@@ -229,17 +229,64 @@ describe("joinSignals", () => {
     );
   });
 
-  it("degrades to no activity signal without P1 and without usage rows (role-denied delegated scan)", () => {
+  it("degrades to no activity signal without P1 and without usage rows or stored activity", () => {
+    const input = {
+      hasP1: false,
+      graphUsers: [graphUser({})],
+      usageRows: [],
+      copilotRows: [],
+    };
+    const result = joinSignals(input);
+    // "full" here would flag every user as never active despite zero data.
+    expect(result.activitySignal).toBe("none");
+    expect(result.copilotSignal).toBe("none");
+    expect(result.usageAggregate).toBeUndefined();
+    expect(
+      joinSignals({ ...input, previousActivity: new Map() }).activitySignal,
+    ).toBe("none");
+  });
+
+  it("uses unknown coverage when the report is unavailable even without stored users", () => {
     const result = joinSignals({
       hasP1: false,
       graphUsers: [graphUser({})],
       usageRows: [],
       copilotRows: [],
+      previousActivity: new Map(),
+      reportUnavailable: true,
     });
-    // "full" here would flag every user as never active despite zero data.
-    expect(result.activitySignal).toBe("none");
-    expect(result.copilotSignal).toBe("none");
-    expect(result.usageAggregate).toBeUndefined();
+    expect(result.activitySignal).toBe("unknown");
+  });
+
+  it("uses unknown coverage and preserves the Copilot date during an outage without P1", () => {
+    const previousCopilot = "2026-05-01";
+    const result = joinSignals({
+      hasP1: false,
+      graphUsers: [graphUser({})],
+      usageRows: [],
+      copilotRows: [],
+      reportUnavailable: true,
+      previousActivity: new Map([
+        [
+          "g-1",
+          {
+            lastActivity: new Date(previousCopilot),
+            workloadActivity: {
+              exchange: null,
+              oneDrive: null,
+              sharePoint: null,
+              teams: null,
+              copilot: previousCopilot,
+            },
+          },
+        ],
+      ]),
+    });
+    expect(result.activitySignal).toBe("unknown");
+    expect(result.users[0]?.workloadActivity.copilot).toBe(previousCopilot);
+    expect(result.users[0]?.copilotLastActivity).toEqual(
+      new Date(previousCopilot),
+    );
   });
 
   it("keeps the full signal without P1 when joinable usage rows exist", () => {
@@ -329,7 +376,7 @@ describe("joinSignals", () => {
 describe("demo tenant end-to-end analysis", () => {
   const runDemo = async () => {
     const client = new DemoGraphClient({ now: NOW });
-    const [skus, graphUsers, usageRows, copilotRows] = await Promise.all([
+    const [skus, graphUsers, usageReport, copilotRows] = await Promise.all([
       client.getSubscribedSkus(),
       client.listUsers({ includeSignInActivity: true }),
       client.getActiveUserDetail("D90"),
@@ -337,7 +384,7 @@ describe("demo tenant end-to-end analysis", () => {
     ]);
     const joined = joinSignals({
       graphUsers,
-      usageRows,
+      usageRows: usageReport.rows,
       copilotRows,
       hasP1: true,
     });

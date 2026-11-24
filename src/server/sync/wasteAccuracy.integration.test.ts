@@ -118,7 +118,19 @@ const client = (
   getSubscribedSkus: () => Promise.resolve(skus),
   getReportConcealment: () => Promise.resolve(false),
   listUsers: () => Promise.resolve(users),
-  getActiveUserDetail: () => Promise.resolve([]),
+  getActiveUserDetail: () =>
+    Promise.resolve({
+      rows: users.map((user) => ({
+        userPrincipalName: user.userPrincipalName,
+        exchangeLastActivityDate: null,
+        oneDriveLastActivityDate: null,
+        sharePointLastActivityDate: null,
+        teamsLastActivityDate: null,
+      })),
+      hasHeader: true,
+      dataRowCount: users.length,
+      reportRefreshDate: null,
+    }),
   getCopilotUsage: () => Promise.resolve([]),
   ...extra,
 });
@@ -352,8 +364,9 @@ describe("ingest hygiene", () => {
       expect(step.durationMs).toEqual(expect.any(Number));
       expect(step.durationMs).toBeGreaterThanOrEqual(0);
     }
+    expect(result.runId).not.toBeNull();
     const run = await currentDb.query.syncRuns.findFirst({
-      where: eq(schema.syncRuns.id, result.runId),
+      where: eq(schema.syncRuns.id, result.runId!),
     });
     expect(run!.steps.every((s) => typeof s.durationMs === "number")).toBe(
       true,

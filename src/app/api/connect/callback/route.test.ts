@@ -13,6 +13,7 @@ import {
 } from "vitest";
 
 import * as schema from "~/server/db/schema";
+import type * as OpsModule from "~/server/ops";
 
 /**
  * The admin-consent callback must not bind a Microsoft tenant just because the
@@ -35,7 +36,7 @@ const currentDb = drizzle(client, { schema });
 const apiAccess = vi.fn();
 const auth = vi.fn();
 const verifyManagedConsent = vi.fn();
-const notifyOps = vi.fn<(text: string, opts?: unknown) => Promise<void>>();
+const notifyOps = vi.fn<typeof OpsModule.notifyOps>();
 const runSync = vi.fn();
 const setCookie = vi.fn();
 const readHandoffProof = vi.fn();
@@ -43,6 +44,12 @@ const clearHandoffProof = vi.fn();
 const setHandoffCompletion = vi.fn();
 const allowHandoffRequest = vi.fn();
 const after = vi.fn<(task: () => Promise<void>) => void>();
+// notifyOps hands its delivery promise to after(); only functions are
+// scheduled background work such as the first sync.
+const scheduledWork = () =>
+  after.mock.calls
+    .map(([task]) => task as unknown)
+    .filter((task): task is () => Promise<void> => typeof task === "function");
 
 const env = vi.hoisted(
   (): {
@@ -71,7 +78,10 @@ vi.mock("~/server/auth/consentHandoff", () => ({
 }));
 vi.mock("~/server/auth", () => ({ auth }));
 vi.mock("~/server/graph/msGraph", () => ({ verifyManagedConsent }));
-vi.mock("~/server/ops", () => ({ notifyOps }));
+vi.mock("~/server/ops", async (importOriginal) => {
+  const ops = await importOriginal<typeof OpsModule>();
+  return { ...ops, notifyOps: notifyOps.mockImplementation(ops.notifyOps) };
+});
 vi.mock("~/server/sync/runSync", () => ({ runSync }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({ set: setCookie }),
@@ -213,8 +223,8 @@ describe("admin consent handoff", () => {
     await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
       "redirect:/connect/approve/error?error=invalid_state",
     );
-    expect(after).toHaveBeenCalledTimes(1);
-    await after.mock.calls[0]![0]();
+    expect(scheduledWork()).toHaveLength(1);
+    await scheduledWork()[0]!();
     expect(runSync).toHaveBeenCalledWith(TENANT_ID, {
       deadline: expect.any(Number) as number,
     });
@@ -336,7 +346,7 @@ describe("admin consent handoff", () => {
         /error=(invalid_state|already_connected)$/.test(url),
       ),
     ).toHaveLength(1);
-    expect(after).toHaveBeenCalledTimes(1);
+    expect(scheduledWork()).toHaveLength(1);
   });
 
   it("rejects a grant and admin proof from a tenant other than the requester’s", async () => {
@@ -452,15 +462,30 @@ describe("admin-consent callback tenant binding", () => {
     expect(conns[0]?.mode).toBe("managed");
   });
 
-  it("alerts nothing on the success path", async () => {
+  it("logs a successful connection at info without a rejection alert", async () => {
     await seedState();
     verifyManagedConsent.mockResolvedValue(true);
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "");
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
 
-    await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
-      /redirect:.*status=syncing/,
-    );
-
-    expect(rejectionAlerts()).toHaveLength(0);
+    try {
+      await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
+        /redirect:.*status=syncing/,
+      );
+      expect(info).toHaveBeenCalledExactlyOnceWith(
+        `[ops] workspace ${TENANT_ID} connected its Microsoft tenant, first sync starting`,
+      );
+      expect(error).not.toHaveBeenCalled();
+      expect(rejectionAlerts()).toHaveLength(0);
+    } finally {
+      info.mockRestore();
+      error.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 });
 

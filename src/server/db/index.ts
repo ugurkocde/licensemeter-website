@@ -1,7 +1,7 @@
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import postgres, { type Sql } from "postgres";
 import { PGlite } from "@electric-sql/pglite";
 
 import { env } from "~/env";
@@ -71,5 +71,12 @@ if (env.NODE_ENV !== "production" || !env.DATABASE_URL) globalForDb.db = base;
  * in is behavior-preserving until a caller opts into a tenant context.
  */
 export const db: Db = createTenantDb(base);
+
+/** Close the standalone script's pool or embedded store after its last query. */
+export const closeDatabase = async (): Promise<void> => {
+  const { $client } = base as Db & { $client: PGlite | Sql };
+  if ($client instanceof PGlite) await $client.close();
+  else await $client.end();
+};
 
 export { schema };

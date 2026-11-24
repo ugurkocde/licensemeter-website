@@ -352,6 +352,7 @@ export const GET = async (req: NextRequest) => {
     (await cookies()).set(WORKSPACE_COOKIE, tenantId, workspaceCookieOptions());
     void notifyOps(
       `workspace ${tenantId} connected its Microsoft tenant, first sync starting`,
+      { logLevel: "info" },
     );
   }
 

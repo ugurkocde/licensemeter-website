@@ -17,6 +17,7 @@ const ACTION_LABELS: Record<string, string> = {
   metering_collector_created: "Metering collector created in Intune",
   metering_collector_updated: "Metering collector updated in Intune",
   finding_status_changed: "Finding status changed",
+  usage_outage_backfilled: "Usage activity restored",
   finding_workflow_updated: "Finding workflow updated",
   findings_bulk_updated: "Findings updated in bulk",
   sync_triggered: "Sync started",

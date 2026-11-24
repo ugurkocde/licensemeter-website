@@ -1,5 +1,5 @@
 {
-  "id": "e12e0859-29dd-42e3-9db0-8d0d213e7bf4",
+  "id": "6a85b1e1-4863-41bd-9769-5fb2dcf911f0",
   "prevId": "878827a4-9c9f-499d-94e2-c7e1fcb8838e",
   "version": "7",
   "dialect": "postgresql",
@@ -487,13 +487,6 @@
       "name": "consent_states",
       "schema": "",
       "columns": {
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'self'"
-        },
         "state": {
           "name": "state",
           "type": "text",
@@ -563,12 +556,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "consent_states_kind_check": {
-          "name": "consent_states_kind_check",
-          "value": "\"consent_states\".\"kind\" in ('self', 'handoff')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.dpa_acceptances": {
@@ -3459,6 +3447,12 @@
         "copilot_signal": {
           "name": "copilot_signal",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage_report_unavailable": {
+          "name": "usage_report_unavailable",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": false
         },
