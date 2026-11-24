@@ -100,6 +100,15 @@ describe("parseOAuthToken", () => {
     ).toBeNull();
   });
 
+  it("rejects signed OAuth payloads issued for another audience", async () => {
+    const token = await legacyToken({
+      state: "s5",
+      verifier: "v5",
+      aud: "licensemeter-consent-handoff",
+    });
+    expect(await parseOAuthToken(token)).toBeNull();
+  });
+
   it("rejects absent, garbage and wrongly-signed tokens", async () => {
     expect(await parseOAuthToken(undefined)).toBeNull();
     expect(await parseOAuthToken("not-a-jwt")).toBeNull();

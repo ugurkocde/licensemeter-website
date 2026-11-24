@@ -1,6 +1,6 @@
 {
   "title": "Share Microsoft 365 approval with your administrator",
-  "summary": "If Microsoft 365 setup stalls at admin consent, a LicenseMeter workspace admin can share an approval link that expires after seven days. Your Microsoft administrator can confirm the account, tenant, and workspace before granting read-only access. Workspace admins can revoke a pending link and create a new one.",
+  "summary": "If Microsoft 365 setup stalls at admin consent, a LicenseMeter workspace admin can share a seven-day approval link. The link guides the Microsoft administrator through sign-in, account and tenant confirmation, and the read-only consent prompt. Workspace admins can revoke and replace a pending link.",
   "type": "improved",
   "publishedOn": "2026-11-24",
   "idempotencyKey": "licensemeter:microsoft-admin-approval-links"

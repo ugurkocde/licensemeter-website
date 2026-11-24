@@ -142,6 +142,9 @@ const verifyToken = async <T>(token: string | undefined): Promise<T | null> => {
   try {
     // Pin to the exact algorithm used at issuance.
     const { payload } = await jwtVerify(token, key, { algorithms: ["HS256"] });
+    // These cookies have never had an audience. Audience-bound proofs are
+    // issued for other flows and cannot authorize a session or sign-in.
+    if (Object.hasOwn(payload, "aud")) return null;
     return payload as T;
   } catch {
     return null;

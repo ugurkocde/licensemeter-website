@@ -50,7 +50,7 @@ A fresh invitation can be accepted across Microsoft tenants only when the token 
 
 Set `"groupMembershipClaims": "DirectoryRole"` in the **LicenseMeter Sign-in** manifest under **Microsoft Entra ID > App registrations > LicenseMeter Sign-in > Manifest**, then save. The setup script sets this when it creates the sign-in registration. Update an existing registration in place before enabling shared approval links.
 
-LicenseMeter checks the `wids` claim in the approver's ID token for an eligible directory role. The approver must use a Global Administrator or Privileged Role Administrator account in the requester's Microsoft tenant. If the claim is absent, LicenseMeter directs the approver to support.
+LicenseMeter checks the `wids` claim in the approver's ID token for an eligible directory role. The approver must use a Global Administrator or Privileged Role Administrator account in the requester's Microsoft tenant. If LicenseMeter cannot verify an eligible role, it asks the approver to sign in with an eligible account or contact support if they already did.
 
 ## Microsoft registrations
 

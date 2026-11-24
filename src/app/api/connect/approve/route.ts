@@ -21,20 +21,20 @@ export const POST = async (req: NextRequest) => {
     return new Response(null, { status: 403 });
   }
   if (!(await allowHandoffRequest("submit", req.headers))) {
-    return handoffRedirect(handoffFailurePath("rate_limited"));
+    return handoffRedirect(req, handoffFailurePath("rate_limited"));
   }
 
   const form = await req.formData().catch(() => null);
   if (form?.get("intent") === "confirm") {
     const proof = await readHandoffProof();
     if (proof?.phase !== "confirm") {
-      return handoffRedirect(handoffFailurePath("invalid_state"));
+      return handoffRedirect(req, handoffFailurePath("invalid_state"));
     }
     const handoff = await loadPendingHandoff(proof.token);
     if (!handoff || handoff.state.tid?.toLowerCase() !== proof.tid) {
-      return handoffRedirect(handoffFailurePath("invalid_state"));
+      return handoffRedirect(req, handoffFailurePath("invalid_state"));
     }
-    return handoffRedirect(microsoftConsentUrl(proof.token, proof.tid), {
+    return handoffRedirect(req, microsoftConsentUrl(proof.token, proof.tid), {
       phase: "grant",
       token: proof.token,
       tid: proof.tid,
@@ -44,7 +44,7 @@ export const POST = async (req: NextRequest) => {
 
   const token = form?.get("token");
   if (typeof token !== "string" || !(await loadPendingHandoff(token))) {
-    return handoffRedirect(handoffFailurePath("invalid_state"));
+    return handoffRedirect(req, handoffFailurePath("invalid_state"));
   }
 
   const { verifier, challenge } = await msalCrypto.generatePkceCodes();
@@ -57,7 +57,7 @@ export const POST = async (req: NextRequest) => {
     state,
     prompt: "select_account",
   });
-  return handoffRedirect(url, {
+  return handoffRedirect(req, url, {
     phase: "authenticate",
     token,
     state,

@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import type * as ConsentState from "~/server/consentState";
+import type * as RateLimit from "~/server/rateLimit";
 
 const {
   getCookie,
@@ -10,6 +11,7 @@ const {
   verifyEntraIdToken,
   loadPendingHandoff,
   notifyOps,
+  rateLimitDurable,
   setCookie,
 } = vi.hoisted(() => ({
   getCookie: vi.fn(),
@@ -17,6 +19,7 @@ const {
   verifyEntraIdToken: vi.fn(),
   loadPendingHandoff: vi.fn(),
   notifyOps: vi.fn(),
+  rateLimitDurable: vi.fn(),
   setCookie:
     vi.fn<(name: string, value: string, options: { maxAge: number }) => void>(),
 }));
@@ -28,6 +31,10 @@ vi.mock("~/server/consentState", async (original) => ({
   loadPendingHandoff,
 }));
 vi.mock("~/server/ops", () => ({ notifyOps }));
+vi.mock("~/server/rateLimit", async (original) => ({
+  ...(await original<typeof RateLimit>()),
+  rateLimitDurable,
+}));
 vi.mock("~/server/db", () => ({ db: {} }));
 vi.mock("./msal", () => ({
   getSignInClient: () => ({ acquireTokenByCode }),
@@ -38,9 +45,10 @@ vi.mock("./msal", () => ({
 vi.mock("./verifyIdToken", () => ({ verifyEntraIdToken }));
 
 const {
+  allowHandoffRequest,
+  clearHandoffProof,
   finishHandoffAuthentication,
   readHandoffProof,
-  takeHandoffProof,
   setHandoffCompletion,
   readHandoffCompletion,
 } = await import("./consentHandoff");
@@ -51,7 +59,7 @@ const oid = "cccc3333-3333-4333-8333-333333333333";
 const workspaceId = "dddd4444-4444-4444-8444-444444444444";
 const account = "approver@example.com";
 const request = new NextRequest(
-  "http://localhost:3000/api/auth/callback/microsoft-entra-id?code=example&state=handoff-auth.example",
+  "https://www.example.com/api/auth/callback/microsoft-entra-id?code=example&state=handoff-auth.example",
 );
 
 beforeEach(async () => {
@@ -74,7 +82,7 @@ beforeEach(async () => {
 });
 
 it.each([
-  "62e90394-69f5-4237-9190-012177145e10",
+  "62E90394-69F5-4237-9190-012177145E10",
   "e8611ab8-c189-46e8-94e1-60213ab1f814",
 ])(
   "requires confirmation for a signed eligible admin role (%s)",
@@ -87,10 +95,14 @@ it.each([
     });
     const result = await finishHandoffAuthentication(request);
     expect(acquireTokenByCode).toHaveBeenCalledWith(
-      expect.objectContaining({ codeVerifier: "pkce-proof" }),
+      expect.objectContaining({
+        codeVerifier: "pkce-proof",
+        redirectUri:
+          "http://localhost:3000/api/auth/callback/microsoft-entra-id",
+      }),
     );
-    expect(result?.headers.get("location")).toMatch(
-      /\/connect\/approve\/confirm$/,
+    expect(result?.headers.get("location")).toBe(
+      "https://www.example.com/connect/approve/confirm",
     );
     expect(result?.cookies.getAll().map(({ name }) => name)).toEqual([
       "lm_consent",
@@ -108,17 +120,26 @@ it.each([
   },
 );
 
-it("fails closed for a verified Microsoft identity without an eligible role", async () => {
-  verifyEntraIdToken.mockResolvedValue({
-    tid,
-    oid,
-    directoryRoles: ["not-an-eligible-role"],
-  });
-  const result = await finishHandoffAuthentication(request);
-  expect(result?.headers.get("location")).toContain(
-    "/connect/approve/error?error=approval_role_ineligible",
-  );
-});
+it.each([
+  [undefined, "approval_roles_missing"],
+  [["not-an-eligible-role"], "approval_role_ineligible"],
+])(
+  "shares public role guidance for %j and logs %s",
+  async (directoryRoles, reason) => {
+    const info = vi.spyOn(console, "info").mockReturnValue(undefined);
+    try {
+      verifyEntraIdToken.mockResolvedValue({ tid, oid, directoryRoles });
+      const result = await finishHandoffAuthentication(request);
+      expect(result?.headers.get("location")).toBe(
+        "https://www.example.com/connect/approve/error?error=approval_role_ineligible",
+      );
+      expect(info).toHaveBeenCalledWith(expect.stringContaining(reason));
+      expect(notifyOps).not.toHaveBeenCalled();
+    } finally {
+      info.mockRestore();
+    }
+  },
+);
 
 it("returns to the public error page when the browser proof has expired", async () => {
   getCookie.mockReturnValue(undefined);
@@ -129,24 +150,36 @@ it("returns to the public error page when the browser proof has expired", async 
   expect(acquireTokenByCode).not.toHaveBeenCalled();
 });
 
-it.each([
-  [{ tid, oid }, "approval_roles_missing"],
-  [
-    { tid: oid, oid, directoryRoles: ["62e90394-69f5-4237-9190-012177145e10"] },
-    "approval_tenant",
-  ],
-])("reports %j as %s", async (claims, reason) => {
-  verifyEntraIdToken.mockResolvedValue(claims);
+it("reports a verified identity from the wrong tenant", async () => {
+  verifyEntraIdToken.mockResolvedValue({ tid: oid, oid });
   const result = await finishHandoffAuthentication(request);
-  expect(result?.headers.get("location")).toContain(`error=${reason}`);
+  expect(result?.headers.get("location")).toContain("error=approval_tenant");
   expect(notifyOps).toHaveBeenCalledWith(
-    expect.stringContaining(`${reason} for workspace ${workspaceId}`),
+    expect.stringContaining(`approval_tenant for workspace ${workspaceId}`),
     expect.anything(),
   );
 });
 
+it("avoids a shared IP bucket and limits requests with a trusted address", async () => {
+  expect(await allowHandoffRequest("review", new Headers())).toBe(true);
+  expect(rateLimitDurable).not.toHaveBeenCalled();
+  rateLimitDurable.mockResolvedValue(false);
+  expect(
+    await allowHandoffRequest(
+      "submit",
+      new Headers({ "x-real-ip": "192.0.2.1" }),
+    ),
+  ).toBe(false);
+  expect(rateLimitDurable).toHaveBeenCalledWith(
+    "consent-handoff:submit:192.0.2.1",
+    30,
+    60_000,
+    "deny",
+  );
+});
+
 it("clears the authorizing cookie and keeps completion proof separate", async () => {
-  expect(await takeHandoffProof()).toMatchObject({ token });
+  await clearHandoffProof();
   expect(setCookie).toHaveBeenCalledWith(
     "lm_consent",
     "",

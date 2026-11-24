@@ -79,10 +79,8 @@ it("reports one stall per unconnected workspace and leaves personal details out 
     .insert(schema.msConnections)
     .values({ tenantId: connected, tid: "connected-tenant", mode: "managed" });
   await start(connected, 45 * minute);
-  await start(stalled, 45 * minute, {
-    state: `handoff.${crypto.randomUUID()}`,
-    kind: "handoff",
-  });
+  await start(stalled, 100 * minute, { kind: "handoff" });
+  await start(await workspace(), 45 * minute, { kind: "handoff" });
 
   expect(await detectConsentStalls(connected, now)).toEqual([]);
   expect(await detectConsentStalls(undefined, now)).toEqual([
@@ -117,7 +115,7 @@ it("reuses a live handoff when two workspace admins request approval", async () 
   expect(notifyOps).toHaveBeenCalledTimes(1);
 });
 
-it("keeps self consent and detection available before the hosted migration", async () => {
+it("keeps self consent available and suppresses stalls before the hosted migration", async () => {
   const tenantId = await workspace();
   await db.insert(schema.memberships).values({
     tenantId,
@@ -135,7 +133,8 @@ it("keeps self consent and detection available before the hosted migration", asy
     await db.execute(
       sql`update consent_states set created_at = now() - interval '31 minutes'`,
     );
-    expect(await detectConsentStalls(tenantId)).toHaveLength(1);
+    expect(await detectConsentStalls(tenantId)).toEqual([]);
+    expect(notifyOps).not.toHaveBeenCalled();
     expect(await createConsentHandoff({ tenantId, ...person })).toBeUndefined();
   } finally {
     const upgrade = await readFile(

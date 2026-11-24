@@ -13,9 +13,10 @@ import { auth } from "~/server/auth";
 import { audit } from "~/server/audit";
 import {
   allowHandoffRequest,
+  clearHandoffProof,
   handoffFailurePath,
+  readHandoffProof,
   setHandoffCompletion,
-  takeHandoffProof,
 } from "~/server/auth/consentHandoff";
 import {
   GUID_PATTERN,
@@ -95,7 +96,6 @@ export const GET = async (req: NextRequest) => {
         : `/app/connectors/microsoft?error=${code}`,
     );
 
-  const proof = handoff ? await takeHandoffProof() : null;
   if (handoff && !(await allowHandoffRequest("callback", req.headers))) {
     return fail("rate_limited");
   }
@@ -166,6 +166,7 @@ export const GET = async (req: NextRequest) => {
     return reject("not_allowed", "state predates Entra sign-in");
   }
   const tenantId = stateRow.tenantId;
+  const proof = handoff ? await readHandoffProof() : null;
   const approver = proof?.phase === "grant" ? proof : null;
   if (handoff) {
     if (!env.CONNECTOR_CLIENT_ID || !env.CONNECTOR_CLIENT_SECRET) {
@@ -332,10 +333,13 @@ export const GET = async (req: NextRequest) => {
   }
 
   if (handoff && approver) {
+    // The transaction consumed the link. Preserve the cookie on earlier
+    // failures so the browser can retry while its proof is still valid.
+    await clearHandoffProof();
     await audit(
       { tenant: { id: tenantId }, user: { oid: approver.oid } },
       "microsoft_connected_by_approval",
-      { grantedTid },
+      { grantedTid, approverSignInOid: approver.oid },
     );
     await setHandoffCompletion(state);
     void notifyOps(

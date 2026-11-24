@@ -85,6 +85,7 @@ const hasConnection = () =>
 
 const stallConditions = (now: number) =>
   and(
+    eq(consentStates.kind, "self"),
     isNull(consentStates.usedAt),
     gt(consentStates.createdAt, new Date(now - HANDOFF_TTL_MS)),
     lt(consentStates.createdAt, new Date(now - STALL_AGE_MS)),
@@ -108,7 +109,11 @@ export const detectConsentStalls = async (
         tenantId ? eq(tenants.id, tenantId) : undefined,
       ),
     )
-    .groupBy(tenants.id);
+    .groupBy(tenants.id)
+    .catch((err: unknown) => {
+      if (!isUndefinedColumn(err)) throw err;
+      return [];
+    });
   for (const { tenantId: id, oldest } of rows) {
     if (!oldest) continue;
     const minutes = Math.floor((now - oldest.getTime()) / 60_000);

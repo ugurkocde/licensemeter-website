@@ -47,7 +47,7 @@ it("renders the requester, workspace, and all connector permissions for a valid 
   expect(html).not.toContain("alex@example.com");
   for (const { scope } of CONNECTOR_SCOPES) expect(html).toContain(scope);
   expect(metadata.robots).toEqual({ index: false, follow: false });
-  expect(metadata.referrer).toBe("no-referrer");
+  expect(metadata.referrer).toBe("same-origin");
 });
 
 it("redirects ineligible links to the public error page", async () => {

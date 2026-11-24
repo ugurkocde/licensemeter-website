@@ -2,11 +2,12 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { appBaseUrl, env } from "~/env";
+import { env } from "~/env";
 import { GUID_PATTERN, loadPendingHandoff } from "~/server/consentState";
 import { notifyOps } from "~/server/ops";
 import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import { getSignInClient, signInRedirectUri, SIGNIN_SCOPES } from "./msal";
+import { requestBaseUrl } from "./requestBaseUrl";
 import { cookieOptions } from "./session";
 import { verifyEntraIdToken } from "./verifyIdToken";
 
@@ -74,10 +75,8 @@ export const readHandoffProof = async (): Promise<HandoffProof | null> => {
   return null;
 };
 
-export const takeHandoffProof = async () => {
-  const proof = await readHandoffProof();
+export const clearHandoffProof = async () => {
   (await cookies()).set(cookie, "", cookieOptions(0));
-  return proof;
 };
 
 export const setHandoffCompletion = async (token: string) => {
@@ -103,22 +102,24 @@ export const readHandoffCompletion = async () => {
   }
 };
 
-export const allowHandoffRequest = (
+export const allowHandoffRequest = async (
   step: "review" | "submit" | "callback",
   headers: Headers,
-) =>
-  rateLimitDurable(
-    `consent-handoff:${step}:${clientIp(headers)}`,
-    30,
-    60_000,
-    "deny",
-  );
+) => {
+  const ip = clientIp(headers);
+  if (ip === "unknown") return true;
+  return rateLimitDurable(`consent-handoff:${step}:${ip}`, 30, 60_000, "deny");
+};
 
 export const handoffFailurePath = (code: string) =>
   `/connect/approve/error?error=${encodeURIComponent(code)}`;
 
-export const handoffRedirect = (url: string, proof?: HandoffProof) => {
-  const res = NextResponse.redirect(new URL(url, appBaseUrl()), 303);
+export const handoffRedirect = (
+  req: NextRequest,
+  url: string,
+  proof?: HandoffProof,
+) => {
+  const res = NextResponse.redirect(new URL(url, requestBaseUrl(req)), 303);
   res.headers.set("Cache-Control", "no-store");
   res.headers.set("Referrer-Policy", "no-referrer");
   if (!proof) res.cookies.set(cookie, "", cookieOptions(0));
@@ -148,14 +149,15 @@ export const finishHandoffAuthentication = async (req: NextRequest) => {
   if (!state?.startsWith(authStatePrefix)) return;
   const proof = await readHandoffProof();
   if (proof?.phase !== "authenticate" || proof.state !== state) {
-    return handoffRedirect(handoffFailurePath("invalid_state"));
+    return handoffRedirect(req, handoffFailurePath("invalid_state"));
   }
 
   const code = params.get("code");
   if (params.has("error") || !code)
-    return handoffRedirect(handoffFailurePath("approval_identity"));
+    return handoffRedirect(req, handoffFailurePath("approval_identity"));
   const handoff = await loadPendingHandoff(proof.token);
-  if (!handoff) return handoffRedirect(handoffFailurePath("invalid_state"));
+  if (!handoff)
+    return handoffRedirect(req, handoffFailurePath("invalid_state"));
   const rejectIdentity = (reason: string) => {
     void notifyOps(
       `consent handoff authentication rejected: ${reason} for workspace ${handoff.state.tenantId}`,
@@ -164,7 +166,7 @@ export const finishHandoffAuthentication = async (req: NextRequest) => {
         cooldownMs: maxAge * 1000,
       },
     );
-    return handoffRedirect(handoffFailurePath(reason));
+    return handoffRedirect(req, handoffFailurePath(reason));
   };
 
   try {
@@ -183,15 +185,27 @@ export const finishHandoffAuthentication = async (req: NextRequest) => {
       return rejectIdentity("approval_identity");
     if (tid !== handoff.state.tid?.toLowerCase())
       return rejectIdentity("approval_tenant");
-    if (!claims.directoryRoles) return rejectIdentity("approval_roles_missing");
-    if (!claims.directoryRoles.some((role) => ADMIN_ROLES.has(role))) {
-      return rejectIdentity("approval_role_ineligible");
+    if (
+      !claims.directoryRoles?.some((role) =>
+        ADMIN_ROLES.has(role.toLowerCase()),
+      )
+    ) {
+      const reason = claims.directoryRoles
+        ? "approval_role_ineligible"
+        : "approval_roles_missing";
+      console.info(
+        `[consent] handoff authentication rejected: ${reason} for workspace ${handoff.state.tenantId}`,
+      );
+      return handoffRedirect(
+        req,
+        handoffFailurePath("approval_role_ineligible"),
+      );
     }
     const account =
       [claims.preferred_username, claims.email, claims.name]
         .map((value) => value?.trim())
         .find(Boolean) ?? claims.oid;
-    return handoffRedirect("/connect/approve/confirm", {
+    return handoffRedirect(req, "/connect/approve/confirm", {
       phase: "confirm",
       token: proof.token,
       tid,

@@ -6,12 +6,8 @@ const messages = new Map([
     "LicenseMeter could not verify your Microsoft sign-in for this approval link.",
   ],
   [
-    "approval_roles_missing",
-    "Microsoft did not include directory role information in your sign-in. Contact LicenseMeter support for help.",
-  ],
-  [
     "approval_role_ineligible",
-    "Sign in as a Global Administrator or Privileged Role Administrator in the requester’s Microsoft tenant.",
+    "Sign in as a Global Administrator or Privileged Role Administrator of this tenant. If you already did, contact LicenseMeter support.",
   ],
   [
     "approval_tenant",
@@ -53,8 +49,10 @@ export default async function ConsentErrorPage({
   searchParams: Promise<{ error?: string | string[] }>;
 }) {
   const { error } = await searchParams;
+  const code =
+    error === "approval_roles_missing" ? "approval_role_ineligible" : error;
   const message =
-    (typeof error === "string" ? messages.get(error) : undefined) ??
+    (typeof code === "string" ? messages.get(code) : undefined) ??
     "LicenseMeter could not complete the approval.";
 
   return (

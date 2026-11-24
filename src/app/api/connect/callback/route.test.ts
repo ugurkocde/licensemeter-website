@@ -38,7 +38,8 @@ const verifyManagedConsent = vi.fn();
 const notifyOps = vi.fn<(text: string, opts?: unknown) => Promise<void>>();
 const runSync = vi.fn();
 const setCookie = vi.fn();
-const takeHandoffProof = vi.fn();
+const readHandoffProof = vi.fn();
+const clearHandoffProof = vi.fn();
 const setHandoffCompletion = vi.fn();
 const allowHandoffRequest = vi.fn();
 const after = vi.fn<(task: () => Promise<void>) => void>();
@@ -63,7 +64,8 @@ vi.mock("~/server/access", () => ({
 }));
 vi.mock("~/server/auth/consentHandoff", () => ({
   handoffFailurePath: (code: string) => `/connect/approve/error?error=${code}`,
-  takeHandoffProof,
+  readHandoffProof,
+  clearHandoffProof,
   setHandoffCompletion,
   allowHandoffRequest,
 }));
@@ -127,7 +129,7 @@ beforeEach(async () => {
   await currentDb.delete(schema.consentStates);
   vi.clearAllMocks();
   allowHandoffRequest.mockResolvedValue(true);
-  takeHandoffProof.mockResolvedValue({
+  readHandoffProof.mockResolvedValue({
     phase: "grant",
     token: HANDOFF,
     tid: HOME_TID,
@@ -179,12 +181,13 @@ describe("admin consent handoff", () => {
     expect(auth).not.toHaveBeenCalled();
     expect(apiAccess).not.toHaveBeenCalled();
     expect(setCookie).not.toHaveBeenCalled();
-    expect(takeHandoffProof).toHaveBeenCalledOnce();
+    expect(readHandoffProof).toHaveBeenCalledOnce();
+    expect(clearHandoffProof).toHaveBeenCalledOnce();
     expect(setHandoffCompletion).toHaveBeenCalledWith(HANDOFF);
     expect(await currentDb.query.auditLog.findFirst()).toMatchObject({
       action: "microsoft_connected_by_approval",
       actorOid: APPROVER_OID,
-      detail: { grantedTid: HOME_TID },
+      detail: { grantedTid: HOME_TID, approverSignInOid: APPROVER_OID },
     });
     expect(verifyManagedConsent).toHaveBeenCalledWith(
       HOME_TID,
@@ -247,7 +250,7 @@ describe("admin consent handoff", () => {
     "refuses an absent or mismatched tenant admin proof (%j)",
     async (proof) => {
       await seedHandoff();
-      takeHandoffProof.mockResolvedValue(proof);
+      readHandoffProof.mockResolvedValue(proof);
       await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
         "redirect:/connect/approve/error?error=approval_identity",
       );
@@ -264,6 +267,13 @@ describe("admin consent handoff", () => {
     expect(await currentDb.query.consentStates.findFirst()).toMatchObject({
       usedAt: null,
     });
+    expect(clearHandoffProof).not.toHaveBeenCalled();
+
+    verifyManagedConsent.mockResolvedValue(true);
+    await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
+      "redirect:/connect/approve/complete",
+    );
+    expect(clearHandoffProof).toHaveBeenCalledOnce();
   });
 
   it("leaves a declined handoff unused and returns a public failure", async () => {
@@ -331,7 +341,7 @@ describe("admin consent handoff", () => {
 
   it("rejects a grant and admin proof from a tenant other than the requester’s", async () => {
     await seedHandoff();
-    takeHandoffProof.mockResolvedValue({
+    readHandoffProof.mockResolvedValue({
       phase: "grant",
       token: HANDOFF,
       tid: VICTIM_TID,
@@ -365,12 +375,13 @@ describe("admin consent handoff", () => {
     expect(setHandoffCompletion).not.toHaveBeenCalled();
   });
 
-  it("clears the proof and refuses a throttled callback before checking consent", async () => {
+  it("preserves the proof and refuses a throttled callback before checking consent", async () => {
     allowHandoffRequest.mockResolvedValue(false);
     await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
       "redirect:/connect/approve/error?error=rate_limited",
     );
-    expect(takeHandoffProof).toHaveBeenCalledOnce();
+    expect(readHandoffProof).not.toHaveBeenCalled();
+    expect(clearHandoffProof).not.toHaveBeenCalled();
     expect(verifyManagedConsent).not.toHaveBeenCalled();
   });
 
