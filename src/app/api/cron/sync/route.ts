@@ -101,7 +101,10 @@ export const GET = async (req: NextRequest) => {
       const tenant = queue[cursor++]!;
       try {
         const result = await runSync(tenant.id, { deadline });
-        results.push({ tenantId: tenant.id, status: result.status });
+        results.push({
+          tenantId: tenant.id,
+          status: result.runId === null ? "tenant_lock_timeout" : result.status,
+        });
       } catch (err) {
         void notifyOps(
           `sync failed for workspace ${tenant.id}: ${opsErrorText(err)}`,
@@ -126,7 +129,7 @@ export const GET = async (req: NextRequest) => {
 
   return NextResponse.json({
     dispatched,
-    synced: results.length,
+    synced: results.filter((r) => r.status !== "tenant_lock_timeout").length,
     results,
     unsynced,
   });

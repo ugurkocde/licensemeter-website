@@ -46,6 +46,22 @@ const snapshotRow = z.object({
 });
 
 class BackfillError extends Error {}
+class RepairLockTimeoutError extends Error {}
+
+async function acquireRepairLock<T>(
+  tx: Db,
+  acquire: () => Promise<T>,
+  reason: string,
+) {
+  await tx.execute(sql`set local lock_timeout = '5s'`);
+  const result = await acquire().catch((error: unknown) => {
+    if (sqlState(error) === "55P03")
+      throw new RepairLockTimeoutError(reason, { cause: error });
+    throw error;
+  });
+  await tx.execute(sql`set local lock_timeout = '0'`);
+  return result;
+}
 
 function databaseUrl(raw: string, name: string) {
   const url = URL.parse(raw);
@@ -326,7 +342,8 @@ async function databaseIdentity(tx: Db) {
 
 async function readSnapshot(target: Db, options: Options, ids: string[]) {
   const byTenant = new Map<string, Map<string, SnapshotRow>>();
-  if (options.source === "findings") return byTenant;
+  let invalidSnapshotRows = 0;
+  if (options.source === "findings") return { byTenant, invalidSnapshotRows };
   let rows: readonly unknown[];
   if (options.snapshotDb) {
     const client = openPostgres(options.snapshotDb);
@@ -365,7 +382,6 @@ async function readSnapshot(target: Db, options: Options, ids: string[]) {
       await client.end();
     }
   } else {
-    if (ids.length === 0) return byTenant;
     try {
       const file = (await readFile(options.snapshotFile!, "utf8")).trim();
       rows = file.startsWith("[")
@@ -380,16 +396,15 @@ async function readSnapshot(target: Db, options: Options, ids: string[]) {
     }
   }
   const selected = new Set(ids);
-  for (const [index, row] of rows.entries()) {
+  for (const row of rows) {
     const parsed = snapshotRow.safeParse(row);
-    if (!parsed.success)
-      throw new BackfillError(
-        `Invalid snapshot row ${index + 1}. Check the export columns and date format.`,
-      );
+    if (!parsed.success || !uuid.safeParse(parsed.data.graph_id).success) {
+      invalidSnapshotRows++;
+      continue;
+    }
     const tenantId = parsed.data.tenant_id.toLowerCase();
     if (
       !selected.has(tenantId) ||
-      !uuid.safeParse(parsed.data.graph_id).success ||
       new Date(parsed.data.synced_at) >= options.since
     )
       continue;
@@ -400,7 +415,7 @@ async function readSnapshot(target: Db, options: Options, ids: string[]) {
     users.set(userId, parsed.data);
     byTenant.set(tenantId, users);
   }
-  return byTenant;
+  return { byTenant, invalidSnapshotRows };
 }
 
 const scrubGraphUserId = (id: string | null) =>
@@ -478,7 +493,11 @@ async function repairTenant(
     )
     .orderBy(asc(findings.id));
   const storedFindings = await (options.apply
-    ? tenantFindings.for("no key update")
+    ? acquireRepairLock(
+        tx,
+        async () => tenantFindings.for("no key update"),
+        "findings lock timeout",
+      )
     : tenantFindings);
   const fallback =
     options.source === "findings"
@@ -718,6 +737,9 @@ export async function backfillUsageOutage(
   now = new Date(),
   onCommit?: (report: Awaited<ReturnType<typeof repairTenant>>) => void,
 ) {
+  type TenantResult =
+    | { report: Awaited<ReturnType<typeof repairTenant>>; reason?: never }
+    | { reason: string; report?: never };
   const reports: Awaited<ReturnType<typeof repairTenant>>[] = [];
   const skippedTenants: { tenantId: string; reason: string }[] = [];
   let failedTenant: string | undefined;
@@ -738,7 +760,7 @@ export async function backfillUsageOutage(
       );
     }
     const detected = await affectedTenants(tx, options);
-    const snapshot = await readSnapshot(
+    const { byTenant: snapshot, invalidSnapshotRows } = await readSnapshot(
       tx,
       options,
       detected.map((d) => d.tenantId),
@@ -756,25 +778,29 @@ export async function backfillUsageOutage(
         );
       }
     }
-    return { detected, snapshot };
+    return { detected, snapshot, invalidSnapshotRows };
   };
 
   // Drizzle sets READ ONLY immediately after BEGIN, before the first query.
   // The preview computes finding transitions in memory, so it needs no writes.
-  const { detected, snapshot } = await database.transaction(readPlan, {
-    isolationLevel: "repeatable read",
-    accessMode: "read only",
-  });
+  const { detected, snapshot, invalidSnapshotRows } =
+    await database.transaction(readPlan, {
+      isolationLevel: "repeatable read",
+      accessMode: "read only",
+    });
 
   if (options.apply) {
     for (const { tenantId } of detected) {
       const result = await database
-        .transaction(
+        .transaction<TenantResult>(
           async (tx) => {
             await tx.execute(sql`set local row_security = off`);
-            await tx.execute(sql`set local lock_timeout = '5s'`);
-            if (!(await lockTenant(tx, tenantId, true)))
-              return { reason: "tenant busy or removed" };
+            const locked = await acquireRepairLock(
+              tx,
+              () => lockTenant(tx, tenantId, true),
+              "tenant lock timeout",
+            );
+            if (!locked) return { reason: "tenant busy or removed" };
 
             const running = await tx.query.syncRuns.findFirst({
               where: and(
@@ -802,7 +828,9 @@ export async function backfillUsageOutage(
           },
           { isolationLevel: "read committed" },
         )
-        .catch((error: unknown) => {
+        .catch((error: unknown): TenantResult | null => {
+          if (error instanceof RepairLockTimeoutError)
+            return { reason: error.message };
           const code = sqlState(error);
           const name = code
             ? "PostgresError"
@@ -835,6 +863,7 @@ export async function backfillUsageOutage(
     ...(failedTenant && { failedTenant }),
     totals: {
       tenants: reports.length,
+      invalidSnapshotRows,
       usersChanged: reports.reduce((sum, r) => sum + r.counts.usersChanged, 0),
       lastActivityChanged: reports.reduce(
         (sum, r) => sum + r.counts.lastActivityChanged,
@@ -902,7 +931,7 @@ function formatReport(report: Awaited<ReturnType<typeof backfillUsageOutage>>) {
   const t = report.totals;
   lines.push(
     "",
-    `Totals: ${t.tenants} tenants, ${t.usersChanged} users restored, ${t.lastActivityChanged} last_activity changes, ${t.deletedUsersSkipped} deleted users skipped, ${t.flagsChanged} flag changes, ${t.findingsReopened} findings reopened, ${t.findingsResolved} resolved, ${t.findingsCreated} created, ${t.findingsUnchanged} unchanged.`,
+    `Totals: ${t.tenants} tenants, ${t.usersChanged} users restored, ${t.lastActivityChanged} last_activity changes, ${t.deletedUsersSkipped} deleted users skipped, ${t.invalidSnapshotRows} invalid snapshot rows skipped, ${t.flagsChanged} flag changes, ${t.findingsReopened} findings reopened, ${t.findingsResolved} resolved, ${t.findingsCreated} created, ${t.findingsUnchanged} unchanged.`,
   );
   if (report.message) lines.push(report.message);
   return lines.join("\n");
@@ -969,7 +998,12 @@ async function main() {
           options.json ? JSON.stringify(report, null, 2) : formatReport(report),
         );
       }
-      if (report.failedTenant) process.exitCode = 1;
+      if (
+        options.apply &&
+        (report.failedTenant || report.skippedTenants.length)
+      ) {
+        process.exitCode = 1;
+      }
     } finally {
       if (client) await client.end();
       else await local!.closeDatabase();

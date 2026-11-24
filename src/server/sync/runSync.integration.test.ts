@@ -337,7 +337,7 @@ function makeCtx(
 
 // Imported after the mocks are registered (top-level vi.mock is hoisted).
 const { runAnalysis, runSync } = await import("~/server/sync/runSync");
-const { disconnectMicrosoft, disconnectTenant, triggerSync } =
+const { disconnectMicrosoft, disconnectTenant, triggerSync, updatePrice } =
   await import("~/server/actions");
 
 // --- helpers to read state ---------------------------------------------------
@@ -386,6 +386,7 @@ describe("runSync concurrency lock (sync_runs_one_running_idx)", () => {
       query.startsWith('insert into "sync_runs"'),
     );
     expect(lock).toBeGreaterThanOrEqual(0);
+    expect(statements[lock + 1]).toBe("set local lock_timeout = '0'");
     expect(claim).toBeGreaterThan(lock);
 
     expect(result.status).toBe("running");
@@ -445,6 +446,22 @@ describe("runSync concurrency lock (sync_runs_one_running_idx)", () => {
       ok: false,
       error: "Wait for the current workspace update to finish, then retry",
     });
+
+    await currentDb.insert(schema.priceBook).values({
+      tenantId: TENANT_ID,
+      skuId: SKU.skuId,
+      monthlyPriceCents: 900,
+      source: "default",
+    });
+    await expect(updatePrice(SKU.skuId, "12.50")).resolves.toEqual({
+      ok: false,
+      error: "Wait for the current workspace update to finish, then retry",
+    });
+    expect(await currentDb.query.priceBook.findFirst()).toMatchObject({
+      monthlyPriceCents: 1250,
+      source: "custom",
+    });
+    expect(revalidatePathMock).toHaveBeenCalledWith("/app", "layout");
   });
 
   it("a stale running run is force-failed and the new sync proceeds", async () => {
@@ -1175,7 +1192,18 @@ describe("runSync with unavailable Microsoft usage data", () => {
         lastActivity: new Date(daysAgo(125)),
       })
       .where(eq(schema.tenantUsers.graphId, inactive.id));
+    logQuery.mockClear();
     await runAnalysis(TENANT_ID);
+    const statements = logQuery.mock.calls.map(([query]) => query);
+    const lock = statements.findIndex((query) =>
+      query.endsWith("for no key update"),
+    );
+    expect(lock).toBeGreaterThan(0);
+    expect(statements[lock - 1]).toBe("set local lock_timeout = '5s'");
+    expect(statements[lock + 1]).toBe("set local lock_timeout = '0'");
+    expect(
+      statements.findIndex((query) => query.startsWith('update "findings"')),
+    ).toBeGreaterThan(lock + 1);
 
     const after = await activityFindings();
     expect(after).toMatchObject(

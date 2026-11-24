@@ -65,7 +65,7 @@ export const metadata: Metadata = { title: "Overview" };
 export default async function OverviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ accessRequest?: string }>;
+  searchParams: Promise<{ accessRequest?: string; csvAnalysis?: string }>;
 }) {
   const ctx = await requireAccess("viewer");
   const tenantId = ctx.tenant.id;
@@ -462,6 +462,13 @@ export default async function OverviewPage({
   return (
     <div className="mx-auto max-w-5xl">
       {confirmation}
+      {params.csvAnalysis === "pending" && !ctx.tenant.consentedAt && (
+        <p role="status" className="text-gold-text mb-4 text-sm">
+          Your CSV import was saved. Findings will refresh the next time
+          analysis runs. You can retry the upload after the current workspace
+          update finishes.
+        </p>
+      )}
       {ctx.membership.dataTourAt === null && (
         <Tour
           phase="data"

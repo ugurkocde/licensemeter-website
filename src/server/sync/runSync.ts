@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { and, eq, gte, inArray, lt, notInArray, sql } from "drizzle-orm";
 
 import { db, type Db } from "~/server/db";
-import { sqlState } from "~/server/db/sqlState";
 import {
   PSEUDONYMISED_KEY_PREFIX,
   pseudonymisedDedupeKey,
@@ -66,7 +65,10 @@ import { optionalStepDeadline } from "~/server/sync/deadline";
 import { errText } from "~/server/sync/errText";
 import { createStepLog, persistRunSteps } from "~/server/sync/stepProgress";
 import { textSet } from "~/server/sync/textSet";
-import { lockTenant } from "~/server/sync/lockTenant";
+import {
+  lockTenantForWorkspaceUpdate,
+  WorkspaceUpdateInProgressError,
+} from "~/server/sync/lockTenant";
 import { mergeAdobeUsers, mergeSaasSeats } from "~/server/sync/mergeByEmail";
 import {
   subscriptionTermsBySku,
@@ -311,9 +313,7 @@ export const runSync = async (
   const started = await db
     .transaction(async (tx) => {
       // A backfill holds this lock until all repairs for this tenant commit.
-      await tx.execute(sql`set local lock_timeout = '5s'`);
-      if (!(await lockTenant(tx, tenantId)))
-        throw new Error(`Unknown tenant ${tenantId}`);
+      await lockTenantForWorkspaceUpdate(tx, tenantId);
       await tx
         .update(syncRuns)
         .set({ status: "failed", error: "stale run", finishedAt: new Date() })
@@ -347,7 +347,7 @@ export const runSync = async (
       return { runId: inFlight.id, inFlight: true };
     })
     .catch((error: unknown) => {
-      if (sqlState(error) === "55P03") return null;
+      if (error instanceof WorkspaceUpdateInProgressError) return null;
       throw error;
     });
   if (!started) return { runId: null, status: "running", steps: [] };
@@ -1416,21 +1416,10 @@ export const runAnalysis = async (
 ): Promise<void> => {
   if (activity)
     return analyzeStoredTenant(tenantId, activity.database, activity);
-  await db
-    .transaction(async (tx) => {
-      await tx.execute(sql`set local lock_timeout = '5s'`);
-      if (!(await lockTenant(tx, tenantId)))
-        throw new Error(`Unknown tenant ${tenantId}`);
-      await analyzeStoredTenant(tenantId, tx);
-    })
-    .catch((error: unknown) => {
-      if (sqlState(error) === "55P03") {
-        throw new Error(
-          "Wait for the current workspace update to finish, then retry",
-        );
-      }
-      throw error;
-    });
+  await db.transaction(async (tx) => {
+    await lockTenantForWorkspaceUpdate(tx, tenantId);
+    await analyzeStoredTenant(tenantId, tx);
+  });
 };
 
 async function analyzeStoredTenant(

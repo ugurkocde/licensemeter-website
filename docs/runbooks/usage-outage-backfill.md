@@ -79,6 +79,18 @@ unset SNAPSHOT_DATABASE_URL
 
 As an alternative, pass the separate restore via `SNAPSHOT_DATABASE_URL`
 and omit `--snapshot-file`. That connection always uses a read-only transaction.
+Before using the database source, run the driver integration test once from
+the repository root. Start a disposable PostgreSQL server listening only on
+`127.0.0.1` with the `postgres` user and local trust authentication. Set
+`LOCAL_POSTGRES_PORT` to its port. The test creates and drops two fixture
+databases. Stop the server and remove its data directory after the test.
+
+```bash
+BACKFILL_TEST_POSTGRES_PORT="$LOCAL_POSTGRES_PORT" npm run test -- \
+  src/server/sync/usageOutageBackfill.integration.test.ts \
+  -t "reads a separate loopback PostgreSQL snapshot"
+```
+
 Choose one source per invocation. The explicit `--source findings` fallback
 recovers only last activity recorded by pre-outage inactivity findings.
 The script refuses a database source when both URLs identify the same
@@ -148,7 +160,8 @@ report filename for the rehearsal. For a local PGlite rehearsal, unset
    excluded. The snapshot's last activity can restore a sign-in even when the
    current sign-in columns are empty. Newer stored dates are preserved. The
    availability flag is set only when the latest completed report is still
-   empty.
+   empty. Review the `invalidSnapshotRows` total for malformed rows or
+   non-UUID user IDs excluded from the repair.
 
    The repair reconciles inactivity and Copilot findings only for users
    with changed activity inputs and enough evidence for the relevant rule.
@@ -157,6 +170,12 @@ report filename for the rehearsal. For a local PGlite rehearsal, unset
    audit events. It also preserves findings that existed at the time of
    a historical bulk status edit, whose audit records contain only counts.
    The next normal sync or analysis refreshes finding details and rollups.
+   For tenants without Entra P1, proposed creates and reopens are provisional.
+   Activity during the outage that was never recorded in a current column is
+   invisible to the dry run. Review these transitions per tenant. The next
+   successful usage-report sync corrects findings that conflict with the
+   recovered activity. Defer apply for any tenant whose proposed creates or
+   reopens you do not want to accept.
 
 3. Take a fresh production backup, or confirm that PITR covers the moment
    before apply or that a fresh daily backup is available. Record the
@@ -184,7 +203,9 @@ report filename for the rehearsal. For a local PGlite rehearsal, unset
    `rollback` object for any writes. The final `type: "summary"` record
    contains totals, `skippedTenants`, and `failedTenant` if apply stopped at
    an error. That error is also reported on stderr with its name and SQLSTATE
-   when available. Preserve the JSON lines already written if apply stops.
+   when available. Apply exits with status 1 if a tenant was skipped or failed,
+   even when other tenants were repaired. Preserve the JSON lines already
+   written if apply stops.
    For a skipped tenant, wait for it to become idle, then repeat preview and
    apply. If a process is interrupted between a commit and its output, check
    the audit row and use the backup to recover before-values before attempting
@@ -228,6 +249,9 @@ COMMIT;
 Compare the rows with the report's `after` values. A changing apply adds one
 counts-only audit row per affected tenant with writes. A subsequent no-op
 apply adds no audit rows.
+
+After the production apply has been verified, the repository owner may add a
+changelog entry for the completed repair.
 
 ## Roll back from the saved JSON
 

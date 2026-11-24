@@ -645,7 +645,8 @@ describe("usage outage backfill CLI on local PGlite", () => {
         tenant_id uuid, graph_id text, workload_activity jsonb, last_activity timestamptz, synced_at timestamptz
       )`;
       await snapshot`insert into tenant_users values
-        (${t1}, ${userId(110).toUpperCase()}, null, ${dates.signIn}, ${dates.signIn})`;
+        (${t1}, ${userId(110).toUpperCase()}, null, ${dates.signIn}, ${dates.signIn}),
+        (${t1}, 'csv:example@example.test', null, ${dates.signIn}, ${dates.signIn})`;
 
       const args = ["--since", dates.since, "--json"];
       const result = await cli(
@@ -656,7 +657,9 @@ describe("usage outage backfill CLI on local PGlite", () => {
           SNAPSHOT_DATABASE_URL: url(snapshotName),
         },
       );
-      expect(parseApply(result.stdout).tenants[0]?.rollback?.users).toEqual([
+      const report = parseApply(result.stdout);
+      expect(report.totals.invalidSnapshotRows).toBe(1);
+      expect(report.tenants[0]?.rollback?.users).toEqual([
         {
           graphId: userId(110),
           before: { lastActivity: null },
@@ -685,6 +688,30 @@ describe("usage outage backfill CLI on local PGlite", () => {
           "must be separate databases",
         ) as unknown,
       });
+
+      await target`insert into tenants (id, name) values (${t2}, 'Example Two')`;
+      await target`insert into sync_runs (tenant_id, started_at, status, steps)
+        select ${t2}, started_at, status, steps from sync_runs where tenant_id = ${t1}`;
+      await target`insert into findings (tenant_id, dedupe_key, rule, title)
+        values (${t1}, 'fixture', 'inactive_90d', 'Example finding')`;
+      await target.begin(async (tx) => {
+        await tx`select id from findings where tenant_id = ${t1} for no key update`;
+        const run = await cli(
+          directory,
+          [...args, "--apply", "--i-have-a-backup"],
+          {
+            DATABASE_URL: url(targetName),
+            SNAPSHOT_DATABASE_URL: url(snapshotName),
+          },
+        ).catch((error: { code: number; stdout: string }) => error);
+        expect(run).toMatchObject({ code: 1 });
+        const partial = parseApply(run.stdout);
+        expect(partial.failedTenant).toBeUndefined();
+        expect(partial.skippedTenants).toEqual([
+          { tenantId: t1, reason: "findings lock timeout" },
+        ]);
+        expect(partial.tenants.map(({ tenantId }) => tenantId)).toEqual([t2]);
+      });
     } finally {
       if (alias.listening)
         await new Promise<void>((resolve) => alias.close(() => resolve()));
@@ -697,6 +724,38 @@ describe("usage outage backfill CLI on local PGlite", () => {
       }
     }
   }, 25_000);
+
+  it("validates the snapshot file even when no tenants match", async () => {
+    const args = ["--tenant", t3, "--json", "--snapshot-file"];
+    await writeFile(join(directory, "broken-snapshot.json"), "[{");
+    for (const name of ["missing-snapshot.json", "broken-snapshot.json"]) {
+      await expect(cli(directory, [...args, name])).rejects.toMatchObject({
+        code: 1,
+        stderr: expect.stringContaining(
+          "Could not read the snapshot file",
+        ) as unknown,
+      });
+    }
+    const row = {
+      tenant_id: t3,
+      graph_id: "csv:fixture@example.test",
+      workload_activity: null,
+      last_activity: null,
+      synced_at: dates.signIn.toISOString(),
+    };
+    await writeFile(
+      join(directory, "invalid-rows.json"),
+      JSON.stringify([
+        row,
+        { ...row, graph_id: id(131), synced_at: "bad-date" },
+      ]),
+    );
+    const result = await cli(directory, [...args, "invalid-rows.json"]);
+    expect(parseReport(result.stdout).totals).toMatchObject({
+      tenants: 0,
+      invalidSnapshotRows: 2,
+    });
+  }, 20_000);
 
   it("enforces a read-only dry run on the database session", async () => {
     const rehearsal = join(directory, "readonly");
@@ -743,7 +802,8 @@ describe("usage outage backfill CLI on local PGlite", () => {
       "--apply",
       "--i-have-a-backup",
       "--json",
-    ]);
+    ]).catch((error: { code: number; stdout: string }) => error);
+    expect(run).toMatchObject({ code: 1 });
     const report = parseApply(run.stdout);
     expect(report.skippedTenants).toEqual([
       { tenantId: t1, reason: "sync in progress" },
