@@ -21,7 +21,7 @@ A workspace contains one set of connected data, prices, members, settings and fi
 | Monthly waste | Estimated monthly impact of unresolved findings, based on the price book |
 | Annualized waste | Monthly waste multiplied by twelve, assuming nothing changes |
 | Open findings | Unresolved findings, including acknowledged items |
-| Verified savings (30d) | Monthly impact of findings that a later sync automatically resolved during the last 30 days |
+| Realized savings (30d) | Monthly value of licenses removed and purchased seats reduced, confirmed by a later sync in the last 30 days. Findings that resolved for other reasons (an exclusion, a changed threshold, the user became active) show as no longer flagged and do not count. Pro adds a savings ledger with monthly and cumulative savings beyond 30 days |
 
 Select **View breakdown** on a metric to inspect its calculation. The figures are estimates, not invoice reconciliation. A resolved finding indicates that its detection condition disappeared; contract terms determine when spend actually falls.
 
