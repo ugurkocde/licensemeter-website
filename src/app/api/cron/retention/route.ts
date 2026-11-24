@@ -1,7 +1,7 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 
 import { requireCronAuth } from "~/server/cronAuth";
-import { notifyOps } from "~/server/ops";
+import { notifyOps, sendDemoOpenDigest } from "~/server/ops";
 import { opsErrorText } from "~/server/opsError";
 import { runRetention } from "~/server/retention";
 import { migrateLegacySecrets } from "~/server/secretMigration";
@@ -19,6 +19,17 @@ export const maxDuration = 300;
 export const GET = async (req: NextRequest) => {
   const denied = requireCronAuth(req);
   if (denied) return denied;
+  try {
+    after(async () => {
+      try {
+        await sendDemoOpenDigest();
+      } catch (err) {
+        console.error("[retention] demo digest failed", err);
+      }
+    });
+  } catch (err) {
+    console.error("[retention] demo digest scheduling failed", err);
+  }
   try {
     const result = await runRetention();
     console.log("[retention]", JSON.stringify(result));
