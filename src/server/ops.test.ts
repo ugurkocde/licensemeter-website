@@ -129,15 +129,25 @@ describe("notifyOps dedup", () => {
 });
 
 describe("notifyOps delivery", () => {
-  it("logs at info when requested and still sends the alert", async () => {
+  it.each([
+    "someone opened the demo workspace",
+    "first sign-in from Microsoft tenant test-tenant",
+    "workspace test-workspace connected its Microsoft tenant, first sync starting",
+  ])("logs %s at info and still delivers it", async (message) => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    const message = "someone opened the demo workspace";
+    mocks.env.ALERT_EMAIL = "ops@example.test";
+    mocks.emailEnabled.mockReturnValue(true);
 
     await notifyOps(message, { logLevel: "info" });
 
     expect(info).toHaveBeenCalledExactlyOnceWith(`[ops] ${message}`);
     expect(console.error).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({ text: `LicenseMeter: ${message}` }),
+    );
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
+    expect(mocks.sendEmail.mock.calls[0]?.[0].html).toContain(message);
   });
 
   it("hands the delivery to after() inside a request scope", async () => {

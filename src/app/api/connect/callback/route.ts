@@ -269,6 +269,7 @@ export const GET = async (req: NextRequest) => {
   // The single most important founder signal there is.
   void notifyOps(
     `workspace ${tenantId} connected its Microsoft tenant, first sync starting`,
+    { logLevel: "info" },
   );
 
   // First sync runs after the redirect is sent; the connect page polls status.
