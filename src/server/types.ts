@@ -173,6 +173,7 @@ export type AuditAction =
   | "member_removed"
   | "member_role_changed"
   | "finding_status_changed"
+  | "usage_outage_backfilled"
   | "finding_workflow_updated"
   | "sync_triggered"
   | "currency_changed"

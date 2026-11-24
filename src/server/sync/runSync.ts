@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, gte, inArray, lt, notInArray, sql } from "drizzle-orm";
 
-import { db } from "~/server/db";
+import { db, type Db } from "~/server/db";
 import {
   PSEUDONYMISED_KEY_PREFIX,
   pseudonymisedDedupeKey,
@@ -1361,30 +1362,63 @@ export const runSync = async (
   }
 };
 
+type StoredUser = typeof tenantUsers.$inferSelect;
+type StoredFinding = typeof findings.$inferSelect;
+type FindingIdentity = Pick<StoredFinding, "id" | "rule" | "graphUserId">;
+
+export type FindingStatusChange = FindingIdentity & {
+  before: Pick<StoredFinding, "status" | "resolvedAt"> | null;
+  after: Pick<StoredFinding, "status" | "resolvedAt">;
+};
+
+type ActivityReconciliation = {
+  preview: boolean;
+  includes: (finding: Pick<StoredFinding, "rule" | "graphUserId">) => boolean;
+  protects: (finding: StoredFinding) => boolean;
+  changes: FindingStatusChange[];
+};
+
+type ActivityAnalysisOptions = {
+  database: Db;
+  now: Date;
+  users: ReadonlyMap<
+    string,
+    Pick<StoredUser, "lastActivity" | "workloadActivity">
+  >;
+  usageReportUnavailable: boolean | null;
+  reconcile: ActivityReconciliation;
+};
+
 /**
  * Re-runs the waste analysis from data already in the database, used after
  * price book edits so impact figures update without a Graph round trip.
  * Falls back gracefully when the tenant has never synced.
  */
-export const runAnalysis = async (tenantId: string): Promise<void> => {
-  const tenant = await db.query.tenants.findFirst({
+export const runAnalysis = async (
+  tenantId: string,
+  activity?: ActivityAnalysisOptions,
+): Promise<void> => {
+  const database = activity?.database ?? db;
+  const tenant = await database.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
   });
   if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
 
   const [skuRows, userRows, priceRows, adobeRows, saasSeatRows] =
     await Promise.all([
-      db.query.tenantSkus.findMany({
+      database.query.tenantSkus.findMany({
         where: eq(tenantSkus.tenantId, tenantId),
       }),
-      db.query.tenantUsers.findMany({
+      database.query.tenantUsers.findMany({
         where: eq(tenantUsers.tenantId, tenantId),
       }),
-      db.query.priceBook.findMany({ where: eq(priceBook.tenantId, tenantId) }),
-      db.query.adobeUsers.findMany({
+      database.query.priceBook.findMany({
+        where: eq(priceBook.tenantId, tenantId),
+      }),
+      database.query.adobeUsers.findMany({
         where: eq(adobeUsersTable.tenantId, tenantId),
       }),
-      db.query.saasSeats.findMany({
+      database.query.saasSeats.findMany({
         where: eq(saasSeatsTable.tenantId, tenantId),
       }),
     ]);
@@ -1399,42 +1433,63 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
   )
     return;
 
-  const now = new Date();
+  const now = activity?.now ?? new Date();
   const prices = Object.fromEntries(
     priceRows.map((p) => [p.skuId, p.monthlyPriceCents]),
   );
 
   // Older workspaces predate the stored coverage signal.
-  const activitySignal =
+  const storedSignal =
     tenant.activitySignal ??
     (tenant.hasP1 || tenant.concealedNames === false ? "full" : "none");
+  // Restored evidence allows the normal age rules to run for users selected
+  // by the repair even if a later preservation sync marked coverage unknown.
+  const activitySignal =
+    activity && storedSignal === "unknown" ? "full" : storedSignal;
+  const reportUnavailable = activity
+    ? activity.usageReportUnavailable
+    : tenant.usageReportUnavailable;
   const newFindings = await analyzeWasteWithCoverage(tenantId, {
-    users: userRows.map((r) => ({
-      graphId: r.graphId,
-      upn: r.upn,
-      displayName: r.displayName,
-      accountEnabled: r.accountEnabled,
-      userType: r.userType,
-      createdDateTime: r.createdDateTime,
-      lastActivity: r.lastActivity,
-      copilotLastActivity: r.workloadActivity?.copilot
-        ? new Date(r.workloadActivity.copilot)
-        : null,
-      licenses: r.licenses,
-    })),
+    users: userRows.map((row) => {
+      const r = { ...row, ...activity?.users.get(row.graphId) };
+      return {
+        graphId: r.graphId,
+        upn: r.upn,
+        displayName: r.displayName,
+        accountEnabled: r.accountEnabled,
+        userType: r.userType,
+        createdDateTime: r.createdDateTime,
+        lastActivity: r.lastActivity,
+        copilotLastActivity: r.workloadActivity?.copilot
+          ? new Date(r.workloadActivity.copilot)
+          : null,
+        licenses: r.licenses,
+      };
+    }),
     skus: skuRows,
     prices,
     now,
     activitySignal,
     copilotSignal: tenant.copilotSignal ?? "none",
     // An outage can leave an aggregate stored even when there are no users.
-    usageAggregate: tenant.usageReportUnavailable
+    usageAggregate: reportUnavailable
       ? undefined
       : (tenant.usageAggregate ?? undefined),
     copilotAggregate: tenant.copilotAggregate ?? undefined,
     inactiveDays: tenant.inactiveDays,
     exclusions: tenant.findingExclusions,
   });
+
+  if (activity) {
+    await diffFindings(
+      tenantId,
+      newFindings.filter(activity.reconcile.includes),
+      now,
+      activitySignal,
+      { database, reconcile: activity.reconcile },
+    );
+    return;
+  }
 
   const entraIdentities = directoryIdentitiesOf(userRows);
   const seatExcluded = connectorSeatExclusion(
@@ -1484,7 +1539,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
     (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
     0,
   );
-  const openRows = await db.query.findings.findMany({
+  const openRows = await database.query.findings.findMany({
     where: and(
       eq(findings.tenantId, tenantId),
       inArray(findings.status, ["open", "acknowledged"]),
@@ -1497,7 +1552,7 @@ export const runAnalysis = async (tenantId: string): Promise<void> => {
   const day = now.toISOString().slice(0, 10);
   const purchasedSeats = purchasedSeatsOf(skuRows);
   const assignedSeats = skuRows.reduce((s, x) => s + x.consumedUnits, 0);
-  await db
+  await database
     .insert(snapshots)
     .values({
       tenantId,
@@ -1540,10 +1595,12 @@ export const diffFindings = async (
   newFindings: WasteFinding[],
   now: Date,
   activitySignal?: ActivitySignal,
+  options?: { database: Db; reconcile: ActivityReconciliation },
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
   // (some inserted/reopened, others never resolved) for the tenant.
-  return db.transaction(async (tx) => {
+  return (options?.database ?? db).transaction(async (tx) => {
+    const reconcile = options?.reconcile;
     const existing = await tx.query.findings.findMany({
       where: eq(findings.tenantId, tenantId),
     });
@@ -1564,6 +1621,18 @@ export const diffFindings = async (
     );
     const inserted: InsertedFinding[] = [];
     for (const batch of chunk(toInsert, 250)) {
+      if (reconcile?.preview) {
+        for (const f of batch) {
+          reconcile.changes.push({
+            id: randomUUID(),
+            rule: f.rule,
+            graphUserId: f.graphUserId,
+            before: null,
+            after: { status: "open", resolvedAt: null },
+          });
+        }
+        continue;
+      }
       const rows = await tx
         .insert(findings)
         .values(
@@ -1586,8 +1655,27 @@ export const diffFindings = async (
           rule: findings.rule,
           title: findings.title,
           monthlyImpactCents: findings.monthlyImpactCents,
+          graphUserId: findings.graphUserId,
         });
-      inserted.push(...rows);
+      inserted.push(
+        ...rows.map(({ id, rule, title, monthlyImpactCents }) => ({
+          id,
+          rule,
+          title,
+          monthlyImpactCents,
+        })),
+      );
+      if (reconcile) {
+        for (const row of rows) {
+          reconcile.changes.push({
+            id: row.id,
+            rule: row.rule,
+            graphUserId: row.graphUserId,
+            before: null,
+            after: { status: "open", resolvedAt: null },
+          });
+        }
+      }
     }
 
     for (const f of existing) {
@@ -1602,10 +1690,34 @@ export const diffFindings = async (
         (viaHash && !existingByKey.has(viaHash.dedupeKey)
           ? viaHash
           : undefined);
+      // Carried findings are refreshed without recording an observation.
+      const carried =
+        activitySignal === "unknown" && INACTIVITY_RULES.includes(f.rule);
+      const transition =
+        fresh && !carried && f.status === "resolved"
+          ? { status: "open" as const, resolvedAt: null }
+          : !fresh && f.status !== "resolved"
+            ? { status: "resolved" as const, resolvedAt: now }
+            : undefined;
+      if (reconcile) {
+        if (!transition || !reconcile.includes(f) || reconcile.protects(f))
+          continue;
+        reconcile.changes.push({
+          id: f.id,
+          rule: f.rule,
+          graphUserId: f.graphUserId,
+          before: { status: f.status, resolvedAt: f.resolvedAt },
+          after: transition,
+        });
+        if (!reconcile.preview) {
+          await tx
+            .update(findings)
+            .set(transition)
+            .where(eq(findings.id, f.id));
+        }
+        continue;
+      }
       if (fresh) {
-        // Refresh the details of carried findings without recording an observation.
-        const carried =
-          activitySignal === "unknown" && INACTIVITY_RULES.includes(f.rule);
         await tx
           .update(findings)
           .set({
@@ -1615,16 +1727,11 @@ export const diffFindings = async (
             graphUserId: fresh.graphUserId,
             monthlyImpactCents: fresh.monthlyImpactCents,
             ...(!carried && { lastSeenAt: now }),
-            ...(!carried && f.status === "resolved"
-              ? { status: "open" as const, resolvedAt: null }
-              : {}),
+            ...transition,
           })
           .where(eq(findings.id, f.id));
-      } else if (f.status !== "resolved") {
-        await tx
-          .update(findings)
-          .set({ status: "resolved", resolvedAt: now })
-          .where(eq(findings.id, f.id));
+      } else if (transition) {
+        await tx.update(findings).set(transition).where(eq(findings.id, f.id));
       }
     }
 

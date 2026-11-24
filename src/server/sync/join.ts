@@ -24,6 +24,20 @@ const toDate = (value: string | null | undefined): Date | null => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+export const WORKLOAD_KEYS = [
+  "exchange",
+  "oneDrive",
+  "sharePoint",
+  "teams",
+  "copilot",
+] as const satisfies readonly (keyof WorkloadActivity)[];
+
+export const latestActivity = (
+  workload: WorkloadActivity | null,
+  ...dates: (Date | null)[]
+): Date | null =>
+  maxDate(...dates, ...WORKLOAD_KEYS.map((key) => toDate(workload?.[key])));
+
 export type JoinedUser = WasteUser & {
   mailAliases: string[];
   lastInteractiveSignIn: Date | null;
@@ -104,15 +118,11 @@ export const joinSignals = (args: {
       g.signInActivity?.lastNonInteractiveSignInDateTime,
     );
 
-    const lastActivity = maxDate(
+    const lastActivity = latestActivity(
+      workloadActivity,
       previous?.lastActivity ?? null,
       lastInteractiveSignIn,
       lastNonInteractiveSignIn,
-      toDate(workloadActivity.exchange),
-      toDate(workloadActivity.oneDrive),
-      toDate(workloadActivity.sharePoint),
-      toDate(workloadActivity.teams),
-      toDate(workloadActivity.copilot),
     );
 
     const licenses = (g.licenseAssignmentStates ?? []).length
