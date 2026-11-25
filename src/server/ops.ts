@@ -312,12 +312,16 @@ const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
       }
       suppressed = current?.suppressedCount ?? 0;
     }
-    if (localCooldowns.size < MAX_LOCAL_KEYS) {
-      localCooldowns.set(key, {
-        expiresAt: now + opts.cooldownMs,
-        suppressedCount: 0,
-      });
+    if (localCooldowns.size >= MAX_LOCAL_KEYS && !localCooldowns.has(key)) {
+      // Only a database-path send gets here with a full map: it must still
+      // be recorded, so the oldest entry makes room. Bounded either way.
+      const oldest = localCooldowns.keys().next().value;
+      if (oldest !== undefined) localCooldowns.delete(oldest);
     }
+    localCooldowns.set(key, {
+      expiresAt: now + opts.cooldownMs,
+      suppressedCount: 0,
+    });
     if (suppressed > 0) {
       suffix = ` (${suppressed} similar suppressed since the last alert)`;
     }

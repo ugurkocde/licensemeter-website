@@ -599,3 +599,27 @@ it("does not claim a cooldown for an alert the send limit rejects", async () => 
     vi.useRealTimers();
   }
 });
+
+it("records a database-path send even when the local cooldown map is full", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const options = { cooldownMs: 24 * 60 * 60_000 };
+    // 256 distinct keys through the healthy path, 10 per send window.
+    for (let index = 0; index < 256; index++) {
+      if (index > 0 && index % 10 === 0) vi.advanceTimersByTime(15 * 60_000);
+      await notifyOps("Sync failed", { ...options, key: `fill-${index}` });
+    }
+    vi.advanceTimersByTime(15 * 60_000);
+    await notifyOps("Pool unavailable", { ...options, key: "late" });
+    const sent = fetchMock.mock.calls.length;
+    expect(sent).toBe(257);
+
+    vi.spyOn(currentDb, "insert").mockImplementation(() => {
+      throw new Error("Database unavailable");
+    });
+    await notifyOps("Pool unavailable", { ...options, key: "late" });
+    expect(fetchMock).toHaveBeenCalledTimes(sent);
+  } finally {
+    vi.useRealTimers();
+  }
+}, 60_000);
