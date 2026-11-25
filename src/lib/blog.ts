@@ -108,7 +108,12 @@ export const BLOG_POSTS: BlogPost[] = [
           ],
           [
             { strong: "OneDrive files." },
-            " Removing the license alone leaves the user's OneDrive files in place. Check what needs to be preserved if you also plan to delete the user or remove them through Active Directory synchronization.",
+            " Before removing the license, identify and preserve the OneDrive files your organization still needs, even if you plan to keep the user account. Check retention requirements and who needs continued access. See ",
+            {
+              text: "Microsoft's guidance for former employee data",
+              href: "https://learn.microsoft.com/en-us/microsoft-365/admin/add-users/remove-former-employee?view=o365-worldwide",
+            },
+            ".",
           ],
           [
             { strong: "Shared mailbox conversion." },
