@@ -53,6 +53,267 @@ const METERING_DOCS =
 
 export const BLOG_POSTS: BlogPost[] = [
   {
+    slug: "remove-license-from-disabled-user",
+    title: "How to remove licenses from disabled Microsoft 365 users",
+    description:
+      "Check mailbox retention, remove direct or group-based licenses from disabled Microsoft 365 users, and verify the assignment and billing changes.",
+    excerpt:
+      "To remove a direct license from a disabled Microsoft 365 user, open Users > Active users, select the account, then clear the license under Licenses and Apps and save. Check mailbox holds and retention first, and remove any inherited assignment through the group that grants it.",
+    publishedOn: "2026-11-25",
+    author: {
+      name: "Ugur Koc",
+      role: "Maintainer, Microsoft MVP for Intune",
+      url: "https://ugurkoc.de",
+    },
+    tag: "Guide",
+    cta: {
+      title: "Review disabled accounts that still hold licenses",
+      body: "Find the accounts that still have paid assignments and track each one through your offboarding review.",
+      primary: {
+        label: "Review the finding",
+        href: "/waste/disabled-accounts-still-licensed",
+      },
+      secondary: {
+        label: "Read the remediation workflow",
+        href: "https://docs.licensemeter.com/findings/workflow/",
+      },
+    },
+    body: [
+      {
+        type: "h2",
+        id: "check-before-removal",
+        text: "Check holds and data before removing a license",
+      },
+      {
+        type: "p",
+        text: [
+          "Confirm that sign-in was blocked intentionally. Record the user's current licenses and identify any services or downstream access that still depend on them.",
+        ],
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "Holds and legal access." },
+            " Check whether a hold still needs to be in place before proceeding. Microsoft's former employee guidance requires clearing holds before license removal. If authorized staff still need eDiscovery access for compliance or legal reasons, keep the required Exchange license while you arrange preservation. Microsoft specifies Exchange Online Plan 2 or Plan 1 with the Exchange Online Archiving add-on to apply a hold before deleting the mailbox. See ",
+            {
+              text: "Microsoft's offboarding guidance on holds",
+              href: "https://learn.microsoft.com/en-us/microsoft-365/admin/add-users/remove-former-employee-step-6?view=o365-worldwide",
+            },
+            ".",
+          ],
+          [
+            { strong: "Exchange data and search." },
+            " Exchange Online holds the user's mailbox data for 30 days after license removal. After that grace period, the data is permanently deleted, with content covered by retention labels kept for discovery. Once the license is removed, the user's mailbox is no longer searchable through Content Search or eDiscovery (Premium). If you plan to delete the account and need to preserve mailbox data, review inactive mailboxes for eligible Enterprise subscriptions.",
+          ],
+          [
+            { strong: "OneDrive files." },
+            " Removing the license alone leaves the user's OneDrive files in place. Check what needs to be preserved if you also plan to delete the user or remove them through Active Directory synchronization.",
+          ],
+          [
+            { strong: "Shared mailbox conversion." },
+            " If a leaver's mailbox should become shared, review ",
+            {
+              text: "the licensing checks for converting to a shared mailbox",
+              href: "/blog/shared-mailbox-license#convert-a-user-mailbox",
+            },
+            " before removing its license.",
+          ],
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          {
+            text: "Microsoft's license unassignment guide covers the effects on user data",
+            href: "https://learn.microsoft.com/en-us/microsoft-365/admin/manage/assign-licenses-to-users?view=o365-worldwide",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "check-assignment-source",
+        text: "Check whether the license is direct or group-based",
+      },
+      {
+        type: "p",
+        text: [
+          "For a group assignment, the product's license list shows the group name. In the Microsoft 365 admin center, open ",
+          { strong: "Teams & groups > Active teams & groups" },
+          " to check the group's members.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "In Microsoft Graph, select the user's ",
+          { strong: "licenseAssignmentStates" },
+          " and check ",
+          { strong: "assignedByGroup" },
+          " for each assignment of the product. A null value means the license is assigned directly. A group ID identifies the group that grants it. The assignedLicenses field lists both kinds of assignment together. See ",
+          {
+            text: "Microsoft's group licensing PowerShell examples",
+            href: "https://learn.microsoft.com/en-us/entra/identity/users/licensing-powershell-graph-examples",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "remove-in-admin-center",
+        text: "Remove direct licenses in the Microsoft 365 admin center",
+      },
+      {
+        type: "p",
+        text: [
+          "Open ",
+          { strong: "Users > Active users" },
+          " with an appropriate role, such as License Administrator or User Administrator.",
+        ],
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "One user." },
+            " Select the user's row and open ",
+            { strong: "Licenses and Apps" },
+            ". Expand ",
+            { strong: "Licenses" },
+            ", clear the products you intend to remove, and select ",
+            { strong: "Save changes" },
+            ".",
+          ],
+          [
+            { strong: "Multiple users." },
+            " Select the circles beside the reviewed accounts and choose ",
+            { strong: "Manage product licenses" },
+            ". Use ",
+            { strong: "Unassign all" },
+            " only when you intend to remove every license from those accounts. Follow the group steps below for inherited assignments. Select ",
+            { strong: "Save changes" },
+            ", then ",
+            { strong: "Done" },
+            ".",
+          ],
+        ],
+      },
+      {
+        type: "h2",
+        id: "remove-with-powershell",
+        text: "Remove a direct license with PowerShell",
+      },
+      {
+        type: "p",
+        text: [
+          "Connect to your tenant using the permissions in ",
+          {
+            text: "Microsoft's PowerShell license removal guide",
+            href: "https://learn.microsoft.com/en-us/microsoft-365/enterprise/remove-licenses-from-user-accounts-with-microsoft-365-powershell?view=o365-worldwide",
+          },
+          ". Use the reviewed account and the SKU ID of the license you intend to remove.",
+        ],
+      },
+      {
+        type: "note",
+        title: "Destructive command. Test on one account first.",
+        text: [
+          "Replace the placeholders with a single approved account and its target SKU ID, then verify the result before repeating the operation.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          'Set-MgUserLicense -UserId "<Account>" -RemoveLicenses @("<AccountSkuId1>") -AddLicenses @{}',
+        ],
+      },
+      {
+        type: "h2",
+        id: "remove-group-based-license",
+        text: "Remove a group-based license at its source",
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "Remove the assignment for one user." },
+            " Remove the user from the group that grants the license. Review the group's other assigned products and any access the user still needs before changing membership.",
+          ],
+          [
+            { strong: "Remove the assignment for the whole group." },
+            " Go to ",
+            { strong: "Billing > Licenses" },
+            ", select the product, and find the group's row. Open the three-dot menu and select ",
+            { strong: "Unassign" },
+            ". Use this option only if the group should stop granting that product to its members. See ",
+            {
+              text: "Microsoft's group license instructions",
+              href: "https://learn.microsoft.com/en-us/microsoft-365/admin/manage/manage-group-licenses?view=o365-worldwide",
+            },
+            ".",
+          ],
+        ],
+      },
+      {
+        type: "h2",
+        id: "reduce-subscription-quantity",
+        text: "Reduce the subscription quantity if you no longer need the seat",
+      },
+      {
+        type: "p",
+        text: [
+          "Unassigning a license frees it for reassignment. To stop paying for a seat you no longer need, reduce the purchased quantity. In ",
+          { strong: "Billing > Your products" },
+          ", select the subscription and choose ",
+          { strong: "Remove licenses" },
+          ". Specify when the change can take effect and the new total quantity, then select ",
+          { strong: "Save" },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "verify-removal",
+        text: "Confirm the license is gone",
+      },
+      {
+        type: "p",
+        text: [
+          "Reopen the user's ",
+          { strong: "Licenses and Apps" },
+          " pane and confirm the target product is gone. If it still appears, check for another group assignment or a remaining direct assignment. If you reduced the subscription quantity, verify the new total in ",
+          { strong: "Billing > Your products" },
+          " when the change takes effect.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "track-remediation",
+        text: "Track and verify the change in LicenseMeter",
+      },
+      {
+        type: "p",
+        text: [
+          "The ",
+          { strong: "Disabled account still licensed" },
+          " finding flags a disabled directory account with a paid assignment. An Admin can set the remediation status, assignee, due date, external ticket URL, and notes. The status options are Not planned, Planned, Remediation requested, and In progress.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "LicenseMeter connectors are read-only and do not remove licenses. After you make the change in Microsoft 365, run another sync. LicenseMeter resolves the finding when the condition is gone. See ",
+          {
+            text: "the detection rules",
+            href: "https://docs.licensemeter.com/findings/rules/",
+          },
+          " for what the finding checks.",
+        ],
+      },
+    ],
+  },
+  {
     slug: "shared-mailbox-license",
     title: "Does a Microsoft 365 shared mailbox need a license?",
     description:
