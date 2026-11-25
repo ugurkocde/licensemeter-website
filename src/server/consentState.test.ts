@@ -142,8 +142,9 @@ it("retains a recently used handoff after its redemption window ends", async () 
 
 it("keeps a used handoff until its completion cookie expires even when the cookie was issued late", async () => {
   const tenantId = await workspace();
-  // usedAt is stamped inside the bind transaction; the cookie is issued at
-  // the end of the same request, at most the callback's maxDuration later.
+  // usedAt is stamped inside the bind transaction and the cookie is issued
+  // later in the same request. setHandoffCompletion caps the cookie at the
+  // retention deadline, so any cookie it issues expires before the row goes.
   const usedAt = now;
   const cookieIssuedAt = usedAt + 4 * minute;
   const cookieExpiresAt =
