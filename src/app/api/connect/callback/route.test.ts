@@ -208,7 +208,10 @@ describe("admin consent handoff", () => {
     expect(setCookie).not.toHaveBeenCalled();
     expect(readHandoffProof).toHaveBeenCalledOnce();
     expect(clearHandoffProof).toHaveBeenCalledOnce();
-    expect(setHandoffCompletion).toHaveBeenCalledWith(HANDOFF);
+    expect(setHandoffCompletion).toHaveBeenCalledWith(
+      HANDOFF,
+      expect.any(Date),
+    );
     expect(await currentDb.query.auditLog.findFirst()).toMatchObject({
       action: "microsoft_connected_by_approval",
       actorOid: APPROVER_OID,

@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import type * as ConsentState from "~/server/consentState";
+import { HANDOFF_USED_RETENTION_MS } from "~/server/consentState";
 import type * as RateLimit from "~/server/rateLimit";
 
 const {
@@ -248,11 +249,35 @@ it("clears the authorizing cookie and keeps completion proof separate", async ()
     "",
     expect.objectContaining({ maxAge: 0 }),
   );
-  await setHandoffCompletion(token);
+  await setHandoffCompletion(token, new Date());
   const [name, value, options] = setCookie.mock.lastCall!;
   expect(name).toBe("lm_consent_completed");
   expect(options).toMatchObject({ maxAge: 300 });
   getCookie.mockReturnValue({ value });
   expect(await readHandoffCompletion()).toBe(token);
   expect(await readHandoffProof()).toBeNull();
+});
+
+it("never lets the completion marker outlive the used row", async () => {
+  const now = Date.now();
+  const minute = 60_000;
+  // Issued eight minutes after the link was consumed: only the rest of the
+  // ten-minute retention window remains.
+  expect(
+    await setHandoffCompletion(token, new Date(now - 8 * minute), now),
+  ).toBe(true);
+  const [, value, options] = setCookie.mock.lastCall!;
+  expect(options).toMatchObject({ maxAge: 120 });
+  const { exp } = JSON.parse(
+    Buffer.from(String(value).split(".")[1]!, "base64url").toString(),
+  ) as { exp: number };
+  expect(exp * 1000).toBeLessThanOrEqual(
+    now - 8 * minute + HANDOFF_USED_RETENTION_MS,
+  );
+
+  setCookie.mockClear();
+  expect(
+    await setHandoffCompletion(token, new Date(now - 11 * minute), now),
+  ).toBe(false);
+  expect(setCookie).not.toHaveBeenCalled();
 });

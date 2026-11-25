@@ -281,6 +281,9 @@ export const GET = async (req: NextRequest) => {
     lastVerifyError: null,
   };
 
+  // Stamped on the consumed handoff row; the completion marker expiry is
+  // derived from it.
+  const handoffUsedAt = new Date();
   try {
     await db.transaction(async (tx) => {
       const [target] = await tx
@@ -319,7 +322,7 @@ export const GET = async (req: NextRequest) => {
         if (target.tid || conn) return reject("already_connected");
         const consumed = await tx
           .update(consentStates)
-          .set({ usedAt: new Date() })
+          .set({ usedAt: handoffUsedAt })
           .where(and(consumeConditions(), eq(consentStates.kind, "handoff")))
           .returning({ state: consentStates.state });
         if (!consumed.length) return fail("invalid_state");
@@ -360,7 +363,7 @@ export const GET = async (req: NextRequest) => {
       "microsoft_connected_by_approval",
       { grantedTid, approverSignInOid: approver.oid },
     );
-    await setHandoffCompletion(state);
+    await setHandoffCompletion(state, handoffUsedAt);
     void notifyOps(
       `workspace ${tenantId} completed Microsoft consent by handoff, first sync starting`,
       {

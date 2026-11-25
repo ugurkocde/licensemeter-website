@@ -6,6 +6,7 @@ import { env } from "~/env";
 import {
   GUID_PATTERN,
   HANDOFF_COMPLETION_MAX_AGE_SECONDS,
+  HANDOFF_USED_RETENTION_MS,
   loadPendingHandoff,
 } from "~/server/consentState";
 import { notifyOps } from "~/server/ops";
@@ -83,13 +84,30 @@ export const clearHandoffProof = async () => {
   (await cookies()).set(cookie, "", cookieOptions(0));
 };
 
-export const setHandoffCompletion = async (token: string) => {
+/**
+ * Marks a completed handoff for the public completion page. The marker expires
+ * after completedMaxAge, but never later than the used row's retention
+ * deadline, so it cannot outlive the row the page reads. Returns false when
+ * that deadline has already passed (an unusually slow request).
+ */
+export const setHandoffCompletion = async (
+  token: string,
+  usedAt: Date,
+  now = Date.now(),
+): Promise<boolean> => {
+  const expiresAt = Math.min(
+    now + completedMaxAge * 1000,
+    usedAt.getTime() + HANDOFF_USED_RETENTION_MS,
+  );
+  const maxAge = Math.floor((expiresAt - now) / 1000);
+  if (maxAge <= 0) return false;
   const value = await new SignJWT({ token })
     .setProtectedHeader({ alg: "HS256" })
     .setAudience(completedCookie)
-    .setExpirationTime(`${completedMaxAge}s`)
+    .setExpirationTime(Math.floor(expiresAt / 1000))
     .sign(key);
-  (await cookies()).set(completedCookie, value, cookieOptions(completedMaxAge));
+  (await cookies()).set(completedCookie, value, cookieOptions(maxAge));
+  return true;
 };
 
 export const readHandoffCompletion = async () => {

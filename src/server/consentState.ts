@@ -27,14 +27,13 @@ export const SELF_CONSENT_TTL_MS = 15 * 60 * 1000;
 export const HANDOFF_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const HANDOFF_COMPLETION_MAX_AGE_SECONDS = 5 * 60;
 /**
- * Upper bound on the gap between stamping usedAt and issuing the completion
- * cookie: the consent callback's maxDuration (300 s). Used rows are kept for
- * the cookie lifetime plus this bound, so the completion page always finds
- * its row while the cookie is valid. The redemption window is unaffected.
+ * How long a used handoff row is kept after usedAt. The completion cookie
+ * never outlives this deadline (setHandoffCompletion caps its expiry at
+ * usedAt plus this value), so the completion page always finds its row while
+ * the cookie is valid. The redemption window is unaffected.
  */
-const CALLBACK_MAX_DURATION_MS = 300 * 1000;
 export const HANDOFF_USED_RETENTION_MS =
-  HANDOFF_COMPLETION_MAX_AGE_SECONDS * 1000 + CALLBACK_MAX_DURATION_MS;
+  2 * HANDOFF_COMPLETION_MAX_AGE_SECONDS * 1000;
 const STALL_AGE_MS = 30 * 60 * 1000;
 export const GUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
