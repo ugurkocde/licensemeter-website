@@ -5,7 +5,12 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it } from "vitest";
 
-import { dbErrorFields, OpsSafeError, opsErrorText } from "./opsError";
+import {
+  dbErrorFields,
+  isDbUnavailableError,
+  OpsSafeError,
+  opsErrorText,
+} from "./opsError";
 
 /** The fields a Postgres server error response always carries. */
 const SERVER_FIELDS = {
@@ -157,4 +162,30 @@ describe("SQLSTATE provenance", () => {
       ),
     ).toBe("Error");
   });
+});
+
+describe("isDbUnavailableError", () => {
+  it.each([
+    {
+      code: "XX000",
+      message: "(EMAXCONNSESSION) max clients reached in session mode",
+    },
+    { code: "XX000", message: "max clients reached in transaction mode" },
+    { code: "ECONNREFUSED" },
+    { code: "ETIMEDOUT" },
+    { code: "CONNECT_TIMEOUT" },
+    { code: "CONNECTION_CLOSED" },
+    { code: "08006" },
+    { code: "53300" },
+    { code: "57P01" },
+  ])("recognizes a wrapped connection failure (%j)", (cause) => {
+    expect(isDbUnavailableError(new Error("Query failed", { cause }))).toBe(
+      true,
+    );
+  });
+
+  it.each([{ code: "23505" }, { code: "XX000" }, new Error("Bug"), null])(
+    "leaves other errors alone (%j)",
+    (error) => expect(isDbUnavailableError(error)).toBe(false),
+  );
 });

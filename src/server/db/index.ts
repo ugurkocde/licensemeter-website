@@ -27,8 +27,9 @@ const createDb = (): Db => {
       enforce: enforceDatabaseTls(env.NODE_ENV, env.SELF_HOSTED),
     });
     const client = postgres(env.DATABASE_URL, {
+      // Hosted production must use the Supabase transaction pooler (port 6543).
       prepare: false,
-      max: 5,
+      max: 3,
       idle_timeout: 20,
       connect_timeout: 10,
       ...(ssl ? { ssl } : {}),

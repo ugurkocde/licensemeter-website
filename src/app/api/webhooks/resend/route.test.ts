@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 let secret: string | undefined = "whsec_test";
-const applyDeliveryEvent = vi.fn(() => Promise.resolve());
+const transaction = vi.fn();
 const verify = vi.fn((...args: unknown[]) => ({ args }));
 
 vi.mock("~/env", () => ({
@@ -17,7 +17,7 @@ vi.mock("~/env", () => ({
     },
   },
 }));
-vi.mock("~/server/emailDeliveryEvents", () => ({ applyDeliveryEvent }));
+vi.mock("~/server/db", () => ({ db: { transaction } }));
 vi.mock("svix", () => ({
   Webhook: class {
     verify(...args: unknown[]) {
@@ -51,7 +51,7 @@ const oversizedStream = (state: { pulls: number }) =>
 beforeEach(() => {
   secret = "whsec_test";
   verify.mockClear();
-  applyDeliveryEvent.mockClear();
+  transaction.mockReset();
 });
 
 describe("Resend webhook body cap", () => {
@@ -75,7 +75,7 @@ describe("Resend webhook body cap", () => {
 
   it("verifies and applies a small body", async () => {
     const res = await POST(
-      request(JSON.stringify({ type: "email.delivered" }), {
+      request(JSON.stringify(deliveryEvent()), {
         "content-type": "application/json",
         "svix-id": "id",
         "svix-timestamp": "1",
@@ -84,7 +84,7 @@ describe("Resend webhook body cap", () => {
     );
     expect(res.status).toBe(200);
     expect(verify).toHaveBeenCalled();
-    expect(applyDeliveryEvent).toHaveBeenCalled();
+    expect(transaction).toHaveBeenCalledOnce();
   });
 
   it("answers 503 when the webhook secret is not configured", async () => {
@@ -92,4 +92,27 @@ describe("Resend webhook body cap", () => {
     const res = await POST(request("{}"));
     expect(res.status).toBe(503);
   });
+});
+
+const deliveryEvent = (tags?: Record<string, string>) => ({
+  type: "email.delivered",
+  created_at: "2026-11-25T03:00:00Z",
+  data: { email_id: "resend-id", to: ["test@example.test"], tags },
+});
+
+it("retries delivery when the database connection is unavailable", async () => {
+  transaction.mockRejectedValueOnce(
+    new Error("Query failed", { cause: { code: "CONNECT_TIMEOUT" } }),
+  );
+  const res = await POST(request(JSON.stringify(deliveryEvent())));
+  expect(res.status).toBe(503);
+  expect(res.headers.get("Retry-After")).toBe("60");
+});
+
+it("acknowledges ops alerts without starting a database transaction", async () => {
+  const res = await POST(
+    request(JSON.stringify(deliveryEvent({ lm_ops: "alert" }))),
+  );
+  expect(res.status).toBe(200);
+  expect(transaction).not.toHaveBeenCalled();
 });

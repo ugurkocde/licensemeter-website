@@ -5,6 +5,7 @@ import { env } from "~/env";
 import { db } from "~/server/db";
 import { opsAlerts } from "~/server/db/schema";
 import { emailEnabled, sendEmail } from "~/server/email";
+import { OPS_ALERT_TAG } from "~/server/emailDeliveryPolicy";
 
 /**
  * Ops alerts carry workspace IDs and counts, never personal data. Call sites
@@ -188,6 +189,23 @@ export const sendDemoOpenDigest = async (): Promise<void> => {
   }
 };
 
+const ALERT_WINDOW_MS = 15 * 60_000;
+const MAX_ALERT_SENDS = 10;
+const MAX_FALLBACK_KEYS = 256;
+let alertSends: number[] = [];
+const fallbackCooldowns = new Map<
+  string,
+  { expiresAt: number; suppressedCount: number }
+>();
+
+const hasAlertCapacity = (channelCount: number): boolean => {
+  const cutoff = Date.now() - ALERT_WINDOW_MS;
+  alertSends = alertSends.filter((sentAt) => sentAt > cutoff);
+  if (alertSends.length + channelCount <= MAX_ALERT_SENDS) return true;
+  console.error("[ops] instance alert send limit reached");
+  return false;
+};
+
 const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
   // Fail closed: anything other than an explicit "info" logs at error level.
   if (opts.logLevel === "info") console.info(`[ops] ${text}`);
@@ -208,6 +226,9 @@ const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
 
   const channels = alertChannels();
   if (!channels.webhook && !channels.email) return;
+
+  const channelCount = Number(channels.webhook) + Number(channels.email);
+  if (!hasAlertCapacity(channelCount)) return;
 
   let suffix = "";
   if (opts.key && opts.cooldownMs) {
@@ -242,11 +263,32 @@ const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
       if (previousSuppressed > 0) {
         suffix = ` (${previousSuppressed} similar suppressed since the last alert)`;
       }
-    } catch (err) {
-      console.error("[ops] dedup bookkeeping failed", err);
+    } catch {
+      console.error("[ops] dedup bookkeeping failed");
+      const now = Date.now();
+      const previous = fallbackCooldowns.get(opts.key);
+      for (const [key, entry] of fallbackCooldowns) {
+        if (entry.expiresAt <= now) fallbackCooldowns.delete(key);
+      }
+      if (previous && previous.expiresAt > now) {
+        previous.suppressedCount++;
+        return;
+      }
+      if (fallbackCooldowns.size >= MAX_FALLBACK_KEYS) return;
+      if (!hasAlertCapacity(channelCount)) return;
+      fallbackCooldowns.set(opts.key, {
+        expiresAt: now + opts.cooldownMs,
+        suppressedCount: 0,
+      });
+      if (previous?.suppressedCount) {
+        suffix = ` (${previous.suppressedCount} similar suppressed since the last alert)`;
+      }
     }
   }
 
+  if (!hasAlertCapacity(channelCount)) return;
+  const now = Date.now();
+  for (let channel = 0; channel < channelCount; channel++) alertSends.push(now);
   await sendToChannels(text, suffix, opts, channels);
 };
 
@@ -289,6 +331,7 @@ const sendToChannels = async (
     try {
       emailAccepted = await sendEmail({
         to: [env.ALERT_EMAIL!],
+        tags: [OPS_ALERT_TAG],
         subject: opts.subject ?? `LicenseMeter alert: ${text.slice(0, 80)}`,
         html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1c1a16;max-width:560px">
   <p>${escapeHtml(message)}</p>${

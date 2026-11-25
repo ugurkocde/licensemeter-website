@@ -244,3 +244,51 @@ export const opsErrorText = (err: unknown): string => {
   }
   return parts.join(" ");
 };
+
+const DB_UNAVAILABLE_CODES = new Set([
+  "EMAXCONNSESSION",
+  "EMAXCONN",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "EPIPE",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "CONNECT_TIMEOUT",
+  "CONNECTION_CLOSED",
+  "CONNECTION_DESTROYED",
+  "CONNECTION_ENDED",
+  "53300",
+  "57P01",
+  "57P02",
+  "57P03",
+]);
+
+/** Recognize connection failures, including those wrapped by Drizzle. */
+export const isDbUnavailableError = (error: unknown): boolean => {
+  let current = error;
+  for (
+    let depth = 0;
+    depth < 4 && current && typeof current === "object";
+    depth++
+  ) {
+    const { code, message, cause } = current as Record<string, unknown>;
+    if (
+      typeof code === "string" &&
+      (DB_UNAVAILABLE_CODES.has(code) || /^08[0-9A-Z]{3}$/.test(code))
+    ) {
+      return true;
+    }
+    if (
+      typeof message === "string" &&
+      (/\bEMAXCONNSESSION\b/.test(message) ||
+        (code === "XX000" && /max clients reached/i.test(message)))
+    ) {
+      return true;
+    }
+    current = cause;
+  }
+  return false;
+};

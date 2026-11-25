@@ -66,6 +66,8 @@ The managed connector requests `User.Read.All`, `AuditLog.Read.All`, `Reports.Re
 
 ## Shared environment
 
+For hosted production on Supabase, use the transaction pooler on port 6543 with `sslmode=require` or stricter.
+
 | Variable                                                     | Purpose                                                                         |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------- |
 | `DATABASE_URL`                                               | PostgreSQL connection using the limited runtime role                            |

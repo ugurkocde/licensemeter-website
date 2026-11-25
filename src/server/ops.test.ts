@@ -5,6 +5,7 @@ import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "~/server/db/schema";
+import type * as ops from "~/server/ops";
 
 /**
  * notifyOps dedup against a real PGlite database: the cooldown claim is one
@@ -50,13 +51,16 @@ vi.mock("~/server/email", () => ({
   sendEmail: mocks.sendEmail,
 }));
 
-const { notifyOps, sendDemoOpenDigest } = await import("~/server/ops");
+let notifyOps: typeof ops.notifyOps;
+let sendDemoOpenDigest: typeof ops.sendDemoOpenDigest;
 
 const fetchMock = vi.fn((_input: string | URL | Request, _init?: RequestInit) =>
   Promise.resolve(new Response(null)),
 );
 
 beforeEach(async () => {
+  vi.resetModules();
+  ({ notifyOps, sendDemoOpenDigest } = await import("~/server/ops"));
   client = new PGlite();
   const ddl = await generateMigration(
     generateDrizzleJson({}),
@@ -527,4 +531,37 @@ describe("redactForOps", () => {
       'Failed query: insert into "memberships" values ($1, $2)\nparams: <redacted>',
     );
   });
+});
+
+it("bounds alert sends when database dedup is unavailable", async () => {
+  vi.spyOn(currentDb, "insert").mockImplementation(() => {
+    throw new Error("Database unavailable");
+  });
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const options = { key: "pool-outage", cooldownMs: 60_000 };
+    await notifyOps("Pool unavailable", options);
+    await notifyOps("Pool unavailable again", options);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await notifyOps("Other failure", { ...options, key: "other-failure" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(60_000);
+    await notifyOps("Pool unavailable", options);
+    expect(fetchMock.mock.lastCall?.[1]?.body).toContain(
+      "1 similar suppressed",
+    );
+
+    for (let index = 0; index < 10; index++) await notifyOps("Unkeyed alert");
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+    await notifyOps("New keyed alert", { ...options, key: "rate-limited" });
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+
+    vi.advanceTimersByTime(15 * 60_000);
+    await notifyOps("New keyed alert", { ...options, key: "rate-limited" });
+    expect(fetchMock).toHaveBeenCalledTimes(11);
+  } finally {
+    vi.useRealTimers();
+  }
 });

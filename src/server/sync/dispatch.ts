@@ -8,7 +8,7 @@
 export const TENANT_SYNC_PATH = "/api/cron/sync/tenant";
 
 /** Dispatch requests in flight at once; each one only waits for a 202. */
-const DISPATCH_CONCURRENCY = 8;
+const DISPATCH_CONCURRENCY = 4;
 
 /** A dispatch that has not been accepted by then is synced in-process. */
 const DISPATCH_TIMEOUT_MS = 10_000;
