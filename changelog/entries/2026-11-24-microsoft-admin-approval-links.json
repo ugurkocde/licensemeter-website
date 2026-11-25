@@ -1,6 +1,6 @@
 {
   "title": "Share Microsoft 365 approval with your administrator",
-  "summary": "When Microsoft 365 asks for admin approval, a LicenseMeter workspace admin can share a seven-day approval link right away. The Microsoft administrator confirms the account and tenant before granting read-only access and can retry the same link if Microsoft is still applying permissions. Workspace admins can revoke and replace a pending link.",
+  "summary": "When Microsoft 365 asks for admin approval, a LicenseMeter workspace admin can share a seven-day approval link right away. The Microsoft administrator confirms the account and tenant before granting read-only access. LicenseMeter retries while Microsoft applies permissions, and the administrator can use the same link again if more time is needed. Workspace admins can revoke and replace a pending link.",
   "type": "improved",
   "publishedOn": "2026-11-24",
   "idempotencyKey": "licensemeter:microsoft-admin-approval-links"

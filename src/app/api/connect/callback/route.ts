@@ -130,7 +130,9 @@ export const GET = async (req: NextRequest) => {
       {
         key: `consent-callback:${workspace}:${code}:${why ?? ""}`,
         cooldownMs: SELF_CONSENT_TTL_MS,
-        ...(code === "consent_pending" ? { logLevel: "info" } : {}),
+        ...(code === "consent_pending" || code === "approval_required"
+          ? { logLevel: "info" }
+          : {}),
       },
     );
     return fail(

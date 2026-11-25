@@ -487,22 +487,81 @@ describe("consent probe", () => {
     expect(mocks.mint).toHaveBeenCalledTimes(1);
   });
 
-  it.each(
-    [["LicenseAssignment.Read.All"], ["User.Read.All"], []].map((roles) => ({
-      roles,
-    })),
-  )("rejects an incomplete roles claim: $roles", async ({ roles }) => {
-    const tid = crypto.randomUUID();
-    mocks.mint
-      .mockResolvedValueOnce({ accessToken: appJwt({ oid: "sp", roles }) })
-      .mockResolvedValueOnce({
-        accessToken: appJwt({ oid: "sp", roles: requiredRoles }),
+  it.each([
+    { roles: ["Directory.Read.All"] },
+    { roles: ["Directory.ReadWrite.All"] },
+    { roles: ["Organization.Read.All", "User.ReadWrite.All"] },
+    { roles: ["Organization.ReadWrite.All", "User.Read.All"] },
+    { roles: ["LicenseAssignment.ReadWrite.All", "User.Read.All"] },
+  ])(
+    "accepts roles covering both critical reads: $roles",
+    async ({ roles }) => {
+      mocks.mint.mockResolvedValue({
+        accessToken: appJwt({ oid: "sp", roles }),
       });
 
-    await expect(verifyManagedConsent(tid)).resolves.toBe("pending_roles");
+      await expect(verifyManagedConsent(crypto.randomUUID())).resolves.toBe(
+        "verified",
+      );
+      expect(mocks.mint).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    { roles: ["LicenseAssignment.Read.All"] },
+    { roles: ["User.Read.All"] },
+    { roles: ["Reports.Read.All", "AuditLog.Read.All"] },
+    { roles: [] },
+  ])(
+    "returns pending after exhausting retries for $roles",
+    async ({ roles }) => {
+      vi.useFakeTimers();
+      mocks.mint.mockResolvedValue({
+        accessToken: appJwt({ oid: "sp", roles }),
+      });
+
+      const pending = verifyManagedConsent(crypto.randomUUID());
+      await vi.advanceTimersByTimeAsync(44_999);
+      expect(mocks.mint).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+
+      await expect(pending).resolves.toBe("pending_roles");
+      expect(mocks.mint).toHaveBeenCalledTimes(3);
+      expect(mocks.clientsCreated).toBe(3);
+    },
+  );
+
+  it("skips a retry that would use the time reserved for binding and first sync", async () => {
+    vi.useFakeTimers();
+    mocks.mint.mockResolvedValue({ accessToken: withoutOid() });
+    const now = Date.now();
+
+    const pending = verifyManagedConsent(crypto.randomUUID(), now + 75_000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    await expect(pending).resolves.toBe("pending_roles");
+    expect(Date.now()).toBe(now);
     expect(mocks.mint).toHaveBeenCalledTimes(1);
-    await expect(verifyManagedConsent(tid)).resolves.toBe("verified");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("settles at the probe deadline when the retry mint stalls", async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    const stalledMint = new Promise<{ accessToken: string }>(() => {
+      // Leave the token request pending past the deadline.
+    });
+    mocks.mint
+      .mockResolvedValueOnce({ accessToken: withoutOid() })
+      .mockReturnValueOnce(stalledMint);
+
+    const pending = verifyManagedConsent(crypto.randomUUID(), now + 80_000);
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    await expect(pending).resolves.toBe("pending_roles");
+    expect(Date.now()).toBe(now + 20_000);
     expect(mocks.mint).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("waits through a token-endpoint propagation error before answering", async () => {

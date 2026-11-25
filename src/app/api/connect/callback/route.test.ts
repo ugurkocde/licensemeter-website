@@ -13,6 +13,7 @@ import {
 } from "vitest";
 
 import * as schema from "~/server/db/schema";
+import type * as GraphModule from "~/server/graph/msGraph";
 import type * as OpsModule from "~/server/ops";
 
 /**
@@ -62,6 +63,19 @@ const env = vi.hoisted(
     CONNECTOR_CLIENT_SECRET: "connector-client-secret",
   }),
 );
+const mintToken = vi.hoisted(() =>
+  vi.fn<() => Promise<{ accessToken: string }>>(),
+);
+vi.mock("@azure/msal-node", () => ({
+  ConfidentialClientApplication: class {
+    private token: { accessToken: string } | undefined;
+
+    async acquireTokenByClientCredential() {
+      this.token ??= await mintToken();
+      return this.token;
+    }
+  },
+}));
 vi.mock("~/env", () => ({ env }));
 vi.mock("~/server/db", () => ({ db: currentDb, schema }));
 vi.mock("~/server/access", () => ({
@@ -320,6 +334,41 @@ describe("admin consent handoff", () => {
     await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
       "redirect:/connect/approve/complete",
     );
+  });
+
+  it("binds in the same callback when the retry picks up the remaining roles", async () => {
+    await seedHandoff();
+    const graph = await vi.importActual<typeof GraphModule>(
+      "~/server/graph/msGraph",
+    );
+    verifyManagedConsent.mockImplementationOnce(graph.verifyManagedConsent);
+    const token = (roles: string[]) => ({
+      accessToken: `header.${Buffer.from(JSON.stringify({ oid: "sp", roles })).toString("base64url")}.signature`,
+    });
+    mintToken
+      .mockResolvedValueOnce(token(["LicenseAssignment.Read.All"]))
+      .mockResolvedValueOnce(
+        token(["LicenseAssignment.Read.All", "User.Read.All"]),
+      );
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const completed = expect(
+        GET(callback(HOME_TID, HANDOFF)),
+      ).rejects.toThrow("redirect:/connect/approve/complete");
+      await vi.waitFor(() => expect(mintToken).toHaveBeenCalledTimes(1));
+      await vi.advanceTimersByTimeAsync(15_000);
+      await completed;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(mintToken).toHaveBeenCalledTimes(2);
+    expect(await currentDb.query.msConnections.findFirst()).toMatchObject({
+      tenantId: TENANT_ID,
+      tid: HOME_TID,
+    });
+    expect(scheduledWork()).toHaveLength(1);
   });
 
   it("refuses to take a tenant from another workspace", async () => {
@@ -609,6 +658,10 @@ describe("admin-consent callback rejection alerts", () => {
       await expect(GET(callbackWith(query.toString()))).rejects.toThrow(
         `redirect:/app/connectors/microsoft?error=approval_required&approvalWorkspace=${TENANT_ID}`,
       );
+      expect(rejectionAlerts()[0]?.[1]).toMatchObject({
+        key: `consent-callback:${TENANT_ID}:approval_required:`,
+        logLevel: "info",
+      });
       expect(await stateUsed()).toBe(false);
       const stalls = await detectConsentStalls(
         TENANT_ID,
