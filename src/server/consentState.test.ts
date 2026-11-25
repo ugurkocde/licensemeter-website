@@ -20,6 +20,7 @@ const {
   deleteExpiredConsentStates,
   detectConsentStalls,
   HANDOFF_COMPLETION_MAX_AGE_SECONDS,
+  HANDOFF_USED_RETENTION_MS,
   HANDOFF_TTL_MS,
 } = await import("./consentState");
 const now = new Date("2026-11-24T10:00:00Z").getTime();
@@ -129,16 +130,33 @@ it("retains a recently used handoff after its redemption window ends", async () 
   await start(tenantId, createdAge, { kind: "handoff" });
   await start(tenantId, createdAge + 10 * minute, {
     kind: "handoff",
-    usedAt: new Date(now - 6 * minute),
+    usedAt: new Date(now - HANDOFF_USED_RETENTION_MS - minute),
   });
 
   await deleteExpiredConsentStates(now);
   expect(await db.query.consentStates.findMany()).toMatchObject([justUsed]);
 
-  await deleteExpiredConsentStates(
-    now + HANDOFF_COMPLETION_MAX_AGE_SECONDS * 1000,
-  );
+  await deleteExpiredConsentStates(now + HANDOFF_USED_RETENTION_MS);
   expect(await db.query.consentStates.findMany()).toEqual([]);
+});
+
+it("keeps a used handoff until its completion cookie expires even when the cookie was issued late", async () => {
+  const tenantId = await workspace();
+  // usedAt is stamped inside the bind transaction; the cookie is issued at
+  // the end of the same request, at most the callback's maxDuration later.
+  const usedAt = now;
+  const cookieIssuedAt = usedAt + 4 * minute;
+  const cookieExpiresAt =
+    cookieIssuedAt + HANDOFF_COMPLETION_MAX_AGE_SECONDS * 1000;
+  const used = {
+    state: "late-cookie",
+    kind: "handoff" as const,
+    usedAt: new Date(usedAt),
+  };
+  await start(tenantId, HANDOFF_TTL_MS + minute, used);
+
+  await deleteExpiredConsentStates(cookieExpiresAt - 1000);
+  expect(await db.query.consentStates.findMany()).toMatchObject([used]);
 });
 
 it("keeps self consent available and suppresses stalls before the hosted migration", async () => {
