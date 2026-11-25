@@ -8,7 +8,7 @@ import {
   dbErrorFields,
   dbErrorSummary,
   isQueryError,
-  isDbUnavailableError,
+  isDatabaseOutageError,
   opsErrorText,
   withDbFields,
 } from "~/server/opsError";
@@ -171,7 +171,7 @@ export const onRequestError = async (
       // first line, so no message text is stored with it. A database outage
       // crashes every route at once, so all of those share one key: one
       // alert per cooldown instead of one per route.
-      const dbDown = isDbUnavailableError(rawErr);
+      const dbDown = isDatabaseOutageError(rawErr);
       await notifyOps(`unhandled error on ${route}: ${opsErrorText(err)}`, {
         key: dbDown
           ? "crash:database-unavailable"

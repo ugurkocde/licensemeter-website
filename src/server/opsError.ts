@@ -292,3 +292,37 @@ export const isDbUnavailableError = (error: unknown): boolean => {
   }
   return false;
 };
+
+/** Codes only the postgres.js client raises (generic socket codes are not). */
+const PG_CLIENT_CODES = new Set([
+  "CONNECT_TIMEOUT",
+  "CONNECTION_CLOSED",
+  "CONNECTION_DESTROYED",
+  "CONNECTION_ENDED",
+]);
+
+/**
+ * A connection failure that provably came from database access: a Postgres
+ * or pooler error, a postgres.js client error, or anything wrapped in a
+ * Drizzle query error. A bare ECONNRESET from an outbound HTTP call is not.
+ */
+export const isDatabaseOutageError = (error: unknown): boolean => {
+  if (!isDbUnavailableError(error)) return false;
+  let current = error;
+  for (
+    let depth = 0;
+    depth < 4 && current && typeof current === "object";
+    depth++
+  ) {
+    const e = current as Record<string, unknown>;
+    if (
+      isQueryError(e) ||
+      e.name === "PostgresError" ||
+      (typeof e.code === "string" && PG_CLIENT_CODES.has(e.code))
+    ) {
+      return true;
+    }
+    current = e.cause;
+  }
+  return false;
+};

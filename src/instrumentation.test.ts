@@ -34,7 +34,7 @@ describe("onRequestError", () => {
         new Error(
           "(EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15",
         ),
-        { code: "XX000", severity_local: "FATAL" },
+        { name: "PostgresError", code: "XX000", severity_local: "FATAL" },
       );
     await onRequestError(
       poolFull(),
@@ -53,6 +53,19 @@ describe("onRequestError", () => {
       "crash:database-unavailable",
     ]);
     expect(keys[0]!.subject).toBe("LicenseMeter error: database unavailable");
+  });
+
+  it("keeps route keys for network errors that are not from the database", async () => {
+    const reset = Object.assign(new Error("socket hang up"), {
+      code: "ECONNRESET",
+    });
+    await onRequestError(reset, request, context);
+    const [, opts] = notifyOps.mock.calls[0] as unknown as [
+      string,
+      { key: string; subject: string },
+    ];
+    expect(opts.key).toMatch(/^crash:GET \/api\/export\/dpa:[0-9a-f]{8}$/);
+    expect(opts.subject).toBe("LicenseMeter error: GET /api/export/dpa");
   });
 
   it("alerts once per route and message with a crash key and detail", async () => {

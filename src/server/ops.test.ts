@@ -565,3 +565,37 @@ it("bounds alert sends when database dedup is unavailable", async () => {
     vi.useRealTimers();
   }
 });
+
+it("keeps the cooldown of a database-path send when dedup then fails", async () => {
+  const options = { key: "flapping", cooldownMs: 60_000 };
+  await notifyOps("Pool unavailable", options);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  vi.spyOn(currentDb, "insert").mockImplementation(() => {
+    throw new Error("Database unavailable");
+  });
+  await notifyOps("Pool unavailable", options);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it("does not claim a cooldown for an alert the send limit rejects", async () => {
+  for (let index = 0; index < 9; index++) await notifyOps("Unkeyed alert");
+  expect(fetchMock).toHaveBeenCalledTimes(9);
+
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const options = { cooldownMs: 30 * 60_000 };
+    await Promise.all([
+      notifyOps("First", { ...options, key: "first" }),
+      notifyOps("Second", { ...options, key: "second" }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+
+    // The rejected alert left no claim behind, so it sends once there is room.
+    vi.advanceTimersByTime(15 * 60_000);
+    await notifyOps("Second", { ...options, key: "second" });
+    expect(fetchMock).toHaveBeenCalledTimes(11);
+  } finally {
+    vi.useRealTimers();
+  }
+});

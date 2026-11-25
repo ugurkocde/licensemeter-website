@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   dbErrorFields,
+  isDatabaseOutageError,
   isDbUnavailableError,
   OpsSafeError,
   opsErrorText,
@@ -188,4 +189,42 @@ describe("isDbUnavailableError", () => {
     "leaves other errors alone (%j)",
     (error) => expect(isDbUnavailableError(error)).toBe(false),
   );
+});
+
+describe("isDatabaseOutageError", () => {
+  const poolFull = () =>
+    Object.assign(
+      new Error("(EMAXCONNSESSION) max clients reached in session mode"),
+      { name: "PostgresError", code: "XX000" },
+    );
+
+  it("accepts pooler, client and Drizzle-wrapped connection failures", () => {
+    expect(isDatabaseOutageError(poolFull())).toBe(true);
+    expect(
+      isDatabaseOutageError(
+        Object.assign(new Error("write CONNECT_TIMEOUT"), {
+          code: "CONNECT_TIMEOUT",
+        }),
+      ),
+    ).toBe(true);
+    const reset = Object.assign(new Error("reset"), { code: "ECONNRESET" });
+    expect(
+      isDatabaseOutageError(
+        Object.assign(new Error("Failed query", { cause: reset }), {
+          query: "select 1",
+          params: [],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects network failures without database provenance", () => {
+    const reset = Object.assign(new Error("socket hang up"), {
+      code: "ECONNRESET",
+    });
+    expect(isDatabaseOutageError(reset)).toBe(false);
+    expect(
+      isDatabaseOutageError(new Error("fetch failed", { cause: reset })),
+    ).toBe(false);
+  });
 });
