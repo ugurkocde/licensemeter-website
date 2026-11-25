@@ -28,6 +28,33 @@ afterEach(() => {
 });
 
 describe("onRequestError", () => {
+  it("shares one crash key across routes when the database is unavailable", async () => {
+    const poolFull = () =>
+      Object.assign(
+        new Error(
+          "(EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15",
+        ),
+        { code: "XX000", severity_local: "FATAL" },
+      );
+    await onRequestError(
+      poolFull(),
+      { method: "POST", path: "/x" },
+      {
+        routePath: "/api/webhooks/resend",
+      },
+    );
+    await onRequestError(poolFull(), request, context);
+    const keys = notifyOps.mock.calls.map(
+      (call) =>
+        (call as unknown as [string, { key: string; subject: string }])[1],
+    );
+    expect(keys.map((k) => k.key)).toEqual([
+      "crash:database-unavailable",
+      "crash:database-unavailable",
+    ]);
+    expect(keys[0]!.subject).toBe("LicenseMeter error: database unavailable");
+  });
+
   it("alerts once per route and message with a crash key and detail", async () => {
     await onRequestError(
       new Error("Cannot find module\nsecond line"),
