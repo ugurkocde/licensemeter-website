@@ -7,6 +7,7 @@ import type * as ConsentState from "~/server/consentState";
 const loadPendingHandoff = vi.fn();
 const loadConsentState = vi.fn();
 const readHandoffCompletion = vi.fn();
+const readHandoffProof = vi.fn();
 vi.mock("~/server/db", () => ({ db: {} }));
 vi.mock("~/server/consentState", async (original) => ({
   ...(await original<typeof ConsentState>()),
@@ -17,6 +18,7 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("~/server/auth/consentHandoff", () => ({
   allowHandoffRequest: async () => true,
   readHandoffCompletion,
+  readHandoffProof,
   handoffFailurePath: (code: string) => `/connect/approve/error?error=${code}`,
 }));
 vi.mock("next/navigation", () => ({
@@ -27,9 +29,34 @@ vi.mock("next/navigation", () => ({
 
 const { default: ApprovePage } = await import("./page");
 const { default: ConsentGrantedPage } = await import("../complete/page");
+const { default: ConfirmConsentPage } = await import("../confirm/page");
+const { default: ConsentErrorPage } = await import("../error/page");
 const { metadata } = await import("../layout");
 const token = "handoff.aaaa1111-1111-4111-8111-111111111111";
 const props = { params: Promise.resolve({ token }) };
+
+it("posts the token associated with the rendered confirmation", async () => {
+  const tid = "bbbb2222-2222-4222-8222-222222222222";
+  readHandoffProof.mockResolvedValue({ phase: "confirm", token, tid });
+  loadPendingHandoff.mockResolvedValue({
+    state: { tid },
+    workspace: { name: "Sample Workspace" },
+  });
+  const html = renderToStaticMarkup(await ConfirmConsentPage());
+  expect(html).toContain('name="intent" value="confirm"');
+  expect(html).toContain(`name="token" value="${token}"`);
+});
+
+it("tells the approver to retry when the permissions are still propagating", async () => {
+  const html = renderToStaticMarkup(
+    await ConsentErrorPage({
+      searchParams: Promise.resolve({ error: "consent_pending" }),
+    }),
+  );
+  expect(html).toContain(
+    "Microsoft has not finished granting access. Try again in a few minutes.",
+  );
+});
 
 it("renders the requester, workspace, and all connector permissions for a valid link", async () => {
   loadPendingHandoff.mockResolvedValue({

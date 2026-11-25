@@ -1,3 +1,5 @@
+import { CONNECT_ERROR_TEXT } from "~/lib/connectErrors";
+
 const messages = new Map([
   ["invalid_state", "This approval link is invalid, already used, or expired."],
   ["expired_state", "This approval link expired after 7 days."],
@@ -31,6 +33,7 @@ const messages = new Map([
     "consent_not_granted",
     "LicenseMeter could not verify access to the Microsoft tenant.",
   ],
+  ["consent_pending", CONNECT_ERROR_TEXT.consent_pending],
   [
     "tenant_taken",
     "That Microsoft tenant is connected to another LicenseMeter workspace.",

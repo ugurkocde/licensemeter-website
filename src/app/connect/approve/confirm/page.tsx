@@ -44,6 +44,7 @@ export default async function ConfirmConsentPage() {
       <div className="flex flex-wrap gap-2">
         <form action="/api/connect/approve" method="post">
           <input type="hidden" name="intent" value="confirm" />
+          <input type="hidden" name="token" value={proof.token} />
           <Button variant="primary" type="submit">
             Continue to Microsoft
           </Button>

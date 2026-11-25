@@ -310,36 +310,45 @@ const probeReports = async (
   }
 };
 
+const REQUIRED_MANAGED_CONSENT_ROLES = [
+  "LicenseAssignment.Read.All",
+  "User.Read.All",
+] as const satisfies readonly (typeof CONNECTOR_SCOPES)[number]["scope"][];
+
 /**
  * Whether the configured central connector app holds admin consent in this
  * tenant. Used by the admin-consent callback: the plaintext `tenant` and
  * `admin_consent` query params are forgeable, so the binding is allowed only
- * after this probe succeeds (the tenant must have actually consented to the
- * app for an app-only token to be issued). Returns false when the managed app
- * is not configured.
+ * after the token carries the roles for the two critical sync steps, SKU and
+ * user reads. The first sync still retries service-principal propagation.
  */
 export const verifyManagedConsent = async (
   tid: string,
   deadline?: number,
-): Promise<boolean> => {
-  if (!env.CONNECTOR_CLIENT_ID || !env.CONNECTOR_CLIENT_SECRET) return false;
+): Promise<"verified" | "not_granted" | "pending_roles"> => {
+  if (!env.CONNECTOR_CLIENT_ID || !env.CONNECTOR_CLIENT_SECRET)
+    return "not_granted";
+  const cred = { mode: "managed", tid } as const;
   try {
-    await acquireToken(
-      { mode: "managed", tid },
-      {
-        waits: CONSENT_PROBE_WAITS_MS,
-        acceptIdentityLessToken: true,
-        deadline,
-      },
-    );
-    return true;
+    const token = await acquireToken(cred, {
+      waits: CONSENT_PROBE_WAITS_MS,
+      acceptIdentityLessToken: true,
+      deadline,
+    });
+    const roles = decodeRoles(token);
+    if (REQUIRED_MANAGED_CONSENT_ROLES.every((role) => roles.includes(role))) {
+      return "verified";
+    }
+    // A retry must acquire a fresh token to see newly propagated roles.
+    msalApps.delete(appCacheKey(cred));
+    return "pending_roles";
   } catch (err) {
     // Log only the message; never echo the raw MSAL error.
     console.error(
       "[connect] managed consent probe failed:",
       err instanceof Error ? err.message : String(err),
     );
-    return false;
+    return "not_granted";
   }
 };
 

@@ -3,7 +3,11 @@ import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { env } from "~/env";
-import { GUID_PATTERN, loadPendingHandoff } from "~/server/consentState";
+import {
+  GUID_PATTERN,
+  HANDOFF_COMPLETION_MAX_AGE_SECONDS,
+  loadPendingHandoff,
+} from "~/server/consentState";
 import { notifyOps } from "~/server/ops";
 import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import { getSignInClient, signInRedirectUri, SIGNIN_SCOPES } from "./msal";
@@ -17,7 +21,7 @@ const completedCookie =
   env.NODE_ENV === "production"
     ? "__Host-lm_consent_completed"
     : "lm_consent_completed";
-const completedMaxAge = 5 * 60;
+const completedMaxAge = HANDOFF_COMPLETION_MAX_AGE_SECONDS;
 const maxAge = 15 * 60;
 const key = new TextEncoder().encode(env.AUTH_SECRET);
 const audience = "licensemeter-consent-handoff";
@@ -107,8 +111,14 @@ export const allowHandoffRequest = async (
   headers: Headers,
 ) => {
   const ip = clientIp(headers);
-  if (ip === "unknown") return true;
-  return rateLimitDurable(`consent-handoff:${step}:${ip}`, 30, 60_000, "deny");
+  // Unattributed traffic shares a bucket across clients.
+  const limit = ip === "unknown" ? 300 : 30;
+  return rateLimitDurable(
+    `consent-handoff:${step}:${ip}`,
+    limit,
+    60_000,
+    "deny",
+  );
 };
 
 export const handoffFailurePath = (code: string) =>
@@ -155,6 +165,9 @@ export const finishHandoffAuthentication = async (req: NextRequest) => {
   const code = params.get("code");
   if (params.has("error") || !code)
     return handoffRedirect(req, handoffFailurePath("approval_identity"));
+  if (!(await allowHandoffRequest("callback", req.headers))) {
+    return handoffRedirect(req, handoffFailurePath("rate_limited"));
+  }
   const handoff = await loadPendingHandoff(proof.token);
   if (!handoff)
     return handoffRedirect(req, handoffFailurePath("invalid_state"));

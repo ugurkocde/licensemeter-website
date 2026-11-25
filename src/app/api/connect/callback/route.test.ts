@@ -94,6 +94,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("next/server", () => ({ after }));
 
 const { GET } = await import("./route");
+const { detectConsentStalls } = await import("~/server/consentState");
 
 const callback = (tid: string, state = STATE) =>
   ({
@@ -180,7 +181,7 @@ describe("admin consent handoff", () => {
       createdAt: new Date(Date.now() - 6 * 86_400_000),
       ...values,
     });
-    verifyManagedConsent.mockResolvedValue(true);
+    verifyManagedConsent.mockResolvedValue("verified");
   };
 
   it("binds once, redirects publicly, and schedules first sync without a workspace session", async () => {
@@ -270,7 +271,7 @@ describe("admin consent handoff", () => {
 
   it("requires app-only consent proof even after tenant admin verification", async () => {
     await seedHandoff();
-    verifyManagedConsent.mockResolvedValue(false);
+    verifyManagedConsent.mockResolvedValue("not_granted");
     await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
       "redirect:/connect/approve/error?error=consent_not_granted",
     );
@@ -279,7 +280,7 @@ describe("admin consent handoff", () => {
     });
     expect(clearHandoffProof).not.toHaveBeenCalled();
 
-    verifyManagedConsent.mockResolvedValue(true);
+    verifyManagedConsent.mockResolvedValue("verified");
     await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
       "redirect:/connect/approve/complete",
     );
@@ -289,11 +290,36 @@ describe("admin consent handoff", () => {
   it("leaves a declined handoff unused and returns a public failure", async () => {
     await seedHandoff();
     await expect(
-      GET(callbackWith(`state=${HANDOFF}&error=access_denied`)),
+      GET(
+        callbackWith(
+          `state=${HANDOFF}&error=access_denied&error_description=AADSTS65004`,
+        ),
+      ),
     ).rejects.toThrow("redirect:/connect/approve/error?error=consent_declined");
     expect(await currentDb.query.consentStates.findFirst()).toMatchObject({
       usedAt: null,
     });
+  });
+
+  it("keeps the handoff retryable when the required roles have not arrived", async () => {
+    await seedHandoff();
+    verifyManagedConsent.mockResolvedValueOnce("pending_roles");
+    await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
+      "redirect:/connect/approve/error?error=consent_pending",
+    );
+    expect(await currentDb.query.consentStates.findFirst()).toMatchObject({
+      usedAt: null,
+    });
+    expect(await currentDb.query.msConnections.findFirst()).toBeUndefined();
+    expect(setHandoffCompletion).not.toHaveBeenCalled();
+    expect(clearHandoffProof).not.toHaveBeenCalled();
+    expect(scheduledWork()).toEqual([]);
+    expect(rejectionAlerts()[0]?.[1]).toMatchObject({ logLevel: "info" });
+
+    verifyManagedConsent.mockResolvedValueOnce("verified");
+    await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
+      "redirect:/connect/approve/complete",
+    );
   });
 
   it("refuses to take a tenant from another workspace", async () => {
@@ -376,7 +402,7 @@ describe("admin consent handoff", () => {
     await seedHandoff();
     verifyManagedConsent.mockImplementationOnce(async () => {
       await currentDb.update(schema.memberships).set({ role: "viewer" });
-      return true;
+      return "verified";
     });
     await expect(GET(callback(HOME_TID, HANDOFF))).rejects.toThrow(
       "redirect:/connect/approve/error?error=not_allowed",
@@ -399,7 +425,7 @@ describe("admin consent handoff", () => {
     await seedState();
     await currentDb.execute(sql`alter table consent_states drop column kind`);
     try {
-      verifyManagedConsent.mockResolvedValue(true);
+      verifyManagedConsent.mockResolvedValue("verified");
       await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
         "redirect:/app/connectors/microsoft?status=syncing",
       );
@@ -410,6 +436,9 @@ describe("admin consent handoff", () => {
       await currentDb.execute(
         sql`alter table consent_states add column kind text not null default 'self'`,
       );
+      await currentDb.execute(
+        sql`alter table consent_states add constraint consent_states_kind_check check (kind in ('self', 'handoff'))`,
+      );
     }
   });
 });
@@ -417,7 +446,7 @@ describe("admin consent handoff", () => {
 describe("admin-consent callback tenant binding", () => {
   it("refuses a forged tenant the connector app has no consent in", async () => {
     await seedState();
-    verifyManagedConsent.mockResolvedValue(false);
+    verifyManagedConsent.mockResolvedValue("not_granted");
 
     await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
       /redirect:.*consent_not_granted/,
@@ -439,7 +468,7 @@ describe("admin-consent callback tenant binding", () => {
 
   it("binds the tenant once the connector app confirms consent", async () => {
     await seedState();
-    verifyManagedConsent.mockResolvedValue(true);
+    verifyManagedConsent.mockResolvedValue("verified");
 
     await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
       /redirect:.*status=syncing/,
@@ -464,7 +493,7 @@ describe("admin-consent callback tenant binding", () => {
 
   it("logs a successful connection at info without a rejection alert", async () => {
     await seedState();
-    verifyManagedConsent.mockResolvedValue(true);
+    verifyManagedConsent.mockResolvedValue("verified");
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("VERCEL_ENV", "");
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
@@ -504,7 +533,7 @@ describe("admin-consent callback rejection alerts", () => {
 
   it("alerts the code, workspace and granted tenant without naming the initiator", async () => {
     await seedState();
-    verifyManagedConsent.mockResolvedValue(false);
+    verifyManagedConsent.mockResolvedValue("not_granted");
 
     await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
       /redirect:.*consent_not_granted/,
@@ -524,7 +553,7 @@ describe("admin-consent callback rejection alerts", () => {
 
   it("keys a replayed rejection identically so the cooldown holds", async () => {
     await seedState();
-    verifyManagedConsent.mockResolvedValue(false);
+    verifyManagedConsent.mockResolvedValue("not_granted");
 
     await expect(GET(callback(VICTIM_TID))).rejects.toThrow(/redirect:/);
     await expect(GET(callback(OTHER_TID))).rejects.toThrow(/redirect:/);
@@ -534,7 +563,7 @@ describe("admin-consent callback rejection alerts", () => {
     expect(keys[0]).toEqual(keys[1]);
   });
 
-  it("reduces Microsoft's error fields to their codes", async () => {
+  it("consumes an explicit decline and reduces Microsoft's error fields to codes", async () => {
     await seedState();
     const query = new URLSearchParams({
       state: STATE,
@@ -553,6 +582,58 @@ describe("admin-consent callback rejection alerts", () => {
       `consent callback rejected: consent_declined for workspace ${TENANT_ID} (Microsoft: access_denied AADSTS65004)`,
     );
     expect(await stateUsed()).toBe(true);
+    expect(
+      await detectConsentStalls(TENANT_ID, Date.now() + 31 * 60_000),
+    ).toEqual([]);
+  });
+
+  it.each([
+    {
+      error: "consent_required",
+      error_description: "AADSTS65004: Request denied.",
+    },
+    {
+      error: "access_denied",
+      error_description: "AADSTS90094: Admin approval required.",
+    },
+    { error_description: "AADSTS90094: Admin approval required." },
+  ])(
+    "offers approval immediately and preserves the stall for %j",
+    async (params) => {
+      await seedState();
+      const query = new URLSearchParams({
+        state: STATE,
+        error_description: params.error_description,
+      });
+      if (params.error) query.set("error", params.error);
+      await expect(GET(callbackWith(query.toString()))).rejects.toThrow(
+        `redirect:/app/connectors/microsoft?error=approval_required&approvalWorkspace=${TENANT_ID}`,
+      );
+      expect(await stateUsed()).toBe(false);
+      const stalls = await detectConsentStalls(
+        TENANT_ID,
+        Date.now() + 31 * 60_000,
+      );
+      expect(stalls.map(({ tenantId }) => tenantId)).toEqual([TENANT_ID]);
+    },
+  );
+
+  it("keeps an ambiguous denial eligible for a stall", async () => {
+    await seedState();
+    await expect(
+      GET(callbackWith(`state=${STATE}&error=access_denied`)),
+    ).rejects.toThrow(/redirect:.*consent_incomplete/);
+    expect(await stateUsed()).toBe(false);
+  });
+
+  it("keeps self-consent retryable while the app roles propagate", async () => {
+    await seedState();
+    verifyManagedConsent.mockResolvedValueOnce("pending_roles");
+    await expect(GET(callback(HOME_TID))).rejects.toThrow(
+      "redirect:/app/connectors/microsoft?error=consent_pending",
+    );
+    expect(await stateUsed()).toBe(false);
+    expect(scheduledWork()).toEqual([]);
   });
 
   it("does not echo an error value that is not an OAuth code", async () => {
@@ -563,7 +644,7 @@ describe("admin-consent callback rejection alerts", () => {
     });
 
     await expect(GET(callbackWith(query.toString()))).rejects.toThrow(
-      /redirect:.*consent_declined/,
+      /redirect:.*consent_incomplete/,
     );
 
     const [text] = rejectionAlerts()[0]!;
@@ -577,7 +658,7 @@ describe("admin-consent callback rejection alerts", () => {
 
     await expect(
       GET(callbackWith(`state=${STATE}&error=alex_example`)),
-    ).rejects.toThrow(/redirect:.*consent_declined/);
+    ).rejects.toThrow(/redirect:.*consent_incomplete/);
 
     const [text] = rejectionAlerts()[0]!;
     expect(text).toContain("(Microsoft: unrecognized error)");
@@ -590,12 +671,12 @@ describe("admin-consent callback rejection alerts", () => {
     await expect(
       GET(
         callbackWith(
-          `state=${STATE}&error_description=${encodeURIComponent("AADSTS90094: Admin approval required.")}`,
+          `state=${STATE}&error_description=${encodeURIComponent("AADSTS65001: Consent is missing.")}`,
         ),
       ),
     ).rejects.toThrow(/redirect:.*consent_incomplete/);
 
-    expect(rejectionAlerts()[0]![0]).toContain("(Microsoft: AADSTS90094)");
+    expect(rejectionAlerts()[0]![0]).toContain("(Microsoft: AADSTS65001)");
   });
 
   it.each([
@@ -610,7 +691,7 @@ describe("admin-consent callback rejection alerts", () => {
 
     await expect(
       GET(callbackWith(`state=${STATE}&error=access_denied`)),
-    ).rejects.toThrow(/redirect:.*consent_declined/);
+    ).rejects.toThrow(/redirect:.*consent_incomplete/);
 
     const [text, opts] = rejectionAlerts()[0]!;
     expect(text).not.toContain(email);
@@ -715,7 +796,7 @@ describe("admin-consent callback rejection alerts", () => {
     },
   ])("alerts not_allowed: $why", async ({ why, consumes, setup }) => {
     await seedState();
-    verifyManagedConsent.mockResolvedValue(true);
+    verifyManagedConsent.mockResolvedValue("verified");
     await setup();
 
     await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
@@ -740,7 +821,7 @@ describe("admin-consent callback rejection alerts", () => {
     await currentDb
       .insert(schema.tenants)
       .values({ id: OTHER_TENANT_ID, name: "Other", tid: VICTIM_TID });
-    verifyManagedConsent.mockResolvedValue(true);
+    verifyManagedConsent.mockResolvedValue("verified");
 
     await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
       /redirect:.*tenant_taken/,
@@ -754,7 +835,7 @@ describe("admin-consent callback rejection alerts", () => {
 
   it("alerts a workspace already bound to a different tenant", async () => {
     await seedState();
-    verifyManagedConsent.mockResolvedValue(true);
+    verifyManagedConsent.mockResolvedValue("verified");
     apiAccess.mockResolvedValue({
       user: { oid: OID, isDemo: false },
       tenant: { id: TENANT_ID, tid: OTHER_TID, isDemo: false },
@@ -809,7 +890,7 @@ describe("admin-consent callback rejection alerts", () => {
 
   it("stays silent when a consumed state is replayed", async () => {
     await seedState();
-    verifyManagedConsent.mockResolvedValue(true);
+    verifyManagedConsent.mockResolvedValue("verified");
 
     await expect(GET(callback(VICTIM_TID))).rejects.toThrow(
       /redirect:.*status=syncing/,
@@ -825,7 +906,7 @@ describe("admin-consent callback rejection alerts", () => {
     await seedState();
     // Both callbacks pass every pre-consume check before either consumes.
     verifyManagedConsent.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(true), 20)),
+      () => new Promise((resolve) => setTimeout(() => resolve("verified"), 20)),
     );
 
     const results = await Promise.allSettled([

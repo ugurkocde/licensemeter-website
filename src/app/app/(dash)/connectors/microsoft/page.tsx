@@ -274,7 +274,10 @@ export default async function MicrosoftConnectorPage({
     ? await findApprovalLinkToken(ctx.tenant.id)
     : undefined;
   const stalled =
-    showApproval && (await detectConsentStalls(ctx.tenant.id)).length > 0;
+    showApproval &&
+    ((error === "approval_required" &&
+      sp.approvalWorkspace === ctx.tenant.id) ||
+      (await detectConsentStalls(ctx.tenant.id)).length > 0);
   const connectorConfigured = Boolean(env.CONNECTOR_CLIENT_ID);
   const scanConfigured = Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID);
   // Why a failed first sync cannot be retried from the poller, if it cannot.

@@ -27,7 +27,7 @@ export const POST = async (req: NextRequest) => {
   const form = await req.formData().catch(() => null);
   if (form?.get("intent") === "confirm") {
     const proof = await readHandoffProof();
-    if (proof?.phase !== "confirm") {
+    if (proof?.phase !== "confirm" || form.get("token") !== proof.token) {
       return handoffRedirect(req, handoffFailurePath("invalid_state"));
     }
     const handoff = await loadPendingHandoff(proof.token);

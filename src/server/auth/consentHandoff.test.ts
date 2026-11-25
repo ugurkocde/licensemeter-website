@@ -52,6 +52,7 @@ const {
   setHandoffCompletion,
   readHandoffCompletion,
 } = await import("./consentHandoff");
+const { POST } = await import("~/app/api/connect/approve/route");
 const key = new TextEncoder().encode(process.env.AUTH_SECRET);
 const token = "handoff.aaaa1111-1111-4111-8111-111111111111";
 const tid = "bbbb2222-2222-4222-8222-222222222222";
@@ -64,6 +65,7 @@ const request = new NextRequest(
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  rateLimitDurable.mockResolvedValue(true);
   const draft = await new SignJWT({
     phase: "authenticate",
     token,
@@ -160,10 +162,15 @@ it("reports a verified identity from the wrong tenant", async () => {
   );
 });
 
-it("avoids a shared IP bucket and limits requests with a trusted address", async () => {
-  expect(await allowHandoffRequest("review", new Headers())).toBe(true);
-  expect(rateLimitDurable).not.toHaveBeenCalled();
+it("bounds unknown IPs separately and keeps the existing limit for trusted IPs", async () => {
   rateLimitDurable.mockResolvedValue(false);
+  expect(await allowHandoffRequest("submit", new Headers())).toBe(false);
+  expect(rateLimitDurable).toHaveBeenCalledWith(
+    "consent-handoff:submit:unknown",
+    300,
+    60_000,
+    "deny",
+  );
   expect(
     await allowHandoffRequest(
       "submit",
@@ -177,6 +184,62 @@ it("avoids a shared IP bucket and limits requests with a trusted address", async
     "deny",
   );
 });
+
+it("returns the public rate-limit error before redeeming the code", async () => {
+  rateLimitDurable.mockResolvedValue(false);
+  const response = await finishHandoffAuthentication(request);
+  expect(response?.headers.get("location")).toBe(
+    "https://www.example.com/connect/approve/error?error=rate_limited",
+  );
+  expect(rateLimitDurable).toHaveBeenCalledWith(
+    "consent-handoff:callback:unknown",
+    300,
+    60_000,
+    "deny",
+  );
+  expect(acquireTokenByCode).not.toHaveBeenCalled();
+});
+
+it.each([
+  [token, true],
+  ["handoff.eeee5555-5555-4555-8555-555555555555", false],
+  [null, false],
+])(
+  "only accepts the token shown on the confirmation page (%s)",
+  async (shownToken, valid) => {
+    const currentProof = await new SignJWT({
+      phase: "confirm",
+      token,
+      tid,
+      oid,
+      account,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setAudience("licensemeter-consent-handoff")
+      .setExpirationTime("1m")
+      .sign(key);
+    getCookie.mockReturnValue({ value: currentProof });
+    const body = new URLSearchParams({ intent: "confirm" });
+    if (shownToken) body.set("token", shownToken);
+    const response = await POST(
+      new NextRequest("https://www.example.com/api/connect/approve", {
+        method: "POST",
+        headers: { origin: "https://www.example.com" },
+        body,
+      }),
+    );
+    const location = response.headers.get("location");
+    if (valid) {
+      expect(location).toContain("https://login.microsoftonline.com/");
+      expect(new URL(location!).searchParams.get("state")).toBe(token);
+    } else {
+      expect(location).toBe(
+        "https://www.example.com/connect/approve/error?error=invalid_state",
+      );
+      expect(loadPendingHandoff).not.toHaveBeenCalled();
+    }
+  },
+);
 
 it("clears the authorizing cookie and keeps completion proof separate", async () => {
   await clearHandoffProof();

@@ -88,13 +88,14 @@ export const GET = async (req: NextRequest) => {
   const grantedTid = params.get("tenant")?.toLowerCase();
   const adminConsent = params.get("admin_consent");
   const error = params.get("error");
+  const description = params.get("error_description");
   const handoff = isHandoffToken(state);
-  const fail = (code: string): never =>
-    redirect(
-      handoff
-        ? handoffFailurePath(code)
-        : `/app/connectors/microsoft?error=${code}`,
-    );
+  const fail = (code: string, approvalWorkspace?: string | null): never => {
+    if (handoff) redirect(handoffFailurePath(code));
+    const query = new URLSearchParams({ error: code });
+    if (approvalWorkspace) query.set("approvalWorkspace", approvalWorkspace);
+    redirect(`/app/connectors/microsoft?${query}`);
+  };
 
   if (handoff && !(await allowHandoffRequest("callback", req.headers))) {
     return fail("rate_limited");
@@ -118,7 +119,7 @@ export const GET = async (req: NextRequest) => {
   // GUIDs for the alert text only; keying on them would let a caller cycling
   // tenant ids bypass the cooldown.
   const reject = (code: string, why?: string, ids?: string): never => {
-    const microsoft = microsoftCodes(error, params.get("error_description"));
+    const microsoft = microsoftCodes(error, description);
     const reason = [why, ids, microsoft && `Microsoft: ${microsoft}`]
       .filter(Boolean)
       .join("; ");
@@ -129,23 +130,35 @@ export const GET = async (req: NextRequest) => {
       {
         key: `consent-callback:${workspace}:${code}:${why ?? ""}`,
         cooldownMs: SELF_CONSENT_TTL_MS,
+        ...(code === "consent_pending" ? { logLevel: "info" } : {}),
       },
     );
-    return fail(code);
+    return fail(
+      code,
+      code === "approval_required" ? stateRow.tenantId : undefined,
+    );
   };
 
   if (Date.now() - stateRow.createdAt.getTime() >= ttl) {
     return reject("expired_state");
   }
 
-  if (error) {
-    // Record a decline from the initiating browser so this attempt does not
-    // count as a stall. A retry from the connector can issue a fresh state.
-    if (
+  if (error || description) {
+    const aadsts = description?.match(AADSTS_PATTERN)?.[0];
+    // Microsoft can include AADSTS65004 in a consent_required response.
+    const needsApproval =
+      error === "consent_required" || aadsts === "AADSTS90094";
+    const declined = error === "access_denied" && aadsts === "AADSTS65004";
+    const isInitiator =
       !handoff &&
+      (needsApproval || declined) &&
       stateRow.oid &&
-      (await auth())?.user?.oid === stateRow.oid
-    ) {
+      (await auth())?.user?.oid === stateRow.oid;
+    if (needsApproval && isInitiator && stateRow.tenantId) {
+      return reject("approval_required");
+    }
+    // Only an explicit decline from the initiating browser suppresses a stall.
+    if (declined && isInitiator) {
       await db
         .update(consentStates)
         .set({ usedAt: new Date() })
@@ -153,7 +166,7 @@ export const GET = async (req: NextRequest) => {
           and(eq(consentStates.state, state), isNull(consentStates.usedAt)),
         );
     }
-    return reject("consent_declined");
+    return reject(declined ? "consent_declined" : "consent_incomplete");
   }
   if (adminConsent !== "True" || !grantedTid) reject("consent_incomplete");
   // grantedTid is consumed below as the workspace tid and flows into the MSAL
@@ -200,7 +213,11 @@ export const GET = async (req: NextRequest) => {
   // app; without it (BYO-only), only the initiator's own home tenant (the
   // tenant their app registration belongs to) may be attached.
   if (env.CONNECTOR_CLIENT_ID && env.CONNECTOR_CLIENT_SECRET) {
-    if (!(await verifyManagedConsent(grantedTid!, deadline))) {
+    const consent = await verifyManagedConsent(grantedTid!, deadline);
+    if (consent === "pending_roles") {
+      return reject("consent_pending", "required app roles are missing");
+    }
+    if (consent !== "verified") {
       reject(
         "consent_not_granted",
         "no app-only token for the granted tenant",

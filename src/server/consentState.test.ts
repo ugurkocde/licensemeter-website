@@ -17,7 +17,9 @@ vi.mock("~/server/ops", () => ({ notifyOps }));
 const {
   createConsentHandoff,
   createSelfConsentState,
+  deleteExpiredConsentStates,
   detectConsentStalls,
+  HANDOFF_COMPLETION_MAX_AGE_SECONDS,
   HANDOFF_TTL_MS,
 } = await import("./consentState");
 const now = new Date("2026-11-24T10:00:00Z").getTime();
@@ -113,6 +115,30 @@ it("reuses a live handoff when two workspace admins request approval", async () 
   expect(links.map((link) => link?.created).sort()).toEqual([false, true]);
   expect(await db.select().from(schema.consentStates)).toHaveLength(1);
   expect(notifyOps).toHaveBeenCalledTimes(1);
+});
+
+it("retains a recently used handoff after its redemption window ends", async () => {
+  const tenantId = await workspace();
+  const createdAge = HANDOFF_TTL_MS + minute;
+  const justUsed = {
+    state: "just-used",
+    kind: "handoff" as const,
+    usedAt: new Date(now - 2 * minute),
+  };
+  await start(tenantId, createdAge, justUsed);
+  await start(tenantId, createdAge, { kind: "handoff" });
+  await start(tenantId, createdAge + 10 * minute, {
+    kind: "handoff",
+    usedAt: new Date(now - 6 * minute),
+  });
+
+  await deleteExpiredConsentStates(now);
+  expect(await db.query.consentStates.findMany()).toMatchObject([justUsed]);
+
+  await deleteExpiredConsentStates(
+    now + HANDOFF_COMPLETION_MAX_AGE_SECONDS * 1000,
+  );
+  expect(await db.query.consentStates.findMany()).toEqual([]);
 });
 
 it("keeps self consent available and suppresses stalls before the hosted migration", async () => {
