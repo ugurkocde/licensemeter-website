@@ -138,9 +138,11 @@ export function resolutionOf(state: WorkspaceState) {
     const d = f.detail;
     const email = findingEmail(f);
     const pastThreshold =
-      typeof d.inactiveThreshold === "number"
-        ? d.inactiveThreshold
-        : state.previousInactiveDays;
+      typeof d.inactiveThresholdDays === "number"
+        ? d.inactiveThresholdDays
+        : typeof d.inactiveThreshold === "number"
+          ? d.inactiveThreshold
+          : state.previousInactiveDays;
     const oldDates = (value: unknown) =>
       typeof value === "string" ? Date.parse(value) : 0;
     const within = (date: Date | null | undefined, days: number) =>

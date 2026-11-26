@@ -268,7 +268,7 @@ Invoke-MgGraphRequest -Method GET -Uri $uri -OutputFilePath copilot-usage.csv`,
       heading: "How LicenseMeter detects it",
       paragraphs: [
         "The sync reads the Copilot usage report through the read-only Reports.Read.All permission and joins it against license assignments. The rule fires for any user holding the Copilot SKU whose last Copilot activity is more than 60 days old, or who never used Copilot at all.",
-        "If the tenant conceals report names, the per-user join is impossible, so the engine degrades to an aggregate finding instead: how many of the tenant's Copilot seats show no usage, priced as that count times the Copilot seat price. The settings page explains how to enable identifiable report names to get back to per-user findings.",
+        "If the tenant conceals report names, LicenseMeter reports the total number of Copilot seats with no usage. It prices only the portion that could not already be counted in per-user findings. The settings page explains how to enable identifiable report names to get back to per-user findings.",
       ],
     },
     cost: {

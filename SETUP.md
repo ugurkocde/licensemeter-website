@@ -46,12 +46,19 @@ Both requests need `Application.ReadWrite.All` or ownership of the app, use the 
 
 A fresh invitation can be accepted across Microsoft tenants only when the token proves the invited email address. Within the workspace's connected Microsoft tenant, the invited UPN or email can also match. Existing memberships are identified by Microsoft object ID. Email recovery for older identities is no longer available.
 
+### Shared Microsoft admin approval links
+
+Set `"groupMembershipClaims": "DirectoryRole"` in the **LicenseMeter Sign-in** manifest under **Microsoft Entra ID > App registrations > LicenseMeter Sign-in > Manifest**, then save. The setup script sets this when it creates the sign-in registration. Update an existing registration in place before enabling shared approval links.
+
+LicenseMeter checks the `wids` claim in the approver's ID token for an eligible directory role. The approver must use a Global Administrator or Privileged Role Administrator account in the requester's Microsoft tenant. If LicenseMeter cannot verify an eligible role, it asks the approver to sign in with an eligible account or contact support if they already did.
+
 ## Microsoft registrations
 
 [scripts/setup-entra.ps1](scripts/setup-entra.ps1) creates two multi-tenant app registrations in the tenant you select, each with a service principal and a client secret that expires after 12 months. "LicenseMeter Sign-in" gets the sign-in redirect URI and declares no Microsoft Graph permissions. "LicenseMeter Connector" gets the connector redirect URI and the five read-only application permissions listed below. The script prints the four environment values once. Review the script and its requested permissions before running it.
 
 ```powershell
 Install-Module Microsoft.Graph.Applications -Scope CurrentUser
+Install-Module Microsoft.Graph.Beta.Applications -Scope CurrentUser
 ./scripts/setup-entra.ps1 -BaseUrl "https://licenses.example.com"
 ```
 
@@ -65,6 +72,8 @@ Store the generated IDs and secrets in deployment environment variables. The con
 The managed connector requests `User.Read.All`, `AuditLog.Read.All`, `Reports.Read.All`, `LicenseAssignment.Read.All`, and `ReportSettings.Read.All`. Consent and publisher requirements depend on the target tenant's policies. See Microsoft's [admin-consent documentation](https://learn.microsoft.com/entra/identity-platform/v2-admin-consent) and [publisher verification overview](https://learn.microsoft.com/entra/identity-platform/publisher-verification-overview).
 
 ## Shared environment
+
+For hosted production on Supabase, use the session pooler on port 5432 with `sslmode=require` or stricter, and size the pooler's Pool Size for the expected number of concurrent function instances (each opens up to 3 connections). Do not use the transaction pooler on port 6543: postgres.js pipelines queries, which Supavisor transaction mode does not support.
 
 | Variable                                                     | Purpose                                                                         |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------- |

@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 
+import { DEMO_FIGURES } from "~/lib/demoFigures";
 import { db } from "~/server/db";
 import {
   findings,
@@ -12,7 +13,6 @@ import {
   vendorRenewals,
 } from "~/server/db/schema";
 import type { ResolutionReason } from "~/server/types";
-import { DEMO_FIGURES } from "~/lib/demoFigures";
 import { runSync } from "~/server/sync/runSync";
 import { DEMO_EMAIL, DEMO_OID, DEMO_TID } from "./constants";
 
@@ -196,7 +196,7 @@ const seedDemoShowcase = async (tenantId: string): Promise<void> => {
         contractName: "Microsoft Customer Agreement",
         renewalDate: dateAfter(74),
         noticeDays: 45,
-        annualValueCents: 8_375_880,
+        annualValueCents: DEMO_FIGURES.monthlySpendCents * 12,
         ownerMembershipId: owner?.id ?? null,
         notes: "Review Copilot adoption and shelfware before the true-up.",
       },
@@ -236,7 +236,7 @@ const seedDemoHistory = async (tenantId: string): Promise<void> => {
         200_000,
       ),
       purchasedSeats: 300,
-      assignedSeats: 263,
+      assignedSeats: DEMO_FIGURES.assignedSeats,
       bySku: {},
     };
   });

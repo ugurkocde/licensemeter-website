@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 
+import { ConsentApprovalPanel } from "~/components/workspace/ConsentApprovalPanel";
 import { ConnectPoller } from "~/components/workspace/ConnectPoller";
 import {
   MicrosoftByoForm,
@@ -13,9 +14,17 @@ import { MICROSOFT_CONNECTOR } from "~/lib/connectors";
 import { CONNECTOR_SCOPES } from "~/lib/scopes";
 import { fmtDate } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
+import {
+  approvalLink,
+  detectConsentStalls,
+  findApprovalLinkToken,
+  handoffConfigured,
+} from "~/server/consentState";
 import { db } from "~/server/db";
 import { msConnections } from "~/server/db/schema";
 import { loadAccessLoss, type AccessLossCause } from "~/server/msAccessLoss";
+
+import { requestApprovalLink, revokeApprovalLink } from "./approvalAction";
 
 export const metadata = { title: "Microsoft 365 connector" };
 // BYO connect action syncs in after(); same 300s budget as other sync paths.
@@ -77,8 +86,7 @@ const SetupOptions = ({
           Settings
         </Link>
         . They sign in with their own account and grant the consent from this
-        page. A forwarded link does not work: the consent has to finish in the
-        session that started it.
+        page.
       </p>
     </div>
 
@@ -248,11 +256,28 @@ export default async function MicrosoftConnectorPage({
   const conn = await db.query.msConnections.findFirst({
     where: eq(msConnections.tenantId, ctx.tenant.id),
   });
+  const usageReportUnavailable =
+    ctx.tenant.usageReportUnavailable ??
+    ctx.tenant.activitySignal === "unknown";
   const lostAccess =
     conn?.mode === "managed" && conn.lastVerifyError
       ? await loadAccessLoss(ctx.tenant.id)
       : null;
   const byoEnabled = byoConnectorEnabled();
+  const showApproval =
+    !conn &&
+    !ctx.tenant.tid &&
+    !ctx.tenant.isDemo &&
+    isAdmin &&
+    handoffConfigured();
+  const approvalToken = showApproval
+    ? await findApprovalLinkToken(ctx.tenant.id)
+    : undefined;
+  const stalled =
+    showApproval &&
+    ((error === "approval_required" &&
+      sp.approvalWorkspace === ctx.tenant.id) ||
+      (await detectConsentStalls(ctx.tenant.id)).length > 0);
   const connectorConfigured = Boolean(env.CONNECTOR_CLIENT_ID);
   const scanConfigured = Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID);
   // Why a failed first sync cannot be retried from the poller, if it cannot.
@@ -317,6 +342,54 @@ export default async function MicrosoftConnectorPage({
       )}
 
       <div className="rise rise-3 flex flex-col gap-6">
+        {showApproval && (stalled || approvalToken) && (
+          <ConsentApprovalPanel
+            initialLink={
+              approvalToken
+                ? {
+                    token: approvalToken,
+                    link: approvalLink(approvalToken),
+                  }
+                : null
+            }
+            createLink={requestApprovalLink.bind(null, ctx.tenant.id)}
+            revokeLink={revokeApprovalLink.bind(null, ctx.tenant.id)}
+          />
+        )}
+        {ctx.tenant.concealedNames && (
+          <Card title="Microsoft 365 conceals names in usage reports">
+            <div className="text-ink-soft flex flex-col gap-2 text-sm">
+              <p>
+                {ctx.tenant.hasP1
+                  ? "Sign-in activity still supports per-user inactivity findings. Concealed names hide each user’s workload activity."
+                  : "LicenseMeter can’t match report activity to individual users while names are concealed."}
+              </p>
+              <p>
+                A Global Administrator can open the Microsoft 365 admin center
+                and go to{" "}
+                <strong>
+                  Settings &gt; Org settings &gt; Services &gt; Reports
+                </strong>
+                . Clear{" "}
+                <strong>
+                  Display concealed user, group, and site names in all reports
+                </strong>{" "}
+                and save. The next nightly or manual sync picks up the change.
+              </p>
+            </div>
+          </Card>
+        )}
+        {usageReportUnavailable && (
+          <Card title="Microsoft 365 usage data is unavailable">
+            <p className="text-ink-soft text-sm">
+              LicenseMeter keeps the last known workload activity when
+              available.{" "}
+              {ctx.tenant.hasP1
+                ? "Per-user inactivity findings continue to update using sign-in activity."
+                : "Inactivity findings are carried forward until report data is available again."}
+            </p>
+          </Card>
+        )}
         <Card title="Connection">
           {ctx.tenant.isDemo ? (
             <div className="flex flex-col gap-4">

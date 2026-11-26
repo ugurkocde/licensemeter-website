@@ -8,6 +8,7 @@ import { db } from "~/server/db";
 import { priceBook, tenantSkus } from "~/server/db/schema";
 import { withTenant } from "~/server/db/tenant";
 import {
+  billedSeatsOf,
   idleSeatsOf,
   isShelfwareExempt,
   paidSeatsOf,
@@ -60,7 +61,7 @@ export const GET = async () => {
           s.consumedUnits,
           available,
           centsToDecimal(price),
-          centsToDecimal(paidSeatsOf(s) * price),
+          centsToDecimal(billedSeatsOf(s) * price),
           centsToDecimal(available * price),
         ];
       }),

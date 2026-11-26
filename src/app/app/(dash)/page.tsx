@@ -1,3 +1,4 @@
+import { wasteShareLabel } from "./wasteShare";
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { AccessRequestCards } from "~/components/workspace/AccessRequestCards";
@@ -30,7 +31,7 @@ import {
 } from "~/components/workspace/tourSteps";
 import { fmtAgo, fmtDate, fmtMoney, fmtNumber } from "~/lib/format";
 import { sameRenewalVendor } from "~/lib/renewalVendor";
-import { calculatePriceCoverage, priceAccuracySku } from "~/lib/priceCoverage";
+import { calculatePriceCoverage } from "~/lib/priceCoverage";
 import { syncStatusRun } from "~/lib/syncStatusRun";
 import { ALL_RULES, RULE_META } from "~/lib/rules";
 import { upgradePath } from "~/lib/upgrade";
@@ -47,6 +48,7 @@ import { workspaceHasConnectorOrData } from "~/server/workspaceState";
 import { daysUntilDate } from "~/server/digestDelta";
 import { loadWasteHistory } from "~/server/historyStore";
 import {
+  billedSeatsOf,
   isShelfwareExempt,
   paidSeatsOf,
   unpricedSkuCount,
@@ -76,7 +78,7 @@ export const metadata: Metadata = { title: "Overview" };
 export default async function OverviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ accessRequest?: string }>;
+  searchParams: Promise<{ accessRequest?: string; csvAnalysis?: string }>;
 }) {
   const ctx = await requireAccess("viewer");
   const tenantId = ctx.tenant.id;
@@ -224,10 +226,18 @@ export default async function OverviewPage({
 
   const spendBySku = new Map(spend.rows.map((row) => [row.skuId, row.cents]));
   const monthlySpend = spend.totalCents;
+  const microsoftSpend = spend.rows
+    .filter((row) => row.vendor === "microsoft")
+    .reduce((sum, row) => sum + row.cents, 0);
+  const hasOtherConnectorSpend = spend.rows.some(
+    (row) => row.vendor !== "microsoft" && row.cents > 0,
+  );
+  const hasOtherConnectorSeats = spend.rows.some(
+    (row) => row.vendor !== "microsoft" && row.seats > 0,
+  );
   const uncappedWaste = ruleAgg.reduce((sum, r) => sum + r.cents, 0);
   const monthlyWaste = comparableWaste(uncappedWaste, monthlySpend);
   const capAdjustment = monthlyWaste - uncappedWaste;
-  const wasteShare = monthlySpend > 0 ? (monthlyWaste / monthlySpend) * 100 : 0;
   const confidence = overviewPriceConfidence(
     ctx.entitlement,
     spend,
@@ -247,13 +257,10 @@ export default async function OverviewPage({
 
   const priceRowsBySku = new Map(prices.map((p) => [p.skuId, p]));
   const priceCoverage = calculatePriceCoverage(
-    skus.filter(priceAccuracySku).map((s) => {
+    realSkus.map((s) => {
       const price = priceRowsBySku.get(s.skuId);
       return {
-        seats:
-          s.trialUnits > 0
-            ? Math.min(s.consumedUnits, paidSeatsOf(s))
-            : s.consumedUnits,
+        seats: billedSeatsOf(s),
         priceCents: price?.monthlyPriceCents ?? 0,
         source: price?.source,
       };
@@ -295,7 +302,7 @@ export default async function OverviewPage({
   // Drill-down rows for each metric card. Each breakdown is derived from the
   // exact same inputs as the headline figure, so the rows always sum to the
   // number on the card.
-  const purchasedSeats = spend.rows.reduce((sum, row) => sum + row.seats, 0);
+  const billedSeats = spend.rows.reduce((sum, row) => sum + row.seats, 0);
 
   // Spend by product: zero-cost SKUs (free/viral sentinels) drop out, leaving
   // only rows that actually contribute to monthly spend.
@@ -363,7 +370,7 @@ export default async function OverviewPage({
       key: "spend",
       label: "Monthly license spend",
       value: fmtMoney(monthlySpend, currency),
-      sub: `${fmtNumber(purchasedSeats, currency)} paid or active seats`,
+      sub: `${fmtNumber(billedSeats, currency)} ${hasOtherConnectorSeats ? "billed or active seats" : "billed seats"}`,
       note: confidence ? (
         <PriceConfidenceBadge confidence={confidence} />
       ) : (
@@ -371,10 +378,10 @@ export default async function OverviewPage({
       ),
       tone: "ink",
       explainer:
-        "Purchased Microsoft seats and active seats at other vendors × their monthly prices.",
+        "Billed Microsoft seats and active seats at other vendors × their monthly prices. Trial seats are free.",
       detail: {
         formula:
-          "Purchased Microsoft seats include idle seats and exclude trials and free products. Other vendors use active entitlements where purchased totals are unavailable. API usage charges are separate.",
+          "For each Microsoft product, we multiply its billed seats (unused paid seats and any extra paid assignments, excluding trials and free products) by its monthly price. Other vendors use active entitlements where purchased totals are unavailable. API usage charges are separate.",
         source:
           "Seat counts come from your latest sync or import. Prices come from your price book.",
         columns: ["Product (seats × price)", "Spend / mo"],
@@ -388,7 +395,7 @@ export default async function OverviewPage({
       key: "waste",
       label: "Monthly waste",
       value: fmtMoney(monthlyWaste, currency),
-      sub: `${wasteShare.toFixed(1)}% of spend`,
+      sub: wasteShareLabel(microsoftSpend, ruleAgg, hasOtherConnectorSpend),
       tone: "waste",
       note: !priceCoverage.complete ? (
         <>
@@ -402,12 +409,12 @@ export default async function OverviewPage({
         </>
       ) : null,
       explainer:
-        "Open findings across all providers, as a share of paid seat spend across the same providers.",
+        "Monthly waste includes open findings across all connectors, capped at monthly spend. The percentage compares Microsoft waste with recorded Microsoft spend.",
       detail: {
         formula:
           "Monthly waste adds the cost of open and acknowledged findings and caps the total at monthly spend.",
         source:
-          "Findings are raised during sync by the detection rules; resolved findings are excluded. The waste total and its share use current seat spend as the upper limit.",
+          "Findings are raised during sync by the detection rules; resolved findings are excluded. The percentage compares Microsoft findings with recorded Microsoft spend.",
         columns: ["Rule", "Impact / mo"],
         rows: wasteRows,
         totalLabel: "Total monthly waste",
@@ -498,6 +505,13 @@ export default async function OverviewPage({
   return (
     <div className="mx-auto max-w-5xl">
       {confirmation}
+      {params.csvAnalysis === "pending" && !ctx.tenant.consentedAt && (
+        <p role="status" className="text-gold-text mb-4 text-sm">
+          Your CSV import was saved. Findings will refresh the next time
+          analysis runs. You can retry the upload after the current workspace
+          update finishes.
+        </p>
+      )}
       {ctx.membership.dataTourAt === null && (
         <Tour
           phase="data"

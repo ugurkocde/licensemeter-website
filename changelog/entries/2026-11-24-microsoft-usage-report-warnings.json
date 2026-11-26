@@ -1,0 +1,7 @@
+{
+  "title": "Keep activity when Microsoft 365 usage reports are unavailable",
+  "summary": "LicenseMeter keeps the last known workload activity when Microsoft 365 usage data is unavailable. Inactivity findings still respond to changes such as license removal, exclusions, and new Entra sign-ins when available. The Microsoft 365 connector page explains missing data and how a Global Administrator can turn off concealed names.",
+  "type": "fixed",
+  "publishedOn": "2026-11-24",
+  "idempotencyKey": "licensemeter:microsoft-usage-report-warnings"
+}

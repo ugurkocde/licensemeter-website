@@ -10,6 +10,7 @@ import type { DeliveryStatus, EmailBlockReason } from "~/server/types";
 
 /** Tag that carries the ledger row id to the provider and back in webhooks. */
 export const DELIVERY_TAG = "lm_delivery";
+export const OPS_ALERT_TAG = { name: "lm_ops", value: "alert" } as const;
 
 /** The part of a Resend webhook the ledger needs. Everything else is ignored. */
 export const deliveryEvent = z.object({

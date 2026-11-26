@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { UserLicense } from "~/server/types";
 import {
   analyzeWaste,
+  assignedSeatsOf,
+  billedSeatsOf,
   COPILOT_SKU_ID,
   isShelfwareExempt,
   purchasedSeatsOf,
@@ -151,7 +153,10 @@ describe("inactive_90d", () => {
   it("flags users inactive for more than 90 days", () => {
     const findings = run({ users: [user({ lastActivity: daysAgo(91) })] });
     expect(findings.map((f) => f.rule)).toEqual(["inactive_90d"]);
-    expect(findings[0]!.detail.inactiveDays).toBe(91);
+    expect(findings[0]!.detail).toMatchObject({
+      inactiveDays: 91,
+      inactiveThresholdDays: 90,
+    });
   });
 
   it("does not flag at exactly 90 days or below", () => {
@@ -256,6 +261,35 @@ describe("copilot_unused", () => {
       40 * 2810,
     );
   });
+
+  it.each([
+    [5, 1],
+    [2, 0],
+  ])(
+    "conservatively prices %i concealed inactive seats after user findings",
+    (inactiveCount, pricedInactiveCount) => {
+      const licenses = [lic(COPILOT_SKU_ID)];
+      const findings = run({
+        copilotSignal: "aggregate",
+        copilotAggregate: { inactiveCount, totalCount: 10 },
+        users: [
+          user({ graphId: "disabled", accountEnabled: false, licenses }),
+          user({ graphId: "guest", userType: "Guest", licenses }),
+          user({ graphId: "never-active", lastActivity: null, licenses }),
+          user({ graphId: "inactive", lastActivity: daysAgo(100), licenses }),
+          user({ graphId: "active", licenses }),
+          user({ graphId: "without-copilot", accountEnabled: false }),
+        ],
+      });
+      expect(findings.filter((f) => f.rule !== "copilot_unused")).toHaveLength(
+        5,
+      );
+      expect(findings.find((f) => f.rule === "copilot_unused")).toMatchObject({
+        detail: { inactiveCount, pricedInactiveCount, totalCount: 10 },
+        monthlyImpactCents: pricedInactiveCount * 2810,
+      });
+    },
+  );
 });
 
 describe("overlapping_licenses", () => {
@@ -429,6 +463,60 @@ describe("purchasedSeatsOf", () => {
 
   it("is zero for an empty tenant", () => {
     expect(purchasedSeatsOf([])).toBe(0);
+  });
+});
+
+describe("billedSeatsOf", () => {
+  it.each([
+    ["unused paid seats", "SPE_E3", 10, 1, 0, 10],
+    ["over-assignment", "SPE_E3", 10, 12, 0, 12],
+    ["idle seats on a mixed subscription", "SPE_E3", 15, 1, 5, 10],
+    ["assigned trial seats", "SPE_E3", 15, 12, 5, 10],
+    ["trial-only subscription", "SPE_E3", 5, 5, 5, 0],
+    ["large paid SKU", "SPE_E3", 5_000, 3, 0, 5_000],
+    ["free SKU", "FLOW_FREE", 10, 1, 0, 0],
+    ["catalog capacity SKU", "WINDOWS_STORE", 1_000_000, 3, 0, 0],
+  ])(
+    "counts %s correctly",
+    (
+      _case,
+      skuPartNumber,
+      prepaidEnabled,
+      consumedUnits,
+      trialUnits,
+      expected,
+    ) => {
+      expect(
+        billedSeatsOf({
+          skuPartNumber,
+          prepaidEnabled,
+          consumedUnits,
+          trialUnits,
+        }),
+      ).toBe(expected);
+    },
+  );
+});
+
+describe("assignedSeatsOf", () => {
+  it("counts assignments on the same SKUs as the purchased total", () => {
+    const skus = [
+      { skuPartNumber: "SPE_E3", prepaidEnabled: 10, consumedUnits: 12 },
+      {
+        skuPartNumber: "EMS",
+        prepaidEnabled: 5,
+        consumedUnits: 3,
+        trialUnits: 5,
+      },
+      { skuPartNumber: "FLOW_FREE", prepaidEnabled: 10, consumedUnits: 8 },
+      {
+        skuPartNumber: "WINDOWS_STORE",
+        prepaidEnabled: 1_000_000,
+        consumedUnits: 6,
+      },
+    ];
+    expect(purchasedSeatsOf(skus)).toBe(10);
+    expect(assignedSeatsOf(skus)).toBe(15);
   });
 });
 

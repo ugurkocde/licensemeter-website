@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "~/server/db/schema";
 import { DEMO_EMAIL, DEMO_OID, DEMO_TID } from "~/server/demo/constants";
+import { WorkspaceUpdateInProgressError } from "~/server/sync/lockTenant";
 
 /**
  * The demo principal must never create or claim a workspace other than the
@@ -29,19 +30,12 @@ vi.mock("~/server/db", () => {
   return { db: proxy, schema };
 });
 
+const requireSession = vi.fn();
+const runAnalysis = vi.fn<() => Promise<void>>();
+const setCookie = vi.fn();
+
 vi.mock("~/server/access", () => ({
-  requireSession: () =>
-    Promise.resolve({
-      user: {
-        oid: "00000000-0000-0000-0000-0000demoadmin",
-        tid: "00000000-0000-0000-0000-00000000demo",
-        upn: "demo.admin@meridian.example",
-        name: "Demo Admin",
-        email: "demo.admin@meridian.example",
-        isDemo: true,
-        emailProven: false,
-      },
-    }),
+  requireSession,
   WORKSPACE_COOKIE: "lm_ws",
   workspaceCookieOptions: () => ({}),
 }));
@@ -50,12 +44,10 @@ vi.mock("~/server/rateLimit", () => ({
   clientIp: () => "unknown",
 }));
 vi.mock("~/server/sync/runSync", () => ({
-  runAnalysis: () => Promise.resolve(),
-  runSync: () => Promise.resolve(),
+  runAnalysis,
 }));
 vi.mock("next/headers", () => ({
-  cookies: () =>
-    Promise.resolve({ get: () => undefined, set: () => undefined }),
+  cookies: () => Promise.resolve({ get: () => undefined, set: setCookie }),
 }));
 vi.mock("next/navigation", () => ({
   redirect: (to: string) => {
@@ -78,8 +70,12 @@ function makeDb(client: PGlite) {
   return drizzle(client, { schema });
 }
 
-beforeEach(async () => {
+beforeEach(async ({ onTestFinished }) => {
   const client = new PGlite();
+  onTestFinished(() => client.close());
+  requireSession.mockReset();
+  runAnalysis.mockReset();
+  setCookie.mockClear();
   for (const stmt of await schemaDdl()) await client.exec(stmt);
   currentDb = makeDb(client);
 });
@@ -88,8 +84,19 @@ const DIRECTORY_CSV =
   "User Principal Name,Display Name,Licenses\n" +
   "alice@acme.example,Alice Example,ENTERPRISEPACK\n";
 
-describe("submitCsvImport demo guard", () => {
+const importForm = () => {
+  const formData = new FormData();
+  formData.set(
+    "directory",
+    new File([DIRECTORY_CSV], "users.csv", { type: "text/csv" }),
+  );
+  formData.set("orgName", "Acme Imported");
+  return formData;
+};
+
+describe("submitCsvImport", () => {
   it("refuses the demo principal without creating a shared workspace", async () => {
+    requireSession.mockResolvedValue({ user: { oid: DEMO_OID, isDemo: true } });
     const [demoTenant] = await currentDb
       .insert(schema.tenants)
       .values({
@@ -107,14 +114,7 @@ describe("submitCsvImport demo guard", () => {
       role: "owner",
     });
 
-    const formData = new FormData();
-    formData.set(
-      "directory",
-      new File([DIRECTORY_CSV], "users.csv", { type: "text/csv" }),
-    );
-    formData.set("orgName", "Acme Imported");
-
-    const result = await submitCsvImport(formData);
+    const result = await submitCsvImport(importForm());
     expect(result.ok).toBe(false);
 
     const tenants = await currentDb.select().from(schema.tenants);
@@ -128,4 +128,34 @@ describe("submitCsvImport demo guard", () => {
     expect(memberships).toHaveLength(1);
     expect(memberships[0]!.tenantId).toBe(demoTenant!.id);
   });
+
+  it.each([
+    { busy: false, destination: "/app" },
+    { busy: true, destination: "/app?csvAnalysis=pending" },
+  ])(
+    "saves the import and selects the workspace with busy=$busy",
+    async ({ busy, destination }) => {
+      requireSession.mockResolvedValue({
+        user: {
+          oid: "00000000-0000-4000-8000-000000000001",
+          tid: "00000000-0000-4000-8000-000000000002",
+          upn: "admin@example.test",
+        },
+      });
+      if (busy)
+        runAnalysis.mockRejectedValue(new WorkspaceUpdateInProgressError(null));
+      else runAnalysis.mockResolvedValue(undefined);
+
+      await expect(submitCsvImport(importForm())).rejects.toThrow(
+        `redirect:${destination}`,
+      );
+      const [tenant] = await currentDb.select().from(schema.tenants);
+      expect(tenant?.name).toBe("Acme Imported");
+      expect(runAnalysis).toHaveBeenCalledWith(tenant?.id);
+      expect(setCookie).toHaveBeenCalledWith("lm_ws", tenant?.id, {});
+      expect(await currentDb.select().from(schema.tenantUsers)).toMatchObject([
+        { tenantId: tenant?.id, upn: "alice@acme.example" },
+      ]);
+    },
+  );
 });

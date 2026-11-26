@@ -6,6 +6,10 @@ import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "~/server/db/schema";
+import {
+  GraphHttpError,
+  PremiumLicenseRequiredError,
+} from "~/server/graph/types";
 import type {
   GraphClient,
   GraphSubscribedSku,
@@ -192,8 +196,10 @@ async function seedSchema(client: PGlite): Promise<void> {
   for (const stmt of await schemaDdl()) await client.exec(stmt);
 }
 
+const logQuery = vi.fn<(query: string) => void>();
+
 function makeDb(client: PGlite) {
-  return drizzle(client, { schema });
+  return drizzle(client, { schema, logger: { logQuery } });
 }
 
 // --- fixtures ----------------------------------------------------------------
@@ -225,6 +231,19 @@ const GRAPH_USER: GraphUser = {
   },
 };
 
+const usageReport = (users: GraphUser[], date: string | null = null) => ({
+  rows: users.map((user) => ({
+    userPrincipalName: user.userPrincipalName,
+    exchangeLastActivityDate: date,
+    oneDriveLastActivityDate: null,
+    sharePointLastActivityDate: null,
+    teamsLastActivityDate: null,
+  })),
+  hasHeader: true,
+  dataRowCount: users.length,
+  reportRefreshDate: null,
+});
+
 /** A healthy fake Graph client; overrides let a test hook individual calls. */
 function makeGraphClient(overrides: Partial<GraphClient> = {}): GraphClient {
   return {
@@ -232,7 +251,9 @@ function makeGraphClient(overrides: Partial<GraphClient> = {}): GraphClient {
     getSubscribedSkus: vi.fn(() => Promise.resolve([SKU])),
     getReportConcealment: vi.fn(() => Promise.resolve<boolean | null>(false)),
     listUsers: vi.fn(() => Promise.resolve([GRAPH_USER])),
-    getActiveUserDetail: vi.fn(() => Promise.resolve([])),
+    getActiveUserDetail: vi.fn(() =>
+      Promise.resolve(usageReport([GRAPH_USER])),
+    ),
     getCopilotUsage: vi.fn(() => Promise.resolve([])),
     ...overrides,
   };
@@ -315,8 +336,8 @@ function makeCtx(
 }
 
 // Imported after the mocks are registered (top-level vi.mock is hoisted).
-const { runSync } = await import("~/server/sync/runSync");
-const { disconnectMicrosoft, disconnectTenant } =
+const { runAnalysis, runSync } = await import("~/server/sync/runSync");
+const { disconnectMicrosoft, disconnectTenant, triggerSync, updatePrice } =
   await import("~/server/actions");
 
 // --- helpers to read state ---------------------------------------------------
@@ -328,9 +349,10 @@ const getRuns = () => currentDb.select().from(schema.syncRuns);
 
 // --- per-test setup ----------------------------------------------------------
 
-beforeEach(async () => {
+beforeEach(async ({ onTestFinished }) => {
   currentCtx = null;
   const client = new PGlite();
+  onTestFinished(() => client.close());
   await seedSchema(client);
   currentDb = makeDb(client);
 
@@ -353,7 +375,19 @@ describe("runSync concurrency lock (sync_runs_one_running_idx)", () => {
     );
     const client = makeGraphClient({ getOrganizationName });
 
+    logQuery.mockClear();
     const result = await runSync(TENANT_ID, { client });
+    const statements = logQuery.mock.calls.map(([query]) => query);
+    const lock = statements.findIndex(
+      (query) =>
+        query.includes('from "tenants"') && query.endsWith("for no key update"),
+    );
+    const claim = statements.findIndex((query) =>
+      query.startsWith('insert into "sync_runs"'),
+    );
+    expect(lock).toBeGreaterThanOrEqual(0);
+    expect(statements[lock + 1]).toBe("set local lock_timeout = '0'");
+    expect(claim).toBeGreaterThan(lock);
 
     expect(result.status).toBe("running");
     expect(result.runId).toBe(inFlightId);
@@ -364,6 +398,70 @@ describe("runSync concurrency lock (sync_runs_one_running_idx)", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]!.status).toBe("running");
     expect(getOrganizationName).not.toHaveBeenCalled();
+  });
+
+  it("returns an in-flight status and a retry message when repair holds the tenant lock", async ({
+    onTestFinished,
+  }) => {
+    const tenant = await seedTenant();
+    currentCtx = makeCtx(tenant, "admin");
+    const transaction = currentDb.transaction.bind(currentDb);
+    // PGlite has one connection. Assert the transaction's timeout and
+    // simulate the PostgreSQL error raised by the competing lock.
+    const transactionSpy = vi
+      .spyOn(currentDb, "transaction")
+      .mockImplementation((run, config) =>
+        transaction(async (tx) => {
+          vi.spyOn(tx, "select").mockImplementationOnce(() => {
+            throw Object.assign(
+              new Error("canceling statement due to lock timeout"),
+              {
+                code: "55P03",
+              },
+            );
+          });
+          return run(tx);
+        }, config),
+      );
+    onTestFinished(() => {
+      transactionSpy.mockRestore();
+    });
+    const client = makeGraphClient();
+    logQuery.mockClear();
+    await expect(runSync(TENANT_ID, { client })).resolves.toEqual({
+      runId: null,
+      status: "running",
+      steps: [],
+    });
+    await expect(runAnalysis(TENANT_ID)).rejects.toThrow("then retry");
+    expect(
+      logQuery.mock.calls.filter(
+        ([query]) => query === "set local lock_timeout = '5s'",
+      ),
+    ).toHaveLength(2);
+    expect(await getRuns()).toEqual([]);
+    // Avoid the fake connector's authenticated-client factory in the action.
+    await currentDb.update(schema.tenants).set({ tid: null });
+    await expect(triggerSync()).resolves.toMatchObject({
+      ok: false,
+      error: "Wait for the current workspace update to finish, then retry",
+    });
+
+    await currentDb.insert(schema.priceBook).values({
+      tenantId: TENANT_ID,
+      skuId: SKU.skuId,
+      monthlyPriceCents: 900,
+      source: "default",
+    });
+    await expect(updatePrice(SKU.skuId, "12.50")).resolves.toEqual({
+      ok: false,
+      error: "Wait for the current workspace update to finish, then retry",
+    });
+    expect(await currentDb.query.priceBook.findFirst()).toMatchObject({
+      monthlyPriceCents: 1250,
+      source: "custom",
+    });
+    expect(revalidatePathMock).toHaveBeenCalledWith("/app", "layout");
   });
 
   it("a stale running run is force-failed and the new sync proceeds", async () => {
@@ -683,7 +781,7 @@ describe("runSync live step progress", () => {
           midRun = await getRuns();
           expect(midRun[0]!.steps.map((s) => s.step)).toContain("users");
         });
-        return [];
+        return usageReport([GRAPH_USER]);
       }),
     });
 
@@ -708,7 +806,8 @@ describe("runSync live step progress", () => {
     const result = await runSync(TENANT_ID, { client: makeGraphClient() });
     const { persistRunSteps } = await import("~/server/sync/stepProgress");
 
-    await persistRunSteps(result.runId, [
+    expect(result.runId).not.toBeNull();
+    await persistRunSteps(result.runId!, [
       { step: "subscribedSkus", status: "ok" },
     ]);
 
@@ -1035,4 +1134,467 @@ it("persists and verifies a successful connector fetch even when its status writ
       monthlyCents: 1500,
     }),
   ]);
+});
+
+describe("runSync with unavailable Microsoft usage data", () => {
+  const emptyReport = { ...usageReport([]), bodyBytes: 42 };
+  const daysAgo = (days: number) =>
+    new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+  const user = (id: string): GraphUser => ({
+    ...GRAPH_USER,
+    id,
+    userPrincipalName: `${id}@example.test`,
+    signInActivity: null,
+  });
+  const active = user("active");
+  const inactive = user("inactive");
+  const never = user("never");
+  const directory = [active, inactive, never];
+  const listUsers =
+    (users: GraphUser[], hasP1 = false): GraphClient["listUsers"] =>
+    async ({ includeSignInActivity }) => {
+      if (!hasP1 && includeSignInActivity)
+        throw new PremiumLicenseRequiredError();
+      return users;
+    };
+  const sync = (overrides: Partial<GraphClient> = {}) =>
+    runSync(TENANT_ID, {
+      client: makeGraphClient({
+        listUsers: listUsers(directory),
+        getActiveUserDetail: async () => ({
+          ...usageReport(directory),
+          rows: [
+            ...usageReport([active], daysAgo(2)).rows,
+            ...usageReport([inactive], daysAgo(120)).rows,
+            ...usageReport([never]).rows,
+          ],
+        }),
+        ...overrides,
+      }),
+    });
+  const storedUser = (graphId: string) =>
+    currentDb.query.tenantUsers.findFirst({
+      where: eq(schema.tenantUsers.graphId, graphId),
+    });
+  const storedTenant = () => currentDb.query.tenants.findFirst();
+  const activityFindings = async () =>
+    (await currentDb.query.findings.findMany())
+      .filter((row) => ["inactive_90d", "never_active"].includes(row.rule))
+      .sort((a, b) => a.dedupeKey.localeCompare(b.dedupeKey));
+
+  it("keeps no activity coverage on both an initial and a repeated 403 without report history", async () => {
+    await seedTenant();
+    const denied = {
+      getActiveUserDetail: async () => {
+        throw new GraphHttpError(403, null, "Denied");
+      },
+    };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await sync(denied);
+      expect(
+        result.steps.find((step) => step.step === "usageReports"),
+      ).toMatchObject({
+        status: "warning",
+      });
+      expect(await storedTenant()).toMatchObject({
+        activitySignal: "none",
+        usageReportUnavailable: false,
+      });
+      expect(await activityFindings()).toHaveLength(0);
+    }
+  });
+
+  it("expires report history after 30 days when there are no stored dates or counts", async () => {
+    await seedTenant();
+    const baseline = await sync({
+      getActiveUserDetail: async () => usageReport(directory),
+    });
+    const missing = { getActiveUserDetail: async () => emptyReport };
+    await sync(missing);
+    expect(await storedTenant()).toMatchObject({
+      activitySignal: "unknown",
+      usageReportUnavailable: true,
+    });
+    expect(baseline.runId).not.toBeNull();
+    await currentDb
+      .update(schema.syncRuns)
+      .set({ startedAt: new Date(daysAgo(31)) })
+      .where(eq(schema.syncRuns.id, baseline.runId!));
+
+    await sync(missing);
+    expect(await storedTenant()).toMatchObject({
+      activitySignal: "none",
+      usageReportUnavailable: false,
+    });
+  });
+
+  it.each(["empty", "denied", "unmatched"])(
+    "keeps workload dates and findings without P1 when the report is %s",
+    async (kind) => {
+      await seedTenant();
+      await sync();
+      const before = await activityFindings();
+      expect(before.map((f) => [f.rule, f.graphUserId, f.status])).toEqual([
+        ["inactive_90d", inactive.id, "open"],
+        ["never_active", never.id, "open"],
+      ]);
+      const result = await sync({
+        listUsers: listUsers([...directory, user("new-license")]),
+        getActiveUserDetail: async () => {
+          if (kind === "denied") throw new GraphHttpError(403, null, "Denied");
+          return kind === "unmatched"
+            ? usageReport([user("deleted")])
+            : emptyReport;
+        },
+      });
+      const step = result.steps.find((step) => step.step === "usageReports");
+      expect(step?.status).toBe("warning");
+      if (kind === "unmatched")
+        expect(step?.message).toContain("no rows matched");
+      expect(
+        (await getRuns()).find((run) => run.id === result.runId)?.steps,
+      ).toEqual(result.steps);
+      expect(await storedUser(active.id)).toMatchObject({
+        workloadActivity: { exchange: daysAgo(2) },
+        lastActivity: new Date(daysAgo(2)),
+      });
+      expect(await storedTenant()).toMatchObject({
+        activitySignal: "unknown",
+        usageReportUnavailable: true,
+      });
+      expect(await activityFindings()).toMatchObject(
+        before.map(({ id, status, lastSeenAt }) => ({
+          id,
+          status,
+          lastSeenAt,
+        })),
+      );
+
+      await sync({
+        getActiveUserDetail: async () => usageReport(directory, daysAgo(1)),
+      });
+      expect(await storedTenant()).toMatchObject({
+        activitySignal: "full",
+        usageReportUnavailable: false,
+      });
+      expect((await activityFindings()).map((f) => f.status)).toEqual([
+        "resolved",
+        "resolved",
+      ]);
+    },
+  );
+
+  it.each(["empty", "denied"])(
+    "uses fresh P1 sign-ins while preserving workloads when the report is %s",
+    async (kind) => {
+      await seedTenant();
+      await sync({ listUsers: listUsers(directory, true) });
+      await sync({
+        listUsers: listUsers(
+          [
+            ...directory.map((entry) =>
+              entry.id === inactive.id
+                ? {
+                    ...entry,
+                    signInActivity: {
+                      lastSignInDateTime: daysAgo(1),
+                      lastNonInteractiveSignInDateTime: null,
+                    },
+                  }
+                : entry,
+            ),
+            {
+              ...user("old-sign-in"),
+              signInActivity: {
+                lastSignInDateTime: daysAgo(100),
+                lastNonInteractiveSignInDateTime: null,
+              },
+            },
+          ],
+          true,
+        ),
+        getActiveUserDetail: async () => {
+          if (kind === "denied") throw new GraphHttpError(403, null, "Denied");
+          return emptyReport;
+        },
+      });
+      expect(await storedTenant()).toMatchObject({
+        activitySignal: "full",
+        usageReportUnavailable: true,
+      });
+      expect(await storedUser(inactive.id)).toMatchObject({
+        workloadActivity: { exchange: daysAgo(120) },
+        lastActivity: new Date(daysAgo(1)),
+      });
+      expect(
+        (await activityFindings()).map((f) => [f.graphUserId, f.status]),
+      ).toEqual([
+        [inactive.id, "resolved"],
+        ["old-sign-in", "open"],
+        [never.id, "open"],
+      ]);
+    },
+  );
+
+  it("resolves findings for removed licenses, deleted accounts and newly disabled users during an outage", async () => {
+    await seedTenant();
+    const removed = user("removed-license");
+    await sync({
+      listUsers: listUsers([...directory, removed]),
+      getActiveUserDetail: async () => usageReport([...directory, removed]),
+    });
+    await sync({
+      listUsers: listUsers([
+        active,
+        { ...never, accountEnabled: false },
+        { ...removed, assignedLicenses: [] },
+      ]),
+      getActiveUserDetail: async () => emptyReport,
+    });
+    expect(await storedUser(inactive.id)).toBeUndefined();
+    expect(await storedTenant()).toMatchObject({
+      activitySignal: "unknown",
+      usageReportUnavailable: true,
+    });
+    expect(
+      (await activityFindings()).map((f) => [f.graphUserId, f.status]),
+    ).toEqual([
+      [active.id, "open"],
+      [inactive.id, "resolved"],
+      [never.id, "resolved"],
+      [removed.id, "resolved"],
+    ]);
+    expect(
+      await currentDb.query.findings.findFirst({
+        where: eq(schema.findings.rule, "disabled_account_with_license"),
+      }),
+    ).toMatchObject({ graphUserId: never.id, status: "open" });
+  });
+
+  it("refreshes carried details after price and threshold changes without recording a new observation", async () => {
+    await seedTenant();
+    await sync();
+    const neverKey = `never_active|${inactive.id}|-`;
+    await currentDb.insert(schema.findings).values({
+      tenantId: TENANT_ID,
+      dedupeKey: neverKey,
+      rule: "never_active",
+      graphUserId: inactive.id,
+      title: "Earlier finding",
+      status: "acknowledged",
+    });
+    await sync({ getActiveUserDetail: async () => emptyReport });
+    const before = await activityFindings();
+    expect(before.filter((f) => f.graphUserId === inactive.id)).toHaveLength(2);
+
+    await currentDb.update(schema.tenants).set({ inactiveDays: 180 });
+    await currentDb
+      .update(schema.priceBook)
+      .set({ monthlyPriceCents: 7_500 })
+      .where(eq(schema.priceBook.skuId, SKU.skuId));
+    await currentDb
+      .update(schema.tenantUsers)
+      .set({
+        displayName: "Renamed user",
+        lastActivity: new Date(daysAgo(125)),
+      })
+      .where(eq(schema.tenantUsers.graphId, inactive.id));
+    logQuery.mockClear();
+    await runAnalysis(TENANT_ID);
+    const statements = logQuery.mock.calls.map(([query]) => query);
+    const lock = statements.findIndex((query) =>
+      query.endsWith("for no key update"),
+    );
+    expect(lock).toBeGreaterThan(0);
+    expect(statements[lock - 1]).toBe("set local lock_timeout = '5s'");
+    expect(statements[lock + 1]).toBe("set local lock_timeout = '0'");
+    expect(
+      statements.findIndex((query) => query.startsWith('update "findings"')),
+    ).toBeGreaterThan(lock + 1);
+
+    const after = await activityFindings();
+    expect(after).toMatchObject(
+      before.map(({ id, dedupeKey, rule, status, lastSeenAt }) => ({
+        id,
+        dedupeKey,
+        rule,
+        status,
+        lastSeenAt,
+      })),
+    );
+    expect(after[0]).toMatchObject({
+      title: "No activity for 125 days: Renamed user",
+      monthlyImpactCents: 7_500,
+      detail: {
+        inactiveDays: 125,
+        inactiveThresholdDays: 180,
+        licenses: [{ skuId: SKU.skuId, monthlyPriceCents: 7_500 }],
+      },
+    });
+    expect(after.find((f) => f.dedupeKey === neverKey)).toMatchObject({
+      title: "Licensed but never active: Renamed user",
+      monthlyImpactCents: 7_500,
+      status: "acknowledged",
+    });
+  });
+
+  it.each(["license removal", "exclusion"])(
+    "retains the last concealed aggregate during an outage until %s",
+    async (change) => {
+      await seedTenant();
+      const concealed = {
+        listUsers: listUsers([never]),
+        getReportConcealment: async () => true,
+      };
+      await sync({
+        ...concealed,
+        getActiveUserDetail: async () =>
+          usageReport([{ ...never, userPrincipalName: "a".repeat(32) }]),
+      });
+      const aggregate = () =>
+        currentDb.query.findings.findFirst({
+          where: eq(schema.findings.rule, "inactive_90d"),
+        });
+      const before = await aggregate();
+      expect(before).toMatchObject({
+        graphUserId: null,
+        status: "open",
+        detail: { aggregate: true },
+      });
+
+      await sync({
+        ...concealed,
+        getActiveUserDetail: async () => emptyReport,
+      });
+      await runAnalysis(TENANT_ID);
+      expect(await aggregate()).toMatchObject({
+        id: before?.id,
+        status: "open",
+        lastSeenAt: before?.lastSeenAt,
+        detail: { aggregate: true },
+      });
+      expect(await storedTenant()).toMatchObject({
+        concealedNames: true,
+        usageReportUnavailable: true,
+      });
+
+      if (change === "license removal") {
+        await sync({
+          ...concealed,
+          listUsers: listUsers([{ ...never, assignedLicenses: [] }]),
+          getActiveUserDetail: async () => emptyReport,
+        });
+      } else {
+        await currentDb
+          .update(schema.tenants)
+          .set({ findingExclusions: [never.userPrincipalName] });
+        await runAnalysis(TENANT_ID);
+      }
+      expect(await aggregate()).toMatchObject({
+        id: before?.id,
+        status: "resolved",
+      });
+    },
+  );
+
+  it("does not reopen a concealed aggregate during an outage with an empty directory", async () => {
+    await seedTenant();
+    const listNoUsers = listUsers([]);
+    await sync({
+      listUsers: listNoUsers,
+      getActiveUserDetail: async () =>
+        usageReport([{ ...never, userPrincipalName: "a".repeat(32) }]),
+    });
+    expect(await activityFindings()).toMatchObject([{ status: "open" }]);
+
+    await sync({
+      listUsers: listNoUsers,
+      getActiveUserDetail: async () => emptyReport,
+    });
+    expect(await storedTenant()).toMatchObject({
+      activitySignal: "unknown",
+      usageReportUnavailable: true,
+    });
+    await runAnalysis(TENANT_ID);
+    expect(await activityFindings()).toMatchObject([{ status: "resolved" }]);
+  });
+
+  it("keeps a concealed aggregate when a licensed user appears during an outage", async () => {
+    await seedTenant();
+    await sync({
+      listUsers: listUsers([]),
+      getActiveUserDetail: async () =>
+        usageReport([{ ...never, userPrincipalName: "a".repeat(32) }]),
+    });
+    const [before] = await activityFindings();
+    expect(before).toMatchObject({ status: "open" });
+
+    await sync({
+      listUsers: listUsers([never]),
+      getActiveUserDetail: async () => emptyReport,
+    });
+    expect(await storedTenant()).toMatchObject({
+      activitySignal: "unknown",
+      usageReportUnavailable: true,
+    });
+    await runAnalysis(TENANT_ID);
+    expect(await activityFindings()).toMatchObject([
+      { id: before?.id, status: "open" },
+    ]);
+  });
+
+  it("accepts a report with a licensed match and a deleted user's row", async () => {
+    await seedTenant();
+    await sync();
+    const result = await sync({
+      getActiveUserDetail: async () =>
+        usageReport([active, user("deleted")], daysAgo(1)),
+    });
+    expect(
+      result.steps.find((step) => step.step === "usageReports"),
+    ).toMatchObject({
+      status: "ok",
+      count: 2,
+    });
+    expect(await storedUser(active.id)).toMatchObject({
+      workloadActivity: { exchange: daysAgo(1) },
+    });
+    expect(await storedTenant()).toMatchObject({
+      usageReportUnavailable: false,
+    });
+  });
+
+  it.each(["Entra-only license", "unlicensed user with consumed inventory"])(
+    "accepts header-only history for a tenant with an %s",
+    async (scenario) => {
+      await seedTenant();
+      const entraSku = {
+        ...SKU,
+        skuId: "sku-entra",
+        skuPartNumber: "AAD_PREMIUM",
+      };
+      const list = [
+        {
+          ...active,
+          assignedLicenses: scenario.startsWith("Entra")
+            ? [{ skuId: entraSku.skuId, disabledPlans: [] }]
+            : [],
+        },
+      ];
+      const result = await sync({
+        listUsers: listUsers(list, scenario.startsWith("Entra")),
+        getSubscribedSkus: async () => [entraSku],
+        getActiveUserDetail: async () => emptyReport,
+      });
+      expect(
+        result.steps.find((step) => step.step === "usageReports"),
+      ).toMatchObject({
+        status: "ok",
+        count: 0,
+      });
+      expect(await storedTenant()).toMatchObject({
+        usageReportUnavailable: false,
+      });
+    },
+  );
 });

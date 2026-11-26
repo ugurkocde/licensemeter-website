@@ -244,3 +244,85 @@ export const opsErrorText = (err: unknown): string => {
   }
   return parts.join(" ");
 };
+
+const DB_UNAVAILABLE_CODES = new Set([
+  "EMAXCONNSESSION",
+  "EMAXCONN",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "EPIPE",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "CONNECT_TIMEOUT",
+  "CONNECTION_CLOSED",
+  "CONNECTION_DESTROYED",
+  "CONNECTION_ENDED",
+  "53300",
+  "57P01",
+  "57P02",
+  "57P03",
+]);
+
+/** Recognize connection failures, including those wrapped by Drizzle. */
+export const isDbUnavailableError = (error: unknown): boolean => {
+  let current = error;
+  for (
+    let depth = 0;
+    depth < 4 && current && typeof current === "object";
+    depth++
+  ) {
+    const { code, message, cause } = current as Record<string, unknown>;
+    if (
+      typeof code === "string" &&
+      (DB_UNAVAILABLE_CODES.has(code) || /^08[0-9A-Z]{3}$/.test(code))
+    ) {
+      return true;
+    }
+    if (
+      typeof message === "string" &&
+      (/\bEMAXCONNSESSION\b/.test(message) ||
+        (code === "XX000" && /max clients reached/i.test(message)))
+    ) {
+      return true;
+    }
+    current = cause;
+  }
+  return false;
+};
+
+/** Codes only the postgres.js client raises (generic socket codes are not). */
+const PG_CLIENT_CODES = new Set([
+  "CONNECT_TIMEOUT",
+  "CONNECTION_CLOSED",
+  "CONNECTION_DESTROYED",
+  "CONNECTION_ENDED",
+]);
+
+/**
+ * A connection failure that provably came from database access: a Postgres
+ * or pooler error, a postgres.js client error, or anything wrapped in a
+ * Drizzle query error. A bare ECONNRESET from an outbound HTTP call is not.
+ */
+export const isDatabaseOutageError = (error: unknown): boolean => {
+  if (!isDbUnavailableError(error)) return false;
+  let current = error;
+  for (
+    let depth = 0;
+    depth < 4 && current && typeof current === "object";
+    depth++
+  ) {
+    const e = current as Record<string, unknown>;
+    if (
+      isQueryError(e) ||
+      e.name === "PostgresError" ||
+      (typeof e.code === "string" && PG_CLIENT_CODES.has(e.code))
+    ) {
+      return true;
+    }
+    current = e.cause;
+  }
+  return false;
+};

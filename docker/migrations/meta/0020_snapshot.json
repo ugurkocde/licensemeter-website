@@ -1,5 +1,5 @@
 {
-  "id": "05b1bac3-a673-4bff-8c9f-fedf9c77b76d",
+  "id": "6a85b1e1-4863-41bd-9769-5fb2dcf911f0",
   "prevId": "878827a4-9c9f-499d-94e2-c7e1fcb8838e",
   "version": "7",
   "dialect": "postgresql",
@@ -1459,12 +1459,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "resolution_reason": {
-          "name": "resolution_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -1566,27 +1560,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "findings_tenant_resolved_at_idx": {
-          "name": "findings_tenant_resolved_at_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "resolved_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -1621,10 +1594,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "findings_resolution_reason_check": {
-          "name": "findings_resolution_reason_check",
-          "value": "\"findings\".\"resolution_reason\" in ('license_removed', 'seats_reduced', 'excluded', 'threshold_changed', 'activity_resumed', 'seats_assigned', 'source_removed', 'price_changed', 'other')"
-        },
         "findings_monthly_impact_nonneg": {
           "name": "findings_monthly_impact_nonneg",
           "value": "\"findings\".\"monthly_impact_cents\" >= 0"
@@ -2801,207 +2770,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.savings_ledger": {
-      "name": "savings_ledger",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "finding_id": {
-          "name": "finding_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "rule": {
-          "name": "rule",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "vendor": {
-          "name": "vendor",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sku_id": {
-          "name": "sku_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "product": {
-          "name": "product",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "seats": {
-          "name": "seats",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "subject_key": {
-          "name": "subject_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "replaces_entry_id": {
-          "name": "replaces_entry_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "monthly_cents": {
-          "name": "monthly_cents",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "currency": {
-          "name": "currency",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "realized_at": {
-          "name": "realized_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reversed_at": {
-          "name": "reversed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "savings_ledger_tenant_realized_idx": {
-          "name": "savings_ledger_tenant_realized_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "realized_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "savings_ledger_finding_idx": {
-          "name": "savings_ledger_finding_idx",
-          "columns": [
-            {
-              "expression": "finding_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "savings_ledger_replaces_entry_id_savings_ledger_id_fk": {
-          "name": "savings_ledger_replaces_entry_id_savings_ledger_id_fk",
-          "tableFrom": "savings_ledger",
-          "tableTo": "savings_ledger",
-          "columnsFrom": ["replaces_entry_id"],
-          "columnsTo": ["id"],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "savings_ledger_tenant_id_tenants_id_fk": {
-          "name": "savings_ledger_tenant_id_tenants_id_fk",
-          "tableFrom": "savings_ledger",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "savings_ledger_finding_id_findings_id_fk": {
-          "name": "savings_ledger_finding_id_findings_id_fk",
-          "tableFrom": "savings_ledger",
-          "tableTo": "findings",
-          "columnsFrom": [
-            "finding_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "savings_ledger_seats_positive": {
-          "name": "savings_ledger_seats_positive",
-          "value": "\"savings_ledger\".\"seats\" > 0"
-        },
-        "savings_ledger_monthly_nonneg": {
-          "name": "savings_ledger_monthly_nonneg",
-          "value": "\"savings_ledger\".\"monthly_cents\" >= 0"
-        },
-        "savings_ledger_reason_check": {
-          "name": "savings_ledger_reason_check",
-          "value": "\"savings_ledger\".\"reason\" in ('license_removed', 'seats_reduced')"
-        },
-        "savings_ledger_reversal_check": {
-          "name": "savings_ledger_reversal_check",
-          "value": "\"savings_ledger\".\"reversed_at\" >= \"savings_ledger\".\"realized_at\""
-        }
-      },
-      "isRLSEnabled": true
-    },
     "public.seen_signins": {
       "name": "seen_signins",
       "schema": "",
@@ -3679,6 +3447,12 @@
         "copilot_signal": {
           "name": "copilot_signal",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage_report_unavailable": {
+          "name": "usage_report_unavailable",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": false
         },

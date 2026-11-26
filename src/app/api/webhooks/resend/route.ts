@@ -3,6 +3,7 @@ import { Webhook } from "svix";
 import { env } from "~/env";
 import { applyDeliveryEvent } from "~/server/emailDeliveryEvents";
 import { readCapped } from "~/server/httpBody";
+import { isDbUnavailableError } from "~/server/opsError";
 
 /** Resend's delivery events are a few KB; anything near this is not Resend. */
 const MAX_BODY_BYTES = 100_000;
@@ -36,6 +37,15 @@ export const POST = async (req: Request): Promise<Response> => {
   }
 
   // Let persistence errors return 5xx so Resend retries instead of losing the event.
-  await applyDeliveryEvent(event);
+  try {
+    await applyDeliveryEvent(event);
+  } catch (error) {
+    if (!isDbUnavailableError(error)) throw error;
+    console.error("[resend webhook] Database unavailable");
+    return new Response("Database unavailable", {
+      status: 503,
+      headers: { "Retry-After": "60" },
+    });
+  }
   return Response.json({ received: true });
 };

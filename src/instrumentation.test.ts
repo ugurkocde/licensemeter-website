@@ -28,6 +28,46 @@ afterEach(() => {
 });
 
 describe("onRequestError", () => {
+  it("shares one crash key across routes when the database is unavailable", async () => {
+    const poolFull = () =>
+      Object.assign(
+        new Error(
+          "(EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15",
+        ),
+        { name: "PostgresError", code: "XX000", severity_local: "FATAL" },
+      );
+    await onRequestError(
+      poolFull(),
+      { method: "POST", path: "/x" },
+      {
+        routePath: "/api/webhooks/resend",
+      },
+    );
+    await onRequestError(poolFull(), request, context);
+    const keys = notifyOps.mock.calls.map(
+      (call) =>
+        (call as unknown as [string, { key: string; subject: string }])[1],
+    );
+    expect(keys.map((k) => k.key)).toEqual([
+      "crash:database-unavailable",
+      "crash:database-unavailable",
+    ]);
+    expect(keys[0]!.subject).toBe("LicenseMeter error: database unavailable");
+  });
+
+  it("keeps route keys for network errors that are not from the database", async () => {
+    const reset = Object.assign(new Error("socket hang up"), {
+      code: "ECONNRESET",
+    });
+    await onRequestError(reset, request, context);
+    const [, opts] = notifyOps.mock.calls[0] as unknown as [
+      string,
+      { key: string; subject: string },
+    ];
+    expect(opts.key).toMatch(/^crash:GET \/api\/export\/dpa:[0-9a-f]{8}$/);
+    expect(opts.subject).toBe("LicenseMeter error: GET /api/export/dpa");
+  });
+
   it("alerts once per route and message with a crash key and detail", async () => {
     await onRequestError(
       new Error("Cannot find module\nsecond line"),

@@ -39,6 +39,7 @@ import type {
   UserLicense,
   WasteRuleId,
   WorkloadActivity,
+  ActivitySignal,
 } from "~/server/types";
 
 /** Historical MSP billing records retained for database compatibility. Unused by the free service. */
@@ -162,10 +163,12 @@ export const tenants = pgTable(
     /** Monthly PDF waste report to owners/admins (QBR deliverable). */
     monthlyReport: boolean("monthly_report").notNull().default(false),
     /** Signal quality from the last sync; lets price edits re-run analysis offline. */
-    activitySignal: text("activity_signal").$type<"full" | "none">(),
+    activitySignal: text("activity_signal").$type<ActivitySignal>(),
     copilotSignal: text("copilot_signal").$type<
       "per-user" | "aggregate" | "none"
     >(),
+    /** A fetch failed or a previously populated report had no usable rows. */
+    usageReportUnavailable: boolean("usage_report_unavailable"),
     usageAggregate: jsonb("usage_aggregate").$type<AggregateUsage>(),
     copilotAggregate: jsonb("copilot_aggregate").$type<AggregateUsage>(),
     isDemo: boolean("is_demo").notNull().default(false),
@@ -449,23 +452,30 @@ export const joinRequests = pgTable(
  * user (Entra object id) and the workspace the consent was started from. The
  * callback only accepts the browser session of that same user.
  */
-export const consentStates = pgTable("consent_states", {
-  state: text("state").primaryKey(),
-  /** Entra object id of the initiator. */
-  oid: text("oid"),
-  /** Initiator's Entra home tenant; not read on callback. */
-  tid: text("tid"),
-  /** Workspace the consent was started from; checked on callback. */
-  tenantId: uuid("tenant_id").references(() => tenants.id, {
-    onDelete: "cascade",
-  }),
-  email: text("email").notNull(),
-  name: text("name"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  usedAt: timestamp("used_at", { withTimezone: true }),
-});
+export const consentStates = pgTable(
+  "consent_states",
+  {
+    kind: text("kind").$type<"self" | "handoff">().notNull().default("self"),
+    state: text("state").primaryKey(),
+    /** Entra object id of the initiator. */
+    oid: text("oid"),
+    /** Initiator's Entra home tenant; required for approval handoffs. */
+    tid: text("tid"),
+    /** Workspace the consent was started from; checked on callback. */
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
+      onDelete: "cascade",
+    }),
+    email: text("email").notNull(),
+    name: text("name"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("consent_states_kind_check", sql`${t.kind} in ('self', 'handoff')`),
+  ],
+);
 
 /** Latest subscribedSkus snapshot per tenant. */
 export const tenantSkus = pgTable(

@@ -25,11 +25,30 @@ const toDate = (value: string | null | undefined): Date | null => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+export const WORKLOAD_KEYS = [
+  "exchange",
+  "oneDrive",
+  "sharePoint",
+  "teams",
+  "copilot",
+] as const satisfies readonly (keyof WorkloadActivity)[];
+
+export const latestActivity = (
+  workload: WorkloadActivity | null,
+  ...dates: (Date | null)[]
+): Date | null =>
+  maxDate(...dates, ...WORKLOAD_KEYS.map((key) => toDate(workload?.[key])));
+
 export type JoinedUser = WasteUser & {
   mailAliases: string[];
   lastInteractiveSignIn: Date | null;
   lastNonInteractiveSignIn: Date | null;
   workloadActivity: WorkloadActivity;
+};
+
+type StoredActivity = {
+  workloadActivity: WorkloadActivity | null;
+  lastActivity: Date | null;
 };
 
 export type JoinResult = {
@@ -54,6 +73,13 @@ export const joinSignals = (args: {
   usageRows: UsageReportRow[];
   copilotRows: CopilotUsageRow[];
   hasP1: boolean;
+  previousActivity?: ReadonlyMap<string, StoredActivity>;
+  /**
+   * The usage report failed or came back without usable rows for a tenant
+   * that had report coverage before. Passed explicitly: the stored directory
+   * can be empty while an earlier concealed aggregate still counts.
+   */
+  reportUnavailable?: boolean;
 }): JoinResult => {
   const { graphUsers, usageRows, copilotRows, hasP1 } = args;
 
@@ -73,12 +99,19 @@ export const joinSignals = (args: {
     const usage = concealed ? undefined : usageByUpn.get(upnKey);
     const copilot = concealed ? undefined : copilotByUpn.get(upnKey);
 
+    const previous = args.previousActivity?.get(g.id);
+    const storedWorkloads = previous?.workloadActivity;
     const workloadActivity: WorkloadActivity = {
-      exchange: usage?.exchangeLastActivityDate ?? null,
-      oneDrive: usage?.oneDriveLastActivityDate ?? null,
-      sharePoint: usage?.sharePointLastActivityDate ?? null,
-      teams: usage?.teamsLastActivityDate ?? null,
-      copilot: copilot?.lastActivityDate ?? null,
+      exchange:
+        usage?.exchangeLastActivityDate ?? storedWorkloads?.exchange ?? null,
+      oneDrive:
+        usage?.oneDriveLastActivityDate ?? storedWorkloads?.oneDrive ?? null,
+      sharePoint:
+        usage?.sharePointLastActivityDate ??
+        storedWorkloads?.sharePoint ??
+        null,
+      teams: usage?.teamsLastActivityDate ?? storedWorkloads?.teams ?? null,
+      copilot: copilot?.lastActivityDate ?? storedWorkloads?.copilot ?? null,
     };
 
     const lastInteractiveSignIn = toDate(g.signInActivity?.lastSignInDateTime);
@@ -86,14 +119,11 @@ export const joinSignals = (args: {
       g.signInActivity?.lastNonInteractiveSignInDateTime,
     );
 
-    const lastActivity = maxDate(
+    const lastActivity = latestActivity(
+      workloadActivity,
+      previous?.lastActivity ?? null,
       lastInteractiveSignIn,
       lastNonInteractiveSignIn,
-      toDate(workloadActivity.exchange),
-      toDate(workloadActivity.oneDrive),
-      toDate(workloadActivity.sharePoint),
-      toDate(workloadActivity.teams),
-      toDate(workloadActivity.copilot),
     );
 
     const licenses = uniqueLicenses(
@@ -129,12 +159,14 @@ export const joinSignals = (args: {
     };
   });
 
-  // Per-user inactivity detection works when sign-ins (P1) or joinable
-  // reports exist. No sign-ins AND no usage rows (report unavailable, e.g.
-  // a delegated scan without a reports-capable role) means no signal at all:
-  // "full" here would flag every user as never active.
-  const activitySignal: JoinResult["activitySignal"] =
-    hasP1 || (!concealed && usageRows.length > 0) ? "full" : "none";
+  // P1 sign-ins still support per-user analysis during a report outage.
+  const activitySignal: JoinResult["activitySignal"] = hasP1
+    ? "full"
+    : args.reportUnavailable
+      ? "unknown"
+      : !concealed && usageRows.length > 0
+        ? "full"
+        : "none";
 
   const copilotSignal: JoinResult["copilotSignal"] =
     copilotRows.length === 0 ? "none" : concealed ? "aggregate" : "per-user";

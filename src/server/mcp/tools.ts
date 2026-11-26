@@ -18,6 +18,7 @@ import { loadLicenseSpend } from "~/server/waste/spendStore";
 import { loadWasteHistory } from "~/server/historyStore";
 import type { FindingStatus, WasteRuleId } from "~/server/types";
 import {
+  billedSeatsOf,
   idleSeatsOf,
   isShelfwareExempt,
   paidSeatsOf,
@@ -440,7 +441,7 @@ const listLicenses: Tool = {
           assigned: sku.consumedUnits,
           unused,
           monthly_price: amount(price),
-          monthly_spend: amount(paidSeatsOf(sku) * price),
+          monthly_spend: amount(billedSeatsOf(sku) * price),
           monthly_cost_of_unused: amount(unusedCents),
         })),
       },

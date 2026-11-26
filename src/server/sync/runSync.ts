@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import {
   and,
   asc,
   eq,
+  gte,
   inArray,
   isNull,
   lt,
@@ -10,12 +12,11 @@ import {
   sql,
 } from "drizzle-orm";
 
-import { db } from "~/server/db";
+import { db, type Db } from "~/server/db";
 import {
   PSEUDONYMISED_KEY_PREFIX,
   pseudonymisedDedupeKey,
 } from "~/server/retention";
-import { isUniqueViolation } from "~/server/db/errors";
 import { OpsSafeError, opsErrorText } from "~/server/opsError";
 import {
   adobeConnections,
@@ -56,7 +57,9 @@ import {
 } from "~/server/graph/skuCatalog";
 import {
   GraphHttpError,
+  isConcealedUpn,
   PremiumLicenseRequiredError,
+  type ActiveUserDetailReport,
   type CopilotUsageRow,
   type GraphClient,
   type GraphSubscribedSku,
@@ -75,6 +78,10 @@ import { optionalStepDeadline } from "~/server/sync/deadline";
 import { errText } from "~/server/sync/errText";
 import { createStepLog, persistRunSteps } from "~/server/sync/stepProgress";
 import { textSet } from "~/server/sync/textSet";
+import {
+  lockTenantForWorkspaceUpdate,
+  WorkspaceUpdateInProgressError,
+} from "~/server/sync/lockTenant";
 import { mergeAdobeUsers, mergeSaasSeats } from "~/server/sync/mergeByEmail";
 import {
   subscriptionTermsBySku,
@@ -82,12 +89,20 @@ import {
 } from "~/server/sync/subscriptionTerms";
 import { connectorSeatExclusion } from "~/server/sync/connectorExclusions";
 import { directoryIdentitiesOf, joinSignals } from "~/server/sync/join";
-import type { SyncRunStatus, SyncStep, WasteRuleId } from "~/server/types";
+import type {
+  ActivitySignal,
+  SyncRunStatus,
+  SyncStep,
+  WasteRuleId,
+} from "~/server/types";
 import {
   analyzeWaste,
+  assignedSeatsOf,
+  isShelfwareExempt,
   paidSeatsOf,
   purchasedSeatsOf,
   type WasteFinding,
+  type WasteInput,
 } from "~/server/waste/engine";
 
 import { reconcileSavings, savingsSubjects } from "~/server/savings/reconcile";
@@ -109,24 +124,65 @@ const chunk = <T>(arr: T[], size: number): T[][] => {
 };
 
 /**
- * Per-SKU seats for the daily snapshot: paid seats (trial seats excluded,
- * matching purchasedSeats) and assigned seats. Written on insert and on every
- * same-day rewrite so the two never disagree.
+ * Daily snapshot breakdown of purchased and assigned seats for the same SKUs
+ * included in the totals.
  */
 const bySkuOf = (
   skus: readonly {
     skuId: string;
+    skuPartNumber: string;
     prepaidEnabled: number;
     consumedUnits: number;
     trialUnits?: number;
   }[],
 ): Record<string, { purchased: number; assigned: number }> =>
   Object.fromEntries(
-    skus.map((s) => [
-      s.skuId,
-      { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
-    ]),
+    skus
+      .filter((s) => !isShelfwareExempt(s.skuPartNumber, s.skuId))
+      .map((s) => [
+        s.skuId,
+        { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
+      ]),
   );
+
+const emptyUsageMessage = (report: ActiveUserDetailReport): string => {
+  const reason = !report.hasHeader
+    ? "no CSV header"
+    : report.dataRowCount === 0
+      ? "header only"
+      : report.rows.length === 0
+        ? "no user rows"
+        : "no rows matched a licensed directory user";
+  const details = [reason];
+  if (report.reportRefreshDate)
+    details.push(`report refresh date ${report.reportRefreshDate}`);
+  if (report.bodyBytes !== undefined) details.push(`${report.bodyBytes} bytes`);
+  return `Microsoft returned an empty usage report (${details.join(", ")})`;
+};
+
+const INACTIVITY_RULES: WasteRuleId[] = ["inactive_90d", "never_active"];
+const USAGE_REPORT_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
+
+const analyzeWasteWithCoverage = async (
+  tenantId: string,
+  input: WasteInput,
+  database = db,
+) => {
+  if (input.activitySignal !== "unknown") return analyzeWaste(input);
+  const previous = await database.query.findings.findMany({
+    where: and(
+      eq(findings.tenantId, tenantId),
+      inArray(findings.rule, INACTIVITY_RULES),
+      inArray(findings.status, ["open", "acknowledged"]),
+    ),
+  });
+  const previousInactivity = new Map(previous.map((f) => [f.dedupeKey, f]));
+  const current = analyzeWaste({ ...input, previousInactivity });
+  // An empty directory response leaves the stored directory in place.
+  return input.users.length === 0
+    ? current.concat(previous.filter((f) => f.graphUserId !== null))
+    : current;
+};
 
 /** Milliseconds since `start`, recorded on every step to diagnose slow syncs. */
 const since = (start: number): number => Date.now() - start;
@@ -141,11 +197,13 @@ const MICROSOFT_STEPS = [
   "copilotUsage",
 ] as const satisfies readonly SyncStep["step"][];
 
-export type SyncResult = {
-  runId: string;
-  status: SyncRunStatus;
-  steps: SyncStep[];
-};
+export type SyncResult =
+  | {
+      runId: string;
+      status: SyncRunStatus;
+      steps: SyncStep[];
+    }
+  | { runId: null; status: "running"; steps: [] };
 
 /**
  * Pull daily cost rows for an AI connector and upsert them. The first sync
@@ -280,39 +338,49 @@ export const runSync = async (
   // before the next nightly cron, and keeps the instant-scan poller from showing
   // "syncing" indefinitely after a hard kill.
   const STALE_RUN_MS = 20 * 60 * 1000;
-  await db
-    .update(syncRuns)
-    .set({ status: "failed", error: "stale run", finishedAt: new Date() })
-    .where(
-      and(
-        eq(syncRuns.tenantId, tenantId),
-        eq(syncRuns.status, "running"),
-        lt(syncRuns.startedAt, new Date(Date.now() - STALE_RUN_MS)),
-      ),
-    );
+  const started = await db
+    .transaction(async (tx) => {
+      // A backfill holds this lock until all repairs for this tenant commit.
+      await lockTenantForWorkspaceUpdate(tx, tenantId);
+      await tx
+        .update(syncRuns)
+        .set({ status: "failed", error: "stale run", finishedAt: new Date() })
+        .where(
+          and(
+            eq(syncRuns.tenantId, tenantId),
+            eq(syncRuns.status, "running"),
+            lt(syncRuns.startedAt, new Date(Date.now() - STALE_RUN_MS)),
+          ),
+        );
 
-  // Concurrency lock via the partial unique index: only one running sync per
-  // tenant. A concurrent caller gets the in-flight run back instead of racing.
-  let runId: string;
-  try {
-    const [run] = await db
-      .insert(syncRuns)
-      .values({ tenantId, status: "running" })
-      .returning({ id: syncRuns.id });
-    runId = run!.id;
-  } catch (err) {
-    // Only a unique violation means "lock held"; anything else (connection
-    // loss, FK failure) must surface instead of masquerading as a running sync.
-    if (!isUniqueViolation(err)) throw err;
-    const inFlight = await db.query.syncRuns.findFirst({
-      where: and(
-        eq(syncRuns.tenantId, tenantId),
-        eq(syncRuns.status, "running"),
-      ),
+      // The partial unique index holds the guard for the rest of the sync.
+      const [run] = await tx
+        .insert(syncRuns)
+        .values({ tenantId, status: "running" })
+        .onConflictDoNothing({
+          target: syncRuns.tenantId,
+          where: sql`${syncRuns.status} = 'running'`,
+        })
+        .returning({ id: syncRuns.id });
+      if (run) return { runId: run.id, inFlight: false };
+
+      const inFlight = await tx.query.syncRuns.findFirst({
+        where: and(
+          eq(syncRuns.tenantId, tenantId),
+          eq(syncRuns.status, "running"),
+        ),
+      });
+      if (!inFlight)
+        throw new Error("The concurrent sync already finished. Retry sync.");
+      return { runId: inFlight.id, inFlight: true };
+    })
+    .catch((error: unknown) => {
+      if (error instanceof WorkspaceUpdateInProgressError) return null;
+      throw error;
     });
-    if (!inFlight) throw err;
-    return { runId: inFlight.id, status: "running", steps: [] };
-  }
+  if (!started) return { runId: null, status: "running", steps: [] };
+  const { runId } = started;
+  if (started.inFlight) return { runId, status: "running", steps: [] };
 
   // Each recorded step is also written to the running row, so the status poll
   // can show progress before the run finishes.
@@ -340,6 +408,16 @@ export const runSync = async (
     let graphUsers: GraphUser[] = [];
     let hasP1 = true;
     let usageRows: UsageReportRow[] = [];
+    let usageReportUnavailable = false;
+    let previousActivity:
+      | Map<
+          string,
+          Pick<
+            typeof tenantUsers.$inferSelect,
+            "workloadActivity" | "lastActivity"
+          >
+        >
+      | undefined;
     let copilotRows: CopilotUsageRow[] = [];
 
     if (!client) {
@@ -500,19 +578,78 @@ export const runSync = async (
       }
 
       started = Date.now();
+      let report: ActiveUserDetailReport | undefined;
       try {
-        usageRows = await client.getActiveUserDetail("D90");
-        record({
-          step: "usageReports",
-          status: "ok",
-          count: usageRows.length,
-          durationMs: since(started),
-        });
+        report = await client.getActiveUserDetail("D90");
       } catch (err) {
         record({
           step: "usageReports",
           status: "warning",
           message: errText(err),
+          durationMs: since(started),
+        });
+      }
+
+      const licensedUpns = new Set(
+        graphUsers
+          .filter((user) => user.assignedLicenses.length > 0)
+          .map((user) => user.userPrincipalName.toLowerCase()),
+      );
+      // Concealed identities can still supply a usable tenant-wide count.
+      if (
+        report?.rows.some(
+          (row) =>
+            isConcealedUpn(row.userPrincipalName) ||
+            licensedUpns.has(row.userPrincipalName.toLowerCase()),
+        )
+      ) {
+        usageRows = report.rows;
+      } else {
+        const stored = await db.query.tenantUsers.findMany({
+          where: eq(tenantUsers.tenantId, tenantId),
+          columns: {
+            graphId: true,
+            lastActivity: true,
+            workloadActivity: true,
+          },
+        });
+        // Stored dates and counts remain useful even during a long outage.
+        // Recent successful report steps also cover reports with only null
+        // dates. That evidence expires after 30 days without fresh rows.
+        usageReportUnavailable =
+          (tenant.usageAggregate?.totalCount ?? 0) > 0 ||
+          stored.some(({ workloadActivity: w }) =>
+            [w?.exchange, w?.oneDrive, w?.sharePoint, w?.teams].some(Boolean),
+          ) ||
+          Boolean(
+            await db.query.syncRuns.findFirst({
+              where: and(
+                eq(syncRuns.tenantId, tenantId),
+                inArray(syncRuns.status, ["success", "partial"]),
+                gte(
+                  syncRuns.startedAt,
+                  new Date(now.getTime() - USAGE_REPORT_LOOKBACK_MS),
+                ),
+                sql`jsonb_path_exists(${syncRuns.steps}, '$[*] ? (@.step == "usageReports" && @.status == "ok" && @.count > 0)')`,
+              ),
+              columns: { id: true },
+            }),
+          );
+        if (usageReportUnavailable) {
+          previousActivity = new Map(
+            stored.map((user) => [user.graphId, user]),
+          );
+        }
+      }
+
+      if (report) {
+        record({
+          step: "usageReports",
+          status: usageReportUnavailable ? "warning" : "ok",
+          message: usageReportUnavailable
+            ? emptyUsageMessage(report)
+            : undefined,
+          count: usageRows.length,
           durationMs: since(started),
         });
       }
@@ -741,7 +878,14 @@ export const runSync = async (
 
     // --- Join + analyze ---------------------------------------------------
     const analysisStarted = Date.now();
-    const joined = joinSignals({ graphUsers, usageRows, copilotRows, hasP1 });
+    const joined = joinSignals({
+      graphUsers,
+      usageRows,
+      copilotRows,
+      hasP1,
+      previousActivity,
+      reportUnavailable: usageReportUnavailable,
+    });
 
     const previousSkus = await db.query.tenantSkus.findMany({
       where: eq(tenantSkus.tenantId, tenantId),
@@ -1109,7 +1253,7 @@ export const runSync = async (
           trialUnits: termsOf(s.skuId).trialUnits,
         }))
       : previousSkus;
-    const newFindings = analyzeWaste({
+    const newFindings = await analyzeWasteWithCoverage(tenantId, {
       users: joined.users,
       skus: inventory,
       prices,
@@ -1185,6 +1329,7 @@ export const runSync = async (
       },
       !verifiedSources.has("microsoft"),
       persistInventory,
+      joined.activitySignal,
     );
 
     record({
@@ -1212,6 +1357,7 @@ export const runSync = async (
 
     const day = now.toISOString().slice(0, 10);
     const purchasedSeats = purchasedSeatsOf(inventory);
+    const assignedSeats = assignedSeatsOf(inventory);
     await db
       .insert(snapshots)
       .values({
@@ -1220,7 +1366,7 @@ export const runSync = async (
         totalMonthlySpendCents,
         totalMonthlyWasteCents,
         purchasedSeats,
-        assignedSeats: inventory.reduce((s, x) => s + x.consumedUnits, 0),
+        assignedSeats,
         bySku: bySkuOf(inventory),
       })
       .onConflictDoUpdate({
@@ -1229,7 +1375,7 @@ export const runSync = async (
           totalMonthlySpendCents,
           totalMonthlyWasteCents,
           purchasedSeats,
-          assignedSeats: inventory.reduce((s, x) => s + x.consumedUnits, 0),
+          assignedSeats,
           bySku: bySkuOf(inventory),
         },
       });
@@ -1241,10 +1387,19 @@ export const runSync = async (
         .update(tenants)
         .set({
           hasP1,
-          concealedNames: concealmentSetting ?? joined.concealed,
+          concealedNames:
+            concealmentSetting ??
+            (joined.concealed
+              ? true
+              : usageRows.length > 0
+                ? false
+                : tenant.concealedNames),
           activitySignal: joined.activitySignal,
+          usageReportUnavailable,
           copilotSignal: joined.copilotSignal,
-          usageAggregate: joined.usageAggregate ?? null,
+          usageAggregate: usageReportUnavailable
+            ? tenant.usageAggregate
+            : (joined.usageAggregate ?? null),
           copilotAggregate: joined.copilotAggregate ?? null,
           ...(orgName && !tenant.isDemo ? { name: orgName } : {}),
         })
@@ -1318,6 +1473,44 @@ export const runSync = async (
   }
 };
 
+type StoredUser = typeof tenantUsers.$inferSelect;
+type StoredFinding = typeof findings.$inferSelect;
+type FindingIdentity = Pick<StoredFinding, "id" | "rule" | "graphUserId">;
+
+export type FindingStatusChange = FindingIdentity & {
+  before: Pick<StoredFinding, "status" | "resolvedAt"> | null;
+  after: Pick<StoredFinding, "status" | "resolvedAt">;
+};
+
+type ActivityReconciliation = {
+  preview: boolean;
+  includes: (finding: Pick<StoredFinding, "rule" | "graphUserId">) => boolean;
+  protects: (finding: StoredFinding) => boolean;
+  changes: FindingStatusChange[];
+};
+
+type ActivityAnalysisOptions = {
+  database: Db;
+  now: Date;
+  users: ReadonlyMap<
+    string,
+    Pick<StoredUser, "lastActivity" | "workloadActivity">
+  >;
+  copilotChanged: ReadonlySet<string>;
+  reconcile: ActivityReconciliation;
+};
+
+export type AnalysisChanges = {
+  removedSources?: SeatSource[];
+  verifiedSources?: ReadonlySet<SeatSource>;
+  previousInactiveDays?: number;
+};
+
+type AnalysisReplacement = {
+  expectedCurrency: string;
+  persist: (tx: SyncTransaction) => Promise<void>;
+};
+
 /**
  * Re-runs the waste analysis from data already in the database, used after
  * price book edits so impact figures update without a Graph round trip.
@@ -1325,17 +1518,13 @@ export const runSync = async (
  */
 export const runAnalysis = async (
   tenantId: string,
-  changes: {
-    removedSources?: SeatSource[];
-    verifiedSources?: ReadonlySet<SeatSource>;
-    previousInactiveDays?: number;
-  } = {},
-  replacement?: {
-    expectedCurrency: string;
-    persist: (tx: SyncTransaction) => Promise<void>;
-  },
+  options: AnalysisChanges | ActivityAnalysisOptions = {},
+  replacement?: AnalysisReplacement,
 ): Promise<void> => {
-  return db.transaction(async (tx) => {
+  if ("reconcile" in options) {
+    return analyzeActivityBackfill(tenantId, options);
+  }
+  await db.transaction(async (tx) => {
     const tenant = await lockAnalysisTenant(
       tx,
       tenantId,
@@ -1343,15 +1532,95 @@ export const runAnalysis = async (
     );
     if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
     if (replacement) await replacement.persist(tx);
-
-    await analyzeStoredInventory(tx, tenant, changes);
+    await analyzeStoredInventory(tx, tenant, options);
   });
 };
+
+async function analyzeActivityBackfill(
+  tenantId: string,
+  activity: ActivityAnalysisOptions,
+) {
+  const database = activity.database;
+  const tenant = await database.query.tenants.findFirst({
+    where: eq(tenants.id, tenantId),
+  });
+  if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
+
+  const [skuRows, userRows, priceRows] = await Promise.all([
+    database.query.tenantSkus.findMany({
+      where: eq(tenantSkus.tenantId, tenantId),
+    }),
+    database.query.tenantUsers.findMany({
+      where: eq(tenantUsers.tenantId, tenantId),
+    }),
+    database.query.priceBook.findMany({
+      where: eq(priceBook.tenantId, tenantId),
+    }),
+  ]);
+  if (skuRows.length === 0 && userRows.length === 0) return;
+
+  const prices = Object.fromEntries(
+    priceRows.map((p) => [p.skuId, p.monthlyPriceCents]),
+  );
+  const users = userRows
+    .filter((row) => activity.users.has(row.graphId))
+    .map((row) => {
+      const r = { ...row, ...activity.users.get(row.graphId) };
+      return {
+        graphId: r.graphId,
+        upn: r.upn,
+        displayName: r.displayName,
+        accountEnabled: r.accountEnabled,
+        userType: r.userType,
+        createdDateTime: r.createdDateTime,
+        lastActivity: r.lastActivity,
+        copilotLastActivity: r.workloadActivity?.copilot
+          ? new Date(r.workloadActivity.copilot)
+          : null,
+        licenses: r.licenses,
+      };
+    });
+  const evaluated = new Map<string, Set<WasteRuleId>>();
+  const newFindings = analyzeWaste({
+    users,
+    skus: skuRows,
+    prices,
+    now: activity.now,
+    inactiveDays: tenant.inactiveDays,
+    exclusions: tenant.findingExclusions,
+    activitySignal: "full",
+    copilotSignal: "per-user",
+    onActivityEvaluated: (user, rule) => {
+      const graphId = user.graphId.toLowerCase();
+      const hasEvidence =
+        rule === "copilot_unused"
+          ? activity.copilotChanged.has(graphId) &&
+            Number.isFinite(user.copilotLastActivity?.getTime())
+          : Number.isFinite(user.lastActivity?.getTime());
+      if (!hasEvidence) return;
+      const rules = evaluated.get(graphId) ?? new Set<WasteRuleId>();
+      rules.add(rule);
+      evaluated.set(graphId, rules);
+    },
+  });
+  const includes: ActivityReconciliation["includes"] = (finding) =>
+    finding.graphUserId !== null &&
+    evaluated.get(finding.graphUserId.toLowerCase())?.has(finding.rule) ===
+      true &&
+    activity.reconcile.includes(finding);
+  await reconcileBackfillFindings(
+    database,
+    tenantId,
+    newFindings.filter(includes),
+    activity.now,
+    { ...activity.reconcile, includes },
+  );
+}
 
 async function analyzeStoredInventory(
   tx: SyncTransaction,
   tenant: typeof tenants.$inferSelect,
-  changes: NonNullable<Parameters<typeof runAnalysis>[1]>,
+  changes: AnalysisChanges,
 ) {
   const tenantId = tenant.id;
   const [skuRows, userRows, priceRows, adobeRows, saasSeatRows] =
@@ -1389,6 +1658,10 @@ async function analyzeStoredInventory(
     priceRows.map((p) => [p.skuId, p.monthlyPriceCents]),
   );
 
+  // Older workspaces predate the stored coverage signal.
+  const activitySignal =
+    tenant.activitySignal ??
+    (tenant.hasP1 || tenant.concealedNames === false ? "full" : "none");
   const users = userRows.map((r) => ({
     mailAliases: r.mailAliases,
     graphId: r.graphId,
@@ -1403,24 +1676,25 @@ async function analyzeStoredInventory(
       : null,
     licenses: r.licenses,
   }));
-  const newFindings = analyzeWaste({
-    users,
-    skus: skuRows,
-    prices,
-    now,
-    // Prefer the signal recorded by the last sync; the boolean derivation is
-    // only a fallback for tenants synced before the column existed. Unknown
-    // concealment (null) is treated as concealed: conservative, no false
-    // per-user inactivity findings.
-    activitySignal:
-      tenant.activitySignal ??
-      (tenant.hasP1 || tenant.concealedNames === false ? "full" : "none"),
-    copilotSignal: tenant.copilotSignal ?? "none",
-    usageAggregate: tenant.usageAggregate ?? undefined,
-    copilotAggregate: tenant.copilotAggregate ?? undefined,
-    inactiveDays: tenant.inactiveDays,
-    exclusions: tenant.findingExclusions,
-  });
+  const newFindings = await analyzeWasteWithCoverage(
+    tenantId,
+    {
+      users,
+      skus: skuRows,
+      prices,
+      now,
+      activitySignal,
+      copilotSignal: tenant.copilotSignal ?? "none",
+      // An outage can leave an aggregate stored even when there are no users.
+      usageAggregate: tenant.usageReportUnavailable
+        ? undefined
+        : (tenant.usageAggregate ?? undefined),
+      copilotAggregate: tenant.copilotAggregate ?? undefined,
+      inactiveDays: tenant.inactiveDays,
+      exclusions: tenant.findingExclusions,
+    },
+    tx,
+  );
 
   const entraIdentities = directoryIdentitiesOf(userRows);
   const seatExcluded = connectorSeatExclusion(
@@ -1476,6 +1750,8 @@ async function analyzeStoredInventory(
       exclusions: tenant.findingExclusions,
       ...changes,
     },
+    false,
+    activitySignal,
   );
 
   const totalMonthlySpendCents = licenseSpend(
@@ -1494,7 +1770,7 @@ async function analyzeStoredInventory(
   );
   const day = now.toISOString().slice(0, 10);
   const purchasedSeats = purchasedSeatsOf(skuRows);
-  const assignedSeats = skuRows.reduce((s, x) => s + x.consumedUnits, 0);
+  const assignedSeats = assignedSeatsOf(skuRows);
   await tx
     .insert(snapshots)
     .values({
@@ -1541,11 +1817,10 @@ async function lockAnalysisTenant(
   tenantId: string,
   expectedCurrency?: string,
 ) {
-  const [tenant] = await tx
-    .select()
-    .from(tenants)
-    .where(eq(tenants.id, tenantId))
-    .for("update");
+  await lockTenantForWorkspaceUpdate(tx, tenantId);
+  const tenant = await tx.query.tenants.findFirst({
+    where: eq(tenants.id, tenantId),
+  });
   if (tenant && expectedCurrency && tenant.currency !== expectedCurrency)
     throw new AnalysisCurrencyChanged();
   return tenant;
@@ -1565,6 +1840,7 @@ export const diffFindings = async (
   state?: Parameters<typeof resolutionOf>[0],
   preserveMicrosoft = false,
   persistInventory?: (tx: SyncTransaction) => Promise<void>,
+  activitySignal?: ActivitySignal,
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
   // (some inserted/reopened, others never resolved) for the tenant.
@@ -1583,9 +1859,108 @@ export const diffFindings = async (
       now,
       state,
       preserveMicrosoft,
+      activitySignal,
     );
   });
 };
+
+async function reconcileBackfillFindings(
+  database: Db,
+  tenantId: string,
+  newFindings: WasteFinding[],
+  now: Date,
+  reconcile: ActivityReconciliation,
+): Promise<void> {
+  await database.transaction(async (tx) => {
+    const existing = await tx.query.findings.findMany({
+      where: eq(findings.tenantId, tenantId),
+    });
+    const existingByKey = new Map(existing.map((f) => [f.dedupeKey, f]));
+    const newByKey = new Map(newFindings.map((f) => [f.dedupeKey, f]));
+    const newByStoredKey = new Map(
+      newFindings.map((f) => [pseudonymisedDedupeKey(f.dedupeKey), f]),
+    );
+    const toInsert = newFindings.filter(
+      (f) =>
+        !existingByKey.has(f.dedupeKey) &&
+        !existingByKey.has(pseudonymisedDedupeKey(f.dedupeKey)),
+    );
+    for (const batch of chunk(toInsert, 250)) {
+      if (reconcile.preview) {
+        for (const f of batch) {
+          reconcile.changes.push({
+            id: randomUUID(),
+            rule: f.rule,
+            graphUserId: f.graphUserId,
+            before: null,
+            after: { status: "open", resolvedAt: null },
+          });
+        }
+        continue;
+      }
+      const rows = await tx
+        .insert(findings)
+        .values(
+          batch.map((f) => ({
+            tenantId,
+            dedupeKey: f.dedupeKey,
+            rule: f.rule,
+            graphUserId: f.graphUserId,
+            skuId: f.skuId,
+            title: f.title,
+            detail: f.detail,
+            monthlyImpactCents: f.monthlyImpactCents,
+            status: "open" as const,
+            firstSeenAt: now,
+            lastSeenAt: now,
+          })),
+        )
+        .returning({
+          id: findings.id,
+          rule: findings.rule,
+          graphUserId: findings.graphUserId,
+        });
+      for (const row of rows) {
+        reconcile.changes.push({
+          id: row.id,
+          rule: row.rule,
+          graphUserId: row.graphUserId,
+          before: null,
+          after: { status: "open", resolvedAt: null },
+        });
+      }
+    }
+
+    for (const f of existing) {
+      const viaHash = f.dedupeKey.startsWith(PSEUDONYMISED_KEY_PREFIX)
+        ? newByStoredKey.get(f.dedupeKey)
+        : undefined;
+      const fresh =
+        newByKey.get(f.dedupeKey) ??
+        (viaHash && !existingByKey.has(viaHash.dedupeKey)
+          ? viaHash
+          : undefined);
+      const transition =
+        fresh && f.status === "resolved"
+          ? { status: "open" as const, resolvedAt: null }
+          : !fresh && f.status !== "resolved"
+            ? { status: "resolved" as const, resolvedAt: now }
+            : undefined;
+      if (!transition || !reconcile.includes(f) || reconcile.protects(f))
+        continue;
+      reconcile.changes.push({
+        id: f.id,
+        rule: f.rule,
+        graphUserId: f.graphUserId,
+        before: { status: f.status, resolvedAt: f.resolvedAt },
+        after: transition,
+      });
+      if (!reconcile.preview) {
+        await tx.update(findings).set(transition).where(eq(findings.id, f.id));
+      }
+    }
+  });
+}
 
 async function reconcileFindings(
   tx: SyncTransaction,
@@ -1595,6 +1970,7 @@ async function reconcileFindings(
   now: Date,
   state?: Parameters<typeof resolutionOf>[0],
   preserveMicrosoft = false,
+  activitySignal?: ActivitySignal,
 ): Promise<InsertedFinding[]> {
   const classify = state && resolutionOf(state);
   const entries: (typeof savingsLedger.$inferInsert)[] = [];
@@ -1658,6 +2034,9 @@ async function reconcileFindings(
     const fresh =
       newByKey.get(f.dedupeKey) ??
       (viaHash && !existingByKey.has(viaHash.dedupeKey) ? viaHash : undefined);
+    // Carried findings are refreshed without recording an observation.
+    const carried =
+      activitySignal === "unknown" && INACTIVITY_RULES.includes(f.rule);
     // A purchase cut can reclaim some shelfware while the finding stays
     // open. Classify against its previous detail before refreshing it.
     const resolution =
@@ -1665,7 +2044,7 @@ async function reconcileFindings(
         ? classify?.(f)
         : undefined;
     if (fresh) {
-      if (f.status === "resolved") {
+      if (!carried && f.status === "resolved") {
         reopened.add(f.id);
         opened.push(fresh);
       }
@@ -1677,8 +2056,8 @@ async function reconcileFindings(
           detail: fresh.detail,
           graphUserId: fresh.graphUserId,
           monthlyImpactCents: fresh.monthlyImpactCents,
-          lastSeenAt: now,
-          ...(f.status === "resolved"
+          ...(!carried && { lastSeenAt: now }),
+          ...(!carried && f.status === "resolved"
             ? {
                 status: "open" as const,
                 resolvedAt: null,

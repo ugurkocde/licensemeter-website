@@ -8,6 +8,7 @@ import {
   dbErrorFields,
   dbErrorSummary,
   isQueryError,
+  isDatabaseOutageError,
   opsErrorText,
   withDbFields,
 } from "~/server/opsError";
@@ -167,11 +168,18 @@ export const onRequestError = async (
     try {
       const { notifyOps } = await import("~/server/ops");
       // The key keeps distinct crashes apart through a hash of the masked
-      // first line, so no message text is stored with it.
+      // first line, so no message text is stored with it. A database outage
+      // crashes every route at once, so all of those share one key: one
+      // alert per cooldown instead of one per route.
+      const dbDown = isDatabaseOutageError(rawErr);
       await notifyOps(`unhandled error on ${route}: ${opsErrorText(err)}`, {
-        key: `crash:${route}:${shortHash(crashSignature(firstLine))}`,
+        key: dbDown
+          ? "crash:database-unavailable"
+          : `crash:${route}:${shortHash(crashSignature(firstLine))}`,
         cooldownMs: CRASH_COOLDOWN_MS,
-        subject: `LicenseMeter error: ${route}`,
+        subject: dbDown
+          ? "LicenseMeter error: database unavailable"
+          : `LicenseMeter error: ${route}`,
         detail: crashDetail(err, request, context),
       });
     } catch {

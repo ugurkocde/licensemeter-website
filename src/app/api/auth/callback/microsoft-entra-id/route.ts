@@ -2,6 +2,7 @@ import { requestBaseUrl } from "~/server/auth/requestBaseUrl";
 import { after, NextResponse, type NextRequest } from "next/server";
 
 import { env } from "~/env";
+import { finishHandoffAuthentication } from "~/server/auth/consentHandoff";
 import {
   getScanClient,
   getSignInClient,
@@ -145,7 +146,9 @@ const handleScanCallback = async (
   if (!resolved.ok) return backToConnect(req, resolved.error, "guard matrix");
   const tenantId = resolved.tenantId;
 
-  void notifyOps(`instant scan started for workspace ${tenantId}`);
+  void notifyOps(`instant scan started for workspace ${tenantId}`, {
+    logLevel: "info",
+  });
 
   // The scan runs after the redirect is sent; the connect page polls the
   // sync status exactly like the consent flow's first sync.
@@ -170,6 +173,8 @@ const handleScanCallback = async (
  * kind branches the delegated instant scan off before the sign-in logic.
  */
 export const GET = async (req: NextRequest) => {
+  const handoff = await finishHandoffAuthentication(req);
+  if (handoff) return handoff;
   const params = req.nextUrl.searchParams;
   const code = params.get("code");
   const state = params.get("state");
@@ -227,7 +232,7 @@ export const GET = async (req: NextRequest) => {
       signupSource: oauth.from ?? null,
     });
     if (count === 1) {
-      void notifyOps(firstSignInAlert(claims.tid));
+      void notifyOps(firstSignInAlert(claims.tid), { logLevel: "info" });
     }
   } catch (err) {
     console.error("[auth] sign-in tracking failed", err);

@@ -6,7 +6,7 @@ import type {
   WasteRuleId,
 } from "~/server/types";
 import { skuDefaultPriceCents } from "~/server/graph/skuCatalog";
-import { isShelfwareExempt, paidSeatsOf, type WasteSku } from "./engine";
+import { billedSeatsOf, isShelfwareExempt, type WasteSku } from "./engine";
 
 export type SeatSource = "microsoft" | "adobe" | SaasProvider;
 
@@ -73,7 +73,7 @@ export function licenseSpend(
   };
   for (const sku of skus) {
     if (!isShelfwareExempt(sku.skuPartNumber, sku.skuId)) {
-      add(sku.skuId, paidSeatsOf(sku), "microsoft", sku.skuPartNumber);
+      add(sku.skuId, billedSeatsOf(sku), "microsoft", sku.skuPartNumber);
     }
   }
   const addProducts = (vendor: SeatSource, rows: Inventory["adobe"]) => {

@@ -4,7 +4,12 @@ import {
   SERVICE_PLAN_NAMES,
   skuDisplayName,
 } from "~/server/graph/skuCatalog";
-import type { AggregateUsage, UserLicense, WasteRuleId } from "~/server/types";
+import type {
+  ActivitySignal,
+  AggregateUsage,
+  UserLicense,
+  WasteRuleId,
+} from "~/server/types";
 
 /** Detection thresholds (days). */
 export const INACTIVE_DAYS = 90;
@@ -109,8 +114,12 @@ export type WasteInput = {
    * "full": per-user activity is reliable (Entra P1 sign-ins and/or joinable usage reports).
    * "none": no per-user activity signal (no P1 and concealed reports); per-user
    * inactivity rules are skipped and an aggregate finding is emitted instead.
+   * "unknown": the usage report was unavailable, so eligible inactivity findings carry forward.
    */
-  activitySignal: "full" | "none";
+  activitySignal: ActivitySignal;
+  previousInactivity?: ReadonlyMap<string, WasteFinding>;
+  /** Records the per-user activity decisions that the engine reached. */
+  onActivityEvaluated?: (user: WasteUser, rule: WasteRuleId) => void;
   copilotSignal: "per-user" | "aggregate" | "none";
   usageAggregate?: AggregateUsage;
   copilotAggregate?: AggregateUsage;
@@ -186,6 +195,38 @@ export const paidSeatsOf = (s: Omit<SeatCounts, "consumedUnits">): number =>
 /** Paid seats nobody is assigned to (over-assigned SKUs clamp to 0). */
 export const idleSeatsOf = (s: SeatCounts): number =>
   Math.max(0, paidSeatsOf(s) - s.consumedUnits);
+
+/**
+ * Assigned seats that cost money. Without trial seats this is the consumed
+ * count exactly as Microsoft reports it, over-assignment included. With trial
+ * seats only the paid seats can be billed: min(consumed, paid), so a SKU that
+ * is fully on trial never has spend, however many users hold it.
+ */
+export const spendSeatsOf = (s: SeatCounts): number =>
+  (s.trialUnits ?? 0) > 0
+    ? Math.min(s.consumedUnits, paidSeatsOf(s))
+    : s.consumedUnits;
+
+type InventorySeatCounts = SeatCounts & {
+  skuPartNumber: string;
+  skuId?: string;
+};
+
+/**
+ * Seats included in monthly spend, including paid seats without an assignment.
+ * Free and capacity SKUs are excluded, as in the license inventory.
+ */
+export const billedSeatsOf = (s: InventorySeatCounts): number =>
+  isShelfwareExempt(s.skuPartNumber, s.skuId)
+    ? 0
+    : Math.max(paidSeatsOf(s), spendSeatsOf(s));
+
+/** Monthly spend in cents across the billable inventory. */
+export const monthlyBilledSpendOf = (
+  skus: readonly (InventorySeatCounts & { skuId: string })[],
+  priceOf: (skuId: string) => number,
+): number =>
+  skus.reduce((sum, s) => sum + billedSeatsOf(s) * priceOf(s.skuId), 0);
 
 /** Spread the billed assignment budget over all observed assignments. */
 export const assignmentPrices = (
@@ -274,6 +315,14 @@ export const purchasedSeatsOf = (
     0,
   );
 
+/** Assigned seats on the same SKUs included in the purchased seat total. */
+export const assignedSeatsOf = (skus: readonly InventorySeatCounts[]): number =>
+  skus.reduce(
+    (sum, s) =>
+      isShelfwareExempt(s.skuPartNumber, s.skuId) ? sum : sum + s.consumedUnits,
+    0,
+  );
+
 const daysBetween = (from: Date, to: Date): number =>
   Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000));
 
@@ -311,13 +360,13 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
       observed.set(skuId, (observed.get(skuId) ?? 0) + 1);
     }
   }
-  let copilotAlreadyPriced = 0;
   /** Full unit price of an idle purchased seat. */
   const listPrices = input.prices;
   /** Per-assignment prices: what one user's license costs (every user rule). */
   const prices = assignmentPrices(skus, listPrices, observed);
   const inactiveThreshold = input.inactiveDays ?? INACTIVE_DAYS;
   const findings: WasteFinding[] = [];
+  let copilotSeatsCoveredByUserFindings = 0;
   /** SKU -> enabled users with disabled service plans, and users per plan. */
   const planDisables = new Map<
     string,
@@ -325,6 +374,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
   >();
   const partNumberOf = new Map(skus.map((s) => [s.skuId, s.skuPartNumber]));
   const isExcluded = exclusionMatcher(input.exclusions ?? []);
+  let hasInactivityEligibleUser = false;
 
   for (const u of users) {
     if (u.licenses.length === 0) continue;
@@ -343,9 +393,11 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
     ) {
       continue;
     }
+    const hasCopilot = u.licenses.some((l) => l.skuId === COPILOT_SKU_ID);
 
     // Rule 1: disabled account still holding licenses (offboarding leak).
     if (!u.accountEnabled) {
+      if (hasCopilot) copilotSeatsCoveredByUserFindings++;
       findings.push({
         dedupeKey: key("disabled_account_with_license", u.graphId),
         rule: "disabled_account_with_license",
@@ -355,13 +407,12 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
         detail: userDetail(u, prices),
         monthlyImpactCents: licenseCost(u.licenses, prices),
       });
-      if (u.licenses.some((l) => l.skuId === COPILOT_SKU_ID))
-        copilotAlreadyPriced++;
       continue; // avoid double-flagging the same seat via inactivity rules
     }
 
     // Rule 6: licensed guest account.
     if (u.userType === "Guest") {
+      if (hasCopilot) copilotSeatsCoveredByUserFindings++;
       findings.push({
         dedupeKey: key("licensed_guest", u.graphId),
         rule: "licensed_guest",
@@ -371,53 +422,77 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
         detail: userDetail(u, prices),
         monthlyImpactCents: licenseCost(u.licenses, prices),
       });
-      if (u.licenses.some((l) => l.skuId === COPILOT_SKU_ID))
-        copilotAlreadyPriced++;
       continue;
     }
 
-    if (input.activitySignal === "full") {
-      // Rule 2: licensed but never active (grace period after account creation).
-      const ageDays = u.createdDateTime
-        ? daysBetween(u.createdDateTime, now)
-        : Infinity;
-      if (u.lastActivity === null && ageDays >= NEVER_ACTIVE_MIN_AGE_DAYS) {
+    hasInactivityEligibleUser = true;
+    const neverActiveKey = key("never_active", u.graphId);
+    const inactiveKey = key("inactive_90d", u.graphId);
+    const ageDays = u.createdDateTime
+      ? daysBetween(u.createdDateTime, now)
+      : Infinity;
+    const inactiveDays = u.lastActivity
+      ? daysBetween(u.lastActivity, now)
+      : null;
+    const fullActivity = input.activitySignal === "full";
+    if (fullActivity) {
+      input.onActivityEvaluated?.(u, "never_active");
+      input.onActivityEvaluated?.(u, "inactive_90d");
+    }
+    const carryInactivity = input.activitySignal === "unknown";
+    const previousInactive = carryInactivity
+      ? input.previousInactivity?.get(inactiveKey)
+      : undefined;
+    const neverActive =
+      (fullActivity &&
+        u.lastActivity === null &&
+        ageDays >= NEVER_ACTIVE_MIN_AGE_DAYS) ||
+      (carryInactivity && input.previousInactivity?.has(neverActiveKey));
+    const inactive =
+      (fullActivity &&
+        inactiveDays !== null &&
+        inactiveDays > inactiveThreshold) ||
+      previousInactive !== undefined;
+
+    // With partial coverage, refresh the current account and license details
+    // for established findings without re-evaluating their eligibility by age.
+    if (neverActive || inactive) {
+      if (hasCopilot) copilotSeatsCoveredByUserFindings++;
+      const monthlyImpactCents = licenseCost(u.licenses, prices);
+      if (neverActive) {
         findings.push({
-          dedupeKey: key("never_active", u.graphId),
+          dedupeKey: neverActiveKey,
           rule: "never_active",
           graphUserId: u.graphId,
           skuId: null,
           title: `Licensed but never active: ${u.displayName ?? u.upn}`,
           detail: { ...userDetail(u, prices), accountAgeDays: ageDays },
-          monthlyImpactCents: licenseCost(u.licenses, prices),
+          monthlyImpactCents,
         });
-        if (u.licenses.some((l) => l.skuId === COPILOT_SKU_ID))
-          copilotAlreadyPriced++;
-        continue;
       }
-
-      // Rule 3: no activity for the workspace's inactivity threshold.
-      if (u.lastActivity !== null) {
-        const inactiveDays = daysBetween(u.lastActivity, now);
-        if (inactiveDays > inactiveThreshold) {
-          findings.push({
-            dedupeKey: key("inactive_90d", u.graphId),
-            rule: "inactive_90d",
-            graphUserId: u.graphId,
-            skuId: null,
-            title: `No activity for ${inactiveDays} days: ${u.displayName ?? u.upn}`,
-            detail: {
-              ...userDetail(u, prices),
-              inactiveDays,
-              inactiveThreshold,
-            },
-            monthlyImpactCents: licenseCost(u.licenses, prices),
-          });
-          if (u.licenses.some((l) => l.skuId === COPILOT_SKU_ID))
-            copilotAlreadyPriced++;
-          continue;
-        }
+      if (inactive) {
+        const previousDays = previousInactive?.detail.inactiveDays;
+        const days =
+          inactiveDays ??
+          (typeof previousDays === "number" ? previousDays : null);
+        findings.push({
+          dedupeKey: inactiveKey,
+          rule: "inactive_90d",
+          graphUserId: u.graphId,
+          skuId: null,
+          title:
+            days === null
+              ? `Inactive licensed user: ${u.displayName ?? u.upn}`
+              : `No activity for ${days} days: ${u.displayName ?? u.upn}`,
+          detail: {
+            ...userDetail(u, prices),
+            inactiveDays: days,
+            inactiveThresholdDays: inactiveThreshold,
+          },
+          monthlyImpactCents,
+        });
       }
+      continue;
     }
 
     // Rule 7: suite + standalone double-pay (active users only; inactivity
@@ -476,10 +551,8 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
     }
 
     // Rule 5: Copilot seat without Copilot usage (per-user signal available).
-    if (
-      input.copilotSignal === "per-user" &&
-      u.licenses.some((l) => l.skuId === COPILOT_SKU_ID)
-    ) {
+    if (input.copilotSignal === "per-user" && hasCopilot) {
+      input.onActivityEvaluated?.(u, "copilot_unused");
       const idle =
         u.copilotLastActivity === null ||
         daysBetween(u.copilotLastActivity, now) > COPILOT_INACTIVE_DAYS;
@@ -573,7 +646,14 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
       const remaining = Math.max(
         0,
         Math.max(consumed, observed.get(COPILOT_SKU_ID) ?? 0) -
-          copilotAlreadyPriced,
+          copilotSeatsCoveredByUserFindings,
+      );
+      // Concealment prevents identifying the overlap. Price only the seats
+      // that cannot already be covered by directory-based user findings,
+      // bounded by the remaining assigned Copilot seats.
+      const pricedInactiveCount = Math.min(
+        remaining,
+        Math.max(0, inactiveCount - copilotSeatsCoveredByUserFindings),
       );
       findings.push({
         dedupeKey: key("copilot_unused", "aggregate", COPILOT_SKU_ID),
@@ -581,21 +661,30 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
         graphUserId: null,
         skuId: COPILOT_SKU_ID,
         title: `${inactiveCount} of ${totalCount} Copilot seats show no usage`,
-        detail: { aggregate: true, inactiveCount, totalCount },
-        monthlyImpactCents:
-          Math.min(
-            remaining,
-            Math.max(0, inactiveCount - copilotAlreadyPriced),
-          ) * (prices[COPILOT_SKU_ID] ?? 0),
+        detail: {
+          aggregate: true,
+          inactiveCount,
+          totalCount,
+          ...(pricedInactiveCount < inactiveCount && { pricedInactiveCount }),
+        },
+        monthlyImpactCents: pricedInactiveCount * (prices[COPILOT_SKU_ID] ?? 0),
       });
     }
   }
 
-  if (input.activitySignal === "none" && input.usageAggregate) {
+  const aggregateInactivityKey = key("inactive_90d", "aggregate", null);
+  if (input.activitySignal === "unknown" && hasInactivityEligibleUser) {
+    const previousAggregate = input.previousInactivity?.get(
+      aggregateInactivityKey,
+    );
+    // Concealed rows cannot be matched to current users to refresh the counts.
+    if (previousAggregate?.detail.aggregate === true)
+      findings.push(previousAggregate);
+  } else if (input.activitySignal === "none" && input.usageAggregate) {
     const { inactiveCount, totalCount } = input.usageAggregate;
     if (inactiveCount > 0) {
       findings.push({
-        dedupeKey: key("inactive_90d", "aggregate", null),
+        dedupeKey: aggregateInactivityKey,
         rule: "inactive_90d",
         graphUserId: null,
         skuId: null,

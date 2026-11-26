@@ -13,10 +13,17 @@ import {
 import { meteringDemo } from "~/server/metering/demo";
 import { summarize } from "~/server/metering/summary";
 import { joinSignals } from "~/server/sync/join";
-import { analyzeWaste, type WasteFinding } from "~/server/waste/engine";
+import {
+  analyzeWaste,
+  assignedSeatsOf,
+  billedSeatsOf,
+  monthlyBilledSpendOf,
+  type WasteFinding,
+} from "~/server/waste/engine";
 import { licenseSpend } from "~/server/waste/spend";
 import type { SaasProvider, SaasSeat, WasteRuleId } from "~/server/types";
 import { DEMO_FIGURES } from "./demoFigures";
+import { MICROSOFT_RULES } from "./rules";
 
 /* Mirrors the DEMO_ADOBE_PRICES prefill in runSync.ts, which cannot be
  * imported here because it lives next to the db-coupled sync code. */
@@ -36,19 +43,18 @@ const INACTIVE_DAYS = 90;
  */
 const recompute = async () => {
   const client = new DemoGraphClient();
-  const [orgName, skus, graphUsers, usageRows, copilotRows] = await Promise.all(
-    [
+  const [orgName, skus, graphUsers, usageReport, copilotRows] =
+    await Promise.all([
       client.getOrganizationName(),
       client.getSubscribedSkus(),
       client.listUsers({ includeSignInActivity: true }),
       client.getActiveUserDetail("D90"),
       client.getCopilotUsage("D90"),
-    ],
-  );
+    ]);
 
   const joined = joinSignals({
     graphUsers,
-    usageRows,
+    usageRows: usageReport.rows,
     copilotRows,
     hasP1: true,
   });
@@ -101,14 +107,29 @@ const recompute = async () => {
   }
 
   const findings = graphFindings.concat(adobeFindings, saasFindings);
-  const monthlySpendCents = licenseSpend(
+  const billedSeats = inventory.reduce(
+    (sum, sku) => sum + billedSeatsOf(sku),
+    0,
+  );
+  const allProviderSpendCents = licenseSpend(
     { skus: inventory, adobe, saas },
     Object.entries(prices).map(([skuId, monthlyPriceCents]) => ({
       skuId,
       monthlyPriceCents,
     })),
   ).totalCents;
-  return { orgName, users: graphUsers.length, findings, monthlySpendCents };
+  return {
+    orgName,
+    users: graphUsers.length,
+    findings,
+    monthlySpendCents: monthlyBilledSpendOf(
+      inventory,
+      (skuId) => prices[skuId] ?? 0,
+    ),
+    allProviderSpendCents,
+    billedSeats,
+    assignedSeats: assignedSeatsOf(inventory),
+  };
 };
 
 const sumByRules = (findings: WasteFinding[], rules: WasteRuleId[]): number =>
@@ -124,10 +145,16 @@ describe("DEMO_FIGURES matches the recomputed demo tenant analysis", () => {
   });
 
   it("totals", async () => {
-    const { findings, monthlySpendCents } = await recompute();
+    const { findings, monthlySpendCents, billedSeats, assignedSeats } =
+      await recompute();
     expect(findings.reduce((s, f) => s + f.monthlyImpactCents, 0)).toBe(
       DEMO_FIGURES.monthlyWasteCents,
     );
+    expect(sumByRules(findings, MICROSOFT_RULES)).toBe(
+      DEMO_FIGURES.microsoftMonthlyWasteCents,
+    );
+    expect(billedSeats).toBe(300);
+    expect(assignedSeats).toBe(DEMO_FIGURES.assignedSeats);
     expect(monthlySpendCents).toBe(DEMO_FIGURES.monthlySpendCents);
     expect(findings).toHaveLength(DEMO_FIGURES.findingsCount);
   });
