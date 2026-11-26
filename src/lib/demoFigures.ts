@@ -11,8 +11,12 @@ export const DEMO_FIGURES = {
   users: 155,
   /** Sum of monthlyImpactCents over all findings of the demo tenant. */
   monthlyWasteCents: 297986,
-  /** Monthly Microsoft 365 spend: assigned seats times default list price. */
-  monthlySpendCents: 697990,
+  /** Monthly impact of findings from Microsoft rules. */
+  microsoftMonthlyWasteCents: 240_790,
+  /** Monthly Microsoft 365 spend for 300 billed seats at default list prices. */
+  monthlySpendCents: 787_200,
+  /** Microsoft assignments, excluding free and capacity SKUs. */
+  assignedSeats: 263,
   findingsCount: 65,
   /** Disabled accounts still holding Microsoft 365 licenses. */
   leaverCount: 8,

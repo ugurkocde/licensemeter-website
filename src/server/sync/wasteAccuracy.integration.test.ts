@@ -15,6 +15,7 @@ import {
   tenantId,
   type TestDb,
 } from "~/server/mcp/testHarness";
+import { isShelfwareExempt, monthlyBilledSpendOf } from "~/server/waste/engine";
 
 /**
  * Sync accuracy against a real PGlite database: catalog price refresh, trial
@@ -58,6 +59,7 @@ vi.mock("~/server/graph/msConnection", () => ({
 }));
 
 const { runAnalysis, runSync } = await import("~/server/sync/runSync");
+const { renderWasteReportPdf } = await import("~/server/report/renderReport");
 
 const E3 = "05e9a617-0261-4cee-bb44-138d3ef5d965"; // 36.70 EUR in the catalog
 const INTUNE_SUITE = "a929cd4d-8672-47c9-8664-159c1f322ba8"; // 9.40 EUR
@@ -269,7 +271,10 @@ describe("trial seats and renewal dates", () => {
     const [snapshot] = await currentDb.query.snapshots.findMany({
       where: eq(schema.snapshots.tenantId, TENANT),
     });
-    expect(snapshot!.purchasedSeats).toBe(100);
+    expect(snapshot).toMatchObject({
+      purchasedSeats: 100,
+      totalMonthlySpendCents: 100 * 3670,
+    });
   });
 
   it("skips the step on 403 and counts every prepaid seat as before", async () => {
@@ -508,12 +513,28 @@ describe("same-day snapshots", () => {
       })
     )[0]!;
 
-  it("rewrites bySku with paid seats on a second sync and on reanalysis", async () => {
-    const seats = [sku(E3, "SPE_E3", 125, 90)];
+  it("recalculates billed spend and comparable seat totals on sync and reanalysis", async () => {
+    const seats = [
+      sku(E3, "SPE_E3", 125, 90),
+      sku("sku-flow-free", "FLOW_FREE", 200, 117),
+      sku("sku-capacity", "EXAMPLE_CAPACITY", 5_000, 3),
+    ];
+    await currentDb.insert(schema.priceBook).values(
+      seats.slice(1).map(({ skuId }) => ({
+        tenantId: TENANT,
+        skuId,
+        monthlyPriceCents: 500,
+        source: "custom" as const,
+      })),
+    );
     await runSync(TENANT, { client: client(seats) });
     expect(await snapshot()).toMatchObject({
       purchasedSeats: 125,
-      bySku: { [E3]: { purchased: 125, assigned: 90 } },
+      assignedSeats: 90,
+      totalMonthlySpendCents: 125 * 3670,
+    });
+    expect((await snapshot()).bySku).toEqual({
+      [E3]: { purchased: 125, assigned: 90 },
     });
 
     await runSync(TENANT, {
@@ -526,18 +547,55 @@ describe("same-day snapshots", () => {
     });
     expect(await snapshot()).toMatchObject({
       purchasedSeats: 100,
-      bySku: { [E3]: { purchased: 100, assigned: 90 } },
+      assignedSeats: 90,
+      totalMonthlySpendCents: 100 * 3670,
+    });
+    expect((await snapshot()).bySku).toEqual({
+      [E3]: { purchased: 100, assigned: 90 },
     });
 
     await currentDb
       .update(schema.tenantSkus)
       .set({ trialUnits: 50 })
-      .where(eq(schema.tenantSkus.tenantId, TENANT));
+      .where(
+        and(
+          eq(schema.tenantSkus.tenantId, TENANT),
+          eq(schema.tenantSkus.skuId, E3),
+        ),
+      );
     await runAnalysis(TENANT);
     expect(await snapshot()).toMatchObject({
       purchasedSeats: 75,
-      bySku: { [E3]: { purchased: 75, assigned: 90 } },
+      assignedSeats: 90,
+      totalMonthlySpendCents: 75 * 3670,
     });
+    expect((await snapshot()).bySku).toEqual({
+      [E3]: { purchased: 75, assigned: 90 },
+    });
+
+    const skus = await currentDb.query.tenantSkus.findMany({
+      where: eq(schema.tenantSkus.tenantId, TENANT),
+    });
+    const prices = await currentDb.query.priceBook.findMany({
+      where: eq(schema.priceBook.tenantId, TENANT),
+    });
+    const priceBySku = new Map(
+      prices.map((p) => [p.skuId, p.monthlyPriceCents]),
+    );
+    expect(priceBySku.get("sku-flow-free")).toBe(500);
+    expect(priceBySku.get("sku-capacity")).toBe(500);
+    // Overview and Licenses pass the filtered inventory to the same helper.
+    const visibleSkus = skus.filter(
+      (s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled),
+    );
+    const inventorySpend = monthlyBilledSpendOf(
+      visibleSkus,
+      (skuId) => priceBySku.get(skuId) ?? 0,
+    );
+    const pdf = await renderWasteReportPdf(TENANT);
+    expect(pdf.buffer.subarray(0, 4).toString()).toBe("%PDF");
+    expect(pdf.monthlySpendCents).toBe(inventorySpend);
+    expect((await snapshot()).totalMonthlySpendCents).toBe(inventorySpend);
   });
 });
 

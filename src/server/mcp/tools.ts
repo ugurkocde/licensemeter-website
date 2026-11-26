@@ -19,7 +19,7 @@ import {
   idleSeatsOf,
   isShelfwareExempt,
   paidSeatsOf,
-  spendSeatsOf,
+  billedSeatsOf,
 } from "~/server/waste/engine";
 
 /**
@@ -428,7 +428,7 @@ const listLicenses: Tool = {
           assigned: sku.consumedUnits,
           unused,
           monthly_price: amount(price),
-          monthly_spend: amount(spendSeatsOf(sku) * price),
+          monthly_spend: amount(billedSeatsOf(sku) * price),
           monthly_cost_of_unused: amount(unusedCents),
         })),
       },

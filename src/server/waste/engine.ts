@@ -187,12 +187,31 @@ export const spendSeatsOf = (s: SeatCounts): number =>
     ? Math.min(s.consumedUnits, paidSeatsOf(s))
     : s.consumedUnits;
 
+type InventorySeatCounts = SeatCounts & { skuPartNumber: string };
+
+/**
+ * Seats included in monthly spend, including paid seats without an assignment.
+ * Free and capacity SKUs are excluded, as in the license inventory.
+ */
+export const billedSeatsOf = (s: InventorySeatCounts): number =>
+  isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled)
+    ? 0
+    : Math.max(paidSeatsOf(s), spendSeatsOf(s));
+
+/** Monthly spend in cents across the billable inventory. */
+export const monthlyBilledSpendOf = (
+  skus: readonly (InventorySeatCounts & { skuId: string })[],
+  priceOf: (skuId: string) => number,
+): number =>
+  skus.reduce((sum, s) => sum + billedSeatsOf(s) * priceOf(s.skuId), 0);
+
 /**
  * Monthly price of one assignment, for rules that price individual users.
  * Which assignment sits on a trial seat is unknowable, so on SKUs with trial
  * seats the paid spend is spread over every assignment (rounded down, so the
  * per-user amounts never add up to more than the paid spend). SKUs without
- * trial seats keep their price unchanged.
+ * trial seats keep their price unchanged. This uses spendSeatsOf because idle
+ * seats are accounted for separately by the shelfware rule.
  */
 export const assignmentPrices = (
   skus: readonly (SeatCounts & { skuId: string })[],
@@ -278,6 +297,16 @@ export const purchasedSeatsOf = (
     0,
   );
 
+/** Assigned seats on the same SKUs included in the purchased seat total. */
+export const assignedSeatsOf = (skus: readonly InventorySeatCounts[]): number =>
+  skus.reduce(
+    (sum, s) =>
+      isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled)
+        ? sum
+        : sum + s.consumedUnits,
+    0,
+  );
+
 const daysBetween = (from: Date, to: Date): number =>
   Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000));
 
@@ -311,6 +340,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
   const prices = assignmentPrices(skus, listPrices);
   const inactiveThreshold = input.inactiveDays ?? INACTIVE_DAYS;
   const findings: WasteFinding[] = [];
+  let copilotSeatsCoveredByUserFindings = 0;
   /** SKU -> enabled users with disabled service plans, and users per plan. */
   const planDisables = new Map<
     string,
@@ -337,9 +367,11 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
     ) {
       continue;
     }
+    const hasCopilot = u.licenses.some((l) => l.skuId === COPILOT_SKU_ID);
 
     // Rule 1: disabled account still holding licenses (offboarding leak).
     if (!u.accountEnabled) {
+      if (hasCopilot) copilotSeatsCoveredByUserFindings++;
       findings.push({
         dedupeKey: key("disabled_account_with_license", u.graphId),
         rule: "disabled_account_with_license",
@@ -354,6 +386,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
 
     // Rule 6: licensed guest account.
     if (u.userType === "Guest") {
+      if (hasCopilot) copilotSeatsCoveredByUserFindings++;
       findings.push({
         dedupeKey: key("licensed_guest", u.graphId),
         rule: "licensed_guest",
@@ -398,6 +431,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
     // With partial coverage, refresh the current account and license details
     // for established findings without re-evaluating their eligibility by age.
     if (neverActive || inactive) {
+      if (hasCopilot) copilotSeatsCoveredByUserFindings++;
       const monthlyImpactCents = licenseCost(u.licenses, prices);
       if (neverActive) {
         findings.push({
@@ -487,10 +521,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
     }
 
     // Rule 5: Copilot seat without Copilot usage (per-user signal available).
-    if (
-      input.copilotSignal === "per-user" &&
-      u.licenses.some((l) => l.skuId === COPILOT_SKU_ID)
-    ) {
+    if (input.copilotSignal === "per-user" && hasCopilot) {
       input.onActivityEvaluated?.(u, "copilot_unused");
       const idle =
         u.copilotLastActivity === null ||
@@ -572,14 +603,25 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
   if (input.copilotSignal === "aggregate" && input.copilotAggregate) {
     const { inactiveCount, totalCount } = input.copilotAggregate;
     if (inactiveCount > 0) {
+      // Concealment prevents identifying the overlap. Price only the seats
+      // that cannot already be covered by directory-based user findings.
+      const pricedInactiveCount = Math.max(
+        0,
+        inactiveCount - copilotSeatsCoveredByUserFindings,
+      );
       findings.push({
         dedupeKey: key("copilot_unused", "aggregate", COPILOT_SKU_ID),
         rule: "copilot_unused",
         graphUserId: null,
         skuId: COPILOT_SKU_ID,
         title: `${inactiveCount} of ${totalCount} Copilot seats show no usage`,
-        detail: { aggregate: true, inactiveCount, totalCount },
-        monthlyImpactCents: inactiveCount * (prices[COPILOT_SKU_ID] ?? 0),
+        detail: {
+          aggregate: true,
+          inactiveCount,
+          totalCount,
+          ...(pricedInactiveCount < inactiveCount && { pricedInactiveCount }),
+        },
+        monthlyImpactCents: pricedInactiveCount * (prices[COPILOT_SKU_ID] ?? 0),
       });
     }
   }

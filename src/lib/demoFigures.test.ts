@@ -13,9 +13,16 @@ import {
 import { meteringDemo } from "~/server/metering/demo";
 import { summarize } from "~/server/metering/summary";
 import { joinSignals } from "~/server/sync/join";
-import { analyzeWaste, type WasteFinding } from "~/server/waste/engine";
+import {
+  analyzeWaste,
+  assignedSeatsOf,
+  billedSeatsOf,
+  monthlyBilledSpendOf,
+  type WasteFinding,
+} from "~/server/waste/engine";
 import type { WasteRuleId } from "~/server/types";
 import { DEMO_FIGURES } from "./demoFigures";
+import { MICROSOFT_RULES } from "./rules";
 
 /* Mirrors the DEMO_ADOBE_PRICES prefill in runSync.ts, which cannot be
  * imported here because it lives next to the db-coupled sync code. */
@@ -59,14 +66,15 @@ const recompute = async () => {
   };
   const now = new Date();
 
+  const inventory = skus.map((s) => ({
+    skuId: s.skuId,
+    skuPartNumber: s.skuPartNumber,
+    prepaidEnabled: s.prepaidUnits.enabled,
+    consumedUnits: s.consumedUnits,
+  }));
   const graphFindings = analyzeWaste({
     users: joined.users,
-    skus: skus.map((s) => ({
-      skuId: s.skuId,
-      skuPartNumber: s.skuPartNumber,
-      prepaidEnabled: s.prepaidUnits.enabled,
-      consumedUnits: s.consumedUnits,
-    })),
+    skus: inventory,
     prices,
     now,
     activitySignal: joined.activitySignal,
@@ -101,11 +109,21 @@ const recompute = async () => {
   }
 
   const findings = graphFindings.concat(adobeFindings, saasFindings);
-  const monthlySpendCents = skus.reduce(
-    (sum, s) => sum + s.consumedUnits * (prices[s.skuId] ?? 0),
+  const billedSeats = inventory.reduce(
+    (sum, sku) => sum + billedSeatsOf(sku),
     0,
   );
-  return { orgName, users: graphUsers.length, findings, monthlySpendCents };
+  return {
+    orgName,
+    users: graphUsers.length,
+    findings,
+    monthlySpendCents: monthlyBilledSpendOf(
+      inventory,
+      (skuId) => prices[skuId] ?? 0,
+    ),
+    billedSeats,
+    assignedSeats: assignedSeatsOf(inventory),
+  };
 };
 
 const sumByRules = (findings: WasteFinding[], rules: WasteRuleId[]): number =>
@@ -121,10 +139,16 @@ describe("DEMO_FIGURES matches the recomputed demo tenant analysis", () => {
   });
 
   it("totals", async () => {
-    const { findings, monthlySpendCents } = await recompute();
+    const { findings, monthlySpendCents, billedSeats, assignedSeats } =
+      await recompute();
     expect(findings.reduce((s, f) => s + f.monthlyImpactCents, 0)).toBe(
       DEMO_FIGURES.monthlyWasteCents,
     );
+    expect(sumByRules(findings, MICROSOFT_RULES)).toBe(
+      DEMO_FIGURES.microsoftMonthlyWasteCents,
+    );
+    expect(billedSeats).toBe(300);
+    expect(assignedSeats).toBe(DEMO_FIGURES.assignedSeats);
     expect(monthlySpendCents).toBe(DEMO_FIGURES.monthlySpendCents);
     expect(findings).toHaveLength(DEMO_FIGURES.findingsCount);
   });

@@ -120,9 +120,8 @@ export const RoiCalculator = () => {
               id={shareHintId}
               className="text-ink-faint mt-1 text-xs leading-relaxed"
             >
-              Start with a conservative pre-scan assumption. The sample tenant
-              is {DEMO_WASTE_PCT} percent, but your free scan replaces this with
-              tenant data.
+              In the sample tenant, waste is {DEMO_WASTE_PCT} percent of
+              Microsoft spend. Run a free scan to see your own figures.
             </p>
           </div>
         </div>

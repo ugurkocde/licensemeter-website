@@ -84,9 +84,11 @@ import type {
 } from "~/server/types";
 import {
   analyzeWaste,
+  assignedSeatsOf,
+  monthlyBilledSpendOf,
+  isShelfwareExempt,
   paidSeatsOf,
   purchasedSeatsOf,
-  spendSeatsOf,
   type WasteFinding,
   type WasteInput,
 } from "~/server/waste/engine";
@@ -98,23 +100,25 @@ const chunk = <T>(arr: T[], size: number): T[][] => {
 };
 
 /**
- * Per-SKU seats for the daily snapshot: paid seats (trial seats excluded,
- * matching purchasedSeats) and assigned seats. Written on insert and on every
- * same-day rewrite so the two never disagree.
+ * Daily snapshot breakdown of purchased and assigned seats for the same SKUs
+ * included in the totals.
  */
 const bySkuOf = (
   skus: readonly {
     skuId: string;
+    skuPartNumber: string;
     prepaidEnabled: number;
     consumedUnits: number;
     trialUnits?: number;
   }[],
 ): Record<string, { purchased: number; assigned: number }> =>
   Object.fromEntries(
-    skus.map((s) => [
-      s.skuId,
-      { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
-    ]),
+    skus
+      .filter((s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled))
+      .map((s) => [
+        s.skuId,
+        { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
+      ]),
   );
 
 const emptyUsageMessage = (report: ActiveUserDetailReport): string => {
@@ -1259,9 +1263,9 @@ export const runSync = async (
     await sendLeakAlert(tenant, inserted, now);
 
     // --- Snapshot + tenant capabilities ------------------------------------
-    const totalMonthlySpendCents = inventory.reduce(
-      (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
-      0,
+    const totalMonthlySpendCents = monthlyBilledSpendOf(
+      inventory,
+      (skuId) => prices[skuId] ?? 0,
     );
     const openRows = await db.query.findings.findMany({
       where: and(
@@ -1276,6 +1280,7 @@ export const runSync = async (
 
     const day = now.toISOString().slice(0, 10);
     const purchasedSeats = purchasedSeatsOf(inventory);
+    const assignedSeats = assignedSeatsOf(inventory);
     await db
       .insert(snapshots)
       .values({
@@ -1284,7 +1289,7 @@ export const runSync = async (
         totalMonthlySpendCents,
         totalMonthlyWasteCents,
         purchasedSeats,
-        assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
+        assignedSeats,
         bySku: bySkuOf(inventory),
       })
       .onConflictDoUpdate({
@@ -1293,7 +1298,7 @@ export const runSync = async (
           totalMonthlySpendCents,
           totalMonthlyWasteCents,
           purchasedSeats,
-          assignedSeats: skus.reduce((s, x) => s + x.consumedUnits, 0),
+          assignedSeats,
           bySku: bySkuOf(inventory),
         },
       });
@@ -1587,9 +1592,9 @@ async function analyzeStoredTenant(
     { database },
   );
 
-  const totalMonthlySpendCents = skuRows.reduce(
-    (sum, s) => sum + spendSeatsOf(s) * (prices[s.skuId] ?? 0),
-    0,
+  const totalMonthlySpendCents = monthlyBilledSpendOf(
+    skuRows,
+    (skuId) => prices[skuId] ?? 0,
   );
   const openRows = await database.query.findings.findMany({
     where: and(
@@ -1603,7 +1608,7 @@ async function analyzeStoredTenant(
   );
   const day = now.toISOString().slice(0, 10);
   const purchasedSeats = purchasedSeatsOf(skuRows);
-  const assignedSeats = skuRows.reduce((s, x) => s + x.consumedUnits, 0);
+  const assignedSeats = assignedSeatsOf(skuRows);
   await database
     .insert(snapshots)
     .values({

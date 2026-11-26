@@ -16,10 +16,13 @@ import { adobePriceKey } from "~/server/adobe/analyze";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
 import {
+  assignedSeatsOf,
+  billedSeatsOf,
   idleSeatsOf,
   isShelfwareExempt,
+  monthlyBilledSpendOf,
   paidSeatsOf,
-  spendSeatsOf,
+  purchasedSeatsOf,
   unpricedSkuCount,
 } from "~/server/waste/engine";
 import { saasPriceKey } from "~/server/saas/analyze";
@@ -129,20 +132,20 @@ export default async function LicensesPage({
   // Over-assigned SKUs (assigned > purchased) have no spare seats; clamp to 0.
   const unassignedOf = idleSeatsOf;
   const spendOf = (s: (typeof allSorted)[number]) =>
-    spendSeatsOf(s) * (priceRows.get(s.skuId)?.monthlyPriceCents ?? 0);
-  const totals = allSorted.reduce(
-    (acc, s) => ({
-      purchased: acc.purchased + paidSeatsOf(s),
-      assigned: acc.assigned + s.consumedUnits,
-      unassigned: acc.unassigned + unassignedOf(s),
-      spendCents: acc.spendCents + spendOf(s),
-    }),
-    { purchased: 0, assigned: 0, unassigned: 0, spendCents: 0 },
-  );
+    billedSeatsOf(s) * (priceRows.get(s.skuId)?.monthlyPriceCents ?? 0);
+  const totals = {
+    purchased: purchasedSeatsOf(allSorted),
+    assigned: assignedSeatsOf(allSorted),
+    unassigned: allSorted.reduce((sum, s) => sum + unassignedOf(s), 0),
+    spendCents: monthlyBilledSpendOf(
+      allSorted,
+      (skuId) => priceRows.get(skuId)?.monthlyPriceCents ?? 0,
+    ),
+  };
 
   const coverageProducts = [
     ...allSorted.map((s) => ({
-      seats: spendSeatsOf(s),
+      seats: billedSeatsOf(s),
       priceCents: priceRows.get(s.skuId)?.monthlyPriceCents ?? 0,
       source: priceRows.get(s.skuId)?.source,
     })),

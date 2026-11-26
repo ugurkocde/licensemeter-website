@@ -126,8 +126,8 @@ export default function RoiPage() {
             <span className="tnum text-waste-text font-mono">
               € {demoEuros(DEMO_FIGURES.monthlyWasteCents)}
             </span>{" "}
-            a month across {DEMO_FIGURES.findingsCount} findings, each with the
-            account, the rule and the monthly cost attached.
+            a month across all connectors, with {DEMO_FIGURES.findingsCount}{" "}
+            findings that show the rule and estimated monthly cost.
           </p>
           <p className="text-ink-faint mt-3 text-xs">
             Every finding exports to CSV for finance, and IT gets a generated

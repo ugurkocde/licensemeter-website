@@ -1,0 +1,7 @@
+{
+  "title": "Monthly license spend includes unassigned paid seats",
+  "summary": "Microsoft license spend includes unassigned paid seats, and the dashboard compares Microsoft waste with Microsoft spend. Spend and seat totals exclude free and capacity SKUs, so your assigned-seat trend may show a one-time change after the next sync.",
+  "type": "fixed",
+  "publishedOn": "2026-11-24",
+  "idempotencyKey": "licensemeter:2026-11-24-billed-seat-spend"
+}
