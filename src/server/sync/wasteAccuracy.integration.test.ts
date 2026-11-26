@@ -1730,3 +1730,28 @@ it("retires a removal credit if another assignment consumes the freed capacity o
     (await entriesFor()).find((entry) => entry.id === credit!.id)?.reversedAt,
   ).toBeInstanceOf(Date);
 });
+
+it("bounds purchase credits by billed-seat drops and reverses them when over-assignment restores spend", async () => {
+  await runSync(TENANT, { client: client([sku(E3, "SPE_E3", 10, 5)]) });
+  // Prepaid drops by 2, but over-assignment keeps billed seats at 10.
+  await runSync(TENANT, { client: client([sku(E3, "SPE_E3", 8, 10)]) });
+  expect(await entriesFor()).toEqual([]);
+
+  // Reset to 10 prepaid / 5 assigned, then drop to 8 prepaid / 9 assigned (net billed drop of 1).
+  await runSync(TENANT, { client: client([sku(E3, "SPE_E3", 10, 5)]) });
+  await runSync(TENANT, { client: client([sku(E3, "SPE_E3", 8, 9)]) });
+  const [partial] = await activeEntries();
+  expect(partial).toMatchObject({
+    skuId: E3,
+    reason: "seats_reduced",
+    seats: 1,
+    monthlyCents: 3670,
+  });
+
+  // Subsequent over-assignment brings billed seats back to 10 and reverses the credit.
+  await runSync(TENANT, { client: client([sku(E3, "SPE_E3", 8, 10)]) });
+  expect(await activeEntries()).toEqual([]);
+  expect(
+    (await entriesFor()).find((entry) => entry.id === partial!.id)?.reversedAt,
+  ).toBeInstanceOf(Date);
+});

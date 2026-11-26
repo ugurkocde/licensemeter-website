@@ -12,6 +12,7 @@ import { addressClaimantsOf, type DirectoryRow } from "~/server/sync/join";
 import {
   COPILOT_INACTIVE_DAYS,
   INACTIVE_DAYS,
+  billedSeatsOf,
   idleSeatsOf,
   paidSeatsOf,
   type WasteFinding,
@@ -250,7 +251,20 @@ export function resolutionOf(state: WorkspaceState) {
           prepaidEnabled: d.prepaidEnabled,
           trialUnits: oldTrialUnits,
         }) - (sku ? paidSeatsOf(sku) : 0);
-      const seats = Math.min(dropped, paidDrop, previouslyFlagged);
+      const oldAssigned = typeof d.assigned === "number" ? d.assigned : 0;
+      const oldPartNumber =
+        typeof d.skuPartNumber === "string"
+          ? d.skuPartNumber
+          : (sku?.skuPartNumber ?? "");
+      const billedDrop =
+        billedSeatsOf({
+          skuId: f.skuId,
+          skuPartNumber: oldPartNumber,
+          prepaidEnabled: d.prepaidEnabled,
+          consumedUnits: oldAssigned,
+          trialUnits: oldTrialUnits,
+        }) - (sku ? billedSeatsOf(sku) : 0);
+      const seats = Math.min(dropped, paidDrop, billedDrop, previouslyFlagged);
       const unitPrice =
         prices[f.skuId] ??
         (typeof d.unitPriceCents === "number" ? d.unitPriceCents : 0);

@@ -1298,13 +1298,23 @@ export const runSync = async (
         { inactiveDays: tenant.inactiveDays, now },
       ),
     );
-    const allFindings = (verifiedMicrosoft ? newFindings : []).concat(
-      adobeFindings,
-      saasFindings,
-    );
+    // An unverified Microsoft inventory keeps stored inventory and
+    // inventory-backed findings intact, while still letting the concealed
+    // usage aggregate follow the current directory and outage signal.
+    const microsoftFindings = verifiedMicrosoft
+      ? newFindings
+      : client
+        ? newFindings.filter(isConcealedInactivityAggregate)
+        : [];
+    const allFindings = microsoftFindings.concat(adobeFindings, saasFindings);
     const verifiedSources = new Set<SeatSource>(saasPersist);
     if (adobeActive) verifiedSources.add("adobe");
     if (verifiedMicrosoft) verifiedSources.add("microsoft");
+    const preserveMicrosoft: MicrosoftPreservation = verifiedMicrosoft
+      ? "none"
+      : client
+        ? "inventory"
+        : "all";
     const inserted = await diffFindings(
       tenantId,
       allFindings,
@@ -1327,7 +1337,7 @@ export const runSync = async (
         verifiedSources,
         analysisCurrency: tenant.currency,
       },
-      !verifiedSources.has("microsoft"),
+      preserveMicrosoft,
       persistInventory,
       joined.activitySignal,
     );
@@ -1750,7 +1760,7 @@ async function analyzeStoredInventory(
       exclusions: tenant.findingExclusions,
       ...changes,
     },
-    false,
+    "none",
     activitySignal,
   );
 
@@ -1826,6 +1836,13 @@ async function lockAnalysisTenant(
   return tenant;
 }
 
+type MicrosoftPreservation = "none" | "inventory" | "all";
+
+const isConcealedInactivityAggregate = (finding: {
+  rule: WasteRuleId;
+  detail: Record<string, unknown>;
+}) => finding.rule === "inactive_90d" && finding.detail.aggregate === true;
+
 /**
  * Reconciles the new analysis with stored findings:
  * new keys are inserted as open, reappearing resolved findings reopen,
@@ -1838,7 +1855,7 @@ export const diffFindings = async (
   newFindings: WasteFinding[],
   now: Date,
   state?: Parameters<typeof resolutionOf>[0],
-  preserveMicrosoft = false,
+  preserveMicrosoft: MicrosoftPreservation = "none",
   persistInventory?: (tx: SyncTransaction) => Promise<void>,
   activitySignal?: ActivitySignal,
 ): Promise<InsertedFinding[]> => {
@@ -1969,7 +1986,7 @@ async function reconcileFindings(
   newFindings: WasteFinding[],
   now: Date,
   state?: Parameters<typeof resolutionOf>[0],
-  preserveMicrosoft = false,
+  preserveMicrosoft: MicrosoftPreservation = "none",
   activitySignal?: ActivitySignal,
 ): Promise<InsertedFinding[]> {
   const classify = state && resolutionOf(state);
@@ -2043,6 +2060,11 @@ async function reconcileFindings(
       f.status !== "resolved" && (!fresh || f.rule === "shelfware")
         ? classify?.(f)
         : undefined;
+    const preserveFinding =
+      findingSource(f) === "microsoft" &&
+      (preserveMicrosoft === "all" ||
+        (preserveMicrosoft === "inventory" &&
+          !isConcealedInactivityAggregate(f)));
     if (fresh) {
       if (!carried && f.status === "resolved") {
         reopened.add(f.id);
@@ -2066,10 +2088,7 @@ async function reconcileFindings(
             : {}),
         })
         .where(eq(findings.id, f.id));
-    } else if (
-      f.status !== "resolved" &&
-      !(preserveMicrosoft && findingSource(f) === "microsoft")
-    ) {
+    } else if (f.status !== "resolved" && !preserveFinding) {
       const reason = resolution?.reason ?? "other";
       await tx
         .update(findings)

@@ -1,4 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
@@ -126,4 +128,41 @@ test("self-host migration and hosted script can coexist and preserve ledger rete
     (await client.query("SELECT id FROM savings_ledger")).rows.length,
     0,
   );
+});
+
+test("existing 0021 installation upgrades cleanly to 0022_savings_ledger", async (t) => {
+  const client = new PGlite();
+  t.after(() => client.close());
+  const folder = "docker/migrations";
+  const journal = JSON.parse(
+    await readFile(`${folder}/meta/_journal.json`, "utf8"),
+  );
+  const old = await mkdtemp(join(tmpdir(), "savings-ledger-upgrade-"));
+  t.after(() => rm(old, { recursive: true, force: true }));
+  await mkdir(join(old, "meta"));
+  const entries = journal.entries.filter((entry) => entry.idx < 22);
+  await writeFile(
+    join(old, "meta/_journal.json"),
+    JSON.stringify({ ...journal, entries }),
+  );
+  for (const entry of entries) {
+    await cp(`${folder}/${entry.tag}.sql`, join(old, `${entry.tag}.sql`));
+  }
+  const db = drizzle(client);
+  await migrate(db, { migrationsFolder: old });
+  await migrate(db, { migrationsFolder: folder });
+  await migrate(db, { migrationsFolder: folder });
+
+  const { rows: columns } = await client.query(
+    "SELECT table_name, column_name FROM information_schema.columns WHERE (table_name = 'tenants' AND column_name = 'usage_report_unavailable') OR (table_name = 'consent_states' AND column_name = 'kind') OR (table_name = 'findings' AND column_name = 'resolution_reason') ORDER BY table_name, column_name",
+  );
+  assert.deepEqual(columns, [
+    { table_name: "consent_states", column_name: "kind" },
+    { table_name: "findings", column_name: "resolution_reason" },
+    { table_name: "tenants", column_name: "usage_report_unavailable" },
+  ]);
+  const { rows: ledger } = await client.query(
+    "SELECT to_regclass('public.savings_ledger') AS table_name",
+  );
+  assert.equal(ledger[0].table_name, "savings_ledger");
 });

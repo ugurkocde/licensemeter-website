@@ -1504,12 +1504,11 @@ describe("runSync with unavailable Microsoft usage data", () => {
     await seedTenant();
     const listNoUsers = listUsers([]);
     await sync({
-      listUsers: listUsers([never]),
+      listUsers: listNoUsers,
       getActiveUserDetail: async () =>
         usageReport([{ ...never, userPrincipalName: "a".repeat(32) }]),
     });
     expect(await activityFindings()).toMatchObject([{ status: "open" }]);
-    await currentDb.delete(schema.tenantUsers);
 
     await sync({
       listUsers: listNoUsers,
@@ -1519,6 +1518,7 @@ describe("runSync with unavailable Microsoft usage data", () => {
       activitySignal: "unknown",
       usageReportUnavailable: true,
     });
+    expect(await activityFindings()).toMatchObject([{ status: "resolved" }]);
     await runAnalysis(TENANT_ID);
     expect(await activityFindings()).toMatchObject([{ status: "resolved" }]);
   });
@@ -1526,13 +1526,12 @@ describe("runSync with unavailable Microsoft usage data", () => {
   it("keeps a concealed aggregate when a licensed user appears during an outage", async () => {
     await seedTenant();
     await sync({
-      listUsers: listUsers([never]),
+      listUsers: listUsers([]),
       getActiveUserDetail: async () =>
         usageReport([{ ...never, userPrincipalName: "a".repeat(32) }]),
     });
     const [before] = await activityFindings();
     expect(before).toMatchObject({ status: "open" });
-    await currentDb.delete(schema.tenantUsers);
 
     await sync({
       listUsers: listUsers([never]),
@@ -1542,6 +1541,9 @@ describe("runSync with unavailable Microsoft usage data", () => {
       activitySignal: "unknown",
       usageReportUnavailable: true,
     });
+    expect(await activityFindings()).toMatchObject([
+      { id: before?.id, status: "open" },
+    ]);
     await runAnalysis(TENANT_ID);
     expect(await activityFindings()).toMatchObject([
       { id: before?.id, status: "open" },

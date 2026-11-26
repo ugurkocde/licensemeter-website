@@ -2,6 +2,7 @@ import type { savingsLedger } from "~/server/db/schema";
 import type { SaasSeat } from "~/server/types";
 import { savingsSubjectKey, savingsSubjectVersion } from "~/server/retention";
 import {
+  billedSeatsOf,
   idleSeatsOf,
   paidSeatsOf,
   type WasteFinding,
@@ -210,6 +211,7 @@ export function reconcileSavings(
     const discarded = new Set<Entry>();
     const prepaid = (sku?: WasteSku) => sku?.prepaidEnabled ?? 0;
     const paid = (sku?: WasteSku) => (sku ? paidSeatsOf(sku) : 0);
+    const billed = (sku?: WasteSku) => (sku ? billedSeatsOf(sku) : 0);
 
     for (const skuId of new Set([
       ...existingBySku.keys(),
@@ -225,11 +227,15 @@ export function reconcileSavings(
       );
       const paidDrop = Math.max(
         0,
-        Math.min(prepaid(old) - prepaid(sku), paid(old) - paid(sku)),
+        Math.min(
+          prepaid(old) - prepaid(sku),
+          paid(old) - paid(sku),
+          billed(old) - billed(sku),
+        ),
       );
       const drop = state.previousSkus ? paidDrop : (purchase?.seats ?? 0);
       const increase = state.previousSkus
-        ? Math.max(0, paid(sku) - paid(old))
+        ? Math.max(0, billed(sku) - billed(old))
         : 0;
       const release = old
         ? Math.max(0, old.consumedUnits - (sku?.consumedUnits ?? 0))

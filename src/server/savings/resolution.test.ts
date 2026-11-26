@@ -87,6 +87,31 @@ it("caps a purchased reduction at the previously flagged seats", () => {
     ),
   ).toMatchObject({ entries: [{ monthlyCents: 200 }] });
 });
+
+it("bounds purchase credits by the net reduction in billed seats when over-assigned", () => {
+  const halfUsed = {
+    ...shelfware,
+    monthlyImpactCents: 1000,
+    detail: {
+      ...shelfware.detail,
+      assigned: 5,
+      unassigned: 5,
+    },
+  };
+  expect(
+    classify({ skus: [{ ...sku, prepaidEnabled: 8, consumedUnits: 10 }] })(
+      halfUsed,
+    ),
+  ).toEqual({ reason: "seats_assigned" });
+  expect(
+    classify({ skus: [{ ...sku, prepaidEnabled: 8, consumedUnits: 9 }] })(
+      halfUsed,
+    ),
+  ).toEqual({
+    reason: "seats_reduced",
+    entries: [{ monthlyCents: 200, skuId, seats: 1 }],
+  });
+});
 it("recognizes exclusions", () => {
   expect(classify({ exclusions: [member.upn] })(finding).reason).toBe(
     "excluded",
