@@ -1160,6 +1160,9 @@ describe("runSync with unavailable Microsoft usage data", () => {
   const sync = (overrides: Partial<GraphClient> = {}) =>
     runSync(TENANT_ID, {
       client: makeGraphClient({
+        getSubscribedSkus: vi.fn(() =>
+          Promise.resolve([{ ...SKU, consumedUnits: directory.length }]),
+        ),
         listUsers: listUsers(directory),
         getActiveUserDetail: async () => ({
           ...usageReport(directory),
@@ -1501,11 +1504,12 @@ describe("runSync with unavailable Microsoft usage data", () => {
     await seedTenant();
     const listNoUsers = listUsers([]);
     await sync({
-      listUsers: listNoUsers,
+      listUsers: listUsers([never]),
       getActiveUserDetail: async () =>
         usageReport([{ ...never, userPrincipalName: "a".repeat(32) }]),
     });
     expect(await activityFindings()).toMatchObject([{ status: "open" }]);
+    await currentDb.delete(schema.tenantUsers);
 
     await sync({
       listUsers: listNoUsers,
@@ -1522,12 +1526,13 @@ describe("runSync with unavailable Microsoft usage data", () => {
   it("keeps a concealed aggregate when a licensed user appears during an outage", async () => {
     await seedTenant();
     await sync({
-      listUsers: listUsers([]),
+      listUsers: listUsers([never]),
       getActiveUserDetail: async () =>
         usageReport([{ ...never, userPrincipalName: "a".repeat(32) }]),
     });
     const [before] = await activityFindings();
     expect(before).toMatchObject({ status: "open" });
+    await currentDb.delete(schema.tenantUsers);
 
     await sync({
       listUsers: listUsers([never]),

@@ -151,7 +151,15 @@ it("weights a catalog seat by list price even when the entered price is zero", (
   const e3 = "05e9a617-0261-4cee-bb44-138d3ef5d965";
   const spend = licenseSpend(
     {
-      skus: [{ ...sku, skuId: e3, skuPartNumber: "SPE_E3", prepaidEnabled: 1 }],
+      skus: [
+        {
+          ...sku,
+          skuId: e3,
+          skuPartNumber: "SPE_E3",
+          prepaidEnabled: 1,
+          consumedUnits: 1,
+        },
+      ],
       adobe: [seat],
       saas: new Map(),
     },
