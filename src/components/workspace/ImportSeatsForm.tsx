@@ -60,10 +60,10 @@ export const ImportSeatsForm = ({ spec }: { spec: ConnectorSpec }) => {
         htmlFor={`${spec.provider}-import-csv`}
         className="text-ink-soft text-sm"
       >
-        Paste the member table from the {spec.label} admin panel including its
-        header row. Copied web tables and CSV exports both work. An email column
-        is required; name, status, plan and last-active columns are picked up
-        when present. A new import replaces the current snapshot.
+        Paste the complete member table or CSV export from the {spec.label}{" "}
+        admin panel, including its header row. Each import replaces the entire
+        roster. An email column is required. Name, status, plan and last-active
+        columns are optional.
       </label>
       <textarea
         // Remount on each new failure so defaultValue re-applies; resets after success.

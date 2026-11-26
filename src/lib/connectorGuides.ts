@@ -327,7 +327,7 @@ export const CONNECTOR_GUIDES: ConnectorGuide[] = [
       },
       {
         title: "Price the seats",
-        body: "Set your per-seat price under Licenses & prices (chatgpt:<seat type>) so findings carry your real numbers. Re-import any time. Each paste replaces the previous snapshot.",
+        body: "Set your per-seat price under Licenses & prices (chatgpt:<seat type>) so findings carry your real numbers. Re-import the complete member export in one paste. Each import replaces the entire roster.",
       },
     ],
     reads: [
@@ -362,7 +362,7 @@ export const CONNECTOR_GUIDES: ConnectorGuide[] = [
       },
       {
         title: "Price the seats",
-        body: "Set your per-seat price under Licenses & prices (claude:<seat type>). Re-import any time. Each paste replaces the previous snapshot.",
+        body: "Set your per-seat price under Licenses & prices (claude:<seat type>). Re-import the complete member export in one paste. Each import replaces the entire roster.",
       },
     ],
     reads: [

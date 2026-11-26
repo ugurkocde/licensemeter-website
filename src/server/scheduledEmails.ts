@@ -1,3 +1,5 @@
+import { loadRecentSavings } from "~/server/savings/ledger";
+import { loadLicenseSpend } from "~/server/waste/spendStore";
 import { and, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
 
 import { env, siteUrl } from "~/env";
@@ -244,54 +246,49 @@ const digestForTenant = async (
   const aiSpendSince = new Date(now.getTime() - 2 * DELTA_WINDOW_MS)
     .toISOString()
     .slice(0, 10);
-  const [audience, open, resolvedRecent, latest, aiSpendRows, renewals] =
-    await Promise.all([
-      workspaceEmailRecipients(tenant.id, "digest"),
-      db.query.findings.findMany({
-        where: and(
-          eq(findings.tenantId, tenant.id),
-          inArray(findings.status, ["open", "acknowledged"]),
-        ),
-        orderBy: desc(findings.monthlyImpactCents),
-      }),
-      db.query.findings.findMany({
-        where: and(
-          eq(findings.tenantId, tenant.id),
-          // status filter keeps this disjoint from the open/acknowledged
-          // query above: a reopened finding can carry a stale resolvedAt.
-          eq(findings.status, "resolved"),
-          isNotNull(findings.resolvedAt),
-          gte(findings.resolvedAt, new Date(now.getTime() - DELTA_WINDOW_MS)),
-        ),
-      }),
-      db.query.snapshots.findFirst({
-        where: eq(snapshots.tenantId, tenant.id),
-        orderBy: desc(snapshots.day),
-      }),
-      db.query.aiSpendDaily.findMany({
-        where: and(
-          eq(aiSpendDaily.tenantId, tenant.id),
-          gte(aiSpendDaily.day, aiSpendSince),
-        ),
-        columns: { day: true, amountCents: true },
-      }),
-      db.query.vendorRenewals.findMany({
-        where: and(
-          eq(vendorRenewals.tenantId, tenant.id),
-          gte(vendorRenewals.renewalDate, now.toISOString().slice(0, 10)),
-        ),
-        columns: {
-          vendor: true,
-          contractName: true,
-          renewalDate: true,
-          noticeDays: true,
-        },
-      }),
-    ]);
+  const [audience, open, latest, aiSpendRows, renewals] = await Promise.all([
+    workspaceEmailRecipients(tenant.id, "digest"),
+    db.query.findings.findMany({
+      where: and(
+        eq(findings.tenantId, tenant.id),
+        inArray(findings.status, ["open", "acknowledged"]),
+      ),
+      orderBy: desc(findings.monthlyImpactCents),
+    }),
+    db.query.snapshots.findFirst({
+      where: eq(snapshots.tenantId, tenant.id),
+      orderBy: desc(snapshots.day),
+    }),
+    db.query.aiSpendDaily.findMany({
+      where: and(
+        eq(aiSpendDaily.tenantId, tenant.id),
+        gte(aiSpendDaily.day, aiSpendSince),
+      ),
+      columns: { day: true, amountCents: true },
+    }),
+    db.query.vendorRenewals.findMany({
+      where: and(
+        eq(vendorRenewals.tenantId, tenant.id),
+        gte(vendorRenewals.renewalDate, now.toISOString().slice(0, 10)),
+      ),
+      columns: {
+        vendor: true,
+        contractName: true,
+        renewalDate: true,
+        noticeDays: true,
+      },
+    }),
+  ]);
 
   if (audience.recipients.length === 0 && audience.optedOut === 0) return;
 
-  const delta = computeDigestDelta([...open, ...resolvedRecent], now);
+  const delta = computeDigestDelta(open, now);
+  const realized = await loadRecentSavings(
+    tenant.id,
+    tenant.currency,
+    now,
+    DELTA_WINDOW_MS / 86_400_000,
+  );
   const renewalLine = renewalDigestLine(renewals, now);
   // AI API spend is metered in USD by the providers and never converted,
   // so the line is formatted in USD regardless of the workspace currency.
@@ -329,8 +326,8 @@ const digestForTenant = async (
       html: (footer) =>
         allClearHtml({
           tenantName,
-          resolvedCount: delta.resolvedCount,
-          resolvedImpact: fmtMoney(delta.resolvedCents, tenant.currency),
+          resolvedCount: realized.reclaimed,
+          resolvedImpact: fmtMoney(realized.cents, tenant.currency),
           renewalLine: renewalLine
             ? `${renewalLine}. You go in clean.`
             : undefined,
@@ -341,7 +338,7 @@ const digestForTenant = async (
     };
   } else {
     const wasteCents = latest?.totalMonthlyWasteCents ?? 0;
-    const openCents = open.reduce((s, f) => s + f.monthlyImpactCents, 0);
+    const { spend } = await loadLicenseSpend(tenant.id);
     // New findings lead the subject; otherwise fall back to the standing
     // totals. With unpriced SKUs the waste is 0. Lead with the findings
     // count instead of an underwhelming zero.
@@ -358,10 +355,7 @@ const digestForTenant = async (
         digestHtml({
           tenantName,
           currency: tenant.currency,
-          monthlySpend: fmtMoney(
-            latest?.totalMonthlySpendCents ?? 0,
-            tenant.currency,
-          ),
+          monthlySpend: fmtMoney(spend.totalCents, tenant.currency),
           monthlyWaste: fmtMoney(
             latest?.totalMonthlyWasteCents ?? 0,
             tenant.currency,
@@ -374,12 +368,10 @@ const digestForTenant = async (
           delta: {
             newCount: delta.newCount,
             newImpact: fmtMoney(delta.newCents, tenant.currency),
-            resolvedCount: delta.resolvedCount,
-            resolvedImpact: fmtMoney(delta.resolvedCents, tenant.currency),
+            resolvedCount: realized.reclaimed,
+            resolvedImpact: fmtMoney(realized.cents, tenant.currency),
           },
-          renewalLine: renewalLine
-            ? `${renewalLine}, with ${open.length} open finding${open.length === 1 ? "" : "s"} worth ${fmtMoney(openCents, tenant.currency)}/mo to reclaim before you re-commit.`
-            : undefined,
+          renewalLine: renewalLine ?? undefined,
           aiSpendLine,
           appUrl: siteUrl(),
           footer,

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccessContext } from "~/server/access";
 import * as schema from "~/server/db/schema";
 import type * as EmailModule from "~/server/email";
+import { fetchEcbReferenceRates } from "~/server/exchangeRates";
 import { freshDb, seedTenant, type TestDb } from "~/server/mcp/testHarness";
 
 /**
@@ -51,7 +52,10 @@ vi.mock("~/server/email", async (original) => ({
 // The currency action's server-only ECB client is outside this suite.
 vi.mock("~/server/exchangeRates", () => ({
   fetchEcbReferenceRates: vi.fn(() =>
-    Promise.resolve({ asOf: "2026-07-09", perEur: { EUR: 1 } }),
+    Promise.resolve({
+      asOf: "2026-07-09",
+      perEur: { EUR: 1, USD: 1.2, GBP: 0.8 },
+    }),
   ),
 }));
 
@@ -69,8 +73,12 @@ vi.mock("~/server/access", () => ({
       : null,
 }));
 
-const { removeEmailBlock, sendCurrentFindingsEmail } =
-  await import("~/server/actions");
+const {
+  bulkSetFindingStatus,
+  removeEmailBlock,
+  sendCurrentFindingsEmail,
+  setCurrency,
+} = await import("~/server/actions");
 
 const BLOCKED = "blocked@contoso.test";
 
@@ -210,5 +218,96 @@ describe("who may run the recovery actions", () => {
     }
     expect(sendEmailMock).not.toHaveBeenCalled();
     expect(await currentDb.query.emailBlocks.findMany()).toHaveLength(1);
+  });
+});
+
+describe("bulkSetFindingStatus", () => {
+  it("reports a selection already resolved and updates an eligible mixed selection", async () => {
+    const [resolved] = await currentDb
+      .insert(schema.findings)
+      .values({
+        tenantId: tenant.id,
+        dedupeKey: "resolved",
+        rule: "shelfware",
+        title: "Idle seats",
+        status: "resolved",
+      })
+      .returning();
+    const form = new FormData();
+    form.append("id", resolved!.id);
+    form.set("status", "acknowledged");
+    expect(await bulkSetFindingStatus(form)).toEqual({
+      ok: false,
+      error: "No selected findings can be updated",
+    });
+
+    await seedLeak();
+    const open = await currentDb.query.findings.findFirst({
+      where: eq(schema.findings.status, "open"),
+    });
+    form.append("id", open!.id);
+    expect(await bulkSetFindingStatus(form)).toEqual({ ok: true });
+    expect(
+      await currentDb.query.findings.findFirst({
+        where: eq(schema.findings.id, open!.id),
+      }),
+    ).toMatchObject({ status: "acknowledged" });
+  });
+});
+
+describe("setCurrency", () => {
+  it("uses the locked currency for concurrent identical and stale requests", async () => {
+    await currentDb.insert(schema.savingsLedger).values({
+      tenantId: tenant.id,
+      rule: "shelfware",
+      vendor: "Microsoft",
+      seats: 1,
+      monthlyCents: 1000,
+      reason: "seats_reduced",
+      realizedAt: new Date(),
+      currency: "EUR",
+    });
+    let markStarted!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const paused = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(fetchEcbReferenceRates).mockImplementationOnce(async () => {
+      markStarted();
+      await paused;
+      return { asOf: "2026-07-09", perEur: { EUR: 1, USD: 1.2, GBP: 0.8 } };
+    });
+    const stale = setCurrency("GBP");
+    await started;
+    try {
+      expect(await setCurrency("USD")).toMatchObject({
+        ok: true,
+        from: "EUR",
+        to: "USD",
+      });
+    } finally {
+      release();
+    }
+    expect(await stale).toEqual({
+      ok: false,
+      error: "The workspace currency changed. Refresh and retry.",
+    });
+    // The access fixture still carries the pre-conversion tenant.
+    expect(await setCurrency("USD")).toEqual({ ok: true });
+    expect(await setCurrency("EUR")).toEqual({
+      ok: false,
+      error: "The workspace currency changed. Refresh and retry.",
+    });
+    expect(
+      await currentDb.query.tenants.findFirst({
+        where: eq(schema.tenants.id, tenant.id),
+      }),
+    ).toMatchObject({ currency: "USD" });
+    expect(await currentDb.query.savingsLedger.findMany()).toEqual([
+      expect.objectContaining({ currency: "USD", monthlyCents: 1200 }),
+    ]);
   });
 });

@@ -5,7 +5,10 @@ import type { ActiveUserDetailReport } from "./types";
  * Handles quoted fields, escaped quotes, embedded commas/newlines, CRLF, BOM.
  */
 
-export const parseCsv = (text: string): string[][] => {
+export const parseCsv = (
+  text: string,
+  onUnclosedQuote?: () => void,
+): string[][] => {
   const input = text.replace(/^﻿/, "");
   const rows: string[][] = [];
   let row: string[] = [];
@@ -42,6 +45,7 @@ export const parseCsv = (text: string): string[][] => {
       field += ch;
     }
   }
+  if (inQuotes) onUnclosedQuote?.();
   if (field !== "" || row.length > 0) {
     row.push(field);
     rows.push(row);

@@ -113,6 +113,7 @@ export type ReportData = {
   monthlyWaste: string;
   annualWaste: string;
   openFindings: number;
+  capAdjustment?: string;
   byRule: { label: string; count: number; impact: string }[];
   topFindings: { title: string; impact: string }[];
 };
@@ -225,6 +226,13 @@ export const WasteReport = ({
           <Text style={styles.cellImpact}>{r.impact}</Text>
         </View>
       ))}
+
+      {data.capAdjustment && (
+        <View style={styles.row}>
+          <Text style={styles.cellTitle}>Capped at comparable spend</Text>
+          <Text style={styles.cellImpact}>{data.capAdjustment}</Text>
+        </View>
+      )}
 
       <Text style={styles.section}>Largest findings</Text>
       {data.topFindings.map((f, i) => (

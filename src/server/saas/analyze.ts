@@ -2,6 +2,7 @@ import type { WasteFinding } from "~/server/waste/engine";
 import type { SaasProvider, SaasSeat } from "~/server/types";
 import type { EntraIdentity } from "~/server/adobe/analyze";
 
+import { billsPerSeat } from "~/server/waste/spend";
 import { CONNECTOR_LABELS } from "~/lib/connectors";
 
 export const saasPriceKey = (provider: SaasProvider, product: string): string =>
@@ -21,6 +22,7 @@ export const analyzeSaasWaste = (
   opts: { inactiveDays: number; now: Date },
 ): WasteFinding[] => {
   const label = CONNECTOR_LABELS[provider];
+  const priced = billsPerSeat(provider);
   const entraByEmail = new Map(entraUsers.map((u) => [u.upn.toLowerCase(), u]));
   // Without a directory (no Microsoft connection and no CSV import) the leak
   // rules have nothing to correlate against; only the provider's own
@@ -32,8 +34,8 @@ export const analyzeSaasWaste = (
     if (seat.status !== "active") continue;
     const email = seat.email.toLowerCase();
     const entra = entraByEmail.get(email);
-    const monthlyImpactCents = seat.products.reduce(
-      (sum, p) => sum + (prices[saasPriceKey(provider, p)] ?? 0),
+    const monthlyImpactCents = [...new Set(seat.products)].reduce(
+      (sum, p) => sum + (priced ? (prices[saasPriceKey(provider, p)] ?? 0) : 0),
       0,
     );
     const detail = {
@@ -76,7 +78,12 @@ export const analyzeSaasWaste = (
           graphUserId: entra?.graphId ?? null,
           skuId: null,
           title: `${label} seat unused for ${idleDays} days: ${entra?.displayName ?? seat.displayName ?? seat.email}`,
-          detail: { ...detail, idleDays },
+          detail: {
+            ...detail,
+            idleDays,
+            inactiveThreshold: opts.inactiveDays,
+            lastActiveAt: seat.lastActiveAt.toISOString(),
+          },
           monthlyImpactCents,
         });
       }

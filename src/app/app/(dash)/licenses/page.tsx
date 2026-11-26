@@ -120,7 +120,7 @@ export default async function LicensesPage({
   // prepaid units, FLOW_FREE, etc.) so this table matches Overview's inventory
   // and the licenses CSV export, which both apply the same exemption.
   const realSkus = skus.filter(
-    (s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled),
+    (s) => !isShelfwareExempt(s.skuPartNumber, s.skuId),
   );
   const allSorted = [...realSkus].sort((a, b) =>
     (a.displayName ?? a.skuPartNumber).localeCompare(

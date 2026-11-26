@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "~/server/db/schema";
@@ -494,6 +495,8 @@ describe("tools", () => {
       currency: tenantA.currency,
       // Open findings only: 25.00 + 40.00. The resolved 15.00 is excluded.
       monthly_waste: 65,
+      uncapped_monthly_waste: 65,
+      cap_adjustment: 0,
       annualized_waste: 780,
       open_findings: 2,
       last_synced_at: "2026-09-18T06:00:00.000Z",
@@ -508,6 +511,33 @@ describe("tools", () => {
     expect(JSON.parse(content[0]!.text)).toEqual(
       body.result?.structuredContent,
     );
+  });
+
+  it("caps summary waste when stored findings exceed purchased spend", async () => {
+    await currentDb
+      .update(schema.findings)
+      .set({ monthlyImpactCents: 100000000 })
+      .where(eq(schema.findings.tenantId, tenantA.id));
+    const { body } = await callTool(tokenA, "get_waste_summary");
+    const summary = body.result?.structuredContent as {
+      monthly_spend: number;
+      monthly_waste: number;
+      uncapped_monthly_waste: number;
+      cap_adjustment: number;
+      by_category: { monthly_waste: number }[];
+      annualized_waste: number;
+    };
+    expect(summary.monthly_spend).toBeGreaterThan(0);
+    expect(summary.monthly_waste).toBe(summary.monthly_spend);
+    expect(summary.uncapped_monthly_waste).toBe(2_000_000);
+    expect(summary.by_category.map((row) => row.monthly_waste)).toEqual([
+      1_000_000, 1_000_000,
+    ]);
+    expect(summary.cap_adjustment).toBeLessThan(0);
+    expect(summary.uncapped_monthly_waste + summary.cap_adjustment).toBeCloseTo(
+      summary.monthly_waste,
+    );
+    expect(summary.annualized_waste).toBeCloseTo(summary.monthly_spend * 12);
   });
 
   it("list_findings leaves out every user identifier by default", async () => {

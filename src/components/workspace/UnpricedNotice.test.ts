@@ -32,7 +32,7 @@ describe("UnpricedNotice", () => {
     const html = render(
       [
         sku(E3, "SPE_E3", 10, 10),
-        sku(UNKNOWN, "SOME_NEW_ADDON", 0, 4),
+        sku(UNKNOWN, "SOME_NEW_ADDON", 4, 4),
         sku("another-unknown", "OTHER_ADDON", 5, 0),
       ],
       {},
@@ -49,7 +49,13 @@ describe("UnpricedNotice", () => {
     );
   });
 
-  it("stays hidden for known-free, priced, seatless and capacity SKUs", () => {
+  it("counts a large paid SKU: seat count never makes a SKU free", () => {
+    expect(
+      render([sku("large-paid", "SOME_LARGE_ADDON", 10_000, 3)], {}),
+    ).toContain("1 license has no price yet");
+  });
+
+  it("stays hidden for known-free, priced, seatless and unbilled SKUs", () => {
     expect(
       render(
         [
@@ -57,7 +63,9 @@ describe("UnpricedNotice", () => {
           sku("viral", "Dynamics_365_Sales_Premium_Viral_Trial", 25, 1),
           sku(E3, "SPE_E3", 10, 10),
           sku(UNKNOWN, "SOME_NEW_ADDON", 0, 0),
-          sku("capacity", "SOME_CAPACITY_SKU", 10_000, 3),
+          // Assigned but no purchased seats: nothing is billed, so a price
+          // would change neither spend nor waste.
+          sku("unbilled", "SOME_LAPSED_ADDON", 0, 4),
           sku("trial-only", "SOME_EVAL_ADDON", 25, 20, 25),
         ],
         { [E3]: 3670 },

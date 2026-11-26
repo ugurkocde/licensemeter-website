@@ -37,6 +37,7 @@ import {
   priceBook,
   saasConnections,
   saasSeats,
+  savingsLedger,
   snapshots,
   syncRuns,
   tenants,
@@ -93,8 +94,15 @@ import {
   workspaceAdminEmails,
 } from "~/server/workspaceEmail";
 import { byoConnectorEnabled, siteUrl } from "~/env";
+import { importEarnsCredits } from "~/server/savings/importTrust";
+import { reverseDisconnectedSavings } from "~/server/savings/ledger";
 import { WorkspaceUpdateInProgressError } from "~/server/sync/lockTenant";
-import { runAnalysis, runSync } from "~/server/sync/runSync";
+import {
+  AnalysisCurrencyChanged,
+  runAnalysis,
+  runSync,
+  type AnalysisChanges,
+} from "~/server/sync/runSync";
 import { requestDeadline } from "~/server/sync/deadline";
 import { fetchEcbReferenceRates } from "~/server/exchangeRates";
 import type {
@@ -111,9 +119,12 @@ const ok = (): ActionResult => ({ ok: true });
 const revalidateApp = () => revalidatePath("/app", "layout");
 
 /** The mutation is already saved even if the findings refresh must be retried. */
-async function refreshAnalysis(tenantId: string): Promise<ActionResult> {
+async function refreshAnalysis(
+  tenantId: string,
+  changes?: AnalysisChanges,
+): Promise<ActionResult> {
   try {
-    await runAnalysis(tenantId);
+    await runAnalysis(tenantId, changes);
     return ok();
   } catch (error) {
     if (error instanceof WorkspaceUpdateInProgressError)
@@ -152,7 +163,11 @@ export const setFindingStatus = async (
     .update(findings)
     .set({ status })
     .where(
-      and(eq(findings.id, findingId), eq(findings.tenantId, ctx.tenant.id)),
+      and(
+        eq(findings.id, findingId),
+        eq(findings.tenantId, ctx.tenant.id),
+        inArray(findings.status, ["open", "acknowledged"]),
+      ),
     )
     .returning({ id: findings.id });
   if (updated.length === 0) return fail("Finding not found");
@@ -179,8 +194,15 @@ export const bulkSetFindingStatus = async (
   const updated = await db
     .update(findings)
     .set({ status })
-    .where(and(inArray(findings.id, ids), eq(findings.tenantId, ctx.tenant.id)))
+    .where(
+      and(
+        inArray(findings.id, ids),
+        eq(findings.tenantId, ctx.tenant.id),
+        inArray(findings.status, ["open", "acknowledged"]),
+      ),
+    )
     .returning({ id: findings.id });
+  if (updated.length === 0) return fail("No selected findings can be updated");
   await audit(ctx, "findings_bulk_updated", { count: updated.length, status });
   revalidateApp();
   return ok();
@@ -889,7 +911,9 @@ export const setInactiveDays = async (
     .set({ inactiveDays: days })
     .where(eq(tenants.id, ctx.tenant.id));
   await audit(ctx, "threshold_changed", { inactiveDays: days });
-  return refreshAnalysis(ctx.tenant.id);
+  return refreshAnalysis(ctx.tenant.id, {
+    previousInactiveDays: ctx.tenant.inactiveDays,
+  });
 };
 
 /**
@@ -1198,34 +1222,41 @@ export const setCurrency = async (
   if (!isSupportedCurrency(ctx.tenant.currency)) {
     return fail("The current workspace currency is unsupported");
   }
-  if (currency === ctx.tenant.currency) return ok();
-
-  const running = await db.query.syncRuns.findFirst({
-    where: and(
-      eq(syncRuns.tenantId, ctx.tenant.id),
-      eq(syncRuns.status, "running"),
-    ),
-    columns: { id: true },
-  });
-  if (running) return fail("Wait for the current sync to finish, then retry");
-
+  const from = ctx.tenant.currency;
   let reference;
-  let rate: number;
-  let targetPerEur: number;
-  try {
-    reference = await fetchEcbReferenceRates();
-    rate = rateBetween(reference, ctx.tenant.currency, currency);
-    targetPerEur = rateBetween(reference, "EUR", currency);
-  } catch (error) {
-    console.error("currency change: ECB reference rates unavailable", error);
-    return fail("Exchange rates are temporarily unavailable. Please retry.");
+  let rate = 1;
+  let targetPerEur = 1;
+  if (from !== currency) {
+    const running = await db.query.syncRuns.findFirst({
+      where: and(
+        eq(syncRuns.tenantId, ctx.tenant.id),
+        eq(syncRuns.status, "running"),
+      ),
+      columns: { id: true },
+    });
+    if (running) return fail("Wait for the current sync to finish, then retry");
+
+    try {
+      reference = await fetchEcbReferenceRates();
+      rate = rateBetween(reference, from, currency);
+      targetPerEur = rateBetween(reference, "EUR", currency);
+    } catch (error) {
+      console.error("currency change: ECB reference rates unavailable", error);
+      return fail("Exchange rates are temporarily unavailable. Please retry.");
+    }
   }
 
-  const from = ctx.tenant.currency;
-
   try {
-    await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
+      const [lockedTenant] = await tx
+        .select({ currency: tenants.currency })
+        .from(tenants)
+        .where(eq(tenants.id, ctx.tenant.id))
+        .for("update");
+      if (lockedTenant?.currency === currency) return "unchanged";
+      if (lockedTenant?.currency !== from) return "stale";
       const convertedPrice = sql<number>`round(${priceBook.monthlyPriceCents}::numeric * ${rate})::integer`;
+      const convertedSavings = sql<number>`round(${savingsLedger.monthlyCents}::numeric * ${rate})::integer`;
       const convertedImpact = sql<number>`round(${findings.monthlyImpactCents}::numeric * ${rate})::integer`;
       const convertedSpend = sql<number>`round(${snapshots.totalMonthlySpendCents}::numeric * ${rate})::integer`;
       const convertedWaste = sql<number>`round(${snapshots.totalMonthlyWasteCents}::numeric * ${rate})::integer`;
@@ -1239,6 +1270,15 @@ export const setCurrency = async (
         .update(findings)
         .set({ monthlyImpactCents: convertedImpact })
         .where(eq(findings.tenantId, ctx.tenant.id));
+      await tx
+        .update(savingsLedger)
+        .set({ monthlyCents: convertedSavings, currency })
+        .where(
+          and(
+            eq(savingsLedger.tenantId, ctx.tenant.id),
+            eq(savingsLedger.currency, from),
+          ),
+        );
       await tx
         .update(snapshots)
         .set({
@@ -1257,7 +1297,11 @@ export const setCurrency = async (
           currencyRatePpm: Math.round(targetPerEur * 1_000_000),
         })
         .where(eq(tenants.id, ctx.tenant.id));
+      return "converted";
     });
+    if (result === "stale")
+      return fail("The workspace currency changed. Refresh and retry.");
+    if (result === "unchanged" || !reference) return ok();
   } catch (error) {
     console.error("currency change: conversion failed", error);
     return fail("Currency conversion failed. No values were changed.");
@@ -1370,12 +1414,15 @@ export const disconnectAdobe = async (): Promise<ActionResult> => {
   if (ctx.tenant.isDemo)
     return fail("The demo workspace ships with demo Adobe data");
 
-  await db
-    .delete(adobeConnections)
-    .where(eq(adobeConnections.tenantId, ctx.tenant.id));
-  await db.delete(adobeUsers).where(eq(adobeUsers.tenantId, ctx.tenant.id));
+  await db.transaction(async (tx) => {
+    await reverseDisconnectedSavings(tx, ctx.tenant.id, "adobe");
+    await tx
+      .delete(adobeConnections)
+      .where(eq(adobeConnections.tenantId, ctx.tenant.id));
+    await tx.delete(adobeUsers).where(eq(adobeUsers.tenantId, ctx.tenant.id));
+  });
   await audit(ctx, "adobe_disconnected", {});
-  return refreshAnalysis(ctx.tenant.id);
+  return refreshAnalysis(ctx.tenant.id, { removedSources: ["adobe"] });
 };
 
 /** Connect a SaaS connector (Zoom / Atlassian / Salesforce). */
@@ -1477,32 +1524,35 @@ export const disconnectSaasConnector = async (
   if (!isSaasProvider(providerRaw)) return fail("Unknown connector");
   const provider = providerRaw;
 
-  await db
-    .delete(saasConnections)
-    .where(
-      and(
-        eq(saasConnections.tenantId, ctx.tenant.id),
-        eq(saasConnections.provider, provider),
-      ),
-    );
-  await db
-    .delete(saasSeats)
-    .where(
-      and(
-        eq(saasSeats.tenantId, ctx.tenant.id),
-        eq(saasSeats.provider, provider),
-      ),
-    );
-  await db
-    .delete(aiSpendDaily)
-    .where(
-      and(
-        eq(aiSpendDaily.tenantId, ctx.tenant.id),
-        eq(aiSpendDaily.provider, provider),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    await reverseDisconnectedSavings(tx, ctx.tenant.id, provider);
+    await tx
+      .delete(saasConnections)
+      .where(
+        and(
+          eq(saasConnections.tenantId, ctx.tenant.id),
+          eq(saasConnections.provider, provider),
+        ),
+      );
+    await tx
+      .delete(saasSeats)
+      .where(
+        and(
+          eq(saasSeats.tenantId, ctx.tenant.id),
+          eq(saasSeats.provider, provider),
+        ),
+      );
+    await tx
+      .delete(aiSpendDaily)
+      .where(
+        and(
+          eq(aiSpendDaily.tenantId, ctx.tenant.id),
+          eq(aiSpendDaily.provider, provider),
+        ),
+      );
+  });
   await audit(ctx, "connector_disconnected", { provider });
-  return refreshAnalysis(ctx.tenant.id);
+  return refreshAnalysis(ctx.tenant.id, { removedSources: [provider] });
 };
 
 /** GUID shape for tenant/app ids (lenient case). */
@@ -1762,6 +1812,7 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
   // rules carry directory names (UPNs, display names) and are deleted with
   // the dataset; connector findings stay and re-evaluate on the next analysis.
   await db.transaction(async (tx) => {
+    await reverseDisconnectedSavings(tx, ctx.tenant.id, "microsoft");
     await tx
       .select({ id: tenants.id })
       .from(tenants)
@@ -1842,7 +1893,9 @@ export const importSeats = async (
   if (text.trim() === "") return none(fail("Paste the member table first"));
   if (text.length > 1_000_000)
     return none(
-      fail("Paste is too large. Split the export and import it in parts"),
+      fail(
+        "The paste is too large. Import the complete member export in one paste.",
+      ),
     );
 
   const parsed = parseMembers(text);
@@ -1866,33 +1919,66 @@ export const importSeats = async (
     syncedAt: now,
   }));
 
-  await db
-    .delete(saasSeats)
+  const previousSeats = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(saasSeats)
     .where(
       and(
         eq(saasSeats.tenantId, ctx.tenant.id),
         eq(saasSeats.provider, provider),
       ),
-    );
-  for (const batch of chunk(rows, 250)) {
-    await db.insert(saasSeats).values(batch);
-  }
+    )
+    .then((r) => r[0]?.n ?? 0);
+  const verified = importEarnsCredits({
+    invalidRows: parsed.invalid.length,
+    previousSeats,
+    importedSeats: rows.length,
+  });
 
-  // Prefill price keys for the imported products so they appear on the
-  // licenses page; admins enter real per-seat prices there.
-  const products = [...new Set(rows.flatMap((r) => r.products))];
-  if (products.length > 0) {
-    await db
-      .insert(priceBook)
-      .values(
-        products.map((p) => ({
-          tenantId: ctx.tenant.id,
-          skuId: `${provider}:${p}`,
-          monthlyPriceCents: 0,
-          source: "default" as const,
-        })),
-      )
-      .onConflictDoNothing();
+  try {
+    await runAnalysis(
+      ctx.tenant.id,
+      verified ? { verifiedSources: new Set([provider]) } : {},
+      {
+        expectedCurrency: ctx.tenant.currency,
+        persist: async (tx) => {
+          await tx
+            .delete(saasSeats)
+            .where(
+              and(
+                eq(saasSeats.tenantId, ctx.tenant.id),
+                eq(saasSeats.provider, provider),
+              ),
+            );
+          for (const batch of chunk(rows, 250)) {
+            await tx.insert(saasSeats).values(batch);
+          }
+
+          // Prefill price keys for the imported products so they appear on the
+          // licenses page; admins enter real per-seat prices there.
+          const products = [...new Set(rows.flatMap((r) => r.products))];
+          if (products.length > 0) {
+            await tx
+              .insert(priceBook)
+              .values(
+                products.map((p) => ({
+                  tenantId: ctx.tenant.id,
+                  skuId: `${provider}:${p}`,
+                  monthlyPriceCents: 0,
+                  source: "default" as const,
+                })),
+              )
+              .onConflictDoNothing();
+          }
+        },
+      },
+    );
+  } catch (err) {
+    if (err instanceof AnalysisCurrencyChanged)
+      return none(fail("The workspace currency changed. Retry the import."));
+    if (err instanceof WorkspaceUpdateInProgressError)
+      return none(fail(err.message));
+    throw err;
   }
 
   await audit(ctx, "seats_imported", {
@@ -1900,8 +1986,8 @@ export const importSeats = async (
     imported: rows.length,
     invalid: parsed.invalid.length,
   });
-  const result = await refreshAnalysis(ctx.tenant.id);
-  return { ...result, imported: rows.length, invalid: parsed.invalid.length };
+  revalidateApp();
+  return { ok: true, imported: rows.length, invalid: parsed.invalid.length };
 };
 
 /** Remove an import connector's seat snapshot; findings auto-resolve. */
@@ -1916,16 +2002,19 @@ export const clearImportedSeats = async (
     return fail("Unknown connector");
   const provider = providerRaw;
 
-  await db
-    .delete(saasSeats)
-    .where(
-      and(
-        eq(saasSeats.tenantId, ctx.tenant.id),
-        eq(saasSeats.provider, provider),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    await reverseDisconnectedSavings(tx, ctx.tenant.id, provider);
+    await tx
+      .delete(saasSeats)
+      .where(
+        and(
+          eq(saasSeats.tenantId, ctx.tenant.id),
+          eq(saasSeats.provider, provider),
+        ),
+      );
+  });
   await audit(ctx, "seats_import_cleared", { provider });
-  return refreshAnalysis(ctx.tenant.id);
+  return refreshAnalysis(ctx.tenant.id, { removedSources: [provider] });
 };
 
 /** Switch the active workspace (MSP/multi-tenant users). */

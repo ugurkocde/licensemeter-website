@@ -8,10 +8,10 @@ import { db } from "~/server/db";
 import { priceBook, tenantSkus } from "~/server/db/schema";
 import { withTenant } from "~/server/db/tenant";
 import {
+  billedSeatsOf,
   idleSeatsOf,
   isShelfwareExempt,
   paidSeatsOf,
-  billedSeatsOf,
 } from "~/server/waste/engine";
 
 export const GET = async () => {
@@ -36,7 +36,7 @@ export const GET = async () => {
     // capacity sentinels (WINDOWS_STORE, FLOW_FREE, etc.) so the export lists only
     // the real, purchased SKUs the user sees on screen.
     const visibleSkus = skus.filter(
-      (s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled),
+      (s) => !isShelfwareExempt(s.skuPartNumber, s.skuId),
     );
 
     const csv = toCsv([

@@ -46,6 +46,25 @@ describe("WasteReport", () => {
     expect(mentions(buffer, "LicenseMeter")).toBe(true);
   });
 
+  it("includes the cap adjustment in the waste breakdown only when supplied", async () => {
+    const adjustment = "-EUR 200/mo";
+    const report = WasteReport({
+      data: { ...DATA, capAdjustment: adjustment },
+    });
+    const layout = JSON.stringify(report);
+    expect(layout.indexOf("Waste by rule")).toBeLessThan(
+      layout.indexOf("Capped at comparable spend"),
+    );
+    expect(layout.indexOf("Capped at comparable spend")).toBeLessThan(
+      layout.indexOf("Largest findings"),
+    );
+    expect(layout).toContain(adjustment);
+    expect(isPdf(await renderToBuffer(report))).toBe(true);
+    expect(JSON.stringify(WasteReport({ data: DATA }))).not.toContain(
+      "Capped at comparable spend",
+    );
+  });
+
   it("renders a white-label report with a logo and a light brand colour", async () => {
     const buffer = await renderToBuffer(
       WasteReport({

@@ -105,6 +105,14 @@ describe("parseMembers", () => {
     expect(rows.map((r) => r.displayName)).toEqual(["Doe, Jane"]);
   });
 
+  it("rejects an unclosed quote that can hide later members", () => {
+    expect(
+      parseMembers(
+        'Email,Name\nfirst@example.test,"First\nsecond@example.test,Second',
+      ),
+    ).toHaveProperty("error");
+  });
+
   it("joins first and last name when no name column exists", () => {
     const { rows } = ok(
       "First name,Last name,Email\nJane,Doe,jane@acme.com\nMadonna,,m@acme.com",

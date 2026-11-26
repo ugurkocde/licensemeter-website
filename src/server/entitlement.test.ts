@@ -247,3 +247,34 @@ describe("MSP quantity", () => {
     expect(resolve({ record: rec, covered: false }).state).toBe("free");
   });
 });
+
+it("includes the savings ledger in Pro, MSP and demo and gates Free", () => {
+  expect(resolve().features.savingsLedger).toBe(false);
+  expect(
+    resolve({
+      record: {
+        plan: "pro",
+        source: "comped",
+        status: "active",
+        trialEnd: null,
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+      },
+    }).features.savingsLedger,
+  ).toBe(true);
+  expect(
+    resolve({
+      record: {
+        plan: "msp",
+        source: "comped",
+        status: "active",
+        trialEnd: null,
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+      },
+    }).features.savingsLedger,
+  ).toBe(true);
+  expect(resolve({ tenant: { isDemo: true } }).features.savingsLedger).toBe(
+    true,
+  );
+});

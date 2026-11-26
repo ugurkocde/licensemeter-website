@@ -4,6 +4,7 @@ import type { WasteRuleId } from "~/server/types";
 export const wasteShareLabel = (
   monthlySpend: number,
   ruleAgg: readonly { rule: WasteRuleId; cents: number }[],
+  hasOtherConnectorSpend = false,
 ): string | undefined => {
   if (monthlySpend === 0) return;
 
@@ -22,7 +23,7 @@ export const wasteShareLabel = (
   }
 
   const percent = ((microsoftWaste / monthlySpend) * 100).toFixed(1);
-  return hasOtherConnectorWaste
+  return hasOtherConnectorWaste || hasOtherConnectorSpend
     ? `${percent}% of Microsoft spend`
     : `${percent}% of spend`;
 };

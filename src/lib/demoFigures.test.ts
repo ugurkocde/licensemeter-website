@@ -20,7 +20,8 @@ import {
   monthlyBilledSpendOf,
   type WasteFinding,
 } from "~/server/waste/engine";
-import type { WasteRuleId } from "~/server/types";
+import { licenseSpend } from "~/server/waste/spend";
+import type { SaasProvider, SaasSeat, WasteRuleId } from "~/server/types";
 import { DEMO_FIGURES } from "./demoFigures";
 import { MICROSOFT_RULES } from "./rules";
 
@@ -90,21 +91,18 @@ const recompute = async () => {
     displayName: u.displayName,
     accountEnabled: u.accountEnabled,
   }));
-  const adobeFindings = analyzeAdobeWaste(
-    await new DemoAdobeClient().getUsers(),
-    identities,
-    prices,
-  );
+  const adobe = await new DemoAdobeClient().getUsers();
+  const adobeFindings = analyzeAdobeWaste(adobe, identities, prices);
   const saasFindings: WasteFinding[] = [];
+  const saas = new Map<SaasProvider, SaasSeat[]>();
   for (const provider of SAAS_PROVIDERS) {
+    const seats = await demoSaasClient(provider).getSeats();
+    saas.set(provider, seats);
     saasFindings.push(
-      ...analyzeSaasWaste(
-        provider,
-        await demoSaasClient(provider).getSeats(),
-        identities,
-        prices,
-        { inactiveDays: INACTIVE_DAYS, now },
-      ),
+      ...analyzeSaasWaste(provider, seats, identities, prices, {
+        inactiveDays: INACTIVE_DAYS,
+        now,
+      }),
     );
   }
 
@@ -113,6 +111,13 @@ const recompute = async () => {
     (sum, sku) => sum + billedSeatsOf(sku),
     0,
   );
+  const allProviderSpendCents = licenseSpend(
+    { skus: inventory, adobe, saas },
+    Object.entries(prices).map(([skuId, monthlyPriceCents]) => ({
+      skuId,
+      monthlyPriceCents,
+    })),
+  ).totalCents;
   return {
     orgName,
     users: graphUsers.length,
@@ -121,6 +126,7 @@ const recompute = async () => {
       inventory,
       (skuId) => prices[skuId] ?? 0,
     ),
+    allProviderSpendCents,
     billedSeats,
     assignedSeats: assignedSeatsOf(inventory),
   };

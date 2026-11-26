@@ -5,11 +5,14 @@ import { db } from "~/server/db";
 import {
   findings,
   memberships,
+  savingsLedger,
+  priceBook,
   snapshots,
   syncRuns,
   tenants,
   vendorRenewals,
 } from "~/server/db/schema";
+import type { ResolutionReason } from "~/server/types";
 import { runSync } from "~/server/sync/runSync";
 import { DEMO_EMAIL, DEMO_OID, DEMO_TID } from "./constants";
 
@@ -85,7 +88,7 @@ const seedDemoWorkspace = async (): Promise<void> => {
 
 /**
  * Read-only demo content for workflows that a Graph sync does not naturally
- * create: verified savings, assigned remediation, and procurement deadlines.
+ * create: savings history, assigned remediation and procurement deadlines.
  * Every insert/update is idempotent so it is safe on each demo access.
  */
 const seedDemoShowcase = async (tenantId: string): Promise<void> => {
@@ -93,31 +96,72 @@ const seedDemoShowcase = async (tenantId: string): Promise<void> => {
     where: eq(memberships.tenantId, tenantId),
   });
 
-  const resolved = await db.query.findings.findFirst({
-    where: and(
-      eq(findings.tenantId, tenantId),
-      eq(findings.dedupeKey, "demo|verified-saving|project-plan"),
-    ),
+  const scenarios: {
+    daysAgo: number;
+    reason: ResolutionReason;
+    amount: number;
+  }[] = [
+    { daysAgo: 3, reason: "license_removed", amount: 3_670 },
+    { daysAgo: 11, reason: "seats_reduced", amount: 10_200 },
+    { daysAgo: 16, reason: "excluded", amount: 0 },
+    { daysAgo: 21, reason: "activity_resumed", amount: 0 },
+    { daysAgo: 38, reason: "license_removed", amount: 7_340 },
+    { daysAgo: 68, reason: "seats_reduced", amount: 18_350 },
+    { daysAgo: 99, reason: "license_removed", amount: 11_010 },
+    { daysAgo: 132, reason: "seats_reduced", amount: 14_680 },
+    { daysAgo: 162, reason: "license_removed", amount: 3_670 },
+  ];
+  const skuId = "05e9a617-0261-4cee-bb44-138d3ef5d965";
+  await db.transaction(async (tx) => {
+    for (const [index, scenario] of scenarios.entries()) {
+      const { daysAgo, reason, amount } = scenario;
+      const rule = reason === "seats_reduced" ? "shelfware" : "inactive_90d";
+      const date = new Date(Date.now() - daysAgo * 86_400_000);
+      const [finding] = await tx
+        .insert(findings)
+        .values({
+          tenantId,
+          dedupeKey: `demo|savings-ledger|${index}`,
+          rule,
+          title:
+            rule === "shelfware"
+              ? "Unassigned seats reviewed"
+              : "Inactive license reviewed",
+          skuId,
+          monthlyImpactCents: amount,
+          status: "resolved",
+          resolutionReason: reason,
+          resolvedAt: date,
+          firstSeenAt: date,
+          lastSeenAt: date,
+        })
+        .onConflictDoNothing()
+        .returning({ id: findings.id });
+      if (
+        finding &&
+        (reason === "license_removed" || reason === "seats_reduced")
+      ) {
+        await tx.insert(savingsLedger).values({
+          tenantId,
+          findingId: finding.id,
+          rule,
+          vendor: "Microsoft",
+          skuId,
+          reason,
+          monthlyCents: amount,
+          seats: Math.max(1, Math.round(amount / 3670)),
+          currency: "EUR",
+          realizedAt: date,
+          reversedAt:
+            index === 6 ? new Date(date.getTime() + 14 * 86_400_000) : null,
+        });
+      }
+    }
   });
-  if (!resolved) {
-    await db.insert(findings).values({
-      tenantId,
-      dedupeKey: "demo|verified-saving|project-plan",
-      rule: "inactive_90d",
-      title: "Reclaimed inactive Project Plan seat",
-      detail: {
-        displayName: "Former contractor",
-        inactiveDays: 143,
-        hint: "License removed and confirmed by the next directory sync.",
-      },
-      monthlyImpactCents: 2_990,
-      status: "resolved",
-      remediationStatus: "in_progress",
-      assigneeMembershipId: owner?.id ?? null,
-      workflowNote: "Validated with the project delivery owner before removal.",
-      resolvedAt: new Date(),
-    });
-  }
+  await db
+    .update(priceBook)
+    .set({ source: "custom" })
+    .where(and(eq(priceBook.tenantId, tenantId), eq(priceBook.skuId, skuId)));
 
   const planned = await db.query.findings.findFirst({
     where: and(eq(findings.tenantId, tenantId), eq(findings.status, "open")),

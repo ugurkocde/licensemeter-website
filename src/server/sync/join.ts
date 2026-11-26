@@ -7,6 +7,7 @@ import { isConcealedUpn } from "~/server/graph/types";
 import type { EntraIdentity } from "~/server/adobe/analyze";
 import {
   COPILOT_SKU_ID,
+  uniqueLicenses,
   type WasteInput,
   type WasteUser,
 } from "~/server/waste/engine";
@@ -125,19 +126,21 @@ export const joinSignals = (args: {
       lastNonInteractiveSignIn,
     );
 
-    const licenses = (g.licenseAssignmentStates ?? []).length
-      ? (g.licenseAssignmentStates ?? []).map((s) => ({
-          skuId: s.skuId,
-          assignedByGroup: s.assignedByGroup,
-          disabledPlans: s.disabledPlans ?? [],
-          state: s.state,
-        }))
-      : g.assignedLicenses.map((l) => ({
-          skuId: l.skuId,
-          assignedByGroup: null,
-          disabledPlans: l.disabledPlans,
-          state: "Active",
-        }));
+    const licenses = uniqueLicenses(
+      (g.licenseAssignmentStates ?? []).length
+        ? (g.licenseAssignmentStates ?? []).map((s) => ({
+            skuId: s.skuId,
+            assignedByGroup: s.assignedByGroup,
+            disabledPlans: s.disabledPlans ?? [],
+            state: s.state,
+          }))
+        : g.assignedLicenses.map((l) => ({
+            skuId: l.skuId,
+            assignedByGroup: null,
+            disabledPlans: l.disabledPlans,
+            state: "Active",
+          })),
+    );
 
     return {
       graphId: g.id,

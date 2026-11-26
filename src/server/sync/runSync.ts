@@ -1,5 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, gte, inArray, lt, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  notInArray,
+  sql,
+} from "drizzle-orm";
 
 import { db, type Db } from "~/server/db";
 import {
@@ -17,6 +28,7 @@ import {
   saasConnections,
   saasSeats as saasSeatsTable,
   snapshots,
+  savingsLedger,
   syncRuns,
   tenantSkus,
   tenants,
@@ -32,6 +44,7 @@ import {
   IMPORT_PROVIDERS,
   SAAS_PROVIDERS,
   type AiSpendClient,
+  type SaasClient,
 } from "~/server/saas/registry";
 import { decryptSecret, secretAad } from "~/server/crypto";
 import type { AdobeUser, SaasProvider, SaasSeat } from "~/server/types";
@@ -85,13 +98,24 @@ import type {
 import {
   analyzeWaste,
   assignedSeatsOf,
-  monthlyBilledSpendOf,
   isShelfwareExempt,
   paidSeatsOf,
   purchasedSeatsOf,
   type WasteFinding,
   type WasteInput,
 } from "~/server/waste/engine";
+
+import { reconcileSavings, savingsSubjects } from "~/server/savings/reconcile";
+import { resolutionOf } from "~/server/savings/resolution";
+import {
+  comparableWaste,
+  findingSource,
+  groupSaasSeats,
+  licenseSpend,
+  vendorLabel,
+  type SeatSource,
+} from "~/server/waste/spend";
+import { loadLicenseSpend } from "~/server/waste/spendStore";
 
 const chunk = <T>(arr: T[], size: number): T[][] => {
   const out: T[][] = [];
@@ -114,7 +138,7 @@ const bySkuOf = (
 ): Record<string, { purchased: number; assigned: number }> =>
   Object.fromEntries(
     skus
-      .filter((s) => !isShelfwareExempt(s.skuPartNumber, s.prepaidEnabled))
+      .filter((s) => !isShelfwareExempt(s.skuPartNumber, s.skuId))
       .map((s) => [
         s.skuId,
         { purchased: paidSeatsOf(s), assigned: s.consumedUnits },
@@ -732,6 +756,7 @@ export const runSync = async (
     for (const provider of activeSaas) {
       const conn = saasConns.find((c) => c.provider === provider);
       const started = Date.now();
+      let live: { client: SaasClient; seats: SaasSeat[] } | undefined;
       try {
         if (outOfTime()) {
           throw new Error("Sync deadline reached; using stored data");
@@ -746,36 +771,10 @@ export const runSync = async (
                 secretAad(conn!.tenantId, conn!.provider, "secretEnc"),
               ),
             });
-        const seats = mergeSaasSeats(await saasClient.getSeats());
-        saasRows.set(provider, seats);
-        saasPersist.add(provider);
-        record({
-          step: `${provider}Seats`,
-          status: "ok",
-          count: seats.length,
-          durationMs: since(started),
-        });
-        if (conn) {
-          await db
-            .update(saasConnections)
-            .set({ lastSyncAt: now, lastSyncStatus: "ok" })
-            .where(
-              and(
-                eq(saasConnections.tenantId, tenantId),
-                eq(saasConnections.provider, provider),
-              ),
-            );
-        }
-        if (provider === "openai" || provider === "anthropic") {
-          await syncAiSpend(
-            tenantId,
-            provider,
-            saasClient as AiSpendClient,
-            now,
-            record,
-            deadline,
-          );
-        }
+        live = {
+          client: saasClient,
+          seats: mergeSaasSeats(await saasClient.getSeats()),
+        };
       } catch (err) {
         record({
           step: `${provider}Seats`,
@@ -799,17 +798,46 @@ export const runSync = async (
             lastActiveAt: r.lastActiveAt,
           })),
         );
-        if (conn) {
+      }
+      if (live) {
+        saasRows.set(provider, live.seats);
+        saasPersist.add(provider);
+        record({
+          step: `${provider}Seats`,
+          status: "ok",
+          count: live.seats.length,
+          durationMs: since(started),
+        });
+      }
+
+      if (conn) {
+        try {
           await db
             .update(saasConnections)
-            .set({ lastSyncAt: now, lastSyncStatus: "failed" })
+            .set({ lastSyncAt: now, lastSyncStatus: live ? "ok" : "failed" })
             .where(
               and(
                 eq(saasConnections.tenantId, tenantId),
                 eq(saasConnections.provider, provider),
               ),
             );
+        } catch (err) {
+          console.warn(
+            "[sync] connector status write failed",
+            provider,
+            opsErrorText(err),
+          );
         }
+      }
+      if (live && (provider === "openai" || provider === "anthropic")) {
+        await syncAiSpend(
+          tenantId,
+          provider,
+          live.client as AiSpendClient,
+          now,
+          record,
+          deadline,
+        );
       }
     }
 
@@ -859,25 +887,41 @@ export const runSync = async (
       reportUnavailable: usageReportUnavailable,
     });
 
+    const previousSkus = await db.query.tenantSkus.findMany({
+      where: eq(tenantSkus.tenantId, tenantId),
+      columns: {
+        skuId: true,
+        skuPartNumber: true,
+        prepaidEnabled: true,
+        consumedUnits: true,
+        trialUnits: true,
+        nextLifecycleAt: true,
+      },
+    });
+
     // A failed subscriptions read keeps the trial seats and renewal dates of
     // the last successful one.
-    if (skuTerms === null) {
-      const stored = await db.query.tenantSkus.findMany({
-        where: eq(tenantSkus.tenantId, tenantId),
-        columns: { skuId: true, trialUnits: true, nextLifecycleAt: true },
-      });
-      skuTerms = new Map(
-        stored.map((r) => [
+    const resolvedSkuTerms =
+      skuTerms ??
+      new Map(
+        previousSkus.map((r) => [
           r.skuId,
           { trialUnits: r.trialUnits, nextLifecycleAt: r.nextLifecycleAt },
         ]),
       );
-    }
     const termsOf = (skuId: string): SkuTerms =>
-      skuTerms?.get(skuId) ?? { trialUnits: 0, nextLifecycleAt: null };
+      resolvedSkuTerms.get(skuId) ?? { trialUnits: 0, nextLifecycleAt: null };
 
-    // --- Persist phase (upsert + prune; no destructive window) -------------
-    await db.transaction(async (tx) => {
+    // An empty SKU response is confirmed only when a populated directory
+    // also has no assignments. Otherwise keep the previous inventory.
+    const verifiedMicrosoft = Boolean(
+      client &&
+      graphUsers.length &&
+      (skus.length || joined.users.every((user) => user.licenses.length === 0)),
+    );
+    // Commit the next seat baseline with the findings and savings it proves.
+    const persistInventory = async (tx: SyncTransaction) => {
+      if (!verifiedMicrosoft) return;
       if (skus.length > 0) {
         for (const batch of chunk(skus, 250)) {
           await tx
@@ -913,19 +957,17 @@ export const runSync = async (
             });
         }
       }
-      // Prune only when Graph returned data; an empty result keeps the last
-      // known inventory instead of wiping it (defensive against odd responses).
-      if (skus.length > 0) {
-        await tx
-          .delete(tenantSkus)
-          .where(
-            and(
-              eq(tenantSkus.tenantId, tenantId),
-              notInArray(tenantSkus.skuId, textSet(skus.map((s) => s.skuId))),
-            ),
-          );
-      }
-    });
+      await tx
+        .delete(tenantSkus)
+        .where(
+          and(
+            eq(tenantSkus.tenantId, tenantId),
+            skus.length > 0
+              ? notInArray(tenantSkus.skuId, textSet(skus.map((s) => s.skuId)))
+              : undefined,
+          ),
+        );
+    };
 
     for (const batch of chunk(joined.users, 250)) {
       await db
@@ -1084,123 +1126,133 @@ export const runSync = async (
       });
     }
 
-    // Prefill missing price book rows from the static catalog.
-    const existingPrices = await db.query.priceBook.findMany({
-      where: eq(priceBook.tenantId, tenantId),
-    });
-    const known = new Set(existingPrices.map((p) => p.skuId));
-    // Catalog prices added after a row was prefilled: a row still on the
-    // catalog's old fallback of 0 picks up the new list price. Only rows the
-    // customer never touched (source "default") qualify; any edited price
-    // is "custom" and is never overwritten.
-    const skuIds = new Set(skus.map((s) => s.skuId));
-    for (const p of existingPrices) {
-      if (
-        p.source !== "default" ||
-        p.monthlyPriceCents !== 0 ||
-        !skuIds.has(p.skuId)
-      ) {
-        continue;
-      }
-      const price = skuDefaultPriceCents(p.skuId, tenant.currencyRatePpm);
-      if (price === 0) continue;
-      await db
-        .update(priceBook)
-        .set({ monthlyPriceCents: price, updatedAt: now })
-        .where(
-          and(
-            eq(priceBook.tenantId, tenantId),
-            eq(priceBook.skuId, p.skuId),
-            eq(priceBook.source, "default"),
-            eq(priceBook.monthlyPriceCents, 0),
-          ),
-        );
-    }
-    const missing = skus.filter((s) => !known.has(s.skuId));
-    if (missing.length > 0) {
-      for (const batch of chunk(missing, 250)) {
-        await db.insert(priceBook).values(
-          batch.map((s) => ({
-            tenantId,
-            skuId: s.skuId,
-            monthlyPriceCents: skuDefaultPriceCents(
-              s.skuId,
-              tenant.currencyRatePpm,
+    const prices = await db.transaction(async (tx) => {
+      const locked = await lockAnalysisTenant(tx, tenantId, tenant.currency);
+      if (!locked) throw new Error("Workspace removed during sync");
+
+      // Prefill missing price book rows from the static catalog.
+      const existingPrices = await tx.query.priceBook.findMany({
+        where: eq(priceBook.tenantId, tenantId),
+      });
+      const known = new Set(existingPrices.map((p) => p.skuId));
+      // Catalog prices added after a row was prefilled: a row still on the
+      // catalog's old fallback of 0 picks up the new list price. Only rows the
+      // customer never touched (source "default") qualify; any edited price
+      // is "custom" and is never overwritten.
+      const skuIds = new Set(skus.map((s) => s.skuId));
+      for (const p of existingPrices) {
+        if (
+          p.source !== "default" ||
+          p.monthlyPriceCents !== 0 ||
+          !skuIds.has(p.skuId)
+        ) {
+          continue;
+        }
+        const price = skuDefaultPriceCents(p.skuId, tenant.currencyRatePpm);
+        if (price === 0) continue;
+        await tx
+          .update(priceBook)
+          .set({ monthlyPriceCents: price, updatedAt: now })
+          .where(
+            and(
+              eq(priceBook.tenantId, tenantId),
+              eq(priceBook.skuId, p.skuId),
+              eq(priceBook.source, "default"),
+              eq(priceBook.monthlyPriceCents, 0),
             ),
-            source: "default" as const,
-          })),
-        );
+          );
       }
-    }
-
-    // Prefill Adobe product prices (demo gets plausible list estimates).
-    const DEMO_ADOBE_PRICES: Record<string, number> = {
-      "Creative Cloud All Apps": 7100,
-      "Acrobat Pro": 2000,
-      Photoshop: 2400,
-    };
-    const adobeProducts = [...new Set(adobeRows.flatMap((u) => u.products))];
-    const missingAdobe = adobeProducts
-      .map(adobePriceKey)
-      .filter((id) => !known.has(id));
-    if (missingAdobe.length > 0) {
-      for (const batch of chunk(missingAdobe, 250)) {
-        await db
-          .insert(priceBook)
-          .values(
-            batch.map((id) => ({
+      const missing = skus.filter((s) => !known.has(s.skuId));
+      if (missing.length > 0) {
+        for (const batch of chunk(missing, 250)) {
+          await tx.insert(priceBook).values(
+            batch.map((s) => ({
               tenantId,
-              skuId: id,
-              monthlyPriceCents: tenant.isDemo
-                ? (DEMO_ADOBE_PRICES[id.slice("adobe:".length)] ?? 0)
-                : 0,
-              source: "default" as const,
+              skuId: s.skuId,
+              monthlyPriceCents: skuDefaultPriceCents(
+                s.skuId,
+                tenant.currencyRatePpm,
+              ),
+              source:
+                tenant.isDemo &&
+                s.skuId === "05e9a617-0261-4cee-bb44-138d3ef5d965"
+                  ? ("custom" as const)
+                  : ("default" as const),
             })),
-          )
-          .onConflictDoNothing();
+          );
+        }
       }
-    }
 
-    // Prefill SaaS connector prices (demo gets plausible list estimates).
-    const missingSaas = [...saasRows.entries()]
-      .flatMap(([provider, seats]) =>
-        [...new Set(seats.flatMap((s) => s.products))].map((p) =>
-          saasPriceKey(provider, p),
-        ),
-      )
-      .filter((id) => !known.has(id));
-    if (missingSaas.length > 0) {
-      for (const batch of chunk(missingSaas, 250)) {
-        await db
-          .insert(priceBook)
-          .values(
-            batch.map((id) => ({
-              tenantId,
-              skuId: id,
-              monthlyPriceCents: tenant.isDemo
-                ? (DEMO_SAAS_PRICES[id] ?? 0)
-                : 0,
-              source: "default" as const,
-            })),
-          )
-          .onConflictDoNothing();
+      // Prefill Adobe product prices (demo gets plausible list estimates).
+      const DEMO_ADOBE_PRICES: Record<string, number> = {
+        "Creative Cloud All Apps": 7100,
+        "Acrobat Pro": 2000,
+        Photoshop: 2400,
+      };
+      const adobeProducts = [...new Set(adobeRows.flatMap((u) => u.products))];
+      const missingAdobe = adobeProducts
+        .map(adobePriceKey)
+        .filter((id) => !known.has(id));
+      if (missingAdobe.length > 0) {
+        for (const batch of chunk(missingAdobe, 250)) {
+          await tx
+            .insert(priceBook)
+            .values(
+              batch.map((id) => ({
+                tenantId,
+                skuId: id,
+                monthlyPriceCents: tenant.isDemo
+                  ? (DEMO_ADOBE_PRICES[id.slice("adobe:".length)] ?? 0)
+                  : 0,
+                source: "default" as const,
+              })),
+            )
+            .onConflictDoNothing();
+        }
       }
-    }
-    const prices = Object.fromEntries(
-      (
-        await db.query.priceBook.findMany({
-          where: eq(priceBook.tenantId, tenantId),
-        })
-      ).map((p) => [p.skuId, p.monthlyPriceCents]),
-    );
 
-    const inventory = skus.map((s) => ({
-      skuId: s.skuId,
-      skuPartNumber: s.skuPartNumber,
-      prepaidEnabled: s.prepaidUnits.enabled,
-      consumedUnits: s.consumedUnits,
-      trialUnits: termsOf(s.skuId).trialUnits,
-    }));
+      // Prefill SaaS connector prices (demo gets plausible list estimates).
+      const missingSaas = [...saasRows.entries()]
+        .flatMap(([provider, seats]) =>
+          [...new Set(seats.flatMap((s) => s.products))].map((p) =>
+            saasPriceKey(provider, p),
+          ),
+        )
+        .filter((id) => !known.has(id));
+      if (missingSaas.length > 0) {
+        for (const batch of chunk(missingSaas, 250)) {
+          await tx
+            .insert(priceBook)
+            .values(
+              batch.map((id) => ({
+                tenantId,
+                skuId: id,
+                monthlyPriceCents: tenant.isDemo
+                  ? (DEMO_SAAS_PRICES[id] ?? 0)
+                  : 0,
+                source: "default" as const,
+              })),
+            )
+            .onConflictDoNothing();
+        }
+      }
+      const rows = await tx.query.priceBook.findMany({
+        where: eq(priceBook.tenantId, tenantId),
+      });
+      return Object.fromEntries(
+        rows.map((p) => [p.skuId, p.monthlyPriceCents]),
+      );
+    });
+
+    const inventory = verifiedMicrosoft
+      ? skus.map((s) => ({
+          skuId: s.skuId,
+          skuPartNumber: s.skuPartNumber,
+          prepaidEnabled: s.prepaidUnits.enabled,
+          consumedUnits: s.consumedUnits,
+          trialUnits: termsOf(s.skuId).trialUnits,
+        }))
+      : previousSkus;
     const newFindings = await analyzeWasteWithCoverage(tenantId, {
       users: joined.users,
       skus: inventory,
@@ -1246,7 +1298,50 @@ export const runSync = async (
         { inactiveDays: tenant.inactiveDays, now },
       ),
     );
-    const allFindings = newFindings.concat(adobeFindings, saasFindings);
+    // An unverified Microsoft inventory keeps stored inventory and
+    // inventory-backed findings intact, while still letting the concealed
+    // usage aggregate follow the current directory and outage signal.
+    const microsoftFindings = verifiedMicrosoft
+      ? newFindings
+      : client
+        ? newFindings.filter(isConcealedInactivityAggregate)
+        : [];
+    const allFindings = microsoftFindings.concat(adobeFindings, saasFindings);
+    const verifiedSources = new Set<SeatSource>(saasPersist);
+    if (adobeActive) verifiedSources.add("adobe");
+    if (verifiedMicrosoft) verifiedSources.add("microsoft");
+    const preserveMicrosoft: MicrosoftPreservation = verifiedMicrosoft
+      ? "none"
+      : client
+        ? "inventory"
+        : "all";
+    const inserted = await diffFindings(
+      tenantId,
+      allFindings,
+      now,
+      {
+        users: graphUsers.length
+          ? joined.users
+          : directory.map((user) => ({
+              ...user,
+              copilotLastActivity: null,
+            })),
+        skus: inventory,
+        previousSkus,
+        adobe: adobeRows,
+        saas: saasRows,
+        prices,
+        now,
+        inactiveDays: tenant.inactiveDays,
+        exclusions: tenant.findingExclusions,
+        verifiedSources,
+        analysisCurrency: tenant.currency,
+      },
+      preserveMicrosoft,
+      persistInventory,
+      joined.activitySignal,
+    );
+
     record({
       step: "wasteAnalysis",
       status: "ok",
@@ -1254,28 +1349,20 @@ export const runSync = async (
       durationMs: since(analysisStarted),
     });
 
-    const inserted = await diffFindings(
-      tenantId,
-      allFindings,
-      now,
-      joined.activitySignal,
-    );
     await sendLeakAlert(tenant, inserted, now);
 
     // --- Snapshot + tenant capabilities ------------------------------------
-    const totalMonthlySpendCents = monthlyBilledSpendOf(
-      inventory,
-      (skuId) => prices[skuId] ?? 0,
-    );
+    const { spend } = await loadLicenseSpend(tenantId);
+    const totalMonthlySpendCents = spend.totalCents;
     const openRows = await db.query.findings.findMany({
       where: and(
         eq(findings.tenantId, tenantId),
         inArray(findings.status, ["open", "acknowledged"]),
       ),
     });
-    const totalMonthlyWasteCents = openRows.reduce(
-      (sum, f) => sum + f.monthlyImpactCents,
-      0,
+    const totalMonthlyWasteCents = comparableWaste(
+      openRows.reduce((sum, f) => sum + f.monthlyImpactCents, 0),
+      totalMonthlySpendCents,
     );
 
     const day = now.toISOString().slice(0, 10);
@@ -1348,6 +1435,19 @@ export const runSync = async (
     }
     return { runId, status, steps };
   } catch (err) {
+    if (err instanceof AnalysisCurrencyChanged) {
+      record({
+        step: "wasteAnalysis",
+        status: "warning",
+        message: err.message,
+      });
+      await log.settled();
+      await db
+        .update(syncRuns)
+        .set({ status: "partial", steps, finishedAt: new Date() })
+        .where(eq(syncRuns.id, runId));
+      return { runId, status: "partial", steps };
+    }
     const message = errText(err);
     // App-only auth failure (expired/revoked BYO secret or certificate, or
     // managed re-consent needed): record a clean, non-leaking marker on the
@@ -1410,6 +1510,17 @@ type ActivityAnalysisOptions = {
   reconcile: ActivityReconciliation;
 };
 
+export type AnalysisChanges = {
+  removedSources?: SeatSource[];
+  verifiedSources?: ReadonlySet<SeatSource>;
+  previousInactiveDays?: number;
+};
+
+type AnalysisReplacement = {
+  expectedCurrency: string;
+  persist: (tx: SyncTransaction) => Promise<void>;
+};
+
 /**
  * Re-runs the waste analysis from data already in the database, used after
  * price book edits so impact figures update without a Graph round trip.
@@ -1417,41 +1528,126 @@ type ActivityAnalysisOptions = {
  */
 export const runAnalysis = async (
   tenantId: string,
-  activity?: ActivityAnalysisOptions,
+  options: AnalysisChanges | ActivityAnalysisOptions = {},
+  replacement?: AnalysisReplacement,
 ): Promise<void> => {
-  if (activity)
-    return analyzeStoredTenant(tenantId, activity.database, activity);
+  if ("reconcile" in options) {
+    return analyzeActivityBackfill(tenantId, options);
+  }
   await db.transaction(async (tx) => {
-    await lockTenantForWorkspaceUpdate(tx, tenantId);
-    await analyzeStoredTenant(tenantId, tx);
+    const tenant = await lockAnalysisTenant(
+      tx,
+      tenantId,
+      replacement?.expectedCurrency,
+    );
+    if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
+    if (replacement) await replacement.persist(tx);
+    await analyzeStoredInventory(tx, tenant, options);
   });
 };
 
-async function analyzeStoredTenant(
+async function analyzeActivityBackfill(
   tenantId: string,
-  database: Db,
-  activity?: ActivityAnalysisOptions,
+  activity: ActivityAnalysisOptions,
 ) {
+  const database = activity.database;
   const tenant = await database.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
   });
   if (!tenant) throw new Error(`Unknown tenant ${tenantId}`);
 
+  const [skuRows, userRows, priceRows] = await Promise.all([
+    database.query.tenantSkus.findMany({
+      where: eq(tenantSkus.tenantId, tenantId),
+    }),
+    database.query.tenantUsers.findMany({
+      where: eq(tenantUsers.tenantId, tenantId),
+    }),
+    database.query.priceBook.findMany({
+      where: eq(priceBook.tenantId, tenantId),
+    }),
+  ]);
+  if (skuRows.length === 0 && userRows.length === 0) return;
+
+  const prices = Object.fromEntries(
+    priceRows.map((p) => [p.skuId, p.monthlyPriceCents]),
+  );
+  const users = userRows
+    .filter((row) => activity.users.has(row.graphId))
+    .map((row) => {
+      const r = { ...row, ...activity.users.get(row.graphId) };
+      return {
+        graphId: r.graphId,
+        upn: r.upn,
+        displayName: r.displayName,
+        accountEnabled: r.accountEnabled,
+        userType: r.userType,
+        createdDateTime: r.createdDateTime,
+        lastActivity: r.lastActivity,
+        copilotLastActivity: r.workloadActivity?.copilot
+          ? new Date(r.workloadActivity.copilot)
+          : null,
+        licenses: r.licenses,
+      };
+    });
+  const evaluated = new Map<string, Set<WasteRuleId>>();
+  const newFindings = analyzeWaste({
+    users,
+    skus: skuRows,
+    prices,
+    now: activity.now,
+    inactiveDays: tenant.inactiveDays,
+    exclusions: tenant.findingExclusions,
+    activitySignal: "full",
+    copilotSignal: "per-user",
+    onActivityEvaluated: (user, rule) => {
+      const graphId = user.graphId.toLowerCase();
+      const hasEvidence =
+        rule === "copilot_unused"
+          ? activity.copilotChanged.has(graphId) &&
+            Number.isFinite(user.copilotLastActivity?.getTime())
+          : Number.isFinite(user.lastActivity?.getTime());
+      if (!hasEvidence) return;
+      const rules = evaluated.get(graphId) ?? new Set<WasteRuleId>();
+      rules.add(rule);
+      evaluated.set(graphId, rules);
+    },
+  });
+  const includes: ActivityReconciliation["includes"] = (finding) =>
+    finding.graphUserId !== null &&
+    evaluated.get(finding.graphUserId.toLowerCase())?.has(finding.rule) ===
+      true &&
+    activity.reconcile.includes(finding);
+  await reconcileBackfillFindings(
+    database,
+    tenantId,
+    newFindings.filter(includes),
+    activity.now,
+    { ...activity.reconcile, includes },
+  );
+}
+
+async function analyzeStoredInventory(
+  tx: SyncTransaction,
+  tenant: typeof tenants.$inferSelect,
+  changes: AnalysisChanges,
+) {
+  const tenantId = tenant.id;
   const [skuRows, userRows, priceRows, adobeRows, saasSeatRows] =
     await Promise.all([
-      database.query.tenantSkus.findMany({
+      tx.query.tenantSkus.findMany({
         where: eq(tenantSkus.tenantId, tenantId),
       }),
-      database.query.tenantUsers.findMany({
+      tx.query.tenantUsers.findMany({
         where: eq(tenantUsers.tenantId, tenantId),
       }),
-      database.query.priceBook.findMany({
+      tx.query.priceBook.findMany({
         where: eq(priceBook.tenantId, tenantId),
       }),
-      database.query.adobeUsers.findMany({
+      tx.query.adobeUsers.findMany({
         where: eq(adobeUsersTable.tenantId, tenantId),
       }),
-      database.query.saasSeats.findMany({
+      tx.query.saasSeats.findMany({
         where: eq(saasSeatsTable.tenantId, tenantId),
       }),
     ]);
@@ -1462,11 +1658,12 @@ async function analyzeStoredTenant(
     skuRows.length === 0 &&
     userRows.length === 0 &&
     adobeRows.length === 0 &&
-    saasSeatRows.length === 0
+    saasSeatRows.length === 0 &&
+    !changes.removedSources?.length
   )
     return;
 
-  const now = activity?.now ?? new Date();
+  const now = new Date();
   const prices = Object.fromEntries(
     priceRows.map((p) => [p.skuId, p.monthlyPriceCents]),
   );
@@ -1475,67 +1672,27 @@ async function analyzeStoredTenant(
   const activitySignal =
     tenant.activitySignal ??
     (tenant.hasP1 || tenant.concealedNames === false ? "full" : "none");
-  const users = userRows.map((row) => {
-    const r = { ...row, ...activity?.users.get(row.graphId) };
-    return {
-      graphId: r.graphId,
-      upn: r.upn,
-      displayName: r.displayName,
-      accountEnabled: r.accountEnabled,
-      userType: r.userType,
-      createdDateTime: r.createdDateTime,
-      lastActivity: r.lastActivity,
-      copilotLastActivity: r.workloadActivity?.copilot
-        ? new Date(r.workloadActivity.copilot)
-        : null,
-      licenses: r.licenses,
-    };
-  });
-  const inputs = {
-    skus: skuRows,
-    prices,
-    now,
-    inactiveDays: tenant.inactiveDays,
-    exclusions: tenant.findingExclusions,
-  };
-
-  if (activity) {
-    const evaluated = new Map<string, Set<WasteRuleId>>();
-    const newFindings = analyzeWaste({
-      ...inputs,
-      users: users.filter((user) => activity.users.has(user.graphId)),
-      activitySignal: "full",
-      copilotSignal: "per-user",
-      onActivityEvaluated: (user, rule) => {
-        const graphId = user.graphId.toLowerCase();
-        const hasEvidence =
-          rule === "copilot_unused"
-            ? activity.copilotChanged.has(graphId) &&
-              Number.isFinite(user.copilotLastActivity?.getTime())
-            : Number.isFinite(user.lastActivity?.getTime());
-        if (!hasEvidence) return;
-        const rules = evaluated.get(graphId) ?? new Set<WasteRuleId>();
-        rules.add(rule);
-        evaluated.set(graphId, rules);
-      },
-    });
-    const includes: ActivityReconciliation["includes"] = (finding) =>
-      finding.graphUserId !== null &&
-      evaluated.get(finding.graphUserId.toLowerCase())?.has(finding.rule) ===
-        true &&
-      activity.reconcile.includes(finding);
-    await diffFindings(tenantId, newFindings.filter(includes), now, "full", {
-      database,
-      reconcile: { ...activity.reconcile, includes },
-    });
-    return;
-  }
-
+  const users = userRows.map((r) => ({
+    mailAliases: r.mailAliases,
+    graphId: r.graphId,
+    upn: r.upn,
+    displayName: r.displayName,
+    accountEnabled: r.accountEnabled,
+    userType: r.userType,
+    createdDateTime: r.createdDateTime,
+    lastActivity: r.lastActivity,
+    copilotLastActivity: r.workloadActivity?.copilot
+      ? new Date(r.workloadActivity.copilot)
+      : null,
+    licenses: r.licenses,
+  }));
   const newFindings = await analyzeWasteWithCoverage(
     tenantId,
     {
-      ...inputs,
       users,
+      skus: skuRows,
+      prices,
+      now,
       activitySignal,
       copilotSignal: tenant.copilotSignal ?? "none",
       // An outage can leave an aggregate stored even when there are no users.
@@ -1543,8 +1700,10 @@ async function analyzeStoredTenant(
         ? undefined
         : (tenant.usageAggregate ?? undefined),
       copilotAggregate: tenant.copilotAggregate ?? undefined,
+      inactiveDays: tenant.inactiveDays,
+      exclusions: tenant.findingExclusions,
     },
-    database,
+    tx,
   );
 
   const entraIdentities = directoryIdentitiesOf(userRows);
@@ -1584,32 +1743,45 @@ async function analyzeStoredTenant(
       }),
   );
 
-  await diffFindings(
+  await reconcileFindings(
+    tx,
     tenantId,
+    tenant,
     newFindings.concat(adobeFindings, saasFindings),
     now,
+    {
+      users,
+      skus: skuRows,
+      adobe: adobeRows,
+      saas: groupSaasSeats(saasSeatRows),
+      prices,
+      now,
+      inactiveDays: tenant.inactiveDays,
+      exclusions: tenant.findingExclusions,
+      ...changes,
+    },
+    "none",
     activitySignal,
-    { database },
   );
 
-  const totalMonthlySpendCents = monthlyBilledSpendOf(
-    skuRows,
-    (skuId) => prices[skuId] ?? 0,
-  );
-  const openRows = await database.query.findings.findMany({
+  const totalMonthlySpendCents = licenseSpend(
+    { skus: skuRows, adobe: adobeRows, saas: groupSaasSeats(saasSeatRows) },
+    priceRows,
+  ).totalCents;
+  const openRows = await tx.query.findings.findMany({
     where: and(
       eq(findings.tenantId, tenantId),
       inArray(findings.status, ["open", "acknowledged"]),
     ),
   });
-  const totalMonthlyWasteCents = openRows.reduce(
-    (sum, f) => sum + f.monthlyImpactCents,
-    0,
+  const totalMonthlyWasteCents = comparableWaste(
+    openRows.reduce((sum, f) => sum + f.monthlyImpactCents, 0),
+    totalMonthlySpendCents,
   );
   const day = now.toISOString().slice(0, 10);
   const purchasedSeats = purchasedSeatsOf(skuRows);
   const assignedSeats = assignedSeatsOf(skuRows);
-  await database
+  await tx
     .insert(snapshots)
     .values({
       tenantId,
@@ -1640,6 +1812,37 @@ export type InsertedFinding = {
   monthlyImpactCents: number;
 };
 
+type SyncTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export class AnalysisCurrencyChanged extends Error {
+  constructor() {
+    super(
+      "The workspace currency changed during analysis. Run sync again to refresh findings.",
+    );
+  }
+}
+
+async function lockAnalysisTenant(
+  tx: SyncTransaction,
+  tenantId: string,
+  expectedCurrency?: string,
+) {
+  await lockTenantForWorkspaceUpdate(tx, tenantId);
+  const tenant = await tx.query.tenants.findFirst({
+    where: eq(tenants.id, tenantId),
+  });
+  if (tenant && expectedCurrency && tenant.currency !== expectedCurrency)
+    throw new AnalysisCurrencyChanged();
+  return tenant;
+}
+
+type MicrosoftPreservation = "none" | "inventory" | "all";
+
+const isConcealedInactivityAggregate = (finding: {
+  rule: WasteRuleId;
+  detail: Record<string, unknown>;
+}) => finding.rule === "inactive_90d" && finding.detail.aggregate === true;
+
 /**
  * Reconciles the new analysis with stored findings:
  * new keys are inserted as open, reappearing resolved findings reopen,
@@ -1651,34 +1854,56 @@ export const diffFindings = async (
   tenantId: string,
   newFindings: WasteFinding[],
   now: Date,
+  state?: Parameters<typeof resolutionOf>[0],
+  preserveMicrosoft: MicrosoftPreservation = "none",
+  persistInventory?: (tx: SyncTransaction) => Promise<void>,
   activitySignal?: ActivitySignal,
-  options?: { database: Db; reconcile?: ActivityReconciliation },
 ): Promise<InsertedFinding[]> => {
   // One transaction so a mid-loop failure can't leave findings half-diffed
   // (some inserted/reopened, others never resolved) for the tenant.
-  return (options?.database ?? db).transaction(async (tx) => {
-    const reconcile = options?.reconcile;
+  return db.transaction(async (tx) => {
+    const lockedTenant = await lockAnalysisTenant(
+      tx,
+      tenantId,
+      state?.analysisCurrency,
+    );
+    if (persistInventory) await persistInventory(tx);
+    return reconcileFindings(
+      tx,
+      tenantId,
+      lockedTenant,
+      newFindings,
+      now,
+      state,
+      preserveMicrosoft,
+      activitySignal,
+    );
+  });
+};
+
+async function reconcileBackfillFindings(
+  database: Db,
+  tenantId: string,
+  newFindings: WasteFinding[],
+  now: Date,
+  reconcile: ActivityReconciliation,
+): Promise<void> {
+  await database.transaction(async (tx) => {
     const existing = await tx.query.findings.findMany({
       where: eq(findings.tenantId, tenantId),
     });
     const existingByKey = new Map(existing.map((f) => [f.dedupeKey, f]));
     const newByKey = new Map(newFindings.map((f) => [f.dedupeKey, f]));
-    // A finding pseudonymised by the retention job stores the hash of a key
-    // that embedded an email address. When that seat shows up again it
-    // reopens the same row (and gets its plain key back below) instead of
-    // inserting a second one.
     const newByStoredKey = new Map(
       newFindings.map((f) => [pseudonymisedDedupeKey(f.dedupeKey), f]),
     );
-
     const toInsert = newFindings.filter(
       (f) =>
         !existingByKey.has(f.dedupeKey) &&
         !existingByKey.has(pseudonymisedDedupeKey(f.dedupeKey)),
     );
-    const inserted: InsertedFinding[] = [];
     for (const batch of chunk(toInsert, 250)) {
-      if (reconcile?.preview) {
+      if (reconcile.preview) {
         for (const f of batch) {
           reconcile.changes.push({
             id: randomUUID(),
@@ -1710,35 +1935,20 @@ export const diffFindings = async (
         .returning({
           id: findings.id,
           rule: findings.rule,
-          title: findings.title,
-          monthlyImpactCents: findings.monthlyImpactCents,
           graphUserId: findings.graphUserId,
         });
-      inserted.push(
-        ...rows.map(({ id, rule, title, monthlyImpactCents }) => ({
-          id,
-          rule,
-          title,
-          monthlyImpactCents,
-        })),
-      );
-      if (reconcile) {
-        for (const row of rows) {
-          reconcile.changes.push({
-            id: row.id,
-            rule: row.rule,
-            graphUserId: row.graphUserId,
-            before: null,
-            after: { status: "open", resolvedAt: null },
-          });
-        }
+      for (const row of rows) {
+        reconcile.changes.push({
+          id: row.id,
+          rule: row.rule,
+          graphUserId: row.graphUserId,
+          before: null,
+          after: { status: "open", resolvedAt: null },
+        });
       }
     }
 
     for (const f of existing) {
-      // A row still holding the plain key takes precedence: the pseudonymised
-      // row of the same key then stays as it is, so the plain key is never
-      // assigned twice (findings_tenant_dedupe_idx).
       const viaHash = f.dedupeKey.startsWith(PSEUDONYMISED_KEY_PREFIX)
         ? newByStoredKey.get(f.dedupeKey)
         : undefined;
@@ -1747,54 +1957,218 @@ export const diffFindings = async (
         (viaHash && !existingByKey.has(viaHash.dedupeKey)
           ? viaHash
           : undefined);
-      // Carried findings are refreshed without recording an observation.
-      const carried =
-        activitySignal === "unknown" && INACTIVITY_RULES.includes(f.rule);
       const transition =
-        fresh && !carried && f.status === "resolved"
+        fresh && f.status === "resolved"
           ? { status: "open" as const, resolvedAt: null }
           : !fresh && f.status !== "resolved"
             ? { status: "resolved" as const, resolvedAt: now }
             : undefined;
-      if (reconcile) {
-        if (!transition || !reconcile.includes(f) || reconcile.protects(f))
-          continue;
-        reconcile.changes.push({
-          id: f.id,
-          rule: f.rule,
-          graphUserId: f.graphUserId,
-          before: { status: f.status, resolvedAt: f.resolvedAt },
-          after: transition,
-        });
-        if (!reconcile.preview) {
-          await tx
-            .update(findings)
-            .set(transition)
-            .where(eq(findings.id, f.id));
-        }
+      if (!transition || !reconcile.includes(f) || reconcile.protects(f))
         continue;
-      }
-      if (fresh) {
-        await tx
-          .update(findings)
-          .set({
-            dedupeKey: fresh.dedupeKey,
-            title: fresh.title,
-            detail: fresh.detail,
-            graphUserId: fresh.graphUserId,
-            monthlyImpactCents: fresh.monthlyImpactCents,
-            ...(!carried && { lastSeenAt: now }),
-            ...transition,
-          })
-          .where(eq(findings.id, f.id));
-      } else if (transition) {
+      reconcile.changes.push({
+        id: f.id,
+        rule: f.rule,
+        graphUserId: f.graphUserId,
+        before: { status: f.status, resolvedAt: f.resolvedAt },
+        after: transition,
+      });
+      if (!reconcile.preview) {
         await tx.update(findings).set(transition).where(eq(findings.id, f.id));
       }
     }
-
-    return inserted;
   });
-};
+}
+
+async function reconcileFindings(
+  tx: SyncTransaction,
+  tenantId: string,
+  lockedTenant: Pick<typeof tenants.$inferSelect, "currency"> | undefined,
+  newFindings: WasteFinding[],
+  now: Date,
+  state?: Parameters<typeof resolutionOf>[0],
+  preserveMicrosoft: MicrosoftPreservation = "none",
+  activitySignal?: ActivitySignal,
+): Promise<InsertedFinding[]> {
+  const classify = state && resolutionOf(state);
+  const entries: (typeof savingsLedger.$inferInsert)[] = [];
+  const reopened = new Set<string>();
+  const subjects = savingsSubjects(tenantId, state);
+  const existing = await tx.query.findings.findMany({
+    where: eq(findings.tenantId, tenantId),
+  });
+  const existingByKey = new Map(existing.map((f) => [f.dedupeKey, f]));
+  const newByKey = new Map(newFindings.map((f) => [f.dedupeKey, f]));
+  // A finding pseudonymised by the retention job stores the hash of a key
+  // that embedded an email address. When that seat shows up again it
+  // reopens the same row (and gets its plain key back below) instead of
+  // inserting a second one.
+  const newByStoredKey = new Map(
+    newFindings.map((f) => [pseudonymisedDedupeKey(f.dedupeKey), f]),
+  );
+
+  const toInsert = newFindings.filter(
+    (f) =>
+      !existingByKey.has(f.dedupeKey) &&
+      !existingByKey.has(pseudonymisedDedupeKey(f.dedupeKey)),
+  );
+  const opened = [...toInsert];
+  const inserted: InsertedFinding[] = [];
+  for (const batch of chunk(toInsert, 250)) {
+    const rows = await tx
+      .insert(findings)
+      .values(
+        batch.map((f) => ({
+          tenantId,
+          dedupeKey: f.dedupeKey,
+          rule: f.rule,
+          graphUserId: f.graphUserId,
+          skuId: f.skuId,
+          title: f.title,
+          detail: f.detail,
+          monthlyImpactCents: f.monthlyImpactCents,
+          status: "open" as const,
+          firstSeenAt: now,
+          lastSeenAt: now,
+        })),
+      )
+      .returning({
+        id: findings.id,
+        rule: findings.rule,
+        title: findings.title,
+        monthlyImpactCents: findings.monthlyImpactCents,
+      });
+    inserted.push(...rows);
+  }
+
+  for (const f of existing) {
+    if (f.lastSeenAt > now || (f.resolvedAt && f.resolvedAt > now)) continue;
+    // A row still holding the plain key takes precedence: the pseudonymised
+    // row of the same key then stays as it is, so the plain key is never
+    // assigned twice (findings_tenant_dedupe_idx).
+    const viaHash = f.dedupeKey.startsWith(PSEUDONYMISED_KEY_PREFIX)
+      ? newByStoredKey.get(f.dedupeKey)
+      : undefined;
+    const fresh =
+      newByKey.get(f.dedupeKey) ??
+      (viaHash && !existingByKey.has(viaHash.dedupeKey) ? viaHash : undefined);
+    // Carried findings are refreshed without recording an observation.
+    const carried =
+      activitySignal === "unknown" && INACTIVITY_RULES.includes(f.rule);
+    // A purchase cut can reclaim some shelfware while the finding stays
+    // open. Classify against its previous detail before refreshing it.
+    const resolution =
+      f.status !== "resolved" && (!fresh || f.rule === "shelfware")
+        ? classify?.(f)
+        : undefined;
+    const preserveFinding =
+      findingSource(f) === "microsoft" &&
+      (preserveMicrosoft === "all" ||
+        (preserveMicrosoft === "inventory" &&
+          !isConcealedInactivityAggregate(f)));
+    if (fresh) {
+      if (!carried && f.status === "resolved") {
+        reopened.add(f.id);
+        opened.push(fresh);
+      }
+      await tx
+        .update(findings)
+        .set({
+          dedupeKey: fresh.dedupeKey,
+          title: fresh.title,
+          detail: fresh.detail,
+          graphUserId: fresh.graphUserId,
+          monthlyImpactCents: fresh.monthlyImpactCents,
+          ...(!carried && { lastSeenAt: now }),
+          ...(!carried && f.status === "resolved"
+            ? {
+                status: "open" as const,
+                resolvedAt: null,
+                resolutionReason: null,
+              }
+            : {}),
+        })
+        .where(eq(findings.id, f.id));
+    } else if (f.status !== "resolved" && !preserveFinding) {
+      const reason = resolution?.reason ?? "other";
+      await tx
+        .update(findings)
+        .set({
+          status: "resolved",
+          resolvedAt: now,
+          resolutionReason: reason,
+        })
+        .where(eq(findings.id, f.id));
+    }
+    if (!resolution || !("entries" in resolution) || !lockedTenant) continue;
+    const source = findingSource(f);
+    // Keep pseudonymous keys for both the connector account and any known
+    // directory identity so a returned seat can be matched by either.
+    const subjectKeys =
+      resolution.reason === "license_removed" ? [...subjects(f)] : [];
+    if (resolution.reason === "license_removed" && subjectKeys.length === 0)
+      continue;
+    const subjectKey = subjectKeys.length > 0 ? subjectKeys.join(",") : null;
+    for (const entry of resolution.entries) {
+      if (entry.monthlyCents <= 0) continue;
+      // Only stable SKU IDs identify Microsoft products in the ledger.
+      if (
+        source === "microsoft" &&
+        !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(
+          entry.skuId ?? "",
+        )
+      )
+        continue;
+      entries.push({
+        ...entry,
+        tenantId,
+        findingId: f.id,
+        rule: f.rule,
+        vendor: vendorLabel(source),
+        subjectKey,
+        reason: resolution.reason,
+        currency: lockedTenant.currency,
+        realizedAt: now,
+      });
+    }
+  }
+
+  const active = await tx.query.savingsLedger.findMany({
+    where: and(
+      eq(savingsLedger.tenantId, tenantId),
+      isNull(savingsLedger.reversedAt),
+      lte(savingsLedger.realizedAt, now),
+    ),
+    orderBy: [asc(savingsLedger.realizedAt), asc(savingsLedger.id)],
+  });
+  const { reversed, additions } = reconcileSavings(
+    active,
+    entries,
+    opened,
+    reopened,
+    state,
+    subjects,
+    tenantId,
+    now,
+  );
+  for (const batch of chunk([...reversed], 250)) {
+    await tx
+      .update(savingsLedger)
+      .set({
+        reversedAt: sql`greatest(${savingsLedger.realizedAt}, ${now.toISOString()}::timestamptz)`,
+      })
+      .where(
+        and(
+          eq(savingsLedger.tenantId, tenantId),
+          inArray(savingsLedger.id, batch),
+          isNull(savingsLedger.reversedAt),
+        ),
+      );
+  }
+  for (const batch of chunk(additions, 250))
+    await tx.insert(savingsLedger).values(batch);
+
+  return inserted;
+}
 
 /**
  * Immediate email when a sync inserts new offboarding-leak findings, the

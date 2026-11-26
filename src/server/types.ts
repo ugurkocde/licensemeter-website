@@ -55,6 +55,8 @@ export type UserLicense = {
   skuId: string;
   /** Group object id when the license is inherited via group-based licensing, null when direct. */
   assignedByGroup: string | null;
+  /** All assignment paths. Null denotes direct assignment. */
+  assignedVia?: (string | null)[];
   disabledPlans: string[];
   state: string;
 };
@@ -245,3 +247,14 @@ export type AggregateUsage = {
   inactiveCount: number;
   totalCount: number;
 };
+
+export type SavingsReason = "license_removed" | "seats_reduced";
+export type ResolutionReason =
+  | SavingsReason
+  | "excluded"
+  | "threshold_changed"
+  | "activity_resumed"
+  | "seats_assigned"
+  | "source_removed"
+  | "price_changed"
+  | "other";

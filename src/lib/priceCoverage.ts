@@ -1,3 +1,5 @@
+import { isKnownFreeSku } from "~/server/graph/skuCatalog";
+
 export type PriceCoverageProduct = {
   priceCents: number;
   source: "default" | "custom" | undefined;
@@ -57,3 +59,9 @@ export const calculatePriceCoverage = (
     complete: totalProducts === 0 || customProducts === totalProducts,
   };
 };
+
+/** Preserve the assigned-seat inventory used by the Price accuracy card. */
+export const priceAccuracySku = (sku: {
+  skuPartNumber: string;
+  prepaidEnabled: number;
+}) => sku.prepaidEnabled < 5000 && !isKnownFreeSku(null, sku.skuPartNumber);

@@ -18,6 +18,11 @@ export const FEATURE_COPY: Record<Feature, FeatureCopy> = {
     description:
       "Waste history and trends go back 24 months instead of the 12 months every workspace keeps.",
   },
+  savingsLedger: {
+    label: "Savings ledger",
+    description:
+      "Track reclaimed licenses, monthly savings and how much spend uses your prices.",
+  },
   mcp: {
     label: "MCP server",
     description:
