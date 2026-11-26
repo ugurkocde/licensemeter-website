@@ -66,6 +66,8 @@ The managed connector requests `User.Read.All`, `AuditLog.Read.All`, `Reports.Re
 
 ## Shared environment
 
+For hosted production on Supabase, use the session pooler on port 5432 with `sslmode=require` or stricter, and size the pooler's Pool Size for the expected number of concurrent function instances (each opens up to 3 connections). Do not use the transaction pooler on port 6543: postgres.js pipelines queries, which Supavisor transaction mode does not support.
+
 | Variable                                                     | Purpose                                                                         |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------- |
 | `DATABASE_URL`                                               | PostgreSQL connection using the limited runtime role                            |

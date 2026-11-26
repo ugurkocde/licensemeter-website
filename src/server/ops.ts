@@ -5,6 +5,7 @@ import { env } from "~/env";
 import { db } from "~/server/db";
 import { opsAlerts } from "~/server/db/schema";
 import { emailEnabled, sendEmail } from "~/server/email";
+import { OPS_ALERT_TAG } from "~/server/emailDeliveryPolicy";
 
 /**
  * Ops alerts carry workspace IDs and counts, never personal data. Call sites
@@ -188,6 +189,39 @@ export const sendDemoOpenDigest = async (): Promise<void> => {
   }
 };
 
+const ALERT_WINDOW_MS = 15 * 60_000;
+const MAX_ALERT_SENDS = 10;
+const MAX_LOCAL_KEYS = 256;
+type SendSlot = { at: number };
+let alertSends: SendSlot[] = [];
+/**
+ * Per-instance cooldowns, recorded on every keyed send (database or
+ * fallback path), so switching paths mid-incident cannot repeat an alert.
+ */
+const localCooldowns = new Map<
+  string,
+  { expiresAt: number; suppressedCount: number }
+>();
+
+/**
+ * Reserves send slots synchronously, before any await, so concurrent alerts
+ * cannot overshoot the cap. Returns a release for paths that end up not
+ * sending, or null when the cap is reached.
+ */
+const reserveAlertSends = (count: number): (() => void) | null => {
+  const now = Date.now();
+  alertSends = alertSends.filter((slot) => slot.at > now - ALERT_WINDOW_MS);
+  if (alertSends.length + count > MAX_ALERT_SENDS) {
+    console.error("[ops] instance alert send limit reached");
+    return null;
+  }
+  const slots = Array.from({ length: count }, () => ({ at: now }));
+  alertSends.push(...slots);
+  return () => {
+    alertSends = alertSends.filter((slot) => !slots.includes(slot));
+  };
+};
+
 const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
   // Fail closed: anything other than an explicit "info" logs at error level.
   if (opts.logLevel === "info") console.info(`[ops] ${text}`);
@@ -209,8 +243,20 @@ const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
   const channels = alertChannels();
   if (!channels.webhook && !channels.email) return;
 
+  const channelCount = Number(channels.webhook) + Number(channels.email);
+  const release = reserveAlertSends(channelCount);
+  if (!release) return;
+
   let suffix = "";
   if (opts.key && opts.cooldownMs) {
+    const key = opts.key;
+    const now = Date.now();
+    const local = localCooldowns.get(key);
+    for (const [k, entry] of localCooldowns) {
+      if (entry.expiresAt <= now) localCooldowns.delete(k);
+    }
+    let suppressed = 0;
+    let outcome: "send" | "suppressed" | "unavailable";
     try {
       // Single atomic upsert: the row is claimed (last_sent_at reset, the
       // suppressed counter zeroed) only when the cooldown has elapsed;
@@ -221,29 +267,63 @@ const deliver = async (text: string, opts: NotifyOptions): Promise<void> => {
       const cooldownSeconds = opts.cooldownMs / 1000;
       const claimed = await db
         .insert(opsAlerts)
-        .values({ key: opts.key, lastSentAt: new Date(), suppressedCount: 0 })
+        .values({ key, lastSentAt: new Date(), suppressedCount: 0 })
         .onConflictDoUpdate({
           target: opsAlerts.key,
           set: { lastSentAt: new Date(), suppressedCount: 0 },
           setWhere: sql`${opsAlerts.lastSentAt} < now() - make_interval(secs => ${cooldownSeconds}::double precision)`,
         })
         .returning({
-          previousSuppressed: sql<number>`coalesce((select o.suppressed_count from ${opsAlerts} o where o.key = ${opts.key}), 0)`,
+          previousSuppressed: sql<number>`coalesce((select o.suppressed_count from ${opsAlerts} o where o.key = ${key}), 0)`,
         });
       const row = claimed[0];
-      if (!row) {
+      outcome = row ? "send" : "suppressed";
+      if (row) suppressed += Number(row.previousSuppressed);
+    } catch {
+      // Fail closed: without the shared ledger, the local cooldown decides.
+      console.error("[ops] dedup bookkeeping failed");
+      outcome = "unavailable";
+    }
+    if (outcome === "suppressed") {
+      release();
+      try {
         await db
           .update(opsAlerts)
           .set({ suppressedCount: sql`${opsAlerts.suppressedCount} + 1` })
-          .where(eq(opsAlerts.key, opts.key));
+          .where(eq(opsAlerts.key, key));
+      } catch {
+        console.error("[ops] dedup bookkeeping failed");
+      }
+      return;
+    }
+    if (outcome === "unavailable") {
+      // Fail closed on this instance: a send from either path within the
+      // cooldown suppresses, and a full map drops rather than sends.
+      // Re-read after the await: a concurrent alert may have sent meanwhile.
+      const current = localCooldowns.get(key) ?? local;
+      if (current && current.expiresAt > now) {
+        current.suppressedCount++;
+        release();
         return;
       }
-      const previousSuppressed = Number(row.previousSuppressed);
-      if (previousSuppressed > 0) {
-        suffix = ` (${previousSuppressed} similar suppressed since the last alert)`;
+      if (localCooldowns.size >= MAX_LOCAL_KEYS) {
+        release();
+        return;
       }
-    } catch (err) {
-      console.error("[ops] dedup bookkeeping failed", err);
+      suppressed = current?.suppressedCount ?? 0;
+    }
+    if (localCooldowns.size >= MAX_LOCAL_KEYS && !localCooldowns.has(key)) {
+      // Only a database-path send gets here with a full map: it must still
+      // be recorded, so the oldest entry makes room. Bounded either way.
+      const oldest = localCooldowns.keys().next().value;
+      if (oldest !== undefined) localCooldowns.delete(oldest);
+    }
+    localCooldowns.set(key, {
+      expiresAt: now + opts.cooldownMs,
+      suppressedCount: 0,
+    });
+    if (suppressed > 0) {
+      suffix = ` (${suppressed} similar suppressed since the last alert)`;
     }
   }
 
@@ -289,6 +369,7 @@ const sendToChannels = async (
     try {
       emailAccepted = await sendEmail({
         to: [env.ALERT_EMAIL!],
+        tags: [OPS_ALERT_TAG],
         subject: opts.subject ?? `LicenseMeter alert: ${text.slice(0, 80)}`,
         html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1c1a16;max-width:560px">
   <p>${escapeHtml(message)}</p>${

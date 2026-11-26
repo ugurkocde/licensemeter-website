@@ -5,6 +5,7 @@ import { db } from "~/server/db";
 import { emailBlocks, emailDeliveries } from "~/server/db/schema";
 import {
   DELIVERY_TAG,
+  OPS_ALERT_TAG,
   deliveryEvent,
   deliveryStatusForEvent,
   isPermanentFailure,
@@ -22,6 +23,7 @@ export const applyDeliveryEvent = async (input: unknown): Promise<void> => {
   const parsed = deliveryEvent.safeParse(input);
   if (!parsed.success) return;
   const { type, created_at, data } = parsed.data;
+  if (data.tags?.[OPS_ALERT_TAG.name] === OPS_ALERT_TAG.value) return;
   const status = deliveryStatusForEvent(type);
   if (!status) return;
   // The tag covers an event that arrives before the provider id was stored.

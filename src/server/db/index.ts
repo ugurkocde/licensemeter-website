@@ -27,8 +27,13 @@ const createDb = (): Db => {
       enforce: enforceDatabaseTls(env.NODE_ENV, env.SELF_HOSTED),
     });
     const client = postgres(env.DATABASE_URL, {
+      // Hosted production uses the Supabase session pooler (port 5432), not
+      // the transaction pooler: postgres.js pipelines queries once every
+      // connection is busy, which Supavisor transaction mode does not support
+      // (hung queries or mismatched rows). Keep max small so concurrent
+      // instances stay inside the pooler's pool size.
       prepare: false,
-      max: 5,
+      max: 3,
       idle_timeout: 20,
       connect_timeout: 10,
       ...(ssl ? { ssl } : {}),
