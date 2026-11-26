@@ -5,7 +5,13 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it } from "vitest";
 
-import { dbErrorFields, OpsSafeError, opsErrorText } from "./opsError";
+import {
+  dbErrorFields,
+  isDatabaseOutageError,
+  isDbUnavailableError,
+  OpsSafeError,
+  opsErrorText,
+} from "./opsError";
 
 /** The fields a Postgres server error response always carries. */
 const SERVER_FIELDS = {
@@ -156,5 +162,69 @@ describe("SQLSTATE provenance", () => {
         }),
       ),
     ).toBe("Error");
+  });
+});
+
+describe("isDbUnavailableError", () => {
+  it.each([
+    {
+      code: "XX000",
+      message: "(EMAXCONNSESSION) max clients reached in session mode",
+    },
+    { code: "XX000", message: "max clients reached in transaction mode" },
+    { code: "ECONNREFUSED" },
+    { code: "ETIMEDOUT" },
+    { code: "CONNECT_TIMEOUT" },
+    { code: "CONNECTION_CLOSED" },
+    { code: "08006" },
+    { code: "53300" },
+    { code: "57P01" },
+  ])("recognizes a wrapped connection failure (%j)", (cause) => {
+    expect(isDbUnavailableError(new Error("Query failed", { cause }))).toBe(
+      true,
+    );
+  });
+
+  it.each([{ code: "23505" }, { code: "XX000" }, new Error("Bug"), null])(
+    "leaves other errors alone (%j)",
+    (error) => expect(isDbUnavailableError(error)).toBe(false),
+  );
+});
+
+describe("isDatabaseOutageError", () => {
+  const poolFull = () =>
+    Object.assign(
+      new Error("(EMAXCONNSESSION) max clients reached in session mode"),
+      { name: "PostgresError", code: "XX000" },
+    );
+
+  it("accepts pooler, client and Drizzle-wrapped connection failures", () => {
+    expect(isDatabaseOutageError(poolFull())).toBe(true);
+    expect(
+      isDatabaseOutageError(
+        Object.assign(new Error("write CONNECT_TIMEOUT"), {
+          code: "CONNECT_TIMEOUT",
+        }),
+      ),
+    ).toBe(true);
+    const reset = Object.assign(new Error("reset"), { code: "ECONNRESET" });
+    expect(
+      isDatabaseOutageError(
+        Object.assign(new Error("Failed query", { cause: reset }), {
+          query: "select 1",
+          params: [],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects network failures without database provenance", () => {
+    const reset = Object.assign(new Error("socket hang up"), {
+      code: "ECONNRESET",
+    });
+    expect(isDatabaseOutageError(reset)).toBe(false);
+    expect(
+      isDatabaseOutageError(new Error("fetch failed", { cause: reset })),
+    ).toBe(false);
   });
 });

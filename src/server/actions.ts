@@ -21,6 +21,7 @@ import {
   declineJoinRequestRow,
   holdsJoinableDomain,
 } from "~/server/domainJoin";
+import { pendingApprovalLinks } from "~/server/consentState";
 import { db } from "~/server/db";
 import {
   adobeConnections,
@@ -28,6 +29,7 @@ import {
   aiSpendDaily,
   emailBlocks,
   emailSignups,
+  consentStates,
   findings,
   memberships,
   meteringConnections,
@@ -91,6 +93,7 @@ import {
   workspaceAdminEmails,
 } from "~/server/workspaceEmail";
 import { byoConnectorEnabled, siteUrl } from "~/env";
+import { WorkspaceUpdateInProgressError } from "~/server/sync/lockTenant";
 import { runAnalysis, runSync } from "~/server/sync/runSync";
 import { requestDeadline } from "~/server/sync/deadline";
 import { fetchEcbReferenceRates } from "~/server/exchangeRates";
@@ -106,6 +109,20 @@ const fail = (error: string): ActionResult => ({ ok: false, error });
 const ok = (): ActionResult => ({ ok: true });
 
 const revalidateApp = () => revalidatePath("/app", "layout");
+
+/** The mutation is already saved even if the findings refresh must be retried. */
+async function refreshAnalysis(tenantId: string): Promise<ActionResult> {
+  try {
+    await runAnalysis(tenantId);
+    return ok();
+  } catch (error) {
+    if (error instanceof WorkspaceUpdateInProgressError)
+      return fail(error.message);
+    throw error;
+  } finally {
+    revalidateApp();
+  }
+}
 
 const chunk = <T>(arr: T[], size: number): T[][] => {
   const out: T[][] = [];
@@ -375,9 +392,7 @@ export const updatePrice = async (
   if (updated.length === 0) return fail("Unknown SKU");
 
   await audit(ctx, "price_updated", { skuId, monthlyPriceCents: cents });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 export type ImportPricesResult = ActionResult & {
@@ -484,9 +499,8 @@ export const importPrices = async (
     skipped: skipped.length,
     invalid: invalid.length,
   });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return { ok: true, applied: bySku.size, skipped, invalid: invalid.length };
+  const result = await refreshAnalysis(ctx.tenant.id);
+  return { ...result, applied: bySku.size, skipped, invalid: invalid.length };
 };
 
 /** Invite a member by email/UPN; they get access on their first sign-in. */
@@ -658,7 +672,14 @@ export const removeMember = async (
   if (target.id === ctx.membership.id)
     return fail("You cannot remove yourself");
 
-  await db.delete(memberships).where(eq(memberships.id, target.id));
+  await db.transaction(async (tx) => {
+    await tx.delete(memberships).where(eq(memberships.id, target.id));
+    if (target.oid) {
+      await tx
+        .delete(consentStates)
+        .where(pendingApprovalLinks(ctx.tenant.id, target.oid));
+    }
+  });
   await audit(ctx, "member_removed", {
     email: target.email,
     role: target.role,
@@ -708,10 +729,17 @@ export const changeMemberRole = async (
   }
   if (target.role === newRole) return ok();
 
-  await db
-    .update(memberships)
-    .set({ role: newRole })
-    .where(eq(memberships.id, target.id));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(memberships)
+      .set({ role: newRole })
+      .where(eq(memberships.id, target.id));
+    if (target.oid && (newRole === "viewer" || target.role === "owner")) {
+      await tx
+        .delete(consentStates)
+        .where(pendingApprovalLinks(ctx.tenant.id, target.oid));
+    }
+  });
   await audit(ctx, "member_role_changed", {
     email: target.email,
     from: target.role,
@@ -861,9 +889,7 @@ export const setInactiveDays = async (
     .set({ inactiveDays: days })
     .where(eq(tenants.id, ctx.tenant.id));
   await audit(ctx, "threshold_changed", { inactiveDays: days });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 /**
@@ -891,9 +917,7 @@ export const setFindingExclusions = async (
   await audit(ctx, "finding_exclusions_changed", {
     patterns: parsed.patterns.length,
   });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 /** Email alerts when a sync finds new offboarding leaks. */
@@ -1271,6 +1295,8 @@ export const triggerSync = async (): Promise<
   if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   await audit(ctx, "sync_triggered", {});
   const result = await runSync(ctx.tenant.id, { deadline: requestDeadline() });
+  if (result.runId === null)
+    return fail("Wait for the current workspace update to finish, then retry");
   revalidateApp();
   return {
     ...(result.status === "failed"
@@ -1349,9 +1375,7 @@ export const disconnectAdobe = async (): Promise<ActionResult> => {
     .where(eq(adobeConnections.tenantId, ctx.tenant.id));
   await db.delete(adobeUsers).where(eq(adobeUsers.tenantId, ctx.tenant.id));
   await audit(ctx, "adobe_disconnected", {});
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 /** Connect a SaaS connector (Zoom / Atlassian / Salesforce). */
@@ -1478,9 +1502,7 @@ export const disconnectSaasConnector = async (
       ),
     );
   await audit(ctx, "connector_disconnected", { provider });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 /** GUID shape for tenant/app ids (lenient case). */
@@ -1527,7 +1549,7 @@ export const connectMicrosoftByo = async (
     const v = formData.get(name);
     return typeof v === "string" ? v.trim() : "";
   };
-  const tid = read("tid");
+  const tid = read("tid").toLowerCase();
   const appClientId = read("appClientId");
   const credType = read("credType");
   if (!tid || !appClientId)
@@ -1538,7 +1560,7 @@ export const connectMicrosoftByo = async (
     return { ok: false, error: "Choose a credential type" };
   // Refuse to silently repoint a workspace already bound to another tenant
   // (mirrors the managed consent callback's already_connected check).
-  if (ctx.tenant.tid && ctx.tenant.tid !== tid)
+  if (ctx.tenant.tid && ctx.tenant.tid.toLowerCase() !== tid)
     return {
       ok: false,
       error:
@@ -1548,7 +1570,7 @@ export const connectMicrosoftByo = async (
   // A given Microsoft tenant belongs to exactly one workspace (the partial-
   // unique tid index); refuse to silently steal it from another workspace.
   const tidOwner = await db.query.tenants.findFirst({
-    where: eq(tenants.tid, tid),
+    where: eq(sql`lower(${tenants.tid})`, tid),
   });
   if (tidOwner && tidOwner.id !== ctx.tenant.id)
     return {
@@ -1640,7 +1662,15 @@ export const connectMicrosoftByo = async (
   // application-level steal guard above (a concurrent connect to the same tid
   // loses the race here rather than corrupting state).
   try {
-    await db.transaction(async (tx) => {
+    const connected = await db.transaction(async (tx) => {
+      const [current] = await tx
+        .select({ tid: tenants.tid })
+        .from(tenants)
+        .where(eq(tenants.id, ctx.tenant.id))
+        .for("no key update");
+      if (!current || (current.tid && current.tid.toLowerCase() !== tid))
+        return false;
+
       await tx
         .insert(msConnections)
         .values({
@@ -1680,7 +1710,14 @@ export const connectMicrosoftByo = async (
           consentedAt: sql`coalesce(${tenants.consentedAt}, now())`,
         })
         .where(eq(tenants.id, ctx.tenant.id));
+      return true;
     });
+    if (!connected)
+      return {
+        ok: false,
+        error:
+          "This workspace is already connected to a different Microsoft tenant. Disconnect it first.",
+      };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (/tid_idx|unique/i.test(message)) {
@@ -1726,6 +1763,12 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
   // the dataset; connector findings stay and re-evaluate on the next analysis.
   await db.transaction(async (tx) => {
     await tx
+      .select({ id: tenants.id })
+      .from(tenants)
+      .where(eq(tenants.id, ctx.tenant.id))
+      .for("no key update");
+    await tx.delete(consentStates).where(pendingApprovalLinks(ctx.tenant.id));
+    await tx
       .delete(msConnections)
       .where(eq(msConnections.tenantId, ctx.tenant.id));
     await tx
@@ -1744,13 +1787,21 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
     await tx.delete(snapshots).where(eq(snapshots.tenantId, ctx.tenant.id));
     await tx
       .update(tenants)
-      .set({ tid: null, consentedAt: null })
+      .set({
+        tid: null,
+        consentedAt: null,
+        concealedNames: null,
+        hasP1: null,
+        activitySignal: null,
+        copilotSignal: null,
+        usageAggregate: null,
+        copilotAggregate: null,
+        usageReportUnavailable: false,
+      })
       .where(eq(tenants.id, ctx.tenant.id));
   });
   await audit(ctx, "microsoft_disconnected", {});
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 export type ImportSeatsResult = ActionResult & {
@@ -1849,9 +1900,8 @@ export const importSeats = async (
     imported: rows.length,
     invalid: parsed.invalid.length,
   });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return { ok: true, imported: rows.length, invalid: parsed.invalid.length };
+  const result = await refreshAnalysis(ctx.tenant.id);
+  return { ...result, imported: rows.length, invalid: parsed.invalid.length };
 };
 
 /** Remove an import connector's seat snapshot; findings auto-resolve. */
@@ -1875,9 +1925,7 @@ export const clearImportedSeats = async (
       ),
     );
   await audit(ctx, "seats_import_cleared", { provider });
-  await runAnalysis(ctx.tenant.id);
-  revalidateApp();
-  return ok();
+  return refreshAnalysis(ctx.tenant.id);
 };
 
 /** Switch the active workspace (MSP/multi-tenant users). */
@@ -1925,7 +1973,9 @@ export const captureEmail = async (
     })
     .returning({ inserted: sql<boolean>`(xmax = 0)` });
   if (row?.inserted) {
-    void notifyOps("new email signup from the landing page");
+    void notifyOps("new email signup from the landing page", {
+      logLevel: "info",
+    });
   }
   // Duplicates go through the same send path: the welcomeSentAt stamp makes
   // it a no-op once delivered, so resubmitting the form is the natural retry

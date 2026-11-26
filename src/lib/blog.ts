@@ -53,6 +53,514 @@ const METERING_DOCS =
 
 export const BLOG_POSTS: BlogPost[] = [
   {
+    slug: "find-inactive-users-microsoft-365",
+    title: "How to find inactive users in Microsoft 365",
+    description:
+      "Use the Microsoft 365 Active users report, export workload activity to CSV, and compare it with last interactive sign-in times in Microsoft Entra.",
+    excerpt:
+      "Microsoft Entra ID has no built-in report for inactive user accounts. To find candidates for review, compare the last active dates for each workload in the Microsoft 365 apps Active users report with each user's last interactive sign-in time in Microsoft Entra.",
+    publishedOn: "2026-11-26",
+    author: {
+      name: "Ugur Koc",
+      role: "Maintainer, Microsoft MVP for Intune",
+      url: "https://ugurkoc.de",
+    },
+    tag: "Guide",
+    cta: {
+      title: "Review inactive licensed users",
+      body: "See how LicenseMeter flags inactive seats and what to check before removing a license.",
+      primary: {
+        label: "Review the inactive seat finding",
+        href: "/waste/inactive-licensed-users",
+      },
+      secondary: {
+        label: "Review licensed accounts with no usable activity",
+        href: "/waste/licensed-but-never-active",
+      },
+    },
+    body: [
+      {
+        type: "h2",
+        id: "choose-an-inactivity-threshold",
+        text: "Choose a cutoff date",
+      },
+      {
+        type: "p",
+        text: [
+          "Start with your organization's inactivity policy. Microsoft suggests 90 to 180 days as a reasonable window for many organizations. Allow for planned leave and other legitimate absences, then use the same cutoff date for workload activity and sign-in review. See ",
+          {
+            text: "Microsoft's guidance on inactive accounts",
+            href: "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/howto-manage-inactive-user-accounts",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "export-the-active-users-report",
+        text: "Open and export the Active users report",
+      },
+      {
+        type: "steps",
+        items: [
+          {
+            title: "Find the report",
+            body: [
+              "In the Microsoft 365 admin center, open ",
+              { strong: "Reports > Usage" },
+              ". Use ",
+              { strong: "Show all" },
+              " if Reports is hidden. Under Reports on the Usage page, select ",
+              { strong: "Microsoft 365 apps > Active users" },
+              ".",
+            ],
+          },
+          {
+            title: "Read the last active dates",
+            body: [
+              "Use ",
+              { strong: "Choose columns" },
+              " to show the last active dates for Exchange, OneDrive, SharePoint, Viva Engage, and Microsoft Teams. Each date reflects the most recent intentional activity in that workload, regardless of the trend period you select. The trend options are 7, 30, 90, or 180 days. The data usually covers activity up to the last 24 to 48 hours.",
+            ],
+          },
+          {
+            title: "Export to CSV",
+            body: [
+              "Select ",
+              { strong: "Export" },
+              " to download usage data for all users. Sort and filter the workload dates in your spreadsheet.",
+            ],
+          },
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "See ",
+          {
+            text: "Microsoft's Active users report column definitions",
+            href: "https://learn.microsoft.com/en-us/microsoft-365/admin/activity-reports/active-users-ww?view=o365-worldwide",
+          },
+          " and ",
+          {
+            text: "the usage reports overview",
+            href: "https://learn.microsoft.com/en-us/microsoft-365/admin/activity-reports/activity-reports?view=o365-worldwide",
+          },
+          " for how Microsoft defines the last activity date.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "concealed-user-names",
+        text: "Check report privacy if names are concealed",
+      },
+      {
+        type: "p",
+        text: [
+          "Microsoft has hidden user identities in usage reports by default since September 1, 2021. Get internal approval before showing names. The setting applies across the tenant, and showing identifiable user information is a logged event in the Microsoft Purview audit log. See ",
+          {
+            text: "Microsoft's explanation of anonymous user names",
+            href: "https://learn.microsoft.com/en-us/troubleshoot/microsoft-365/admin/miscellaneous/reports-show-anonymous-user-name",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "After approval, a Global Administrator can open ",
+          { strong: "Settings > Org Settings > Services > Reports" },
+          " in the Microsoft 365 admin center, clear ",
+          { strong: "Conceal user, group, and site names in all reports" },
+          ", and select ",
+          { strong: "Save" },
+          ". Allow a few minutes for the change to take effect before exporting again. See ",
+          {
+            text: "how report privacy affects LicenseMeter's detection coverage",
+            href: "https://docs.licensemeter.com/troubleshooting/report-privacy/",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "check-last-interactive-sign-in",
+        text: "Check the last interactive sign-in in Entra",
+      },
+      {
+        type: "steps",
+        items: [
+          {
+            title: "Add the sign-in column",
+            body: [
+              "In the Microsoft Entra admin center, sign in as at least a Reports Reader and open ",
+              { strong: "Entra ID > Users" },
+              ". Choose ",
+              { strong: "Manage view > Edit columns" },
+              ", select ",
+              { strong: "+ Add column" },
+              ", add ",
+              { strong: "Last interactive sign-in time" },
+              ", and save.",
+            ],
+          },
+          {
+            title: "Filter by the cutoff",
+            body: [
+              "Select ",
+              { strong: "Add filter" },
+              ", set a time frame with the filter options, choose ",
+              { strong: "<=" },
+              " as the operator, and select your cutoff date.",
+            ],
+          },
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Microsoft notes that the last sign-in date and time in the Entra admin center can take up to 24 hours to update, so treat dates close to your cutoff with care. Users with no value in the column need a separate look before you draw any conclusion.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "compare-dates",
+        text: "Compare the dates for each user",
+      },
+      {
+        type: "p",
+        text: [
+          "Match the users in Entra to their rows in the usage export. Take the most recent date across the available workload and sign-in dates, then flag users whose newest recorded date is on or before your cutoff. The two sources can disagree because they track different events. If a workload shows recent activity, keep that user off the inactivity list even if their last interactive sign-in is old.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Look up users with blank dates separately in the unfiltered list. Where both sources lack a usable date, check the age of the account and the available report coverage before treating it as inactive.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "review-before-acting",
+        text: "Review each account before changing access",
+      },
+      {
+        type: "p",
+        text: [
+          "Microsoft suggests starting with three questions after you identify inactive users.",
+        ],
+      },
+      {
+        type: "list",
+        items: [
+          ["Does the person still work for the organization?"],
+          [
+            "Does the person still need access to the resources they have access to?",
+          ],
+          ["Does the organization still need this account for another reason?"],
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "If an account is already disabled and you've approved removing its license, follow the ",
+          {
+            text: "license removal guide for disabled Microsoft 365 users",
+            href: "/blog/remove-license-from-disabled-user",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "review-inactive-seats-in-licensemeter",
+        text: "Review inactive seats in LicenseMeter",
+      },
+      {
+        type: "p",
+        text: [
+          "LicenseMeter's read-only Microsoft 365 connector reads available sign-in activity, usage reports, and the tenant's report-privacy setting. The ",
+          { strong: "Inactive seat" },
+          " finding flags activity outside your workspace's configured inactivity window. Set the threshold to match your review policy and treat the results as candidates for review.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Open ",
+          { strong: "Settings > Detection capabilities" },
+          " to see which signals are available, including identifiable usage reports and sign-in activity. License removal and tenant changes are separate administrative actions.",
+        ],
+      },
+    ],
+  },
+  {
+    slug: "remove-license-from-disabled-user",
+    title: "How to remove licenses from disabled Microsoft 365 users",
+    description:
+      "Check mailbox retention, remove direct or group-based licenses from disabled Microsoft 365 users, and verify the assignment and billing changes.",
+    excerpt:
+      "To remove a direct license from a disabled Microsoft 365 user, open Users > Active users, select the account, then clear the license under Licenses and Apps and save. Check mailbox holds and retention first, and remove any inherited assignment through the group that grants it.",
+    publishedOn: "2026-11-25",
+    author: {
+      name: "Ugur Koc",
+      role: "Maintainer, Microsoft MVP for Intune",
+      url: "https://ugurkoc.de",
+    },
+    tag: "Guide",
+    cta: {
+      title: "Review disabled accounts that still hold licenses",
+      body: "Find the accounts that still have paid assignments and track each one through your offboarding review.",
+      primary: {
+        label: "Review the finding",
+        href: "/waste/disabled-accounts-still-licensed",
+      },
+      secondary: {
+        label: "Read the remediation workflow",
+        href: "https://docs.licensemeter.com/findings/workflow/",
+      },
+    },
+    body: [
+      {
+        type: "h2",
+        id: "check-before-removal",
+        text: "Check holds and data before removing a license",
+      },
+      {
+        type: "p",
+        text: [
+          "Confirm that sign-in was blocked intentionally. Record the user's current licenses and identify any services or downstream access that still depend on them.",
+        ],
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "Holds and legal access." },
+            " Check whether a hold still needs to be in place before proceeding. Microsoft's former employee guidance requires clearing holds before license removal. If authorized staff still need eDiscovery access for compliance or legal reasons, keep the required Exchange license while you arrange preservation. Microsoft specifies Exchange Online Plan 2 or Plan 1 with the Exchange Online Archiving add-on to apply a hold before deleting the mailbox. See ",
+            {
+              text: "Microsoft's offboarding guidance on holds",
+              href: "https://learn.microsoft.com/en-us/microsoft-365/admin/add-users/remove-former-employee-step-6?view=o365-worldwide",
+            },
+            ".",
+          ],
+          [
+            { strong: "Exchange data and search." },
+            " Exchange Online holds the user's mailbox data for 30 days after license removal. After that grace period, the data is permanently deleted, with content covered by retention labels kept for discovery. Once the license is removed, the user's mailbox is no longer searchable through Content Search or eDiscovery (Premium). If you plan to delete the account and need to preserve mailbox data, review inactive mailboxes for eligible Enterprise subscriptions.",
+          ],
+          [
+            { strong: "OneDrive files." },
+            " Before removing the license, identify and preserve the OneDrive files your organization still needs, even if you plan to keep the user account. Check retention requirements and who needs continued access. See ",
+            {
+              text: "Microsoft's guidance for former employee data",
+              href: "https://learn.microsoft.com/en-us/microsoft-365/admin/add-users/remove-former-employee?view=o365-worldwide",
+            },
+            ".",
+          ],
+          [
+            { strong: "Shared mailbox conversion." },
+            " If a leaver's mailbox should become shared, review ",
+            {
+              text: "the licensing checks for converting to a shared mailbox",
+              href: "/blog/shared-mailbox-license#convert-a-user-mailbox",
+            },
+            " before removing its license.",
+          ],
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          {
+            text: "Microsoft's license unassignment guide covers the effects on user data",
+            href: "https://learn.microsoft.com/en-us/microsoft-365/admin/manage/assign-licenses-to-users?view=o365-worldwide",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "check-assignment-source",
+        text: "Check whether the license is direct or group-based",
+      },
+      {
+        type: "p",
+        text: [
+          "For a group assignment, the product's license list shows the group name. In the Microsoft 365 admin center, open ",
+          { strong: "Teams & groups > Active teams & groups" },
+          " to check the group's members.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "In Microsoft Graph, select the user's ",
+          { strong: "licenseAssignmentStates" },
+          " and check ",
+          { strong: "assignedByGroup" },
+          " for each assignment of the product. A null value means the license is assigned directly. A group ID identifies the group that grants it. The assignedLicenses field lists both kinds of assignment together. See ",
+          {
+            text: "Microsoft's group licensing PowerShell examples",
+            href: "https://learn.microsoft.com/en-us/entra/identity/users/licensing-powershell-graph-examples",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "remove-in-admin-center",
+        text: "Remove direct licenses in the Microsoft 365 admin center",
+      },
+      {
+        type: "p",
+        text: [
+          "Open ",
+          { strong: "Users > Active users" },
+          " with an appropriate role, such as License Administrator or User Administrator.",
+        ],
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "One user." },
+            " Select the user's row and open ",
+            { strong: "Licenses and Apps" },
+            ". Expand ",
+            { strong: "Licenses" },
+            ", clear the products you intend to remove, and select ",
+            { strong: "Save changes" },
+            ".",
+          ],
+          [
+            { strong: "Multiple users." },
+            " Select the circles beside the reviewed accounts and choose ",
+            { strong: "Manage product licenses" },
+            ". Use ",
+            { strong: "Unassign all" },
+            " only when you intend to remove every license from those accounts. Follow the group steps below for inherited assignments. Select ",
+            { strong: "Save changes" },
+            ", then ",
+            { strong: "Done" },
+            ".",
+          ],
+        ],
+      },
+      {
+        type: "h2",
+        id: "remove-with-powershell",
+        text: "Remove a direct license with PowerShell",
+      },
+      {
+        type: "p",
+        text: [
+          "Connect to your tenant using the permissions in ",
+          {
+            text: "Microsoft's PowerShell license removal guide",
+            href: "https://learn.microsoft.com/en-us/microsoft-365/enterprise/remove-licenses-from-user-accounts-with-microsoft-365-powershell?view=o365-worldwide",
+          },
+          ". Use the reviewed account and the SKU ID of the license you intend to remove.",
+        ],
+      },
+      {
+        type: "note",
+        title: "Destructive command. Test on one account first.",
+        text: [
+          "Replace the placeholders with a single approved account and its target SKU ID, then verify the result before repeating the operation.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          'Set-MgUserLicense -UserId "<Account>" -RemoveLicenses @("<AccountSkuId1>") -AddLicenses @{}',
+        ],
+      },
+      {
+        type: "h2",
+        id: "remove-group-based-license",
+        text: "Remove a group-based license at its source",
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "Remove the assignment for one user." },
+            " Remove the user from the group that grants the license. Review the group's other assigned products and any access the user still needs before changing membership.",
+          ],
+          [
+            { strong: "Remove the assignment for the whole group." },
+            " Go to ",
+            { strong: "Billing > Licenses" },
+            ", select the product, and find the group's row. Open the three-dot menu and select ",
+            { strong: "Unassign" },
+            ". Use this option only if the group should stop granting that product to its members. See ",
+            {
+              text: "Microsoft's group license instructions",
+              href: "https://learn.microsoft.com/en-us/microsoft-365/admin/manage/manage-group-licenses?view=o365-worldwide",
+            },
+            ".",
+          ],
+        ],
+      },
+      {
+        type: "h2",
+        id: "reduce-subscription-quantity",
+        text: "Reduce the subscription quantity if you no longer need the seat",
+      },
+      {
+        type: "p",
+        text: [
+          "Unassigning a license frees it for reassignment. To stop paying for a seat you no longer need, reduce the purchased quantity. In ",
+          { strong: "Billing > Your products" },
+          ", select the subscription and choose ",
+          { strong: "Remove licenses" },
+          ". Specify when the change can take effect and the new total quantity, then select ",
+          { strong: "Save" },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "verify-removal",
+        text: "Confirm the license is gone",
+      },
+      {
+        type: "p",
+        text: [
+          "Reopen the user's ",
+          { strong: "Licenses and Apps" },
+          " pane and confirm the target product is gone. If it still appears, check for another group assignment or a remaining direct assignment. If you reduced the subscription quantity, verify the new total in ",
+          { strong: "Billing > Your products" },
+          " when the change takes effect.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "track-remediation",
+        text: "Track and verify the change in LicenseMeter",
+      },
+      {
+        type: "p",
+        text: [
+          "The ",
+          { strong: "Disabled account still licensed" },
+          " finding flags a disabled directory account with a paid assignment. An Admin can set the remediation status, assignee, due date, external ticket URL, and notes. The status options are Not planned, Planned, Remediation requested, and In progress.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "LicenseMeter connectors are read-only and do not remove licenses. After you make the change in Microsoft 365, run another sync. LicenseMeter resolves the finding when the condition is gone. See ",
+          {
+            text: "the detection rules",
+            href: "https://docs.licensemeter.com/findings/rules/",
+          },
+          " for what the finding checks.",
+        ],
+      },
+    ],
+  },
+  {
     slug: "shared-mailbox-license",
     title: "Does a Microsoft 365 shared mailbox need a license?",
     description:

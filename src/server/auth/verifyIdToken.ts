@@ -12,6 +12,7 @@ const JWKS = createRemoteJWKSet(
 export type VerifiedEntraClaims = {
   oid: string;
   tid: string;
+  directoryRoles?: string[];
   name?: string;
   /** Display value unless emailProven is true. */
   email?: string;
@@ -58,6 +59,11 @@ export const verifyEntraIdToken = async (
   return {
     oid,
     tid,
+    ...(Array.isArray(claims.wids) && {
+      directoryRoles: claims.wids.filter(
+        (role): role is string => typeof role === "string",
+      ),
+    }),
     name: typeof claims.name === "string" ? claims.name : undefined,
     ...emailProofOf(claims),
     preferred_username:

@@ -4,18 +4,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Env = { CRON_SECRET: string; APP_BASE_URL?: string };
 
-const { env, notifyOps, findMany, runSync, dispatchTenantSyncs } = vi.hoisted(
-  () => {
-    const env: Env = { CRON_SECRET: "s3cret-s3cret-s3cret" };
-    return {
-      env,
-      notifyOps: vi.fn(() => Promise.resolve()),
-      findMany: vi.fn(),
-      runSync: vi.fn(),
-      dispatchTenantSyncs: vi.fn(),
-    };
-  },
-);
+const {
+  env,
+  notifyOps,
+  findMany,
+  runSync,
+  dispatchTenantSyncs,
+  sweepConsentStalls,
+} = vi.hoisted(() => {
+  const env: Env = { CRON_SECRET: "s3cret-s3cret-s3cret" };
+  return {
+    env,
+    notifyOps: vi.fn(() => Promise.resolve()),
+    findMany: vi.fn(),
+    runSync: vi.fn(),
+    dispatchTenantSyncs: vi.fn(),
+    sweepConsentStalls: vi.fn(),
+  };
+});
+vi.mock("~/server/consentState", () => ({ sweepConsentStalls }));
 vi.mock("~/env", () => ({ env }));
 vi.mock("~/server/ops", () => ({ notifyOps }));
 vi.mock("~/server/db", () => {
@@ -46,6 +53,19 @@ describe("GET /api/cron/sync", () => {
     runSync.mockResolvedValue({ runId: "r", status: "success", steps: [] });
   });
   afterEach(() => vi.unstubAllEnvs());
+
+  it("sweeps for stalls even if no workspace is eligible for sync", async () => {
+    findMany.mockResolvedValue([]);
+    expect((await GET(req())).status).toBe(200);
+    expect(sweepConsentStalls).toHaveBeenCalledTimes(1);
+    expect(runSync).not.toHaveBeenCalled();
+  });
+
+  it("does not sweep for an unauthenticated request", async () => {
+    const unauthorized = new NextRequest(req().url);
+    expect((await GET(unauthorized)).status).toBe(401);
+    expect(sweepConsentStalls).not.toHaveBeenCalled();
+  });
 
   it("dispatches every tenant on Vercel and syncs none in-process", async () => {
     vi.stubEnv("VERCEL", "1");
@@ -102,6 +122,27 @@ describe("GET /api/cron/sync", () => {
     expect(dispatchTenantSyncs).not.toHaveBeenCalled();
     expect(runSync).toHaveBeenCalledTimes(3);
     expect(body).toMatchObject({ dispatched: 0, synced: 3 });
+  });
+
+  it("reports a tenant lock timeout separately from a running sync", async () => {
+    vi.stubEnv("VERCEL", "");
+    runSync
+      .mockResolvedValueOnce({ runId: null, status: "running", steps: [] })
+      .mockResolvedValueOnce({
+        runId: "in-flight",
+        status: "running",
+        steps: [],
+      });
+
+    expect(await (await GET(req())).json()).toMatchObject({
+      synced: 2,
+      results: expect.arrayContaining([
+        { tenantId: "t1", status: "tenant_lock_timeout" },
+        { tenantId: "t2", status: "running" },
+      ]) as unknown,
+      unsynced: [],
+    });
+    expect(notifyOps).not.toHaveBeenCalled();
   });
 
   it("syncs in-process on Vercel when APP_BASE_URL is missing", async () => {

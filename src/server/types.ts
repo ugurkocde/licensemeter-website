@@ -59,6 +59,8 @@ export type UserLicense = {
   state: string;
 };
 
+export type ActivitySignal = "full" | "none" | "unknown";
+
 /** ISO date (yyyy-mm-dd) of the last activity per workload, null when never active. */
 export type WorkloadActivity = {
   exchange: string | null;
@@ -171,12 +173,16 @@ export type AuditAction =
   | "member_removed"
   | "member_role_changed"
   | "finding_status_changed"
+  | "usage_outage_backfilled"
   | "finding_workflow_updated"
   | "sync_triggered"
   | "currency_changed"
   | "adobe_connected"
   | "adobe_disconnected"
   | "microsoft_connected"
+  | "microsoft_approval_link_created"
+  | "microsoft_approval_link_revoked"
+  | "microsoft_connected_by_approval"
   | "microsoft_disconnected"
   | "connector_connected"
   | "connector_disconnected"

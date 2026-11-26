@@ -1,7 +1,7 @@
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import postgres, { type Sql } from "postgres";
 import { PGlite } from "@electric-sql/pglite";
 
 import { env } from "~/env";
@@ -27,8 +27,13 @@ const createDb = (): Db => {
       enforce: enforceDatabaseTls(env.NODE_ENV, env.SELF_HOSTED),
     });
     const client = postgres(env.DATABASE_URL, {
+      // Hosted production uses the Supabase session pooler (port 5432), not
+      // the transaction pooler: postgres.js pipelines queries once every
+      // connection is busy, which Supavisor transaction mode does not support
+      // (hung queries or mismatched rows). Keep max small so concurrent
+      // instances stay inside the pooler's pool size.
       prepare: false,
-      max: 5,
+      max: 3,
       idle_timeout: 20,
       connect_timeout: 10,
       ...(ssl ? { ssl } : {}),
@@ -71,5 +76,12 @@ if (env.NODE_ENV !== "production" || !env.DATABASE_URL) globalForDb.db = base;
  * in is behavior-preserving until a caller opts into a tenant context.
  */
 export const db: Db = createTenantDb(base);
+
+/** Close the standalone script's pool or embedded store after its last query. */
+export const closeDatabase = async (): Promise<void> => {
+  const { $client } = base as Db & { $client: PGlite | Sql };
+  if ($client instanceof PGlite) await $client.close();
+  else await $client.end();
+};
 
 export { schema };

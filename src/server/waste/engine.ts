@@ -4,7 +4,12 @@ import {
   SERVICE_PLAN_NAMES,
   skuDisplayName,
 } from "~/server/graph/skuCatalog";
-import type { AggregateUsage, UserLicense, WasteRuleId } from "~/server/types";
+import type {
+  ActivitySignal,
+  AggregateUsage,
+  UserLicense,
+  WasteRuleId,
+} from "~/server/types";
 
 /** Detection thresholds (days). */
 export const INACTIVE_DAYS = 90;
@@ -109,8 +114,12 @@ export type WasteInput = {
    * "full": per-user activity is reliable (Entra P1 sign-ins and/or joinable usage reports).
    * "none": no per-user activity signal (no P1 and concealed reports); per-user
    * inactivity rules are skipped and an aggregate finding is emitted instead.
+   * "unknown": the usage report was unavailable, so eligible inactivity findings carry forward.
    */
-  activitySignal: "full" | "none";
+  activitySignal: ActivitySignal;
+  previousInactivity?: ReadonlyMap<string, WasteFinding>;
+  /** Records the per-user activity decisions that the engine reached. */
+  onActivityEvaluated?: (user: WasteUser, rule: WasteRuleId) => void;
   copilotSignal: "per-user" | "aggregate" | "none";
   usageAggregate?: AggregateUsage;
   copilotAggregate?: AggregateUsage;
@@ -339,6 +348,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
   >();
   const partNumberOf = new Map(skus.map((s) => [s.skuId, s.skuPartNumber]));
   const isExcluded = exclusionMatcher(input.exclusions ?? []);
+  let hasInactivityEligibleUser = false;
 
   for (const u of users) {
     if (u.licenses.length === 0) continue;
@@ -389,42 +399,74 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
       continue;
     }
 
-    if (input.activitySignal === "full") {
-      // Rule 2: licensed but never active (grace period after account creation).
-      const ageDays = u.createdDateTime
-        ? daysBetween(u.createdDateTime, now)
-        : Infinity;
-      if (u.lastActivity === null && ageDays >= NEVER_ACTIVE_MIN_AGE_DAYS) {
-        if (hasCopilot) copilotSeatsCoveredByUserFindings++;
+    hasInactivityEligibleUser = true;
+    const neverActiveKey = key("never_active", u.graphId);
+    const inactiveKey = key("inactive_90d", u.graphId);
+    const ageDays = u.createdDateTime
+      ? daysBetween(u.createdDateTime, now)
+      : Infinity;
+    const inactiveDays = u.lastActivity
+      ? daysBetween(u.lastActivity, now)
+      : null;
+    const fullActivity = input.activitySignal === "full";
+    if (fullActivity) {
+      input.onActivityEvaluated?.(u, "never_active");
+      input.onActivityEvaluated?.(u, "inactive_90d");
+    }
+    const carryInactivity = input.activitySignal === "unknown";
+    const previousInactive = carryInactivity
+      ? input.previousInactivity?.get(inactiveKey)
+      : undefined;
+    const neverActive =
+      (fullActivity &&
+        u.lastActivity === null &&
+        ageDays >= NEVER_ACTIVE_MIN_AGE_DAYS) ||
+      (carryInactivity && input.previousInactivity?.has(neverActiveKey));
+    const inactive =
+      (fullActivity &&
+        inactiveDays !== null &&
+        inactiveDays > inactiveThreshold) ||
+      previousInactive !== undefined;
+
+    // With partial coverage, refresh the current account and license details
+    // for established findings without re-evaluating their eligibility by age.
+    if (neverActive || inactive) {
+      if (hasCopilot) copilotSeatsCoveredByUserFindings++;
+      const monthlyImpactCents = licenseCost(u.licenses, prices);
+      if (neverActive) {
         findings.push({
-          dedupeKey: key("never_active", u.graphId),
+          dedupeKey: neverActiveKey,
           rule: "never_active",
           graphUserId: u.graphId,
           skuId: null,
           title: `Licensed but never active: ${u.displayName ?? u.upn}`,
           detail: { ...userDetail(u, prices), accountAgeDays: ageDays },
-          monthlyImpactCents: licenseCost(u.licenses, prices),
+          monthlyImpactCents,
         });
-        continue;
       }
-
-      // Rule 3: no activity for the workspace's inactivity threshold.
-      if (u.lastActivity !== null) {
-        const inactiveDays = daysBetween(u.lastActivity, now);
-        if (inactiveDays > inactiveThreshold) {
-          if (hasCopilot) copilotSeatsCoveredByUserFindings++;
-          findings.push({
-            dedupeKey: key("inactive_90d", u.graphId),
-            rule: "inactive_90d",
-            graphUserId: u.graphId,
-            skuId: null,
-            title: `No activity for ${inactiveDays} days: ${u.displayName ?? u.upn}`,
-            detail: { ...userDetail(u, prices), inactiveDays },
-            monthlyImpactCents: licenseCost(u.licenses, prices),
-          });
-          continue;
-        }
+      if (inactive) {
+        const previousDays = previousInactive?.detail.inactiveDays;
+        const days =
+          inactiveDays ??
+          (typeof previousDays === "number" ? previousDays : null);
+        findings.push({
+          dedupeKey: inactiveKey,
+          rule: "inactive_90d",
+          graphUserId: u.graphId,
+          skuId: null,
+          title:
+            days === null
+              ? `Inactive licensed user: ${u.displayName ?? u.upn}`
+              : `No activity for ${days} days: ${u.displayName ?? u.upn}`,
+          detail: {
+            ...userDetail(u, prices),
+            inactiveDays: days,
+            inactiveThresholdDays: inactiveThreshold,
+          },
+          monthlyImpactCents,
+        });
       }
+      continue;
     }
 
     // Rule 7: suite + standalone double-pay (active users only; inactivity
@@ -480,6 +522,7 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
 
     // Rule 5: Copilot seat without Copilot usage (per-user signal available).
     if (input.copilotSignal === "per-user" && hasCopilot) {
+      input.onActivityEvaluated?.(u, "copilot_unused");
       const idle =
         u.copilotLastActivity === null ||
         daysBetween(u.copilotLastActivity, now) > COPILOT_INACTIVE_DAYS;
@@ -583,11 +626,19 @@ export const analyzeWaste = (input: WasteInput): WasteFinding[] => {
     }
   }
 
-  if (input.activitySignal === "none" && input.usageAggregate) {
+  const aggregateInactivityKey = key("inactive_90d", "aggregate", null);
+  if (input.activitySignal === "unknown" && hasInactivityEligibleUser) {
+    const previousAggregate = input.previousInactivity?.get(
+      aggregateInactivityKey,
+    );
+    // Concealed rows cannot be matched to current users to refresh the counts.
+    if (previousAggregate?.detail.aggregate === true)
+      findings.push(previousAggregate);
+  } else if (input.activitySignal === "none" && input.usageAggregate) {
     const { inactiveCount, totalCount } = input.usageAggregate;
     if (inactiveCount > 0) {
       findings.push({
-        dedupeKey: key("inactive_90d", "aggregate", null),
+        dedupeKey: aggregateInactivityKey,
         rule: "inactive_90d",
         graphUserId: null,
         skuId: null,

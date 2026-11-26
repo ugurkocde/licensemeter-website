@@ -263,3 +263,28 @@ describe("sessionIdentityOf", () => {
     expect(noEmail.emailProven).toBe(false);
   });
 });
+
+describe("verifyEntraIdToken: directory roles (wids)", () => {
+  it.each([undefined, null, "role-template-id", { role: "role-template-id" }])(
+    "omits directory roles for absent or non-array wids (%j)",
+    async (wids) => {
+      const claims = await verifyEntraIdToken(
+        makeToken({ ...validClaims, wids }),
+        AUD,
+      );
+      expect(claims.directoryRoles).toBeUndefined();
+    },
+  );
+
+  it("keeps string role IDs from a mixed wids array", async () => {
+    const roles = [
+      "62e90394-69f5-4237-9190-012177145e10",
+      "e8611ab8-c189-46e8-94e1-60213ab1f814",
+    ];
+    const claims = await verifyEntraIdToken(
+      makeToken({ ...validClaims, wids: [roles[0], null, 1, {}, roles[1]] }),
+      AUD,
+    );
+    expect(claims.directoryRoles).toEqual(roles);
+  });
+});

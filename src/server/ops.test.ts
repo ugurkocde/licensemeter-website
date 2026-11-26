@@ -5,6 +5,7 @@ import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "~/server/db/schema";
+import type * as ops from "~/server/ops";
 
 /**
  * notifyOps dedup against a real PGlite database: the cooldown claim is one
@@ -50,13 +51,16 @@ vi.mock("~/server/email", () => ({
   sendEmail: mocks.sendEmail,
 }));
 
-const { notifyOps, sendDemoOpenDigest } = await import("~/server/ops");
+let notifyOps: typeof ops.notifyOps;
+let sendDemoOpenDigest: typeof ops.sendDemoOpenDigest;
 
 const fetchMock = vi.fn((_input: string | URL | Request, _init?: RequestInit) =>
   Promise.resolve(new Response(null)),
 );
 
 beforeEach(async () => {
+  vi.resetModules();
+  ({ notifyOps, sendDemoOpenDigest } = await import("~/server/ops"));
   client = new PGlite();
   const ddl = await generateMigration(
     generateDrizzleJson({}),
@@ -129,15 +133,41 @@ describe("notifyOps dedup", () => {
 });
 
 describe("notifyOps delivery", () => {
-  it("logs at info when requested and still sends the alert", async () => {
+  it.each([
+    "someone opened the demo workspace",
+    "first sign-in from Microsoft tenant test-tenant",
+    "workspace test-workspace connected its Microsoft tenant, first sync starting",
+  ])("logs %s at info and still delivers it", async (message) => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    const message = "someone opened the demo workspace";
+    mocks.env.ALERT_EMAIL = "ops@example.test";
+    mocks.emailEnabled.mockReturnValue(true);
 
     await notifyOps(message, { logLevel: "info" });
 
     expect(info).toHaveBeenCalledExactlyOnceWith(`[ops] ${message}`);
     expect(console.error).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({ text: `LicenseMeter: ${message}` }),
+    );
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
+    expect(mocks.sendEmail.mock.calls[0]?.[0].html).toContain(message);
+  });
+
+  it("deduplicates keyed info notices in the logs without delivery channels", async () => {
+    mocks.env.ALERT_WEBHOOK_URL = undefined;
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const options = {
+      logLevel: "info" as const,
+      key: "notice:workspace",
+      cooldownMs: 60_000,
+    };
+    await notifyOps("workspace has a stalled consent", options);
+    await notifyOps("workspace has a stalled consent", options);
+    expect(info).toHaveBeenCalledExactlyOnceWith(
+      "[ops] workspace has a stalled consent",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("hands the delivery to after() inside a request scope", async () => {
@@ -518,3 +548,94 @@ describe("redactForOps", () => {
     );
   });
 });
+
+it("bounds alert sends when database dedup is unavailable", async () => {
+  vi.spyOn(currentDb, "insert").mockImplementation(() => {
+    throw new Error("Database unavailable");
+  });
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const options = { key: "pool-outage", cooldownMs: 60_000 };
+    await notifyOps("Pool unavailable", options);
+    await notifyOps("Pool unavailable again", options);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await notifyOps("Other failure", { ...options, key: "other-failure" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(60_000);
+    await notifyOps("Pool unavailable", options);
+    expect(fetchMock.mock.lastCall?.[1]?.body).toContain(
+      "1 similar suppressed",
+    );
+
+    for (let index = 0; index < 10; index++) await notifyOps("Unkeyed alert");
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+    await notifyOps("New keyed alert", { ...options, key: "rate-limited" });
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+
+    vi.advanceTimersByTime(15 * 60_000);
+    await notifyOps("New keyed alert", { ...options, key: "rate-limited" });
+    expect(fetchMock).toHaveBeenCalledTimes(11);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("keeps the cooldown of a database-path send when dedup then fails", async () => {
+  const options = { key: "flapping", cooldownMs: 60_000 };
+  await notifyOps("Pool unavailable", options);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  vi.spyOn(currentDb, "insert").mockImplementation(() => {
+    throw new Error("Database unavailable");
+  });
+  await notifyOps("Pool unavailable", options);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it("does not claim a cooldown for an alert the send limit rejects", async () => {
+  for (let index = 0; index < 9; index++) await notifyOps("Unkeyed alert");
+  expect(fetchMock).toHaveBeenCalledTimes(9);
+
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const options = { cooldownMs: 30 * 60_000 };
+    await Promise.all([
+      notifyOps("First", { ...options, key: "first" }),
+      notifyOps("Second", { ...options, key: "second" }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+
+    // The rejected alert left no claim behind, so it sends once there is room.
+    vi.advanceTimersByTime(15 * 60_000);
+    await notifyOps("Second", { ...options, key: "second" });
+    expect(fetchMock).toHaveBeenCalledTimes(11);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("records a database-path send even when the local cooldown map is full", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const options = { cooldownMs: 24 * 60 * 60_000 };
+    // 256 distinct keys through the healthy path, 10 per send window.
+    for (let index = 0; index < 256; index++) {
+      if (index > 0 && index % 10 === 0) vi.advanceTimersByTime(15 * 60_000);
+      await notifyOps("Sync failed", { ...options, key: `fill-${index}` });
+    }
+    vi.advanceTimersByTime(15 * 60_000);
+    await notifyOps("Pool unavailable", { ...options, key: "late" });
+    const sent = fetchMock.mock.calls.length;
+    expect(sent).toBe(257);
+
+    vi.spyOn(currentDb, "insert").mockImplementation(() => {
+      throw new Error("Database unavailable");
+    });
+    await notifyOps("Pool unavailable", { ...options, key: "late" });
+    expect(fetchMock).toHaveBeenCalledTimes(sent);
+  } finally {
+    vi.useRealTimers();
+  }
+}, 60_000);
