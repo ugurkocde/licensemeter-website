@@ -53,6 +53,248 @@ const METERING_DOCS =
 
 export const BLOG_POSTS: BlogPost[] = [
   {
+    slug: "find-inactive-users-microsoft-365",
+    title: "How to find inactive users in Microsoft 365",
+    description:
+      "Use the Microsoft 365 Active users report, export workload activity to CSV, and compare it with last interactive sign-in times in Microsoft Entra.",
+    excerpt:
+      "Microsoft Entra ID has no built-in report for inactive user accounts. To find candidates for review, compare the last active dates for each workload in the Microsoft 365 apps Active users report with each user's last interactive sign-in time in Microsoft Entra.",
+    publishedOn: "2026-11-26",
+    author: {
+      name: "Ugur Koc",
+      role: "Maintainer, Microsoft MVP for Intune",
+      url: "https://ugurkoc.de",
+    },
+    tag: "Guide",
+    cta: {
+      title: "Review inactive licensed users",
+      body: "See how LicenseMeter flags inactive seats and what to check before removing a license.",
+      primary: {
+        label: "Review the inactive seat finding",
+        href: "/waste/inactive-licensed-users",
+      },
+      secondary: {
+        label: "Review licensed accounts with no usable activity",
+        href: "/waste/licensed-but-never-active",
+      },
+    },
+    body: [
+      {
+        type: "h2",
+        id: "choose-an-inactivity-threshold",
+        text: "Choose a cutoff date",
+      },
+      {
+        type: "p",
+        text: [
+          "Start with your organization's inactivity policy. Microsoft suggests 90 to 180 days as a reasonable window for many organizations. Allow for planned leave and other legitimate absences, then use the same cutoff date for workload activity and sign-in review. See ",
+          {
+            text: "Microsoft's guidance on inactive accounts",
+            href: "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/howto-manage-inactive-user-accounts",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "export-the-active-users-report",
+        text: "Open and export the Active users report",
+      },
+      {
+        type: "steps",
+        items: [
+          {
+            title: "Find the report",
+            body: [
+              "In the Microsoft 365 admin center, open ",
+              { strong: "Reports > Usage" },
+              ". Use ",
+              { strong: "Show all" },
+              " if Reports is hidden. Under Reports on the Usage page, select ",
+              { strong: "Microsoft 365 apps > Active users" },
+              ".",
+            ],
+          },
+          {
+            title: "Read the last active dates",
+            body: [
+              "Use ",
+              { strong: "Choose columns" },
+              " to show the last active dates for Exchange, OneDrive, SharePoint, Viva Engage, and Microsoft Teams. Each date reflects the most recent intentional activity in that workload, regardless of the trend period you select. The trend options are 7, 30, 90, or 180 days. The data usually covers activity up to the last 24 to 48 hours.",
+            ],
+          },
+          {
+            title: "Export to CSV",
+            body: [
+              "Select ",
+              { strong: "Export" },
+              " to download usage data for all users. Sort and filter the workload dates in your spreadsheet.",
+            ],
+          },
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "See ",
+          {
+            text: "Microsoft's Active users report column definitions",
+            href: "https://learn.microsoft.com/en-us/microsoft-365/admin/activity-reports/active-users-ww?view=o365-worldwide",
+          },
+          " and ",
+          {
+            text: "the usage reports overview",
+            href: "https://learn.microsoft.com/en-us/microsoft-365/admin/activity-reports/activity-reports?view=o365-worldwide",
+          },
+          " for how Microsoft defines the last activity date.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "concealed-user-names",
+        text: "Check report privacy if names are concealed",
+      },
+      {
+        type: "p",
+        text: [
+          "Microsoft has hidden user identities in usage reports by default since September 1, 2021. Get internal approval before showing names. The setting applies across the tenant, and showing identifiable user information is a logged event in the Microsoft Purview audit log. See ",
+          {
+            text: "Microsoft's explanation of anonymous user names",
+            href: "https://learn.microsoft.com/en-us/troubleshoot/microsoft-365/admin/miscellaneous/reports-show-anonymous-user-name",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "After approval, a Global Administrator can open ",
+          { strong: "Settings > Org Settings > Services > Reports" },
+          " in the Microsoft 365 admin center, clear ",
+          { strong: "Conceal user, group, and site names in all reports" },
+          ", and select ",
+          { strong: "Save" },
+          ". Allow a few minutes for the change to take effect before exporting again. See ",
+          {
+            text: "how report privacy affects LicenseMeter's detection coverage",
+            href: "https://docs.licensemeter.com/troubleshooting/report-privacy/",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "check-last-interactive-sign-in",
+        text: "Check the last interactive sign-in in Entra",
+      },
+      {
+        type: "steps",
+        items: [
+          {
+            title: "Add the sign-in column",
+            body: [
+              "In the Microsoft Entra admin center, sign in as at least a Reports Reader and open ",
+              { strong: "Entra ID > Users" },
+              ". Choose ",
+              { strong: "Manage view > Edit columns" },
+              ", select ",
+              { strong: "+ Add column" },
+              ", add ",
+              { strong: "Last interactive sign-in time" },
+              ", and save.",
+            ],
+          },
+          {
+            title: "Filter by the cutoff",
+            body: [
+              "Select ",
+              { strong: "Add filter" },
+              ", set a time frame with the filter options, choose ",
+              { strong: "<=" },
+              " as the operator, and select your cutoff date.",
+            ],
+          },
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Microsoft notes that the last sign-in date and time in the Entra admin center can take up to 24 hours to update, so treat dates close to your cutoff with care. Users with no value in the column need a separate look before you draw any conclusion.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "compare-dates",
+        text: "Compare the dates for each user",
+      },
+      {
+        type: "p",
+        text: [
+          "Match the users in Entra to their rows in the usage export. Take the most recent date across the available workload and sign-in dates, then flag users whose newest recorded date is on or before your cutoff. The two sources can disagree because they track different events. If a workload shows recent activity, keep that user off the inactivity list even if their last interactive sign-in is old.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Look up users with blank dates separately in the unfiltered list. Where both sources lack a usable date, check the age of the account and the available report coverage before treating it as inactive.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "review-before-acting",
+        text: "Review each account before changing access",
+      },
+      {
+        type: "p",
+        text: [
+          "Microsoft suggests starting with three questions after you identify inactive users.",
+        ],
+      },
+      {
+        type: "list",
+        items: [
+          ["Does the person still work for the organization?"],
+          [
+            "Does the person still need access to the resources they have access to?",
+          ],
+          ["Does the organization still need this account for another reason?"],
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "If an account is already disabled and you've approved removing its license, follow the ",
+          {
+            text: "license removal guide for disabled Microsoft 365 users",
+            href: "/blog/remove-license-from-disabled-user",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "review-inactive-seats-in-licensemeter",
+        text: "Review inactive seats in LicenseMeter",
+      },
+      {
+        type: "p",
+        text: [
+          "LicenseMeter's read-only Microsoft 365 connector reads available sign-in activity, usage reports, and the tenant's report-privacy setting. The ",
+          { strong: "Inactive seat" },
+          " finding flags activity outside your workspace's configured inactivity window. Set the threshold to match your review policy and treat the results as candidates for review.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Open ",
+          { strong: "Settings > Detection capabilities" },
+          " to see which signals are available, including identifiable usage reports and sign-in activity. License removal and tenant changes are separate administrative actions.",
+        ],
+      },
+    ],
+  },
+  {
     slug: "remove-license-from-disabled-user",
     title: "How to remove licenses from disabled Microsoft 365 users",
     description:
