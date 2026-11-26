@@ -1,0 +1,2 @@
+ALTER TABLE "consent_states" ADD COLUMN "kind" text DEFAULT 'self' NOT NULL;--> statement-breakpoint
+ALTER TABLE "consent_states" ADD CONSTRAINT "consent_states_kind_check" CHECK ("consent_states"."kind" in ('self', 'handoff'));

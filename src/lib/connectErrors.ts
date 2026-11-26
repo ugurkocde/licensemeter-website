@@ -11,7 +11,11 @@ export const CONNECT_ERROR_TEXT: Record<string, string> = {
     "That link was already used or has expired. Start again from this page.",
   expired_state: "The consent link expired (15 minutes). Please retry.",
   consent_declined: "Consent was declined in the Microsoft dialog.",
+  approval_required:
+    "Microsoft requires an administrator to approve this connection.",
   consent_incomplete: "Microsoft did not confirm the consent. Please retry.",
+  consent_pending:
+    "Microsoft has not finished granting access. Try again in a few minutes.",
   not_allowed:
     "You need to be an admin or owner of this workspace to connect Microsoft. Ask a workspace owner to connect it.",
   tenant_taken:

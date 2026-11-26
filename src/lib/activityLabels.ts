@@ -26,6 +26,9 @@ const ACTION_LABELS: Record<string, string> = {
   seats_imported: "Connector seats imported",
   seats_import_cleared: "Imported connector seats cleared",
   microsoft_connected: "Microsoft 365 connected",
+  microsoft_approval_link_created: "Microsoft approval link created",
+  microsoft_approval_link_revoked: "Microsoft approval link revoked",
+  microsoft_connected_by_approval: "Microsoft 365 connected by approval link",
   microsoft_disconnected: "Microsoft 365 disconnected",
   connector_connected: "Connector connected",
   connector_disconnected: "Connector disconnected",
@@ -77,6 +80,7 @@ const DETAIL_LABELS: Record<string, string> = {
   inactiveDays: "Inactivity threshold",
   renewalDate: "Renewal date",
   credType: "Credential type",
+  grantedTid: "Microsoft tenant ID",
   to: "Workspace",
 };
 

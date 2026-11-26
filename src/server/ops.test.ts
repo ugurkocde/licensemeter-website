@@ -154,6 +154,22 @@ describe("notifyOps delivery", () => {
     expect(mocks.sendEmail.mock.calls[0]?.[0].html).toContain(message);
   });
 
+  it("deduplicates keyed info notices in the logs without delivery channels", async () => {
+    mocks.env.ALERT_WEBHOOK_URL = undefined;
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const options = {
+      logLevel: "info" as const,
+      key: "notice:workspace",
+      cooldownMs: 60_000,
+    };
+    await notifyOps("workspace has a stalled consent", options);
+    await notifyOps("workspace has a stalled consent", options);
+    expect(info).toHaveBeenCalledExactlyOnceWith(
+      "[ops] workspace has a stalled consent",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("hands the delivery to after() inside a request scope", async () => {
     mocks.after.mockImplementationOnce(() => undefined);
     const pending = notifyOps("sync FAILED");

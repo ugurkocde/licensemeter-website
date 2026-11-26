@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 
-import { appBaseUrl, env } from "~/env";
+import { env } from "~/env";
 import { apiAccess } from "~/server/access";
 import { auth } from "~/server/auth";
-import { db } from "~/server/db";
-import { consentStates } from "~/server/db/schema";
+import {
+  createSelfConsentState,
+  microsoftConsentUrl,
+} from "~/server/consentState";
 
 /**
  * Kicks off the one-time admin-consent flow for the connector app.
@@ -24,7 +26,7 @@ export const GET = async () => {
   if (!ctx) redirect("/app/connectors/microsoft?error=not_allowed");
 
   const state = crypto.randomUUID();
-  await db.insert(consentStates).values({
+  await createSelfConsentState({
     state,
     tenantId: ctx.tenant.id,
     oid: user.oid,
@@ -33,13 +35,5 @@ export const GET = async () => {
     name: user.name ?? null,
   });
 
-  const url = new URL(
-    "https://login.microsoftonline.com/organizations/v2.0/adminconsent",
-  );
-  url.searchParams.set("client_id", env.CONNECTOR_CLIENT_ID);
-  url.searchParams.set("scope", "https://graph.microsoft.com/.default");
-  url.searchParams.set("redirect_uri", `${appBaseUrl()}/api/connect/callback`);
-  url.searchParams.set("state", state);
-
-  redirect(url.toString());
+  redirect(microsoftConsentUrl(state));
 };

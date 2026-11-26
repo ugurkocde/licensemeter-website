@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after, type NextRequest } from "next/server";
@@ -10,8 +10,31 @@ import {
   workspaceCookieOptions,
 } from "~/server/access";
 import { auth } from "~/server/auth";
+import { audit } from "~/server/audit";
+import {
+  allowHandoffRequest,
+  clearHandoffProof,
+  handoffFailurePath,
+  readHandoffProof,
+  setHandoffCompletion,
+} from "~/server/auth/consentHandoff";
+import {
+  GUID_PATTERN,
+  HANDOFF_TTL_MS,
+  SELF_CONSENT_TTL_MS,
+  deleteExpiredConsentStates,
+  handoffRequesterAdmin,
+  isHandoffToken,
+  loadConsentState,
+} from "~/server/consentState";
 import { db } from "~/server/db";
-import { consentStates, msConnections, tenants } from "~/server/db/schema";
+import { isUniqueViolation } from "~/server/db/errors";
+import {
+  consentStates,
+  memberships,
+  msConnections,
+  tenants,
+} from "~/server/db/schema";
 import { verifyManagedConsent } from "~/server/graph/msGraph";
 import { notifyOps } from "~/server/ops";
 import { requestDeadline } from "~/server/sync/deadline";
@@ -20,18 +43,6 @@ import { runSync } from "~/server/sync/runSync";
 // The first sync after admin consent runs in after() below and shares this
 // route's budget, so give it the same 300s every other sync path has.
 export const maxDuration = 300;
-
-const STATE_TTL_MS = 15 * 60 * 1000;
-
-// Microsoft tenant IDs are GUIDs. Pin the shape before grantedTid is persisted
-// or interpolated into the MSAL authority URL
-// (https://login.microsoftonline.com/${tid}), so a malformed `tenant` callback
-// param can never alter that authority.
-const GUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const fail = (code: string): never =>
-  redirect(`/app/connectors/microsoft?error=${code}`);
 
 // Microsoft's `error` and `error_description` are caller-controlled once a
 // state is valid, so only machine codes reach an alert: an OAuth error code
@@ -69,27 +80,35 @@ const microsoftCodes = (
   return codes.length > 0 ? codes.join(" ") : null;
 };
 
-/**
- * Admin-consent return leg. Validates the state nonce, requires the browser
- * session of the user who started the flow, attaches the granted Microsoft
- * tenant to the workspace the flow was started from, and starts the first sync.
- */
+/** Validate Microsoft consent, bind the workspace and start its first sync. */
 export const GET = async (req: NextRequest) => {
-  // The first sync runs inside after(), so the deadline covers this handler.
   const deadline = requestDeadline();
   const params = req.nextUrl.searchParams;
-  const state = params.get("state");
-  const grantedTid = params.get("tenant");
+  const state = params.get("state") ?? "";
+  const grantedTid = params.get("tenant")?.toLowerCase();
   const adminConsent = params.get("admin_consent");
   const error = params.get("error");
+  const description = params.get("error_description");
+  const handoff = isHandoffToken(state);
+  const fail = (code: string, approvalWorkspace?: string | null): never => {
+    if (handoff) redirect(handoffFailurePath(code));
+    const query = new URLSearchParams({ error: code });
+    if (approvalWorkspace) query.set("approvalWorkspace", approvalWorkspace);
+    redirect(`/app/connectors/microsoft?${query}`);
+  };
 
-  if (!state) fail("missing_state");
-
-  // Single-use, time-limited state row bound to the initiating user.
-  const stateRow = await db.query.consentStates.findFirst({
-    where: and(eq(consentStates.state, state!), isNull(consentStates.usedAt)),
+  if (handoff && !(await allowHandoffRequest("callback", req.headers))) {
+    return fail("rate_limited");
+  }
+  if (!state) return fail("missing_state");
+  const stateRow = await loadConsentState(state);
+  if (stateRow?.kind !== (handoff ? "handoff" : "self") || stateRow.usedAt) {
+    return fail("invalid_state");
+  }
+  const ttl = handoff ? HANDOFF_TTL_MS : SELF_CONSENT_TTL_MS;
+  await deleteExpiredConsentStates().catch(() => {
+    console.error("[consent] expired state cleanup failed");
   });
-  if (!stateRow) fail("invalid_state");
 
   // From here on a real admin is mid-flow, so every rejection is alerted with
   // its reason: the redirect alone leaves no trace of why a connect failed.
@@ -100,41 +119,57 @@ export const GET = async (req: NextRequest) => {
   // GUIDs for the alert text only; keying on them would let a caller cycling
   // tenant ids bypass the cooldown.
   const reject = (code: string, why?: string, ids?: string): never => {
-    const microsoft = microsoftCodes(error, params.get("error_description"));
+    const microsoft = microsoftCodes(error, description);
     const reason = [why, ids, microsoft && `Microsoft: ${microsoft}`]
       .filter(Boolean)
       .join("; ");
     // Workspace ID only: alerts never name the person who started the flow.
-    const workspace = stateRow!.tenantId ?? "unknown";
+    const workspace = stateRow.tenantId ?? "unknown";
     void notifyOps(
       `consent callback rejected: ${code} for workspace ${workspace}${reason ? ` (${reason})` : ""}`,
       {
         key: `consent-callback:${workspace}:${code}:${why ?? ""}`,
-        cooldownMs: STATE_TTL_MS,
+        cooldownMs: SELF_CONSENT_TTL_MS,
+        ...(code === "consent_pending" || code === "approval_required"
+          ? { logLevel: "info" }
+          : {}),
       },
     );
-    return fail(code);
+    return fail(
+      code,
+      code === "approval_required" ? stateRow.tenantId : undefined,
+    );
   };
 
-  if (Date.now() - stateRow!.createdAt.getTime() > STATE_TTL_MS) {
-    reject("expired_state");
+  if (Date.now() - stateRow.createdAt.getTime() >= ttl) {
+    return reject("expired_state");
   }
 
-  // Opportunistic cleanup of stale nonces.
-  after(async () => {
-    await db
-      .delete(consentStates)
-      .where(
-        lt(consentStates.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
-      );
-  });
-
-  // Validate the consent result BEFORE consuming the nonce, so a declined or
-  // incomplete dialog does not burn the state and the user can simply retry.
-  // The granted tenant may differ from the initiator's home tenant (MSP /
-  // consultant flow): the customer's Global Admin completing the Microsoft
-  // dialog IS the authorization; the initiator becomes the workspace owner.
-  if (error) reject("consent_declined");
+  if (error || description) {
+    const aadsts = description?.match(AADSTS_PATTERN)?.[0];
+    // Microsoft can include AADSTS65004 in a consent_required response.
+    const needsApproval =
+      error === "consent_required" || aadsts === "AADSTS90094";
+    const declined = error === "access_denied" && aadsts === "AADSTS65004";
+    const isInitiator =
+      !handoff &&
+      (needsApproval || declined) &&
+      stateRow.oid &&
+      (await auth())?.user?.oid === stateRow.oid;
+    if (needsApproval && isInitiator && stateRow.tenantId) {
+      return reject("approval_required");
+    }
+    // Only an explicit decline from the initiating browser suppresses a stall.
+    if (declined && isInitiator) {
+      await db
+        .update(consentStates)
+        .set({ usedAt: new Date() })
+        .where(
+          and(eq(consentStates.state, state), isNull(consentStates.usedAt)),
+        );
+    }
+    return reject(declined ? "consent_declined" : "consent_incomplete");
+  }
   if (adminConsent !== "True" || !grantedTid) reject("consent_incomplete");
   // grantedTid is consumed below as the workspace tid and flows into the MSAL
   // authority URL; reject anything that is not a well-formed GUID before then.
@@ -142,20 +177,34 @@ export const GET = async (req: NextRequest) => {
     reject("consent_incomplete", "granted tenant is not a GUID");
   }
 
-  // The browser finishing the flow must be the one that started it: the same
-  // Entra object id, for every flow. Checked before the nonce is consumed so a
-  // mismatch does not burn a valid state. A state without an object id (filed
-  // before sign-in moved to Entra) can no longer be finished; starting again
-  // takes one click.
-  if (!stateRow!.oid || !stateRow!.tenantId) {
-    reject("not_allowed", "state predates Entra sign-in");
+  if (!stateRow.oid || !stateRow.tenantId) {
+    return reject("not_allowed", "state predates Entra sign-in");
   }
-  const session = await auth();
-  if (!session?.user?.oid || session.user.oid !== stateRow!.oid) {
-    reject(
-      "not_allowed",
-      "browser session is not the user who started the flow",
-    );
+  const tenantId = stateRow.tenantId;
+  const proof = handoff ? await readHandoffProof() : null;
+  const approver = proof?.phase === "grant" ? proof : null;
+  if (handoff) {
+    if (!env.CONNECTOR_CLIENT_ID || !env.CONNECTOR_CLIENT_SECRET) {
+      return reject("not_configured");
+    }
+    // The share link fixes the destination workspace. An app-only token can
+    // come from a previous grant, so demand independent proof that this
+    // browser authenticated as a Microsoft admin in the exact granted tenant.
+    // That proof is bound to this link by the signed short-lived cookie.
+    if (!stateRow.tid || stateRow.tid.toLowerCase() !== grantedTid) {
+      return reject("approval_tenant");
+    }
+    if (approver?.token !== state || approver.tid !== grantedTid) {
+      return reject("approval_identity");
+    }
+  } else {
+    const session = await auth();
+    if (!session?.user?.oid || session.user.oid !== stateRow.oid) {
+      return reject(
+        "not_allowed",
+        "browser session is not the user who started the flow",
+      );
+    }
   }
 
   // The plaintext `tenant` and `admin_consent` query params are forgeable:
@@ -166,30 +215,60 @@ export const GET = async (req: NextRequest) => {
   // app; without it (BYO-only), only the initiator's own home tenant (the
   // tenant their app registration belongs to) may be attached.
   if (env.CONNECTOR_CLIENT_ID && env.CONNECTOR_CLIENT_SECRET) {
-    if (!(await verifyManagedConsent(grantedTid!, deadline))) {
+    const consent = await verifyManagedConsent(grantedTid!, deadline);
+    if (consent === "pending_roles") {
+      return reject("consent_pending", "required app roles are missing");
+    }
+    if (consent !== "verified") {
       reject(
         "consent_not_granted",
         "no app-only token for the granted tenant",
-        `granted ${grantedTid}`,
+        handoff ? undefined : `granted ${grantedTid}`,
       );
     }
-  } else if (!stateRow!.tid || stateRow!.tid !== grantedTid) {
+  } else if (!stateRow.tid || stateRow.tid.toLowerCase() !== grantedTid) {
     reject("not_allowed", "granted tenant is not the initiator's home tenant");
   }
 
-  // Atomically consume the single-use nonce: a concurrent duplicate callback
-  // (double-submit / proxy retry) loses the race here instead of both binding
-  // ownership and starting two first syncs. Declined/expired consent returned
-  // above, so a retriable failure never burns the nonce.
-  const consumed = await db
-    .update(consentStates)
-    .set({ usedAt: new Date() })
-    .where(and(eq(consentStates.state, state!), isNull(consentStates.usedAt)))
-    .returning({ state: consentStates.state });
-  if (consumed.length === 0) fail("invalid_state");
+  const consumeConditions = () =>
+    and(
+      eq(consentStates.state, state),
+      isNull(consentStates.usedAt),
+      gt(consentStates.createdAt, new Date(Date.now() - ttl)),
+    );
 
-  // Managed connector reset applied on every (re)connect: clears any BYO
-  // credential columns so the sync uses the central env app.
+  if (!handoff) {
+    // Keep the self flow's existing single-use and workspace membership checks.
+    const consumed = await db
+      .update(consentStates)
+      .set({ usedAt: new Date() })
+      .where(consumeConditions())
+      .returning({ state: consentStates.state });
+    if (!consumed.length) return fail("invalid_state");
+    const ctx = await apiAccess("admin");
+    if (!ctx)
+      return reject("not_allowed", "not an admin of the active workspace");
+    if (ctx.user.oid !== stateRow.oid || ctx.membership.oid !== stateRow.oid) {
+      return reject(
+        "not_allowed",
+        "membership is not the user who started the flow",
+      );
+    }
+    if (ctx.tenant.id !== tenantId) {
+      return reject(
+        "not_allowed",
+        "active workspace is not the one the flow started from",
+      );
+    }
+    if (ctx.tenant.tid && ctx.tenant.tid.toLowerCase() !== grantedTid) {
+      return reject(
+        "already_connected",
+        "workspace is bound to a different tenant",
+        `bound ${ctx.tenant.tid}, granted ${grantedTid}`,
+      );
+    }
+  }
+
   const managedConnection = {
     mode: "managed" as const,
     tid: grantedTid!,
@@ -202,80 +281,110 @@ export const GET = async (req: NextRequest) => {
     lastVerifyError: null,
   };
 
-  // Workspace-first model: the user already has a workspace (provisioned on
-  // first sign-in). Microsoft attaches to THAT workspace as a connector instead
-  // of spawning a duplicate. The initiator must be an admin/owner of it, judged
-  // by the memberships of their object id right now, not by the state row.
-  const ctx = await apiAccess("admin");
-  if (!ctx)
-    return reject("not_allowed", "not an admin of the active workspace");
-  if (ctx.user.oid !== stateRow!.oid || ctx.membership.oid !== stateRow!.oid) {
-    return reject(
-      "not_allowed",
-      "membership is not the user who started the flow",
-    );
-  }
-  // The consent must land on the workspace it was started from, not on
-  // whichever workspace is active in the browser at callback time.
-  if (ctx.tenant.id !== stateRow!.tenantId) {
-    return reject(
-      "not_allowed",
-      "active workspace is not the one the flow started from",
-    );
-  }
-  const target = ctx.tenant;
-  // One workspace per Microsoft tenant: refuse to steal a tid bound elsewhere.
-  const owner = await db.query.tenants.findFirst({
-    where: eq(tenants.tid, grantedTid!),
-  });
-  if (owner && owner.id !== target.id) {
-    return reject(
-      "tenant_taken",
-      "granted tenant belongs to another workspace",
-      `granted ${grantedTid}, owner ${owner.id}`,
-    );
-  }
-  // Refuse to silently repoint a workspace already bound to another tenant.
-  if (target.tid && target.tid !== grantedTid) {
-    return reject(
-      "already_connected",
-      "workspace is bound to a different tenant",
-      `bound ${target.tid}, granted ${grantedTid}`,
-    );
-  }
+  // Stamped on the consumed handoff row; the completion marker expiry is
+  // derived from it.
+  const handoffUsedAt = new Date();
+  try {
+    await db.transaction(async (tx) => {
+      const [target] = await tx
+        .select({ tid: tenants.tid, isDemo: tenants.isDemo })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .for("no key update");
+      if (!target || (handoff && target.isDemo)) return reject("not_allowed");
 
-  await db.transaction(async (tx) => {
-    await tx
-      .update(tenants)
-      .set({
-        tid: grantedTid!,
-        consentedAt: new Date(),
-      })
-      .where(eq(tenants.id, target.id));
-    await tx
-      .insert(msConnections)
-      .values({ tenantId: target.id, ...managedConnection })
-      .onConflictDoUpdate({
-        target: msConnections.tenantId,
-        set: managedConnection,
+      const owner = await tx.query.tenants.findFirst({
+        where: eq(sql`lower(${tenants.tid})`, grantedTid!),
       });
-  });
-  const tenantId = target.id;
+      if (owner && owner.id !== tenantId) {
+        return reject(
+          "tenant_taken",
+          "granted tenant belongs to another workspace",
+          handoff ? undefined : `granted ${grantedTid}, owner ${owner.id}`,
+        );
+      }
+      if (handoff) {
+        const [requester] = await tx
+          .select({ id: memberships.id })
+          .from(memberships)
+          .where(handoffRequesterAdmin(tenantId, stateRow.oid!))
+          .for("share");
+        if (!requester)
+          return reject(
+            "not_allowed",
+            "requester is no longer a workspace admin",
+          );
+        const conn = await tx.query.msConnections.findFirst({
+          where: eq(msConnections.tenantId, tenantId),
+        });
+        // Holding the workspace lock keeps even a distinct valid callback
+        // from replacing a binding. A failed write rolls back consumption.
+        if (target.tid || conn) return reject("already_connected");
+        const consumed = await tx
+          .update(consentStates)
+          .set({ usedAt: handoffUsedAt })
+          .where(and(consumeConditions(), eq(consentStates.kind, "handoff")))
+          .returning({ state: consentStates.state });
+        if (!consumed.length) return fail("invalid_state");
+      } else if (target.tid && target.tid.toLowerCase() !== grantedTid) {
+        return reject(
+          "already_connected",
+          "workspace is bound to a different tenant",
+          `bound ${target.tid}, granted ${grantedTid}`,
+        );
+      }
 
-  // Make the connected workspace active so the user lands on it, not the empty
-  // one they may have started from.
-  (await cookies()).set(WORKSPACE_COOKIE, tenantId, workspaceCookieOptions());
+      await tx
+        .update(tenants)
+        .set({ tid: grantedTid!, consentedAt: new Date() })
+        .where(eq(tenants.id, tenantId));
+      const connection = tx
+        .insert(msConnections)
+        .values({ tenantId, ...managedConnection });
+      if (handoff) await connection;
+      else
+        await connection.onConflictDoUpdate({
+          target: msConnections.tenantId,
+          set: managedConnection,
+        });
+    });
+  } catch (err) {
+    // A different workspace can bind the granted tenant during this transaction.
+    if (isUniqueViolation(err)) return reject("tenant_taken");
+    throw err;
+  }
 
-  // The single most important founder signal there is.
-  void notifyOps(
-    `workspace ${tenantId} connected its Microsoft tenant, first sync starting`,
-    { logLevel: "info" },
-  );
+  if (handoff && approver) {
+    // The transaction consumed the link. Preserve the cookie on earlier
+    // failures so the browser can retry while its proof is still valid.
+    await clearHandoffProof();
+    await audit(
+      { tenant: { id: tenantId }, user: { oid: approver.oid } },
+      "microsoft_connected_by_approval",
+      { grantedTid, approverSignInOid: approver.oid },
+    );
+    await setHandoffCompletion(state, handoffUsedAt);
+    void notifyOps(
+      `workspace ${tenantId} completed Microsoft consent by handoff, first sync starting`,
+      {
+        logLevel: "info",
+      },
+    );
+  } else {
+    (await cookies()).set(WORKSPACE_COOKIE, tenantId, workspaceCookieOptions());
+    void notifyOps(
+      `workspace ${tenantId} connected its Microsoft tenant, first sync starting`,
+      { logLevel: "info" },
+    );
+  }
 
-  // First sync runs after the redirect is sent; the connect page polls status.
   after(async () => {
     await runSync(tenantId, { deadline });
   });
 
-  redirect("/app/connectors/microsoft?status=syncing");
+  redirect(
+    handoff
+      ? "/connect/approve/complete"
+      : "/app/connectors/microsoft?status=syncing",
+  );
 };

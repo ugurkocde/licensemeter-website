@@ -21,6 +21,7 @@ import {
   declineJoinRequestRow,
   holdsJoinableDomain,
 } from "~/server/domainJoin";
+import { pendingApprovalLinks } from "~/server/consentState";
 import { db } from "~/server/db";
 import {
   adobeConnections,
@@ -28,6 +29,7 @@ import {
   aiSpendDaily,
   emailBlocks,
   emailSignups,
+  consentStates,
   findings,
   memberships,
   meteringConnections,
@@ -670,7 +672,14 @@ export const removeMember = async (
   if (target.id === ctx.membership.id)
     return fail("You cannot remove yourself");
 
-  await db.delete(memberships).where(eq(memberships.id, target.id));
+  await db.transaction(async (tx) => {
+    await tx.delete(memberships).where(eq(memberships.id, target.id));
+    if (target.oid) {
+      await tx
+        .delete(consentStates)
+        .where(pendingApprovalLinks(ctx.tenant.id, target.oid));
+    }
+  });
   await audit(ctx, "member_removed", {
     email: target.email,
     role: target.role,
@@ -720,10 +729,17 @@ export const changeMemberRole = async (
   }
   if (target.role === newRole) return ok();
 
-  await db
-    .update(memberships)
-    .set({ role: newRole })
-    .where(eq(memberships.id, target.id));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(memberships)
+      .set({ role: newRole })
+      .where(eq(memberships.id, target.id));
+    if (target.oid && (newRole === "viewer" || target.role === "owner")) {
+      await tx
+        .delete(consentStates)
+        .where(pendingApprovalLinks(ctx.tenant.id, target.oid));
+    }
+  });
   await audit(ctx, "member_role_changed", {
     email: target.email,
     from: target.role,
@@ -1533,7 +1549,7 @@ export const connectMicrosoftByo = async (
     const v = formData.get(name);
     return typeof v === "string" ? v.trim() : "";
   };
-  const tid = read("tid");
+  const tid = read("tid").toLowerCase();
   const appClientId = read("appClientId");
   const credType = read("credType");
   if (!tid || !appClientId)
@@ -1544,7 +1560,7 @@ export const connectMicrosoftByo = async (
     return { ok: false, error: "Choose a credential type" };
   // Refuse to silently repoint a workspace already bound to another tenant
   // (mirrors the managed consent callback's already_connected check).
-  if (ctx.tenant.tid && ctx.tenant.tid !== tid)
+  if (ctx.tenant.tid && ctx.tenant.tid.toLowerCase() !== tid)
     return {
       ok: false,
       error:
@@ -1554,7 +1570,7 @@ export const connectMicrosoftByo = async (
   // A given Microsoft tenant belongs to exactly one workspace (the partial-
   // unique tid index); refuse to silently steal it from another workspace.
   const tidOwner = await db.query.tenants.findFirst({
-    where: eq(tenants.tid, tid),
+    where: eq(sql`lower(${tenants.tid})`, tid),
   });
   if (tidOwner && tidOwner.id !== ctx.tenant.id)
     return {
@@ -1646,7 +1662,15 @@ export const connectMicrosoftByo = async (
   // application-level steal guard above (a concurrent connect to the same tid
   // loses the race here rather than corrupting state).
   try {
-    await db.transaction(async (tx) => {
+    const connected = await db.transaction(async (tx) => {
+      const [current] = await tx
+        .select({ tid: tenants.tid })
+        .from(tenants)
+        .where(eq(tenants.id, ctx.tenant.id))
+        .for("no key update");
+      if (!current || (current.tid && current.tid.toLowerCase() !== tid))
+        return false;
+
       await tx
         .insert(msConnections)
         .values({
@@ -1686,7 +1710,14 @@ export const connectMicrosoftByo = async (
           consentedAt: sql`coalesce(${tenants.consentedAt}, now())`,
         })
         .where(eq(tenants.id, ctx.tenant.id));
+      return true;
     });
+    if (!connected)
+      return {
+        ok: false,
+        error:
+          "This workspace is already connected to a different Microsoft tenant. Disconnect it first.",
+      };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (/tid_idx|unique/i.test(message)) {
@@ -1731,6 +1762,12 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
   // rules carry directory names (UPNs, display names) and are deleted with
   // the dataset; connector findings stay and re-evaluate on the next analysis.
   await db.transaction(async (tx) => {
+    await tx
+      .select({ id: tenants.id })
+      .from(tenants)
+      .where(eq(tenants.id, ctx.tenant.id))
+      .for("no key update");
+    await tx.delete(consentStates).where(pendingApprovalLinks(ctx.tenant.id));
     await tx
       .delete(msConnections)
       .where(eq(msConnections.tenantId, ctx.tenant.id));

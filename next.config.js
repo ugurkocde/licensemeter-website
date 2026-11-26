@@ -68,7 +68,7 @@ const config = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://changelog.ugurlabs.com https://va.vercel-scripts.com https://vitals.vercel-insights.com https://challenges.cloudflare.com; media-src 'self'; frame-src https://challenges.cloudflare.com; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+              "default-src 'self'; script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://changelog.ugurlabs.com https://va.vercel-scripts.com https://vitals.vercel-insights.com https://challenges.cloudflare.com; media-src 'self'; frame-src https://challenges.cloudflare.com; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://login.microsoftonline.com; object-src 'none'",
           },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
@@ -80,6 +80,18 @@ const config = {
             value: "geolocation=(), microphone=(), camera=()",
           },
         ],
+      },
+      {
+        source: "/connect/approve/:path*",
+        headers: [
+          // Keep Origin on same-origin form POSTs and send no referrer to Microsoft.
+          { key: "Referrer-Policy", value: "same-origin" },
+          { key: "Cache-Control", value: "private, no-store" },
+        ],
+      },
+      {
+        source: "/api/connect/approve",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
       },
     ];
   },

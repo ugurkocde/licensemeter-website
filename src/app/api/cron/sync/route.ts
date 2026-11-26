@@ -2,6 +2,7 @@ import { eq, exists, isNotNull, or } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { env } from "~/env";
+import { sweepConsentStalls } from "~/server/consentState";
 import { db } from "~/server/db";
 import { adobeConnections, saasConnections, tenants } from "~/server/db/schema";
 import { notifyOps } from "~/server/ops";
@@ -42,6 +43,18 @@ export const GET = async (req: NextRequest) => {
   // the function is never killed mid-sync even when the queue is long.
   const deadline = requestDeadline();
 
+  // Sweep before draining the sync queue so a long run cannot skip detection.
+  try {
+    await sweepConsentStalls();
+  } catch (err) {
+    void notifyOps(
+      `Microsoft consent stall sweep failed: ${opsErrorText(err)}`,
+      {
+        key: "cron:sync:consent-stalls",
+        cooldownMs: 60 * 60 * 1000,
+      },
+    );
+  }
   // Tenants with anything to sync: a Microsoft consent (the demo tenant has
   // consentedAt set by its seed) or at least one Adobe/SaaS connection.
   // Pure CSV-import workspaces have no live source and are left out.

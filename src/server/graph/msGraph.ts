@@ -113,6 +113,10 @@ const APP_IDENTITY_WAITS_MS = [15_000, 30_000] as const;
  * callback whose tenant id is caller-supplied.
  */
 const CONSENT_PROBE_WAITS_MS = [15_000, 30_000] as const;
+// Allow the full retry schedule plus time for the token requests themselves.
+const CONSENT_PROBE_BUDGET_MS = 60_000;
+// The callback still needs to bind the tenant and run the first sync in after().
+const CONSENT_SYNC_RESERVE_MS = 60_000;
 
 /**
  * Cache key that changes when the underlying credential changes, so rotating a
@@ -310,37 +314,81 @@ const probeReports = async (
   }
 };
 
+const SUBSCRIBED_SKU_READ_ROLES = [
+  "LicenseAssignment.Read.All",
+  "LicenseAssignment.ReadWrite.All",
+  "Organization.Read.All",
+  "Organization.ReadWrite.All",
+  "Directory.Read.All",
+  "Directory.ReadWrite.All",
+];
+
+const USER_READ_ROLES = [
+  "User.Read.All",
+  "User.ReadWrite.All",
+  "Directory.Read.All",
+  "Directory.ReadWrite.All",
+];
+
 /**
  * Whether the configured central connector app holds admin consent in this
  * tenant. Used by the admin-consent callback: the plaintext `tenant` and
  * `admin_consent` query params are forgeable, so the binding is allowed only
- * after this probe succeeds (the tenant must have actually consented to the
- * app for an app-only token to be issued). Returns false when the managed app
- * is not configured.
+ * after the token carries the roles for the two critical sync steps, SKU and
+ * user reads. The first sync still retries service-principal propagation.
  */
 export const verifyManagedConsent = async (
   tid: string,
-  deadline?: number,
-): Promise<boolean> => {
-  if (!env.CONNECTOR_CLIENT_ID || !env.CONNECTOR_CLIENT_SECRET) return false;
-  try {
-    await acquireToken(
-      { mode: "managed", tid },
-      {
-        waits: CONSENT_PROBE_WAITS_MS,
-        acceptIdentityLessToken: true,
-        deadline,
-      },
-    );
-    return true;
-  } catch (err) {
-    // Log only the message; never echo the raw MSAL error.
-    console.error(
-      "[connect] managed consent probe failed:",
-      err instanceof Error ? err.message : String(err),
-    );
-    return false;
+  deadline: number = requestDeadline(),
+): Promise<"verified" | "not_granted" | "pending_roles"> => {
+  if (!env.CONNECTOR_CLIENT_ID || !env.CONNECTOR_CLIENT_SECRET)
+    return "not_granted";
+  const cred = { mode: "managed", tid } as const;
+  const cacheKey = appCacheKey(cred);
+  const probeDeadline = Math.min(
+    Date.now() + CONSENT_PROBE_BUDGET_MS,
+    deadline - CONSENT_SYNC_RESERVE_MS,
+  );
+  let result: "not_granted" | "pending_roles" = "not_granted";
+  let errorMessage: string | undefined;
+
+  for (let attempt = 0; Date.now() < probeDeadline; attempt++) {
+    try {
+      const token = await settleBy(
+        acquireToken(cred, { waits: [], acceptIdentityLessToken: true }),
+        probeDeadline,
+      );
+      const roles = decodeRoles(token);
+      if (
+        Date.now() < probeDeadline &&
+        SUBSCRIBED_SKU_READ_ROLES.some((role) => roles.includes(role)) &&
+        USER_READ_ROLES.some((role) => roles.includes(role))
+      ) {
+        return "verified";
+      }
+      result = "pending_roles";
+      errorMessage = undefined;
+    } catch (err) {
+      errorMessage = err instanceof Error ? err.message : String(err);
+    }
+    // Evict incomplete tokens even if the schedule or deadline prevents a retry.
+    msalApps.delete(cacheKey);
+    const wait = CONSENT_PROBE_WAITS_MS[attempt];
+    if (
+      wait === undefined ||
+      Date.now() + wait >= probeDeadline ||
+      (errorMessage !== undefined &&
+        !CONSENT_PROPAGATION_PATTERNS.test(errorMessage))
+    ) {
+      break;
+    }
+    await sleep(wait);
   }
+  // Log only the message; never echo the raw MSAL error.
+  if (errorMessage !== undefined) {
+    console.error("[connect] managed consent probe failed:", errorMessage);
+  }
+  return result;
 };
 
 /**

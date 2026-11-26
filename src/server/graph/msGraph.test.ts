@@ -50,7 +50,8 @@ const NOW = Date.parse("2026-09-18T12:00:00Z");
  * claim and Graph rejects it with Authorization_IdentityNotFound ("The identity
  * of the calling application could not be established"). The sync waits for the
  * identity, the consent probe waits through a token-endpoint propagation error
- * but accepts an issued token, and a test connection answers immediately.
+ * but accepts an issued token with the required roles, and a test connection
+ * answers immediately.
  */
 
 const b64 = (value: unknown): string =>
@@ -473,13 +474,94 @@ describe("immediate paths before the sync", () => {
 });
 
 describe("consent probe", () => {
-  it("succeeds while the service principal propagates", async () => {
-    mocks.mint.mockResolvedValue({ accessToken: withoutOid() });
+  const requiredRoles = ["LicenseAssignment.Read.All", "User.Read.All"];
+
+  it("leaves identity propagation to first sync when both critical roles are present", async () => {
+    mocks.mint.mockResolvedValue({
+      accessToken: appJwt({ roles: requiredRoles }),
+    });
 
     await expect(
       verifyManagedConsent("66666666-6666-6666-6666-666666666666"),
-    ).resolves.toBe(true);
+    ).resolves.toBe("verified");
     expect(mocks.mint).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { roles: ["Directory.Read.All"] },
+    { roles: ["Directory.ReadWrite.All"] },
+    { roles: ["Organization.Read.All", "User.ReadWrite.All"] },
+    { roles: ["Organization.ReadWrite.All", "User.Read.All"] },
+    { roles: ["LicenseAssignment.ReadWrite.All", "User.Read.All"] },
+  ])(
+    "accepts roles covering both critical reads: $roles",
+    async ({ roles }) => {
+      mocks.mint.mockResolvedValue({
+        accessToken: appJwt({ oid: "sp", roles }),
+      });
+
+      await expect(verifyManagedConsent(crypto.randomUUID())).resolves.toBe(
+        "verified",
+      );
+      expect(mocks.mint).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    { roles: ["LicenseAssignment.Read.All"] },
+    { roles: ["User.Read.All"] },
+    { roles: ["Reports.Read.All", "AuditLog.Read.All"] },
+    { roles: [] },
+  ])(
+    "returns pending after exhausting retries for $roles",
+    async ({ roles }) => {
+      vi.useFakeTimers();
+      mocks.mint.mockResolvedValue({
+        accessToken: appJwt({ oid: "sp", roles }),
+      });
+
+      const pending = verifyManagedConsent(crypto.randomUUID());
+      await vi.advanceTimersByTimeAsync(44_999);
+      expect(mocks.mint).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+
+      await expect(pending).resolves.toBe("pending_roles");
+      expect(mocks.mint).toHaveBeenCalledTimes(3);
+      expect(mocks.clientsCreated).toBe(3);
+    },
+  );
+
+  it("skips a retry that would use the time reserved for binding and first sync", async () => {
+    vi.useFakeTimers();
+    mocks.mint.mockResolvedValue({ accessToken: withoutOid() });
+    const now = Date.now();
+
+    const pending = verifyManagedConsent(crypto.randomUUID(), now + 75_000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    await expect(pending).resolves.toBe("pending_roles");
+    expect(Date.now()).toBe(now);
+    expect(mocks.mint).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("settles at the probe deadline when the retry mint stalls", async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    const stalledMint = new Promise<{ accessToken: string }>(() => {
+      // Leave the token request pending past the deadline.
+    });
+    mocks.mint
+      .mockResolvedValueOnce({ accessToken: withoutOid() })
+      .mockReturnValueOnce(stalledMint);
+
+    const pending = verifyManagedConsent(crypto.randomUUID(), now + 80_000);
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    await expect(pending).resolves.toBe("pending_roles");
+    expect(Date.now()).toBe(now + 20_000);
+    expect(mocks.mint).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("waits through a token-endpoint propagation error before answering", async () => {
@@ -488,14 +570,16 @@ describe("consent probe", () => {
       .mockRejectedValueOnce(
         new Error("AADSTS7000229: missing service principal in the tenant"),
       )
-      .mockResolvedValueOnce({ accessToken: withOid() });
+      .mockResolvedValueOnce({
+        accessToken: appJwt({ oid: "sp", roles: requiredRoles }),
+      });
 
     const pending = verifyManagedConsent(
       "99999999-9999-9999-9999-999999999999",
     );
     await advancePastPropagation();
 
-    await expect(pending).resolves.toBe(true);
+    await expect(pending).resolves.toBe("verified");
     expect(mocks.mint).toHaveBeenCalledTimes(2);
   });
 });

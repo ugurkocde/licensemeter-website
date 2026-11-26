@@ -85,6 +85,14 @@ describe("session user", () => {
     expect(await auth()).toBeNull();
   });
 
+  it.each([["licensemeter-consent-handoff"], [[]], [null]])(
+    "rejects an otherwise valid session cookie carrying aud=%j",
+    async (aud) => {
+      cookieValue = await sign({ ...BASE, aud });
+      expect(await auth()).toBeNull();
+    },
+  );
+
   it("rejects a cookie signed with another key", async () => {
     cookieValue = await new SignJWT({ ...BASE, emailProven: true })
       .setProtectedHeader({ alg: "HS256" })

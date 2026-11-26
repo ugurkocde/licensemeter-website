@@ -2,6 +2,7 @@ import { requestBaseUrl } from "~/server/auth/requestBaseUrl";
 import { after, NextResponse, type NextRequest } from "next/server";
 
 import { env } from "~/env";
+import { finishHandoffAuthentication } from "~/server/auth/consentHandoff";
 import {
   getScanClient,
   getSignInClient,
@@ -172,6 +173,8 @@ const handleScanCallback = async (
  * kind branches the delegated instant scan off before the sign-in logic.
  */
 export const GET = async (req: NextRequest) => {
+  const handoff = await finishHandoffAuthentication(req);
+  if (handoff) return handoff;
   const params = req.nextUrl.searchParams;
   const code = params.get("code");
   const state = params.get("state");

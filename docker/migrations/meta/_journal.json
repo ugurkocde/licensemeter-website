@@ -148,6 +148,13 @@
       "when": 1795520240723,
       "tag": "0020_usage_report_availability",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795564189576,
+      "tag": "0021_consent_state_kind",
+      "breakpoints": true
     }
   ]
 }

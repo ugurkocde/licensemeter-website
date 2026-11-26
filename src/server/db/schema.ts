@@ -449,23 +449,30 @@ export const joinRequests = pgTable(
  * user (Entra object id) and the workspace the consent was started from. The
  * callback only accepts the browser session of that same user.
  */
-export const consentStates = pgTable("consent_states", {
-  state: text("state").primaryKey(),
-  /** Entra object id of the initiator. */
-  oid: text("oid"),
-  /** Initiator's Entra home tenant; not read on callback. */
-  tid: text("tid"),
-  /** Workspace the consent was started from; checked on callback. */
-  tenantId: uuid("tenant_id").references(() => tenants.id, {
-    onDelete: "cascade",
-  }),
-  email: text("email").notNull(),
-  name: text("name"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  usedAt: timestamp("used_at", { withTimezone: true }),
-});
+export const consentStates = pgTable(
+  "consent_states",
+  {
+    kind: text("kind").$type<"self" | "handoff">().notNull().default("self"),
+    state: text("state").primaryKey(),
+    /** Entra object id of the initiator. */
+    oid: text("oid"),
+    /** Initiator's Entra home tenant; required for approval handoffs. */
+    tid: text("tid"),
+    /** Workspace the consent was started from; checked on callback. */
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
+      onDelete: "cascade",
+    }),
+    email: text("email").notNull(),
+    name: text("name"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("consent_states_kind_check", sql`${t.kind} in ('self', 'handoff')`),
+  ],
+);
 
 /** Latest subscribedSkus snapshot per tenant. */
 export const tenantSkus = pgTable(
