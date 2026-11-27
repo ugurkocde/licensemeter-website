@@ -46,7 +46,12 @@ import {
 export type ShareActionResult =
   { ok: true; url: string; label: string } | { ok: false; error: string };
 
-export type SimpleResult = { ok: boolean; error?: string };
+export type SimpleResult = {
+  ok: boolean;
+  error?: string;
+  /** Adding an address that is already confirmed sends nothing. */
+  alreadyConfirmed?: boolean;
+};
 
 type Gate = { ctx: AccessContext } | { error: string };
 
@@ -223,7 +228,7 @@ const requestVerification = async (
   // Already confirmed and subscribed: nothing to confirm, nobody is mailed.
   if (upserted.token === null) {
     revalidate();
-    return { ok: true };
+    return { ok: true, alreadyConfirmed: true };
   }
   if (!(await sendRecipientVerification(upserted.recipient, upserted.token))) {
     return {

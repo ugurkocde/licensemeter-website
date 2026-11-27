@@ -470,7 +470,7 @@ describe("recipient edge cases", () => {
       await actions.addFinanceRecipientAction(
         form({ email: "cfo@contoso.example", name: "New name" }),
       ),
-    ).toEqual({ ok: true });
+    ).toEqual({ ok: true, alreadyConfirmed: true });
     expect(sendMock).not.toHaveBeenCalled();
     const [row] = await recipientRows();
     expect(row!.name).toBe("New name");
@@ -488,9 +488,15 @@ describe("recipient edge cases", () => {
     await unsubscribe(`r=${id}&k=finance&t=${t}`);
     // An admin asks again, then the address unsubscribes once more before
     // confirming: the link from that request must not subscribe it again.
-    await actions.resendFinanceRecipientAction(id);
+    const original = tokenFromLastMail().token;
+    expect(await actions.resendFinanceRecipientAction(id)).toEqual({
+      ok: true,
+    });
     const { r, token } = tokenFromLastMail();
-    const first = (await recipientRows())[0]!.unsubscribedAt;
+    expect(token).not.toBe(original);
+    const before = (await recipientRows())[0]!;
+    expect(before.verifyTokenHash).not.toBeNull();
+    const first = before.unsubscribedAt;
     await unsubscribe(`r=${id}&k=finance&t=${t}`);
     const [row] = await recipientRows();
     expect(row!.verifyTokenHash).toBeNull();
@@ -702,9 +708,15 @@ describe("monthly delivery to finance", () => {
     const confirmed = await addConfirmed("cfo@contoso.example");
     const unsubscribed = await addConfirmed("old-cfo@contoso.example");
     await recipients.unsubscribeRecipient(unsubscribed, "finance");
-    await actions.addFinanceRecipientAction(
-      form({ email: "pending@contoso.example" }),
+    expect(
+      await actions.addFinanceRecipientAction(
+        form({ email: "pending@contoso.example" }),
+      ),
+    ).toEqual({ ok: true });
+    const pending = (await recipientRows()).find(
+      (r) => r.email === "pending@contoso.example",
     );
+    expect(pending?.verifiedAt).toBeNull();
     sendMock.mockClear();
 
     const totals = await runExecReportJob({ now: NOW });
@@ -713,7 +725,7 @@ describe("monthly delivery to finance", () => {
     const mail = sendMock.mock.calls[0]![0];
     expect(mail.to).toEqual(["cfo@contoso.example"]);
     expect(mail.subject).toBe(
-      "Executive savings report for November 2026: Contoso GmbH",
+      "Executive savings report, 1 December 2026: Contoso GmbH",
     );
     expect(mail.headers?.["List-Unsubscribe-Post"]).toBe(
       "List-Unsubscribe=One-Click",
@@ -722,10 +734,13 @@ describe("monthly delivery to finance", () => {
     expect(unsub).toContain(`r=${confirmed}&k=finance&t=`);
     expect(mail.html).not.toContain("/app/");
     expect(mail.attachments?.[0]?.filename).toBe(
-      "licensemeter-executive-report-contoso-gmbh-2026-11.pdf",
+      "licensemeter-executive-report-contoso-gmbh-2026-12.pdf",
     );
     const pdf = Buffer.from(mail.attachments![0]!.content, "base64");
     const text = pdfText(pdf);
+    // Readable text first, so the absence checks below mean something.
+    expect(text).toContain("Contoso GmbH");
+    expect(text).toContain("Executive savings report");
     for (const pii of [
       "Alice Wonderland",
       "alice.wonderland@contoso.example",

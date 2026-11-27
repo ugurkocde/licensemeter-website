@@ -32,6 +32,7 @@ import {
   recipientUnsubscribeUrl,
 } from "~/server/report/recipients";
 import { renderExecutiveReportPdf } from "~/server/report/renderExecutive";
+import { loadLicenseSpend } from "~/server/waste/spendStore";
 import {
   JOB_BUDGET_MS,
   type JobOptions,
@@ -59,15 +60,20 @@ export type ExecReportJobTotals = JobTotals & {
   failedTenants: number;
 };
 
-const MONTH_LABEL = new Intl.DateTimeFormat("en-GB", {
+const DAY_LABEL = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
   month: "long",
   year: "numeric",
   timeZone: "UTC",
 });
 
-/** "November 2026" for the ledger's "2026-11". */
-export const execMonthLabel = (periodKey: string): string =>
-  MONTH_LABEL.format(new Date(`${periodKey}-01T00:00:00Z`));
+/**
+ * "1 December 2026". The report shows the workspace as it stands on the run
+ * date (spend, open waste, savings to date, the next 90 days), so subject,
+ * cover note and file name all say "as of" that day. The ledger key stays the
+ * month that just ended, so one email goes out per month and recipient.
+ */
+export const execDayLabel = (now: Date): string => DAY_LABEL.format(now);
 
 /** The cover note's figure rows. Every one comes from the summary. */
 export const execReportRows = (
@@ -118,9 +124,12 @@ const reportForTenant = async (
     totals.skippedNoPlan++;
     return;
   }
-  const [recipients, anySku, anyFinding] = await Promise.all([
-    deliverableRecipients(tenant.id, "finance"),
-    // Never mail a report of nothing but zeros, like the monthly report.
+  const recipients = await deliverableRecipients(tenant.id, "finance");
+  if (recipients.length === 0) return;
+  // Never mail a report of nothing but zeros. Checked against the sources
+  // the report itself reads: spend from every connector (Microsoft, Adobe,
+  // SaaS seats) and the findings behind open waste.
+  const [anySku, anyFinding, inventory] = await Promise.all([
     db.query.tenantSkus.findFirst({
       where: eq(tenantSkus.tenantId, tenant.id),
       columns: { skuId: true },
@@ -129,8 +138,9 @@ const reportForTenant = async (
       where: eq(findings.tenantId, tenant.id),
       columns: { id: true },
     }),
+    loadLicenseSpend(tenant.id),
   ]);
-  if (recipients.length === 0 || (!anySku && !anyFinding)) return;
+  if (!anySku && !anyFinding && inventory.spend.totalCents <= 0) return;
 
   let built: Promise<Built> | undefined;
   const build = async (): Promise<Built> => {
@@ -142,15 +152,11 @@ const reportForTenant = async (
     );
     const pdf = await renderExecutiveReportPdf(summary, branding);
     return {
-      subject: `Executive savings report for ${execMonthLabel(periodKey)}: ${workspaceLabel(tenant)}`,
+      subject: `Executive savings report, ${execDayLabel(now)}: ${workspaceLabel(tenant)}`,
       rows: execReportRows(summary),
       attachment: {
-        // Named after the reported month, like the subject.
-        filename: reportFilename(
-          tenant,
-          new Date(`${periodKey}-01T00:00:00Z`),
-          "executive-report",
-        ),
+        // Named after the run date's month, like every figure in it.
+        filename: reportFilename(tenant, now, "executive-report"),
         content: pdf.toString("base64"),
       },
     };
@@ -171,7 +177,7 @@ const reportForTenant = async (
           subject: message.subject,
           html: execReportHtml({
             tenantName: workspaceLabel(tenant),
-            month: execMonthLabel(periodKey),
+            asOf: execDayLabel(now),
             rows: message.rows,
             appUrl: siteUrl(),
             unsubscribeUrl,

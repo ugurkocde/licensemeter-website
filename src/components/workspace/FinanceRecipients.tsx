@@ -39,9 +39,16 @@ const ResendButton = ({ id, email }: { id: string; email: string }) => {
         onClick={() => {
           setResult(null);
           startTransition(async () => {
-            const res = await resendFinanceRecipientAction(id);
-            setResult(res);
-            if (res.ok) router.refresh();
+            try {
+              const res = await resendFinanceRecipientAction(id);
+              setResult(res);
+              if (res.ok) router.refresh();
+            } catch {
+              setResult({
+                ok: false,
+                error: "Could not send the link. Try again.",
+              });
+            }
           });
         }}
         className="text-ink-faint hover:text-ink inline-flex min-h-11 items-center text-xs underline-offset-4 hover:underline disabled:opacity-50"
@@ -90,9 +97,18 @@ export const FinanceRecipients = ({
       formData: FormData,
     ) => {
       const email = formData.get("email");
-      const res = await addFinanceRecipientAction(formData);
-      if (res.ok) router.refresh();
-      return { ...res, email: typeof email === "string" ? email : undefined };
+      const typed = typeof email === "string" ? email : undefined;
+      try {
+        const res = await addFinanceRecipientAction(formData);
+        if (res.ok) router.refresh();
+        return { ...res, email: typed };
+      } catch {
+        return {
+          ok: false,
+          error: "Could not add the recipient. Try again.",
+          email: typed,
+        };
+      }
     },
     null,
   );
@@ -201,7 +217,9 @@ export const FinanceRecipients = ({
             {result === null
               ? null
               : result.ok
-                ? `Confirmation email sent to ${result.email ?? "the address"}. Reports go there once somebody confirms.`
+                ? result.alreadyConfirmed
+                  ? `${result.email ?? "This address"} is already confirmed and receives the report. Nothing was sent.`
+                  : `Confirmation email sent to ${result.email ?? "the address"}. Reports go there once somebody confirms.`
                 : (result.error ?? "Could not send the confirmation email")}
           </p>
         </form>

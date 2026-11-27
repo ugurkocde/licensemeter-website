@@ -591,8 +591,8 @@ here. Never forward this email.`,
  */
 export const execReportHtml = (args: {
   tenantName: string;
-  /** "November 2026". */
-  month: string;
+  /** The run date, "1 December 2026": the figures are as of that day. */
+  asOf: string;
   /** Label and pre-formatted figure rows: spend, waste, savings, renewals. */
   rows: { label: string; value: string }[];
   appUrl: string;
@@ -601,9 +601,9 @@ export const execReportHtml = (args: {
   emailShell({
     baseUrl: args.appUrl,
     title: `Executive savings report: ${args.tenantName}`,
-    preheader: `${args.tenantName}: the one-page executive savings report for ${args.month}.`,
+    preheader: `${args.tenantName}: the one-page executive savings report as of ${args.asOf}.`,
     body: `${emailHeading(`Executive savings report: ${escapeHtml(args.tenantName)}`)}
-${emailText(`The one-page report for ${escapeHtml(args.month)} is attached as PDF.`, { tone: "ink" })}
+${emailText(`The one-page report as of ${escapeHtml(args.asOf)} is attached as PDF.`, { tone: "ink" })}
 ${emailRows(args.rows)}
 ${emailText("Figures are monthly unless marked otherwise and come from the workspace's license data. The report names no employees.", { size: "small" })}`,
     footer: `You get this because an administrator of ${escapeHtml(args.tenantName)}

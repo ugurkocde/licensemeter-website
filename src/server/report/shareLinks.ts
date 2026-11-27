@@ -140,7 +140,9 @@ export const createShareLink = async (
       .select({ id: tenants.id })
       .from(tenants)
       .where(eq(tenants.id, input.tenantId))
-      .for("update");
+      // Serializes the count and insert against other writers without
+      // blocking foreign-key checks (an audit insert) on the tenant row.
+      .for("no key update");
     const [active] = await tx
       .select({ count: sql<number>`count(*)::int` })
       .from(reportShareLinks)

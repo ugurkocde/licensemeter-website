@@ -49,8 +49,16 @@ export const ShareLinksPanel = ({
   labelMax: number;
 }) => {
   const [result, formAction, pending] = useActionState(
-    async (_prev: ShareActionResult | null, formData: FormData) =>
-      createShareLinkAction(formData),
+    async (
+      _prev: ShareActionResult | null,
+      formData: FormData,
+    ): Promise<ShareActionResult> => {
+      try {
+        return await createShareLinkAction(formData);
+      } catch {
+        return { ok: false, error: "Could not create the link. Try again." };
+      }
+    },
     null,
   );
 

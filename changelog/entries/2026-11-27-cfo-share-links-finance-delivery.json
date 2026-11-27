@@ -1,6 +1,6 @@
 {
   "title": "Share the executive report with your CFO and email it to finance monthly",
-  "summary": "Pro and MSP workspaces can create read-only links to the one-page executive savings report for a CFO or board member without a LicenseMeter account. A snapshot link keeps the figures of the day it was created; a live link always shows current data. Links last 7, 30 or 90 days, can be revoked at any time, and the report names no employees. Owners and admins can also add up to five finance recipients who get the report as a PDF on the 1st of each month, after confirming their address by email and with a one-click unsubscribe. The monthly report for owners and admins is unchanged.",
+  "summary": "Pro and MSP workspaces can create read-only links to the one-page executive savings report for a CFO or board member without a LicenseMeter account. A snapshot link keeps the figures of the day it was created and works until it expires or is revoked, also after leaving Pro. A live link shows current data while the workspace is on Pro or MSP. Links last 7, 30 or 90 days, can be revoked at any time, and the report names no employees. Owners and admins can also add up to five finance recipients who get the report as a PDF on the 1st of each month, after confirming their address by email and with a one-click unsubscribe. The monthly report for owners and admins is unchanged.",
   "type": "new",
   "publishedOn": "2026-11-27",
   "idempotencyKey": "licensemeter:cfo-share-links-finance-delivery"

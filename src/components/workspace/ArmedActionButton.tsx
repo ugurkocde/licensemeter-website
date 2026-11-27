@@ -48,9 +48,13 @@ export const ArmedActionButton = ({
           setArmed(false);
           setError(null);
           startTransition(async () => {
-            const res = await run();
-            if (!res.ok) setError(res.error ?? "Failed");
-            else router.refresh();
+            try {
+              const res = await run();
+              if (!res.ok) setError(res.error ?? "Failed");
+              else router.refresh();
+            } catch {
+              setError("Failed. Try again.");
+            }
           });
         }}
         className={`inline-flex min-h-11 items-center text-xs underline-offset-4 hover:underline disabled:opacity-50 ${
