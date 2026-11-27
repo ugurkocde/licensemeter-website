@@ -1,0 +1,7 @@
+{
+  "title": "Plan seat cuts before every renewal",
+  "summary": "Pro now shows a renewal savings plan for each upcoming Microsoft subscription and contract: paid, unassigned, reclaimable and active seats, the seat count to renew at with an adjustable buffer, the seats to cut and the yearly savings. Download any renewal as a calendar file, filter findings to one subscription, and export a PowerShell script for it. Trial seats never count as savings, unpriced seats show as seats only, and hidden usage data is marked as a conservative estimate. Free workspaces see their own total from live data.",
+  "type": "new",
+  "publishedOn": "2026-11-27",
+  "idempotencyKey": "licensemeter:renewal-savings-plan"
+}

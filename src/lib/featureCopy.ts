@@ -23,6 +23,11 @@ export const FEATURE_COPY: Record<Feature, FeatureCopy> = {
     description:
       "Track reclaimed licenses, monthly savings and how much spend uses your prices.",
   },
+  renewalPlans: {
+    label: "Renewal savings plan",
+    description:
+      "For every upcoming renewal, the seats to renew, the seats to cut and the yearly savings, with a calendar (.ics) export.",
+  },
   mcp: {
     label: "MCP server",
     description:

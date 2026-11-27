@@ -51,9 +51,35 @@ const oneLine = (s: string): string => s.replace(/[\r\n]+/g, " ");
  * Generates a reviewable PowerShell script (Microsoft Graph PowerShell SDK)
  * instead of writing to the tenant: LicenseMeter itself stays read-only.
  */
-export const generateRemediationScript = (rows: FindingRow[]): string => {
+/** Microsoft SKUs a finding takes back, read from its stored detail. */
+export const findingSkuIds = (
+  f: Pick<FindingRow, "rule" | "skuId" | "detail">,
+): string[] => {
+  const detail = f.detail as RemediationDetail;
+  const ids = new Set<string>();
+  // Lowercased, so a scoped export matches however Graph cased the id.
+  if (f.skuId) ids.add(f.skuId.toLowerCase());
+  for (const l of detail.licenses ?? [])
+    if (typeof l?.skuId === "string") ids.add(l.skuId.toLowerCase());
+  if (f.rule === "overlapping_licenses")
+    for (const id of detail.redundantSkuIds ?? [])
+      if (typeof id === "string") ids.add(id.toLowerCase());
+  return [...ids];
+};
+
+export const generateRemediationScript = (
+  rows: FindingRow[],
+  opts: { skuId?: string } = {},
+): string => {
+  const only = opts.skuId?.toLowerCase();
+  if (only) rows = rows.filter((f) => findingSkuIds(f).includes(only));
   const lines: string[] = [
     "# LicenseMeter remediation script (generated)",
+    ...(only
+      ? [
+          `# Limited to one subscription: ${oneLine(skuDisplayName(only))}. Other licenses stay assigned.`,
+        ]
+      : []),
     "# Review every line before running. Requires the Microsoft Graph PowerShell SDK",
     "# and a role allowed to manage licenses (e.g. License Administrator).",
     "#",
@@ -129,13 +155,18 @@ export const generateRemediationScript = (rows: FindingRow[]): string => {
       // comment line or split a statement.
       const upn = oneLine(detail.upn).replaceAll("'", "''");
 
-      const licenses: LicenseDetail[] =
+      const held: LicenseDetail[] =
         detail.licenses ??
         (f.rule === "overlapping_licenses"
           ? (detail.redundantSkuIds ?? []).map((skuId) => ({ skuId }))
           : f.skuId
             ? [{ skuId: f.skuId }]
             : []);
+      // Overlap findings list the redundant licenses only, so they never
+      // remove the suite even when the script is limited to one SKU.
+      const licenses = only
+        ? held.filter((l) => l.skuId.toLowerCase() === only)
+        : held;
       // Sku ids come from stored finding detail; only GUID-shaped values may
       // be interpolated into the generated PowerShell.
       const assignments = licenses.flatMap((l) =>

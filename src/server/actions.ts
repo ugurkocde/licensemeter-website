@@ -16,6 +16,7 @@ import {
   type AccessContext,
 } from "~/server/access";
 import { audit } from "~/server/audit";
+import { hasFeature } from "~/server/entitlement";
 import {
   approveJoinRequestRow,
   declineJoinRequestRow,
@@ -329,6 +330,38 @@ export const saveVendorRenewal = async (
     });
     if (!owner) return fail("Choose a member of this workspace");
   }
+  // The plan fields belong to the Pro renewal savings plan. Without it the
+  // form does not show them and a save keeps whatever is stored.
+  const planFields: { skuIds?: string[]; targetSeats?: number | null } = {};
+  if (hasFeature(ctx.entitlement, "renewalPlans")) {
+    const requested = [
+      ...new Set(
+        formData
+          .getAll("skuIds")
+          .filter((v): v is string => typeof v === "string" && v.length > 0),
+      ),
+    ];
+    if (requested.length > 200) return fail("Choose fewer subscriptions");
+    const known = requested.length
+      ? await db.query.tenantSkus.findMany({
+          where: and(
+            eq(tenantSkus.tenantId, ctx.tenant.id),
+            inArray(tenantSkus.skuId, requested),
+          ),
+          columns: { skuId: true },
+        })
+      : [];
+    if (known.length !== requested.length)
+      return fail("Choose subscriptions from this workspace");
+    const targetRaw = field(formData, "targetSeats", 32);
+    if (targetRaw !== "" && !/^\d{1,7}$/.test(targetRaw))
+      return fail("Target seats must be a whole number from 0 to 1,000,000");
+    const targetSeats = targetRaw === "" ? null : Number(targetRaw);
+    if (targetSeats !== null && targetSeats > 1_000_000)
+      return fail("Target seats must be a whole number from 0 to 1,000,000");
+    planFields.skuIds = requested;
+    planFields.targetSeats = targetSeats;
+  }
   const values = {
     vendor,
     contractName,
@@ -337,6 +370,7 @@ export const saveVendorRenewal = async (
     annualValueCents,
     ownerMembershipId: ownerMembershipId || null,
     notes: notes || null,
+    ...planFields,
     updatedAt: new Date(),
   };
   if (id) {

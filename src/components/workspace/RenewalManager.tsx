@@ -17,6 +17,8 @@ export type RenewalView = {
   annualValueCents: number;
   ownerMembershipId: string | null;
   notes: string | null;
+  skuIds: string[];
+  targetSeats: number | null;
 };
 
 /* Anchor the calendar day at UTC noon so the shared formatter shows the same
@@ -28,16 +30,83 @@ const daysUntil = (value: string, nowMs: number) =>
   Math.ceil((new Date(`${value}T00:00:00Z`).getTime() - nowMs) / 86_400_000);
 
 type MemberOption = { id: string; label: string };
+type SkuOption = { id: string; label: string };
+
+/**
+ * Renewal savings plan fields (Pro): the Microsoft subscriptions a contract
+ * covers and the seat count to renew at. Shown only with the plan.
+ */
+const PlanFields = ({
+  initial,
+  skuOptions,
+}: {
+  initial?: RenewalView;
+  skuOptions: SkuOption[];
+}) => {
+  const selected = new Set(initial?.skuIds ?? []);
+  return (
+    <>
+      <fieldset className="flex flex-col gap-1 sm:col-span-2">
+        <legend className="text-xs font-medium">
+          Microsoft subscriptions this contract covers
+        </legend>
+        <p className="text-ink-faint text-xs">
+          Linked subscriptions are planned under this contract, not as separate
+          rows.
+        </p>
+        {skuOptions.length === 0 ? (
+          <p className="text-ink-soft text-sm">
+            No Microsoft subscriptions synced yet.
+          </p>
+        ) : (
+          <div className="border-line mt-1 grid max-h-48 gap-1 overflow-y-auto rounded-xl border p-2 sm:grid-cols-2">
+            {skuOptions.map((sku) => (
+              <label
+                key={sku.id}
+                className="flex min-h-11 items-center gap-2 px-1 text-sm font-normal"
+              >
+                <input
+                  type="checkbox"
+                  name="skuIds"
+                  value={sku.id}
+                  defaultChecked={selected.has(sku.id)}
+                  className="size-4 shrink-0"
+                />
+                <span className="min-w-0 break-words">{sku.label}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </fieldset>
+      <label className="flex flex-col gap-1 text-xs font-medium">
+        Target seats at renewal (optional)
+        <input
+          type="number"
+          name="targetSeats"
+          min={0}
+          step={1}
+          inputMode="numeric"
+          defaultValue={initial?.targetSeats ?? ""}
+          autoComplete="off"
+          placeholder="Use the recommendation"
+          className="tnum border-line-input bg-card min-h-11 border px-3 py-2 text-sm font-normal"
+        />
+      </label>
+    </>
+  );
+};
 
 const RenewalForm = ({
   initial,
   members,
   currency,
+  skuOptions,
   onSaved,
 }: {
   initial?: RenewalView;
   members: MemberOption[];
   currency: string;
+  skuOptions: SkuOption[] | null;
   onSaved?: () => void;
 }) => {
   const [result, action, pending] = useActionState(
@@ -139,6 +208,7 @@ const RenewalForm = ({
           className="border-line-input bg-card border px-3 py-2 text-sm font-normal"
         />
       </label>
+      {skuOptions && <PlanFields initial={initial} skuOptions={skuOptions} />}
       <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
         <Button variant={initial ? "secondary" : "primary"} disabled={pending}>
           {pending
@@ -220,6 +290,7 @@ export const RenewalManager = ({
   currency,
   canEdit,
   nowMs,
+  skuOptions = null,
 }: {
   renewals: RenewalView[];
   members: MemberOption[];
@@ -227,6 +298,8 @@ export const RenewalManager = ({
   canEdit: boolean;
   /** Server clock at render time, so day counts hydrate without mismatch. */
   nowMs: number;
+  /** Subscriptions a contract can cover; null without the renewal plan. */
+  skuOptions?: SkuOption[] | null;
 }) => {
   const router = useRouter();
   return (
@@ -240,6 +313,7 @@ export const RenewalManager = ({
             <RenewalForm
               members={members}
               currency={currency}
+              skuOptions={skuOptions}
               onSaved={() => router.refresh()}
             />
           </div>
@@ -299,6 +373,17 @@ export const RenewalManager = ({
                       {fmtMoney(renewal.annualValueCents, currency)} annual
                       value
                     </span>
+                    {skuOptions && renewal.skuIds.length > 0 && (
+                      <span>
+                        {renewal.skuIds.length} linked{" "}
+                        {renewal.skuIds.length === 1
+                          ? "subscription"
+                          : "subscriptions"}
+                      </span>
+                    )}
+                    {skuOptions && renewal.targetSeats !== null && (
+                      <span>Target {renewal.targetSeats} seats</span>
+                    )}
                   </div>
                   {canEdit && (
                     <details className="border-line mt-4 border-t pt-3">
@@ -310,6 +395,7 @@ export const RenewalManager = ({
                           initial={renewal}
                           members={members}
                           currency={currency}
+                          skuOptions={skuOptions}
                           onSaved={() => router.refresh()}
                         />
                         <div className="mt-3 flex justify-end">
