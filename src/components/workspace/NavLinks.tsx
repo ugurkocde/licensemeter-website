@@ -5,6 +5,7 @@ import {
   BookOpen,
   CalendarClock,
   CreditCard,
+  FileText,
   Gauge,
   KeyRound,
   Layers,
@@ -36,6 +37,8 @@ type NavItem = {
   also?: string[];
   /** Paid feature behind this item; a workspace without it sees it locked. */
   feature?: Feature;
+  /** Locked, the item still opens its page, which shows a preview. */
+  teaser?: boolean;
   /** Pages shown under the item while its section is open. */
   children?: { href: string; label: string }[];
   /** Modifier+number shortcut (desktop rail only). */
@@ -91,6 +94,13 @@ const GROUPS: NavGroup[] = [
           { href: "/app/metering/devices", label: "Devices" },
           { href: "/app/metering/setup", label: "Setup" },
         ],
+      },
+      {
+        href: "/app/reports/executive",
+        label: "Executive report",
+        icon: FileText,
+        feature: "execReport",
+        teaser: true,
       },
       { href: "/app/connectors", label: "Connectors", icon: Plug },
       { href: "/app/mcp", label: "MCP server", icon: Server, feature: "mcp" },
@@ -267,7 +277,9 @@ export const NavLinks = ({
               return (
                 <div key={item.href} className="flex flex-col gap-0.5">
                   <Link
-                    href={locked ? upgradePath(locked) : item.href}
+                    href={
+                      locked && !item.teaser ? upgradePath(locked) : item.href
+                    }
                     {...(item.external
                       ? { target: "_blank", rel: "noreferrer" }
                       : {})}

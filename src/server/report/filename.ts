@@ -3,10 +3,11 @@
  * no db) so the slug rules stay unit-testable.
  */
 
-/** licensemeter-report-<workspace-slug-or-id>-<yyyy-mm>.pdf */
+/** licensemeter-<kind>-<workspace-slug-or-id>-<yyyy-mm>.pdf */
 export const reportFilename = (
   tenant: { name: string | null; id: string },
   now: Date,
+  kind = "report",
 ): string => {
   const slug = (tenant.name ?? "")
     .normalize("NFKD")
@@ -19,5 +20,5 @@ export const reportFilename = (
     .replace(/-+$/, "");
   // UTC month, matching the UTC-pinned day buckets used elsewhere.
   const month = now.toISOString().slice(0, 7);
-  return `licensemeter-report-${slug || tenant.id}-${month}.pdf`;
+  return `licensemeter-${kind}-${slug || tenant.id}-${month}.pdf`;
 };

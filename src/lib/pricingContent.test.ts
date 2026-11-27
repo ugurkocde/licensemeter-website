@@ -138,6 +138,28 @@ describe("pricing content", () => {
     }
   });
 
+  it("lists the executive report on both paid plans and nothing it does not ship", () => {
+    for (const lang of PRICING_LANGS) {
+      const { plans } = PRICING_CONTENT[lang];
+      const report = /executive savings report|management-bericht/i;
+      expect(plans.pro.items.some((item) => report.test(item.text))).toBe(true);
+      expect(plans.free.items.some((item) => report.test(item.text))).toBe(
+        false,
+      );
+      expect(plans.msp.items.some((item) => report.test(item.text))).toBe(
+        false,
+      );
+      const row = comparisonGroups(lang, ALL_CHANNELS)
+        .flatMap((g) => g.rows)
+        .find((r) => r.id === "execReport")!;
+      expect(row.cells.map((cell) => cell.kind)).toEqual(["no", "yes", "yes"]);
+      // Share links and finance recipients are not built yet.
+      expect(allStrings(lang).join("\n")).not.toMatch(
+        /share link|finance recipient|freigabelink|empfänger in der finanz/i,
+      );
+    }
+  });
+
   it("sells Free on what it does, not as the full product", () => {
     for (const lang of PRICING_LANGS) {
       const text = allStrings(lang).join("\n");

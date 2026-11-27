@@ -1,0 +1,7 @@
+{
+  "title": "One-page executive savings report for finance",
+  "summary": "Pro and MSP workspaces can download a one-page PDF for finance and leadership: yearly license spend, open waste by rule, realized savings from the savings ledger, the renewal actions due in the next 90 days with the seats to cut and the date to decide by, and a 6-month trend. A live preview on the new Executive report page shows the same page before you download it. The report names no users. Free workspaces see a preview with their own spend, waste and renewal totals.",
+  "type": "new",
+  "publishedOn": "2026-11-27",
+  "idempotencyKey": "licensemeter:executive-savings-report"
+}

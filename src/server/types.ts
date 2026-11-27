@@ -194,6 +194,7 @@ export type AuditAction =
   | "workspace_switched"
   | "invite_resent"
   | "export_report"
+  | "export_executive_report"
   | "threshold_changed"
   | "finding_exclusions_changed"
   | "findings_bulk_updated"

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
-import { Card } from "~/components/ui";
+import { FileText } from "lucide-react";
+
+import { ButtonLink, Card } from "~/components/ui";
 import { FeatureLockPanel } from "~/components/workspace/FeatureLock";
 import {
   PriceConfidenceBadge,
@@ -66,7 +68,13 @@ export default async function SavingsPage() {
     <div className="mx-auto grid max-w-5xl min-w-0 grid-cols-1 gap-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         {heading}
-        <PriceConfidenceBadge confidence={confidence} />
+        <div className="flex flex-wrap items-center gap-3">
+          <PriceConfidenceBadge confidence={confidence} />
+          <ButtonLink href="/app/reports/executive">
+            <FileText aria-hidden="true" className="size-4" />
+            Executive report
+          </ButtonLink>
+        </div>
       </header>
       <dl className="border-line bg-line grid gap-px border sm:grid-cols-3">
         {metrics.map(([label, cents, definition]) => (
