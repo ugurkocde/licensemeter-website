@@ -8,9 +8,14 @@ import { dueJobs } from "./scheduler.mjs";
 
 test("UTC schedule matches the hosted sync, digest and report schedule", () => {
   assert.deepEqual(dueJobs(new Date("2026-09-16T03:00:30Z")), ["sync"]);
-  assert.deepEqual(dueJobs(new Date("2026-09-14T06:00:00Z")), ["digest"]);
+  assert.deepEqual(dueJobs(new Date("2026-09-14T06:00:00Z")), [
+    "digest",
+    "renewal-alerts",
+  ]);
   assert.deepEqual(dueJobs(new Date("2026-10-01T07:00:00Z")), ["report"]);
-  assert.deepEqual(dueJobs(new Date("2026-09-15T06:00:00Z")), []);
+  assert.deepEqual(dueJobs(new Date("2026-09-15T06:00:00Z")), [
+    "renewal-alerts",
+  ]);
   assert.deepEqual(dueJobs(new Date("2026-09-15T05:00:00Z")), ["retention"]);
   assert.deepEqual(dueJobs(new Date("2026-10-02T07:00:00Z")), []);
   assert.deepEqual(dueJobs(new Date("2026-09-16T03:01:00Z")), []);

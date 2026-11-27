@@ -1,0 +1,7 @@
+{
+  "title": "Renewal reminder emails 90, 60 and 30 days ahead",
+  "summary": "Pro workspaces now email owners and admins 90, 60 and 30 days before each paid renewal, with the seats to renew, the seats to cut, the yearly savings and the decision date, plus a calendar file for that renewal. Annual and multi-year terms are covered by default; a monthly subscription gets a 30 day reminder only when you include it on the Renewals page. Turn reminders off for the workspace or just for yourself in Settings, add them to the shared notification address, or unsubscribe with one click from any reminder.",
+  "type": "new",
+  "publishedOn": "2026-11-27",
+  "idempotencyKey": "licensemeter:renewal-reminder-emails"
+}

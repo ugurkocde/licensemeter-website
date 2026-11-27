@@ -49,7 +49,13 @@ export const workspaceEmailRecipients = async (
       // Only signed-in members receive workspace notices; exclude pending invites.
       isNotNull(memberships.oid),
     ),
-    columns: { id: true, email: true, digestOptOut: true, reportOptOut: true },
+    columns: {
+      id: true,
+      email: true,
+      digestOptOut: true,
+      reportOptOut: true,
+      renewalOptOut: true,
+    },
   });
   const seen = new Set<string>();
   const recipients: EmailRecipient[] = [];
@@ -63,7 +69,9 @@ export const workspaceEmailRecipients = async (
         ? row.digestOptOut
         : job === "report"
           ? row.reportOptOut
-          : false;
+          : job === "renewal"
+            ? row.renewalOptOut
+            : false;
     if (out) optedOut++;
     else recipients.push({ kind: "membership", membershipId: row.id, email });
   }

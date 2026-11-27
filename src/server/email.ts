@@ -496,3 +496,57 @@ prices, history) has been permanently removed and this cannot be undone.`)}
 ${emailText("If this was not expected, reply to this email and we will help.")}`,
     footer: "A required notice about your workspace. Not a marketing email.",
   });
+
+/**
+ * Renewal reminder 90, 60 or 30 days before one paid renewal: when it renews,
+ * the last day to change the seat count, and what the renewal savings plan
+ * recommends. Every figure arrives pre-formatted; the calendar file with the
+ * same plan rides along as an attachment.
+ */
+export const renewalAlertHtml = (args: {
+  tenantName: string;
+  vendor: string;
+  label: string;
+  /** "Contract" or "Subscription". */
+  kind: string;
+  /** "renews in 60 days", "renews tomorrow". Plain text. */
+  when: string;
+  renewalDate: string;
+  noticeDate: string;
+  /** The notice deadline is already behind us. */
+  noticePassed: boolean;
+  /** Label and figure rows of the plan: paid, active, renew at, cut. */
+  rows: { label: string; value: string }[];
+  /** "Cut 12 seats and save €4,032 a year." or a confirm line. Plain text. */
+  verdict: string;
+  /** Per-user activity is hidden, so the cut is a floor. */
+  estimate: boolean;
+  appUrl: string;
+  footer: EmailFooter;
+}): string =>
+  emailShell({
+    baseUrl: args.appUrl,
+    title: `${args.vendor} renewal: ${args.label}`,
+    preheader: `${args.label} ${args.when}. ${args.verdict}`,
+    body: `${emailHeading(`${escapeHtml(args.label)} ${escapeHtml(args.when)}`)}
+${emailText(`${escapeHtml(args.vendor)} ${escapeHtml(args.kind.toLowerCase())} in
+${emailStrong(args.tenantName)}, renewing on ${emailStrong(args.renewalDate)}.
+${
+  args.noticePassed
+    ? `The notice deadline (${escapeHtml(args.noticeDate)}) has passed, so the seat count may already be fixed for this term.`
+    : `Decide on the seat count by ${emailStrong(args.noticeDate)}.`
+}`)}
+${emailText(escapeHtml(args.verdict), { tone: "ink", size: "lead" })}
+${emailRows(args.rows)}
+${
+  args.estimate
+    ? emailText(
+        "Conservative estimate: per-user activity is hidden in this workspace, so more seats may be reclaimable.",
+        { size: "small" },
+      )
+    : ""
+}
+${emailText("The attached calendar file (.ics) puts the decision date and the renewal on your calendar.", { size: "small" })}
+${emailButton(emailAppLink(args.appUrl, "/app/renewals"), "Open the renewal plan")}`,
+    footer: footerBlock(args.footer),
+  });

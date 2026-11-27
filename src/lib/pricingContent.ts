@@ -389,7 +389,7 @@ const en: PricingContent = {
         {
           text: "Renewal savings plan",
           detail:
-            "Seats to renew and cut before each renewal, with the yearly savings and a calendar export",
+            "Seats to renew and cut before each renewal, with the yearly savings, reminder emails and a calendar export",
         },
         {
           text: "Executive savings report",
@@ -510,7 +510,7 @@ const en: PricingContent = {
       savingsLedger: "Savings ledger of realized savings",
       mcp: "MCP server for AI assistants",
       metering: "Windows software metering through Intune",
-      renewalPlan: "Renewal savings plan with calendar export",
+      renewalPlan: "Renewal savings plan with reminders and calendar export",
       execReport: "One-page executive savings report (PDF)",
       portfolio: "Portfolio across client tenants",
       whiteLabel: "White-label PDF reports",
@@ -749,7 +749,7 @@ const de: PricingContent = {
         {
           text: "Sparplan für Verlängerungen",
           detail:
-            "Zu verlängernde und zu kündigende Lizenzen vor jeder Verlängerung, mit der jährlichen Einsparung und einem Kalenderexport",
+            "Zu verlängernde und zu kündigende Lizenzen vor jeder Verlängerung, mit der jährlichen Einsparung, Erinnerungs-E-Mails und einem Kalenderexport",
         },
         {
           text: "Management-Bericht zu Einsparungen",
@@ -873,7 +873,8 @@ const de: PricingContent = {
       savingsLedger: "Einsparungsnachweis",
       mcp: "MCP-Server für KI-Assistenten",
       metering: "Windows Software Metering über Intune",
-      renewalPlan: "Sparplan für Verlängerungen mit Kalenderexport",
+      renewalPlan:
+        "Sparplan für Verlängerungen mit Erinnerungen und Kalenderexport",
       execReport: "Einseitiger Management-Bericht zu Einsparungen (PDF)",
       portfolio: "Portfolio über alle Kunden-Tenants",
       whiteLabel: "White-Label-PDF-Berichte",

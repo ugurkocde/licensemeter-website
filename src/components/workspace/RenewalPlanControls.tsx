@@ -137,8 +137,8 @@ export const SkuTermSelect = ({
         ))}
       </select>
       <span className="text-ink-faint max-w-64 text-xs">
-        Renewal reminders are not sent yet. This decides which subscriptions
-        they will cover.
+        Reminders are emailed 90, 60 and 30 days ahead. A monthly term gets the
+        30 day one only, and only when included.
       </span>
       <span
         role="status"
