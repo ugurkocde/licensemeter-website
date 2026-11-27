@@ -136,6 +136,10 @@ export const SkuTermSelect = ({
           </option>
         ))}
       </select>
+      <span className="text-ink-faint max-w-64 text-xs">
+        Renewal reminders are not sent yet. This decides which subscriptions
+        they will cover.
+      </span>
       <span
         role="status"
         className={error ? "text-danger-text text-xs" : "sr-only"}

@@ -4,6 +4,8 @@ import { siteUrl } from "~/env";
 import { planName } from "~/lib/planLabel";
 import { apiFeatureAccess } from "~/server/access";
 import { audit } from "~/server/audit";
+import { db } from "~/server/db";
+import { withTenant } from "~/server/db/tenant";
 import { planCalendar } from "~/server/renewals/calendar";
 import { icsFileName } from "~/server/renewals/ics";
 import { loadRenewalPlan } from "~/server/renewals/loadPlan";
@@ -32,12 +34,19 @@ export async function GET(
   if (!KEY.test(key))
     return NextResponse.json({ error: "not found" }, { status: 404 });
   const now = new Date();
-  const plan = await loadRenewalPlan(ctx.tenant, now);
-  const items =
-    key === "all" ? plan.items : plan.items.filter((item) => item.key === key);
+  // Database-level tenant isolation, like the other workspace exports.
+  const items = await withTenant(db, ctx.tenant.id, async () => {
+    const plan = await loadRenewalPlan(ctx.tenant, now);
+    const found =
+      key === "all"
+        ? plan.items
+        : plan.items.filter((item) => item.key === key);
+    if (found.length > 0)
+      await audit(ctx, "export_renewal_ics", { key, events: found.length });
+    return found;
+  });
   if (items.length === 0)
     return NextResponse.json({ error: "not found" }, { status: 404 });
-  await audit(ctx, "export_renewal_ics", { key, events: items.length });
   const body = planCalendar(items, {
     tenantId: ctx.tenant.id,
     currency: ctx.tenant.currency,

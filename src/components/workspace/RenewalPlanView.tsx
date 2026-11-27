@@ -425,6 +425,7 @@ export const NextRenewalAction = ({
         Next renewal action
       </span>
       <PlanBadge feature="renewalPlans" locked={teaser} />
+      {item.estimate && <EstimateBadge />}
       <span className="text-ink min-w-0">
         {teaser ? (
           `A renewal ${item.daysUntil === 0 ? "today" : `in ${item.daysUntil} ${item.daysUntil === 1 ? "day" : "days"}`} has ${seatsLabel(item.cutSeats, currency)} to cut`

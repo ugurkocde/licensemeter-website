@@ -305,11 +305,14 @@ export const sizeLines = (
   targetSeats: number | null,
 ): Sized => {
   const paidLines = lines.filter((l) => l.paidSeats > 0);
+  // With any paid line, the figures cover paid lines only, so a trial-only
+  // line never adds active seats that no paid seat backs.
+  const counted = paidLines.length > 0 ? paidLines : lines;
   const sum = (pick: (l: PlanLine) => number) =>
-    lines.reduce((total, l) => total + pick(l), 0);
+    counted.reduce((total, l) => total + pick(l), 0);
   const paidSeats = sum((l) => l.paidSeats);
   const activeSeats = sum((l) => l.activeSeats);
-  const trialOnly = lines.length > 0 && paidLines.length === 0;
+  const trialOnly = lines.length > 0 && lines.every((l) => l.trialOnly);
   const base = {
     paidSeats,
     unassignedSeats: sum((l) => l.unassignedSeats),
@@ -317,7 +320,7 @@ export const sizeLines = (
     activeSeats,
     trialOnly,
   };
-  if (trialOnly) {
+  if (paidLines.length === 0) {
     return {
       ...base,
       recommendedSeats: 0,
@@ -403,27 +406,39 @@ export const buildRenewalPlan = (input: PlanInput): RenewalPlan => {
   });
 
   // Contracts first: a SKU linked to an upcoming contract is planned there,
-  // never a second time as its own subscription row.
-  const upcomingContracts = input.contracts.filter(
-    (c) => dayNumber(c.renewalDate) >= todayNumber,
-  );
+  // never a second time as its own subscription row. Each SKU and each other
+  // vendor's product is planned once, under the earliest upcoming contract
+  // that covers it, so two contracts never claim the same seats.
+  const upcomingContracts = input.contracts
+    .filter((c) => dayNumber(c.renewalDate) >= todayNumber)
+    .sort(
+      (a, b) =>
+        a.renewalDate.localeCompare(b.renewalDate) || a.id.localeCompare(b.id),
+    );
   const linked = new Set(upcomingContracts.flatMap((c) => c.skuIds));
+  const claimed = new Set<string>();
   for (const contract of upcomingContracts) {
     const skuLines = [...new Set(contract.skuIds)].flatMap((id) => {
       const sku = skuById.get(id);
-      return sku ? [lineOf(sku)] : [];
+      if (!sku || claimed.has(id)) return [];
+      const line = lineOf(sku);
+      if (line.paidSeats === 0 && !line.trialOnly) return [];
+      claimed.add(id);
+      return [line];
     });
     const vendorLines =
-      skuLines.length > 0
+      skuLines.length > 0 || contract.skuIds.length > 0
         ? []
         : input.vendorProducts
             .filter(
               (p) =>
                 p.seats > 0 &&
+                !claimed.has(p.key) &&
                 !sameRenewalVendor(p.vendor, "Microsoft") &&
                 sameRenewalVendor(p.vendor, contract.vendor),
             )
             .map((p): PlanLine => {
+              claimed.add(p.key);
               const reclaim = Math.min(products.get(p.key)?.size ?? 0, p.seats);
               return {
                 id: p.key,

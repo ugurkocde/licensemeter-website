@@ -51,6 +51,13 @@ describe("planEvents", () => {
     expect(events[0]!.uid).toBe(`t1.${item().key}.notice@licensemeter`);
   });
 
+  it("writes a single trial-end event for a trial-only subscription", () => {
+    const events = planEvents(item({ trialOnly: true, cutSeats: 0 }), opts);
+    expect(events.map((e) => e.summary)).toEqual([
+      "Microsoft trial ends: Microsoft 365 E3",
+    ]);
+  });
+
   it("writes one event when the decision falls on the renewal day", () => {
     expect(planEvents(item({ noticeDate: "2027-03-01" }), opts)).toHaveLength(
       1,

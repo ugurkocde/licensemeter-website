@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AccessContext, FeatureAccess } from "~/server/access";
 import * as schema from "~/server/db/schema";
@@ -23,16 +24,23 @@ vi.mock("~/env", () => ({
   siteUrl: () => "https://licensemeter.test",
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("~/server/db", () => ({
-  db: new Proxy(
-    {},
-    {
-      get: (_t, prop) =>
-        (currentDb as unknown as Record<string | symbol, unknown>)[prop],
-    },
-  ),
-  schema,
-}));
+// Routed through the tenant proxy like production, so queries inside
+// withTenant() run on its transaction instead of waiting for the connection.
+vi.mock("~/server/db", async () => {
+  const { createTenantDb } = await import("~/server/db/tenant");
+  return {
+    db: createTenantDb(
+      new Proxy(
+        {},
+        {
+          get: (_t, prop) =>
+            (currentDb as unknown as Record<string | symbol, unknown>)[prop],
+        },
+      ),
+    ),
+    schema,
+  };
+});
 
 type PlanBody = {
   access: string;
@@ -99,6 +107,7 @@ const { GET: getIcs } = await import("~/app/api/renewals/[key]/ics/route");
 const { setRenewalBuffer, setRenewalSkuTerm } =
   await import("~/app/app/(dash)/renewals/actions");
 const { saveVendorRenewal } = await import("~/server/actions");
+const { GET: getScript } = await import("~/app/api/export/remediation/route");
 
 const E3 = "05e9a617-0261-4cee-bb44-138d3ef5d965";
 const VISIO = "c5928f49-12ba-48f7-ada3-0d743a3601d5";
@@ -172,6 +181,10 @@ const seed = async () => {
     },
   ]);
 };
+
+afterEach(async () => {
+  await currentDb.$client.close();
+});
 
 beforeEach(async () => {
   currentDb = await freshDb();
@@ -420,6 +433,13 @@ describe("saveVendorRenewal plan fields", () => {
     expect(
       (await saveVendorRenewal(form({ ...base, targetSeats: "1.5" }))).ok,
     ).toBe(false);
+    // Never truncated into a smaller valid number.
+    expect(
+      (await saveVendorRenewal(form({ ...base, targetSeats: "10000000" }))).ok,
+    ).toBe(false);
+    expect(
+      (await saveVendorRenewal(form({ ...base, targetSeats: "1000000.5" }))).ok,
+    ).toBe(false);
   });
 
   it("keeps stored plan fields when a Free workspace edits the contract", async () => {
@@ -444,5 +464,29 @@ describe("saveVendorRenewal plan fields", () => {
     const row = await stored();
     await saveVendorRenewal(form({ ...base, id: row!.id, targetSeats: "" }));
     expect(await stored()).toMatchObject({ skuIds: [], targetSeats: null });
+  });
+});
+
+describe("GET /api/export/remediation?sku=", () => {
+  const call = (query: string) =>
+    getScript(
+      new NextRequest(
+        `https://licensemeter.test/api/export/remediation${query}`,
+      ),
+    );
+
+  it("refuses a malformed SKU instead of exporting the whole tenant", async () => {
+    await seed();
+    expect((await call("?sku=05e9a617")).status).toBe(400);
+    expect((await call("?sku=x'; rm")).status).toBe(400);
+  });
+
+  it("limits the script to one SKU, whatever the id's case", async () => {
+    await seed();
+    const res = await call(`?sku=${VISIO.toUpperCase()}`);
+    expect(res.status).toBe(200);
+    const script = await res.text();
+    expect(script).toContain(`@('${VISIO}')`);
+    expect(script).not.toContain(E3);
   });
 });

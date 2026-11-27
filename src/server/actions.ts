@@ -353,15 +353,12 @@ export const saveVendorRenewal = async (
       : [];
     if (known.length !== requested.length)
       return fail("Choose subscriptions from this workspace");
-    const targetRaw = field(formData, "targetSeats", 7);
+    const targetRaw = field(formData, "targetSeats", 32);
+    if (targetRaw !== "" && !/^\d{1,7}$/.test(targetRaw))
+      return fail("Target seats must be a whole number from 0 to 1,000,000");
     const targetSeats = targetRaw === "" ? null : Number(targetRaw);
-    if (
-      targetSeats !== null &&
-      (!Number.isInteger(targetSeats) ||
-        targetSeats < 0 ||
-        targetSeats > 1_000_000)
-    )
-      return fail("Target seats must be a whole number of 0 or more");
+    if (targetSeats !== null && targetSeats > 1_000_000)
+      return fail("Target seats must be a whole number from 0 to 1,000,000");
     planFields.skuIds = requested;
     planFields.targetSeats = targetSeats;
   }

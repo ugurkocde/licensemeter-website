@@ -86,10 +86,8 @@ export default async function FindingsPage({
   const statusFilter = showResolved
     ? eq(findings.status, "resolved")
     : inArray(findings.status, ["open", "acknowledged"]);
-  const listWhere = and(
-    eq(findings.tenantId, ctx.tenant.id),
-    statusFilter,
-    ruleParam ? eq(findings.rule, ruleParam) : undefined,
+  // The renewal plan's drill-down scope applies to the list and the chips.
+  const scopeWhere = and(
     skuParam
       ? or(
           eq(findings.skuId, skuParam),
@@ -102,6 +100,12 @@ export default async function FindingsPage({
       : sourceParam
         ? sql`${findings.rule} like 'saas%' and ${findings.detail}->>'provider' = ${sourceParam}`
         : undefined,
+  );
+  const listWhere = and(
+    eq(findings.tenantId, ctx.tenant.id),
+    statusFilter,
+    ruleParam ? eq(findings.rule, ruleParam) : undefined,
+    scopeWhere,
     query
       ? or(
           ilike(findings.title, `%${query}%`),
@@ -120,6 +124,7 @@ export default async function FindingsPage({
         and(
           eq(findings.tenantId, ctx.tenant.id),
           inArray(findings.status, ["open", "acknowledged"]),
+          scopeWhere,
         ),
       )
       .groupBy(findings.rule),
@@ -257,7 +262,7 @@ export default async function FindingsPage({
     ? { icon: SearchX, heading: "No findings match your search." }
     : showResolved
       ? { icon: CircleCheck, heading: "No resolved findings yet." }
-      : ruleParam
+      : ruleParam || skuParam || sourceParam
         ? { icon: SearchX, heading: "No findings match this filter." }
         : {
             icon: CircleCheck,

@@ -44,6 +44,16 @@ export const planEvents = (
   const description = planDescription(item, opts.currency);
   const uid = (kind: string) =>
     `${opts.tenantId}.${item.key}.${kind}@licensemeter`;
+  if (item.trialOnly)
+    return [
+      {
+        uid: uid("trial"),
+        date: item.renewalDate,
+        summary: `${item.vendor} trial ends: ${item.label}`,
+        description,
+        url: opts.url,
+      },
+    ];
   const renewal: IcsEvent = {
     uid: uid("renewal"),
     date: item.renewalDate,

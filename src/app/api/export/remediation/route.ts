@@ -9,6 +9,9 @@ import { withTenant } from "~/server/db/tenant";
 import { isWasteRule } from "~/lib/rules";
 import { generateRemediationScript } from "~/server/waste/remediation";
 
+const SKU_GUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Generated PowerShell remediation script for open findings (optionally one rule). */
 export const GET = async (req: NextRequest) => {
   const ctx = await apiAccess("admin");
@@ -21,9 +24,11 @@ export const GET = async (req: NextRequest) => {
   const rule = ruleParam && isWasteRule(ruleParam) ? ruleParam : undefined;
   // ?sku= narrows the script to one Microsoft subscription (the renewal
   // plan's per-SKU export). Only GUID-shaped ids are accepted.
+  // A malformed id is refused, never widened to the whole tenant.
   const skuParam = req.nextUrl.searchParams.get("sku");
-  const skuId =
-    skuParam && /^[0-9a-f-]{36}$/i.test(skuParam) ? skuParam : undefined;
+  if (skuParam !== null && !SKU_GUID.test(skuParam))
+    return NextResponse.json({ error: "invalid sku" }, { status: 400 });
+  const skuId = skuParam?.toLowerCase();
 
   return withTenant(db, ctx.tenant.id, async () => {
     const rows = await db.query.findings.findMany({

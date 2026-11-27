@@ -454,6 +454,79 @@ describe("contracts", () => {
     expect(item.estimate).toBe(false);
   });
 
+  it("plans a SKU once when two upcoming contracts link it", () => {
+    const plan = buildRenewalPlan(
+      input({
+        contracts: [
+          contract({ id: "b", renewalDate: "2027-09-01", skuIds: [E3] }),
+          contract({ id: "a", renewalDate: "2027-04-01", skuIds: [E3] }),
+        ],
+      }),
+    );
+    expect(plan.items.map((i) => i.key)).toEqual(["contract-a"]);
+    expect(plan.summary.cutSeats).toBe(5);
+    expect(plan.unsizedContracts).toBe(1);
+  });
+
+  it("plans another vendor's products once across two contracts", () => {
+    const plan = buildRenewalPlan(
+      input({
+        skus: [],
+        vendorProducts: [
+          {
+            key: "adobe:CC",
+            vendor: "Adobe",
+            product: "CC",
+            seats: 20,
+            priceCents: 8_000,
+          },
+        ],
+        contracts: [
+          contract({ id: "a", vendor: "Adobe", renewalDate: "2027-03-01" }),
+          contract({ id: "b", vendor: "Adobe", renewalDate: "2027-09-01" }),
+        ],
+      }),
+    );
+    expect(plan.items).toHaveLength(1);
+    expect(plan.summary.cutSeats).toBe(plan.items[0]!.cutSeats);
+    expect(plan.unsizedContracts).toBe(1);
+  });
+
+  it("keeps trial-only lines out of a paid contract's figures", () => {
+    const item = only({
+      skus: [
+        sku({ prepaidEnabled: 100, consumedUnits: 90 }),
+        sku({
+          skuId: COPILOT,
+          prepaidEnabled: 25,
+          trialUnits: 25,
+          consumedUnits: 20,
+        }),
+      ],
+      findings: [userFinding("inactive_90d", "u1", [COPILOT])],
+      contracts: [contract({ skuIds: [E3, COPILOT] })],
+    });
+    expect(item).toMatchObject({
+      trialOnly: false,
+      paidSeats: 100,
+      reclaimableSeats: 0,
+      activeSeats: 90,
+      recommendedSeats: 95,
+      cutSeats: 5,
+    });
+  });
+
+  it("does not call a contract with only expired seats a trial", () => {
+    const plan = buildRenewalPlan(
+      input({
+        skus: [sku({ prepaidEnabled: 0, consumedUnits: 2 })],
+        contracts: [contract({ skuIds: [E3] })],
+      }),
+    );
+    expect(plan.items).toEqual([]);
+    expect(plan.unsizedContracts).toBe(1);
+  });
+
   it("counts contracts it cannot size instead of inventing seats", () => {
     const plan = buildRenewalPlan(
       input({
