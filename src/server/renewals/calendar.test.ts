@@ -23,6 +23,7 @@ const item = (overrides: Partial<PlanItem> = {}): PlanItem => ({
   activeSeats: 87,
   recommendedSeats: 92,
   targetSet: false,
+  targetUnresolved: false,
   cutSeats: 8,
   annualSavingsCents: 322_560,
   unpricedCutSeats: 0,

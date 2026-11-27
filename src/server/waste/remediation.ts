@@ -57,12 +57,13 @@ export const findingSkuIds = (
 ): string[] => {
   const detail = f.detail as RemediationDetail;
   const ids = new Set<string>();
-  if (f.skuId) ids.add(f.skuId);
+  // Lowercased, so a scoped export matches however Graph cased the id.
+  if (f.skuId) ids.add(f.skuId.toLowerCase());
   for (const l of detail.licenses ?? [])
-    if (typeof l?.skuId === "string") ids.add(l.skuId);
+    if (typeof l?.skuId === "string") ids.add(l.skuId.toLowerCase());
   if (f.rule === "overlapping_licenses")
     for (const id of detail.redundantSkuIds ?? [])
-      if (typeof id === "string") ids.add(id);
+      if (typeof id === "string") ids.add(id.toLowerCase());
   return [...ids];
 };
 
@@ -70,7 +71,7 @@ export const generateRemediationScript = (
   rows: FindingRow[],
   opts: { skuId?: string } = {},
 ): string => {
-  const only = opts.skuId;
+  const only = opts.skuId?.toLowerCase();
   if (only) rows = rows.filter((f) => findingSkuIds(f).includes(only));
   const lines: string[] = [
     "# LicenseMeter remediation script (generated)",
@@ -163,7 +164,9 @@ export const generateRemediationScript = (
             : []);
       // Overlap findings list the redundant licenses only, so they never
       // remove the suite even when the script is limited to one SKU.
-      const licenses = only ? held.filter((l) => l.skuId === only) : held;
+      const licenses = only
+        ? held.filter((l) => l.skuId.toLowerCase() === only)
+        : held;
       // Sku ids come from stored finding detail; only GUID-shaped values may
       // be interpolated into the generated PowerShell.
       const assignments = licenses.flatMap((l) =>

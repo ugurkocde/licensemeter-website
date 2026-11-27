@@ -527,6 +527,65 @@ describe("contracts", () => {
     expect(plan.unsizedContracts).toBe(1);
   });
 
+  it("keeps a contract past its notice deadline out of the totals", () => {
+    // NOW is 2027-01-10: 2027-02-01 with 30 days' notice was due 2027-01-02.
+    const plan = buildRenewalPlan(
+      input({
+        contracts: [
+          contract({ skuIds: [E3], renewalDate: "2027-02-01", noticeDays: 30 }),
+        ],
+      }),
+    );
+    expect(plan.items[0]).toMatchObject({ cutSeats: 5, noticeDaysUntil: -8 });
+    expect(plan.summary).toMatchObject({ actionable: 0, cutSeats: 0 });
+    expect(nextRenewalAction(plan)).toBeNull();
+    // A deadline today still counts.
+    const today = buildRenewalPlan(
+      input({
+        contracts: [
+          contract({ skuIds: [E3], renewalDate: "2027-02-09", noticeDays: 30 }),
+        ],
+      }),
+    );
+    expect(today.items[0]!.noticeDaysUntil).toBe(0);
+    expect(today.summary.actionable).toBe(1);
+  });
+
+  it("does not apply a target to part of a contract's scope", () => {
+    const plan = buildRenewalPlan(
+      input({
+        skus: [
+          sku(),
+          sku({
+            skuId: VISIO,
+            skuPartNumber: "VISIOCLIENT",
+            prepaidEnabled: 100,
+            consumedUnits: 40,
+          }),
+        ],
+        contracts: [
+          contract({ id: "a", renewalDate: "2027-04-01", skuIds: [E3] }),
+          contract({
+            id: "b",
+            renewalDate: "2027-09-01",
+            skuIds: [E3, VISIO],
+            targetSeats: 150,
+          }),
+        ],
+      }),
+    );
+    const later = plan.items.find((i) => i.key === "contract-b")!;
+    expect(later).toMatchObject({
+      targetUnresolved: true,
+      targetSet: false,
+      skuIds: [VISIO],
+      cutSeats: 100 - recommendedSeatsOf(40, 5),
+    });
+    expect(
+      plan.items.find((i) => i.key === "contract-a")?.targetUnresolved,
+    ).toBe(false);
+  });
+
   it("counts contracts it cannot size instead of inventing seats", () => {
     const plan = buildRenewalPlan(
       input({

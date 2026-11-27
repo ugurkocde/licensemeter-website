@@ -294,7 +294,10 @@ export default async function FindingsPage({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {isAdmin && (
+          {/* A vendor-scoped view has no matching script: PowerShell only
+              manages Microsoft licenses, and an unscoped script would
+              include findings this view does not show. */}
+          {isAdmin && !sourceParam && (
             <>
               <CopyScriptButton url={scriptHref} />
               <ButtonAnchor href={scriptHref}>Download .ps1</ButtonAnchor>

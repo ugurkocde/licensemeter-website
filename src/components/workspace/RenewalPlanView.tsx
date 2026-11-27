@@ -7,7 +7,7 @@ import {
   BufferEditor,
   SkuTermSelect,
 } from "~/components/workspace/RenewalPlanControls";
-import { fmtDate, fmtMoney, fmtNumber, relativeDayLabel } from "~/lib/format";
+import { fmtMoney, fmtNumber, relativeDayLabel } from "~/lib/format";
 import { choiceOf } from "~/lib/renewalTerm";
 import { upgradePath } from "~/lib/upgrade";
 import type {
@@ -17,7 +17,15 @@ import type {
   RenewalPlan,
 } from "~/server/renewals/plan";
 
-const dayLabel = (iso: string) => fmtDate(new Date(`${iso}T12:00:00Z`));
+/** A yyyy-mm-dd calendar day, the same in every server timezone. */
+const DAY_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+const dayLabel = (iso: string) =>
+  DAY_FORMAT.format(new Date(`${iso}T00:00:00Z`));
 
 const seatsLabel = (n: number, currency: string) =>
   `${fmtNumber(n, currency)} ${n === 1 ? "seat" : "seats"}`;
@@ -153,12 +161,15 @@ const PlanRow = ({
           {!item.trialOnly && (
             <span
               className={`text-xs ${
-                item.noticeDaysUntil <= 14 && item.cutSeats > 0
+                item.noticeDaysUntil < 0 ||
+                (item.noticeDaysUntil <= 14 && item.cutSeats > 0)
                   ? "text-waste-text font-medium"
                   : "text-ink-faint"
               }`}
             >
-              Decide by{" "}
+              {item.noticeDaysUntil < 0
+                ? "Notice deadline passed "
+                : "Decide by "}
               <time className="tnum" dateTime={item.noticeDate}>
                 {dayLabel(item.noticeDate)}
               </time>
@@ -167,6 +178,18 @@ const PlanRow = ({
         </div>
       </div>
 
+      {item.noticeDaysUntil < 0 && item.cutSeats > 0 && (
+        <p className="text-ink-soft mt-3 text-sm">
+          The notice deadline has passed, so these seats are left out of the
+          plan totals until the next renewal.
+        </p>
+      )}
+      {item.targetUnresolved && (
+        <p className="text-ink-soft mt-3 text-sm">
+          Target seats are not applied: an earlier contract plans some of these
+          subscriptions. The recommendation is shown instead.
+        </p>
+      )}
       {item.trialOnly ? (
         <p className="text-ink-soft mt-3 text-sm">
           Every seat of this subscription is on trial, so there is nothing paid

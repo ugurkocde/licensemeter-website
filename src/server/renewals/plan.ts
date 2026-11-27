@@ -115,6 +115,12 @@ export type PlanItem = {
   recommendedSeats: number;
   /** True when recommendedSeats is the admin's target, not the formula. */
   targetSet: boolean;
+  /**
+   * The contract has target seats, but an earlier contract plans some of its
+   * subscriptions, so the target cannot be applied to part of its scope and
+   * the recommendation is used instead.
+   */
+  targetUnresolved: boolean;
   cutSeats: number;
   /**
    * Yearly value of the priced cut seats. Null when no cut seat has a price,
@@ -178,6 +184,21 @@ const paidOf = (s: PlanSku) => Math.max(0, s.prepaidEnabled - s.trialUnits);
 
 const isTrialOnly = (s: PlanSku) =>
   s.trialUnits > 0 && s.trialUnits >= s.prepaidEnabled;
+
+/** Every finding rule the plan reads; the loader transfers only these. */
+export const PLAN_RULES: WasteRuleId[] = [
+  "disabled_account_with_license",
+  "licensed_guest",
+  "never_active",
+  "inactive_90d",
+  "overlapping_licenses",
+  "copilot_unused",
+  "adobe_disabled_in_entra",
+  "adobe_orphaned",
+  "saas_disabled_in_entra",
+  "saas_orphaned",
+  "saas_inactive",
+];
 
 /** Rules that point at a license a person holds but does not need. */
 const USER_RULES = new Set<WasteRuleId>([
@@ -418,9 +439,14 @@ export const buildRenewalPlan = (input: PlanInput): RenewalPlan => {
   const linked = new Set(upcomingContracts.flatMap((c) => c.skuIds));
   const claimed = new Set<string>();
   for (const contract of upcomingContracts) {
+    let partialScope = false;
     const skuLines = [...new Set(contract.skuIds)].flatMap((id) => {
       const sku = skuById.get(id);
-      if (!sku || claimed.has(id)) return [];
+      if (!sku) return [];
+      if (claimed.has(id)) {
+        partialScope = true;
+        return [];
+      }
       const line = lineOf(sku);
       if (line.paidSeats === 0 && !line.trialOnly) return [];
       claimed.add(id);
@@ -457,6 +483,7 @@ export const buildRenewalPlan = (input: PlanInput): RenewalPlan => {
       continue;
     }
     const skuIds = skuLines.map((l) => l.id);
+    const targetUnresolved = partialScope && contract.targetSeats !== null;
     items.push({
       key: `contract-${contract.id}`,
       kind: "contract",
@@ -473,7 +500,12 @@ export const buildRenewalPlan = (input: PlanInput): RenewalPlan => {
         addDays(contract.renewalDate, -contract.noticeDays),
       ),
       lines,
-      ...sizeLines(lines, bufferPct, contract.targetSeats),
+      ...sizeLines(
+        lines,
+        bufferPct,
+        targetUnresolved ? null : contract.targetSeats,
+      ),
+      targetUnresolved,
       estimate: skuLines.length > 0 && skuEstimate(skuIds),
       term: "annual",
       monthlyAlerts: false,
@@ -501,6 +533,7 @@ export const buildRenewalPlan = (input: PlanInput): RenewalPlan => {
       ...dated(renewalDate, actBy < today ? today : actBy),
       lines: [line],
       ...sizeLines([line], bufferPct, null),
+      targetUnresolved: false,
       estimate: skuEstimate([sku.skuId]),
       term: termOf(setting),
       monthlyAlerts: setting?.monthlyAlerts === true,
@@ -522,8 +555,17 @@ export const buildRenewalPlan = (input: PlanInput): RenewalPlan => {
   };
 };
 
+/**
+ * A renewal whose seats can still be cut: something to cut, paid seats, and
+ * a notice deadline that has not passed (a deadline today still counts). A
+ * contract past its deadline stays visible but adds nothing to the totals.
+ */
+export const isActionable = (
+  i: Pick<PlanItem, "cutSeats" | "trialOnly" | "noticeDaysUntil">,
+) => i.cutSeats > 0 && !i.trialOnly && i.noticeDaysUntil >= 0;
+
 export const summarize = (items: readonly PlanItem[]): PlanSummary => {
-  const actionable = items.filter((i) => i.cutSeats > 0 && !i.trialOnly);
+  const actionable = items.filter(isActionable);
   return {
     renewals: items.length,
     actionable: actionable.length,
@@ -566,6 +608,4 @@ export const nextRenewalAction = (
   plan: RenewalPlan,
   days = 90,
 ): PlanItem | null =>
-  plan.items.find(
-    (i) => i.cutSeats > 0 && !i.trialOnly && i.daysUntil <= days,
-  ) ?? null;
+  plan.items.find((i) => isActionable(i) && i.daysUntil <= days) ?? null;

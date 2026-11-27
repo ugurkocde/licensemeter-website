@@ -12,7 +12,7 @@ import {
 } from "~/server/db/schema";
 import { vendorLabel } from "~/server/waste/spend";
 import { loadLicenseSpend } from "~/server/waste/spendStore";
-import { buildRenewalPlan, type RenewalPlan } from "./plan";
+import { buildRenewalPlan, PLAN_RULES, type RenewalPlan } from "./plan";
 
 type PlanTenant = Pick<
   TenantRow,
@@ -24,10 +24,12 @@ type PlanTenant = Pick<
 >;
 
 /**
- * Per-user activity is hidden when report names are concealed, the last sync
- * had no per-user activity signal, or the usage report was unavailable. A
- * workspace that never synced (CSV import) reports no signal and is not
- * treated as concealed.
+ * Per-user activity is hidden or missing when report names are concealed,
+ * the last sync or import had no per-user activity signal ("none", which a
+ * CSV import without a usage file also records), or the usage report was
+ * unavailable. Inactivity findings then undercount reclaimable seats, so the
+ * cut is a floor and the plan is labeled a conservative estimate. Only a
+ * workspace with no signal stored at all (null) is not.
  */
 export const usageConcealedOf = (tenant: PlanTenant): boolean =>
   tenant.concealedNames === true ||
@@ -76,6 +78,9 @@ export async function loadRenewalPlan(
         and(
           eq(findings.tenantId, tenant.id),
           inArray(findings.status, ["open", "acknowledged"]),
+          // Only the rules the plan reads; shelfware and plan hints, often
+          // the bulk of a large tenant's findings, are never transferred.
+          inArray(findings.rule, PLAN_RULES),
         ),
       ),
     db.query.renewalSkuTerms.findMany({

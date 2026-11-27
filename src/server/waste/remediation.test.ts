@@ -72,6 +72,18 @@ describe("generateRemediationScript limited to one SKU", () => {
     expect(script).toContain("Unassigned Visio");
   });
 
+  it("matches stored SKU ids whatever their case", () => {
+    const upper = row({
+      detail: {
+        upn: "cara@x.example",
+        licenses: [{ skuId: VISIO.toUpperCase(), assignedVia: [null] }],
+      },
+    });
+    expect(findingSkuIds(upper)).toEqual([VISIO]);
+    const script = generateRemediationScript([upper], { skuId: VISIO });
+    expect(script).toContain(`@('${VISIO.toUpperCase()}')`);
+  });
+
   it("is unchanged without the option", () => {
     const script = generateRemediationScript([inactive]);
     expect(script).not.toContain("Limited to one subscription");
