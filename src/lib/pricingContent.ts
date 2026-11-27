@@ -394,7 +394,7 @@ const en: PricingContent = {
         {
           text: "Executive savings report",
           detail:
-            "A one-page PDF of spend, open waste, realized savings and the renewal actions due in the next 90 days",
+            "A one-page PDF of spend, open waste, realized savings and the renewal actions due in the next 90 days, with read-only CFO share links and a monthly email to finance",
         },
         {
           text: "White-label PDF reports",
@@ -511,7 +511,8 @@ const en: PricingContent = {
       mcp: "MCP server for AI assistants",
       metering: "Windows software metering through Intune",
       renewalPlan: "Renewal savings plan with reminders and calendar export",
-      execReport: "One-page executive savings report (PDF)",
+      execReport:
+        "One-page executive savings report (PDF), CFO share links and monthly email to finance",
       portfolio: "Portfolio across client tenants",
       whiteLabel: "White-label PDF reports",
       tenantsCovered: "Managed client tenants",
@@ -754,7 +755,7 @@ const de: PricingContent = {
         {
           text: "Management-Bericht zu Einsparungen",
           detail:
-            "Ein einseitiges PDF mit Ausgaben, offener Verschwendung, realisierten Einsparungen und den Verlängerungsaktionen der nächsten 90 Tage",
+            "Ein einseitiges PDF mit Ausgaben, offener Verschwendung, realisierten Einsparungen und den Verlängerungsaktionen der nächsten 90 Tage, mit Freigabelinks für Ihre Finanzleitung und monatlichem Versand an die Finanzabteilung",
         },
         {
           text: "White-Label-PDF-Berichte",
@@ -875,7 +876,8 @@ const de: PricingContent = {
       metering: "Windows Software Metering über Intune",
       renewalPlan:
         "Sparplan für Verlängerungen mit Erinnerungen und Kalenderexport",
-      execReport: "Einseitiger Management-Bericht zu Einsparungen (PDF)",
+      execReport:
+        "Einseitiger Management-Bericht zu Einsparungen (PDF), Freigabelinks für die Finanzleitung und monatlicher Versand an die Finanzabteilung",
       portfolio: "Portfolio über alle Kunden-Tenants",
       whiteLabel: "White-Label-PDF-Berichte",
       tenantsCovered: "Verwaltete Kunden-Tenants",

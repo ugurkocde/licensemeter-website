@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isRecipientUnsubKind,
   isUnsubJob,
   makeMembershipUnsubToken,
+  makeRecipientUnsubToken,
   makeSharedUnsubToken,
   makeUnsubToken,
   verifyMembershipUnsubToken,
+  verifyRecipientUnsubToken,
   verifySharedUnsubToken,
   verifyUnsubToken,
 } from "~/server/unsubToken";
@@ -182,5 +185,74 @@ describe("shared address unsubscribe tokens", () => {
     expect(verifySharedUnsubToken(TENANT, "digest", membership, SECRET)).toBe(
       false,
     );
+  });
+});
+
+describe("report recipient unsubscribe tokens", () => {
+  const RECIPIENT = "44444444-4444-4444-8444-444444444444";
+
+  it("round-trips for the same recipient, kind and secret", () => {
+    const token = makeRecipientUnsubToken(RECIPIENT, "finance", SECRET);
+    expect(verifyRecipientUnsubToken(RECIPIENT, "finance", token, SECRET)).toBe(
+      true,
+    );
+    expect(
+      verifyRecipientUnsubToken(
+        RECIPIENT.toUpperCase(),
+        "finance",
+        token,
+        SECRET,
+      ),
+    ).toBe(true);
+  });
+
+  it("is bound to the recipient, the kind and the secret", () => {
+    const token = makeRecipientUnsubToken(RECIPIENT, "finance", SECRET);
+    const other = "55555555-5555-4555-8555-555555555555";
+    expect(verifyRecipientUnsubToken(other, "finance", token, SECRET)).toBe(
+      false,
+    );
+    expect(verifyRecipientUnsubToken(RECIPIENT, "client", token, SECRET)).toBe(
+      false,
+    );
+    expect(
+      verifyRecipientUnsubToken(
+        RECIPIENT,
+        "finance",
+        token,
+        "another-secret-at-least-32-characters",
+      ),
+    ).toBe(false);
+    expect(verifyRecipientUnsubToken(RECIPIENT, "finance", "", SECRET)).toBe(
+      false,
+    );
+  });
+
+  it("shares no token with the membership, shared-address or email domains", () => {
+    const recipient = makeRecipientUnsubToken(RECIPIENT, "finance", SECRET);
+    for (const job of ["digest", "report", "renewal"] as const) {
+      expect(
+        verifyMembershipUnsubToken(RECIPIENT, job, recipient, SECRET),
+      ).toBe(false);
+      expect(verifySharedUnsubToken(RECIPIENT, job, recipient, SECRET)).toBe(
+        false,
+      );
+      const membership = makeMembershipUnsubToken(RECIPIENT, job, SECRET);
+      const shared = makeSharedUnsubToken(RECIPIENT, job, SECRET);
+      expect(
+        verifyRecipientUnsubToken(RECIPIENT, "finance", membership, SECRET),
+      ).toBe(false);
+      expect(
+        verifyRecipientUnsubToken(RECIPIENT, "finance", shared, SECRET),
+      ).toBe(false);
+    }
+    expect(verifyUnsubToken(RECIPIENT, recipient, SECRET)).toBe(false);
+  });
+
+  it("knows only the two recipient kinds", () => {
+    expect(isRecipientUnsubKind("finance")).toBe(true);
+    expect(isRecipientUnsubKind("client")).toBe(true);
+    expect(isRecipientUnsubKind("digest")).toBe(false);
+    expect(isRecipientUnsubKind(undefined)).toBe(false);
   });
 });

@@ -550,3 +550,64 @@ ${emailText("The attached calendar file (.ics) puts the decision date and the re
 ${emailButton(emailAppLink(args.appUrl, "/app/renewals"), "Open the renewal plan")}`,
     footer: footerBlock(args.footer),
   });
+
+/**
+ * To a finance recipient an owner or admin added for the monthly executive
+ * report. The confirmation proves that somebody reading that mailbox agreed
+ * to receive it; nothing is sent there before.
+ */
+export const reportRecipientVerifyHtml = (args: {
+  tenantName: string;
+  /** Public confirm page; carries the one-use token, so never a link into /app. */
+  confirmUrl: string;
+  appUrl: string;
+  hours: number;
+}): string =>
+  emailShell({
+    baseUrl: args.appUrl,
+    title: "Confirm the monthly executive report",
+    preheader: `Confirm that ${args.tenantName} may send you its monthly executive report.`,
+    body: `${emailHeading("Confirm the monthly executive report")}
+${emailText(`An administrator of ${emailStrong(args.tenantName)} asked LicenseMeter
+to email this address the workspace's monthly executive savings report: a
+one-page PDF with license spend, open waste, realized savings and the renewal
+actions due in the next 90 days. It names no employees.`)}
+${emailText(
+  `Opening the link changes nothing: you confirm on the page it opens. The link
+expires in ${args.hours} hours and works once. Every report carries a one-click
+unsubscribe link.`,
+  { size: "small" },
+)}
+${emailButton(escapeHtml(args.confirmUrl), "Confirm and receive the report")}`,
+    footer: `If you did not expect this, ignore this email and nothing is sent
+here. Never forward this email.`,
+  });
+
+/**
+ * The monthly executive report to a confirmed finance recipient: a short
+ * cover note with the headline figures, the one-page PDF attached. The
+ * recipient has no LicenseMeter account, so the footer carries only their own
+ * unsubscribe link, never a link into the app.
+ */
+export const execReportHtml = (args: {
+  tenantName: string;
+  /** "November 2026". */
+  month: string;
+  /** Label and pre-formatted figure rows: spend, waste, savings, renewals. */
+  rows: { label: string; value: string }[];
+  appUrl: string;
+  unsubscribeUrl: string;
+}): string =>
+  emailShell({
+    baseUrl: args.appUrl,
+    title: `Executive savings report: ${args.tenantName}`,
+    preheader: `${args.tenantName}: the one-page executive savings report for ${args.month}.`,
+    body: `${emailHeading(`Executive savings report: ${escapeHtml(args.tenantName)}`)}
+${emailText(`The one-page report for ${escapeHtml(args.month)} is attached as PDF.`, { tone: "ink" })}
+${emailRows(args.rows)}
+${emailText("Figures are monthly unless marked otherwise and come from the workspace's license data. The report names no employees.", { size: "small" })}`,
+    footer: `You get this because an administrator of ${escapeHtml(args.tenantName)}
+added this address for the monthly executive report and it was confirmed from
+this mailbox.<br>
+${emailFooterLink(escapeHtml(args.unsubscribeUrl), "Unsubscribe from the executive report")}`,
+  });

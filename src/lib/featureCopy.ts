@@ -31,7 +31,7 @@ export const FEATURE_COPY: Record<Feature, FeatureCopy> = {
   execReport: {
     label: "Executive savings report",
     description:
-      "A one-page PDF for finance and leadership: license spend, open waste, realized savings, renewal actions for the next 90 days and a 6-month trend.",
+      "A one-page PDF for finance and leadership: license spend, open waste, realized savings, renewal actions for the next 90 days and a 6-month trend. Share it with a read-only link or email it to finance every month.",
   },
   mcp: {
     label: "MCP server",

@@ -97,7 +97,9 @@ Schedules use UTC, matching `vercel.json`:
 | Directory and connector sync  | Daily 03:00               |
 | Retention (data minimisation) | Daily 05:00               |
 | Digest email                  | Monday 06:00              |
+| Renewal reminders             | Daily 06:00               |
 | Monthly report                | Day 1 of the month, 07:00 |
+| Executive report to finance   | Day 1 of the month, 08:00 |
 
 Run one scheduler. It does not backfill missed times or retry ambiguous email requests. Restarting within a scheduled minute may invoke that job again; avoid restarting during email windows. Inspect scheduler logs after operational changes. You can replace it with an external scheduler calling the same routes with `Authorization: Bearer <CRON_SECRET>`; disable the bundled service to avoid duplicate scheduling.
 

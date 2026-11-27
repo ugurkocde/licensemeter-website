@@ -26,8 +26,9 @@ export const LEDGER_RETENTION_MS = retentionMs(RETENTION_DAYS.emailDeliveries);
  * Everything the ledger records. A leak alert has no period: its key is the
  * alert's ISO timestamp, so two alerts on one day are two deliveries. A
  * renewal reminder is keyed by renewal and threshold (see renewals/alerts).
+ * The executive report to finance is keyed by month, like the report.
  */
-export type LedgerJob = EmailJob | "leak" | "renewal";
+export type LedgerJob = EmailJob | "leak" | "renewal" | "exec_report";
 
 export type DeliveryKey = {
   tenantId: string;

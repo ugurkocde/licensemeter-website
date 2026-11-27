@@ -31,7 +31,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     await connection();
     return { rules: { userAgent: "*", disallow: "/" } };
   }
-  const disallow = ["/app", "/api"];
+  const disallow = ["/app", "/api", "/r/"];
   return {
     rules: [
       { userAgent: "*", allow: "/", disallow },
