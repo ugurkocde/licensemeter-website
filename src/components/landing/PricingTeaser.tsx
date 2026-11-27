@@ -37,7 +37,7 @@ const PLANS: TeaserPlan[] = [
     price: formatEuro(0, "en"),
     period: "forever",
     pitch:
-      "The full product, for one tenant or many, for as long as you need it.",
+      "Every scan, finding and report, for one tenant or many, for as long as you need it.",
     points: [
       "Read-only scan of Microsoft 365 and connected SaaS",
       "Every finding priced in euros per month",
@@ -50,9 +50,10 @@ const PLANS: TeaserPlan[] = [
     name: "Pro",
     price: formatEuro(PLAN_PRICES.pro.month, "en"),
     period: "per month",
-    pitch: "For teams that want someone accountable behind the numbers.",
+    pitch:
+      "For teams that need to prove the savings, with support behind them.",
     points: [
-      "Everything in Free, plus email support",
+      "Everything in Free, plus a savings ledger and email support",
       `Signed DPA (AVV) and a ${formatPct(SLA_TERMS.availabilityTargetPct, "en")} uptime target`,
       "MCP server, white-label PDF reports and 24 months of history",
     ],
@@ -101,9 +102,10 @@ export const PricingTeaser = ({
             <br className="hidden sm:block" /> Paid where it helps.
           </h2>
           <p className="text-ink-soft mt-4 text-base leading-relaxed">
-            Every scan, finding and report stays free. Pro and MSP add support,
-            a signed data processing agreement and the tooling larger estates
-            need. Nothing you rely on today moves behind a paywall.
+            Every scan, finding and report stays free. Pro and MSP add a savings
+            ledger that proves what you reclaimed, support, a signed data
+            processing agreement and the tooling larger estates need. Nothing
+            you rely on today moves behind a paywall.
           </p>
         </div>
 

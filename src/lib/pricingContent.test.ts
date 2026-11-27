@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PLAN_PRICES } from "~/lib/pricing";
+import { MSP_INCLUDED_TENANTS, PLAN_PRICES } from "~/lib/pricing";
 import {
   PLAN_IDS,
   PRICING_CONTENT,
@@ -110,6 +110,84 @@ describe("pricing content", () => {
         .find((r) => r.id === "whiteLabel")!;
       expect(row.cells.map((cell) => cell.kind)).toEqual(["no", "yes", "yes"]);
     }
+  });
+
+  it("lists the savings ledger on both paid plans and nowhere in Free", () => {
+    for (const lang of PRICING_LANGS) {
+      const { plans, faq } = PRICING_CONTENT[lang];
+      const ledger = /savings ledger|einsparungsnachweis/i;
+      expect(plans.pro.items.some((item) => ledger.test(item.text))).toBe(true);
+      expect(plans.free.items.some((item) => ledger.test(item.text))).toBe(
+        false,
+      );
+      // The MSP card lists what it adds over Pro, so no duplicate line.
+      expect(plans.msp.items.some((item) => ledger.test(item.text))).toBe(
+        false,
+      );
+      const row = comparisonGroups(lang, ALL_CHANNELS)
+        .flatMap((g) => g.rows)
+        .find((r) => r.id === "savingsLedger")!;
+      expect(row.label).toMatch(ledger);
+      expect(row.cells.map((cell) => cell.kind)).toEqual(["no", "yes", "yes"]);
+      // Only confirmed reclaims count, reversals come off again, and
+      // exclusions or reactivations never count.
+      const answer = faq.items.find((item) => ledger.test(item.q))!.a;
+      expect(answer).toMatch(/sync|synchronisierung/i);
+      expect(answer).toMatch(/reversed|zurückgenommen/i);
+      expect(answer).toMatch(/exclusions|ausnahmen/i);
+    }
+  });
+
+  it("sells Free on what it does, not as the full product", () => {
+    for (const lang of PRICING_LANGS) {
+      const text = allStrings(lang).join("\n");
+      expect(text).not.toMatch(/full product|vollständige[ns]? produkt/i);
+    }
+  });
+
+  it("frames Pro by the whole tenant, not as a one-tenant limit", () => {
+    for (const lang of PRICING_LANGS) {
+      const { plans, faq } = PRICING_CONTENT[lang];
+      const { pro } = plans;
+      const text = [
+        pro.audience,
+        pro.pitch,
+        ...pro.highlights,
+        ...pro.items.flatMap((item) => [item.text, item.detail ?? ""]),
+        ...faq.items.map((item) => item.a),
+      ].join("\n");
+      expect(text).not.toMatch(
+        /for one tenant|covers (?:one|a single) tenant|für einen tenant|einen einzelnen tenant/i,
+      );
+      expect(text).toMatch(
+        lang === "en"
+          ? /unlimited users and devices/i
+          : /unbegrenzte nutzer und geräte/i,
+      );
+    }
+    const cells = (lang: (typeof PRICING_LANGS)[number]) => {
+      const row = comparisonGroups(lang, ALL_CHANNELS)
+        .flatMap((g) => g.rows)
+        .find((r) => r.id === "tenantsCovered")!;
+      return [
+        row.label,
+        ...row.cells.map((cell) =>
+          cell.kind === "text" ? cell.text : cell.kind,
+        ),
+      ];
+    };
+    expect(cells("en")).toEqual([
+      "Managed client tenants",
+      "Self-serve",
+      "1 workspace",
+      `${MSP_INCLUDED_TENANTS}+`,
+    ]);
+    expect(cells("de")).toEqual([
+      "Verwaltete Kunden-Tenants",
+      "Selbst verwaltet",
+      "1 Workspace",
+      `${MSP_INCLUDED_TENANTS}+`,
+    ]);
   });
 
   it("follows the writing rules in every string", () => {

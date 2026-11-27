@@ -45,7 +45,8 @@ export const formatEuro = (amount: number, lang: PricingLang): string => {
 type TextKey =
   | "history12"
   | "history24"
-  | "oneTenant"
+  | "selfServe"
+  | "oneWorkspace"
   | "tenTenantsPlus"
   | "noSupport"
   | "email"
@@ -91,6 +92,7 @@ const COMPARISON_GROUPS = [
       { id: "reports", cells: ALL },
       { id: "whiteLabel", cells: PAID },
       { id: "scripts", cells: ALL },
+      { id: "savingsLedger", cells: PAID },
       { id: "mcp", cells: PAID },
       { id: "metering", cells: PAID, isNew: true },
     ],
@@ -101,7 +103,11 @@ const COMPARISON_GROUPS = [
       { id: "portfolio", cells: ALL },
       {
         id: "tenantsCovered",
-        cells: ["no", { text: "oneTenant" }, { text: "tenTenantsPlus" }],
+        cells: [
+          { text: "selfServe" },
+          { text: "oneWorkspace" },
+          { text: "tenTenantsPlus" },
+        ],
       },
     ],
   },
@@ -269,14 +275,14 @@ const msp = PLAN_PRICES.msp;
 const en: PricingContent = {
   meta: {
     title: "Pricing",
-    description: `LicenseMeter pricing: the Free plan finds and prices Microsoft 365 license waste at no cost. Pro (${formatEuro(pro.month, "en")} per month) adds Windows Software Metering through Intune, support by email, a ${UPTIME_EN} uptime target under an SLA, a signed DPA (AVV), an MCP server, white-label PDF reports and 24 months of history. MSP (${formatEuro(msp.month, "en")} per month) covers ${MSP_INCLUDED_TENANTS} client tenants with everything in Pro.`,
+    description: `LicenseMeter pricing: the Free plan finds and prices Microsoft 365 license waste at no cost. Pro (${formatEuro(pro.month, "en")} per month) adds a savings ledger that proves realized savings, Windows Software Metering through Intune, support by email, a ${UPTIME_EN} uptime target under an SLA, a signed DPA (AVV), an MCP server, white-label PDF reports and 24 months of history. MSP (${formatEuro(msp.month, "en")} per month) covers ${MSP_INCLUDED_TENANTS} client tenants with everything in Pro.`,
   },
   breadcrumb: { home: "Home", page: "Pricing" },
   toggleLabel: "Language",
   hero: {
     eyebrow: "Pricing",
     h1: { pre: "Finding the waste costs", struck: "money", post: "nothing." },
-    lede: "Start free with every scan, finding and report. Pro adds support and Software Metering for your Windows apps. MSP covers your client portfolio.",
+    lede: "Start free with every scan, finding and report. Pro proves the savings with a savings ledger, and adds Software Metering for your Windows apps and support. MSP covers your client portfolio.",
   },
   billing: {
     legend: "Billing period",
@@ -313,7 +319,7 @@ const en: PricingContent = {
         "Self-host with Docker",
       ],
       pitch:
-        "The full product. Connect a tenant, see what the unused licenses cost per month, and hand IT the script that fixes it.",
+        "Every scan, finding and report at no cost. Connect a tenant, see what the unused licenses cost per month, and hand IT the script that fixes it.",
       note: {
         month: "No card. No seat or tenant limit.",
         year: "No card. No seat or tenant limit.",
@@ -337,15 +343,15 @@ const en: PricingContent = {
       ],
     },
     pro: {
-      audience: "For teams that want support",
+      audience: "For teams that need to prove the savings",
       highlights: [
-        "Everything in Free for one tenant",
+        "Everything in Free, across your whole tenant",
+        "Savings ledger for confirmed reclaims",
         `Email support and a ${UPTIME_EN} uptime target`,
-        "Signed DPA and MCP server",
-        "24 months of waste history",
+        "Signed DPA, MCP server and 24 months of history",
       ],
       pitch:
-        "Everything in Free for one tenant, with support, Software Metering for your Windows apps, PDF reports under your own brand, a signed data processing agreement and an MCP server for your AI assistant.",
+        "Prove what the cleanup saved and see when it slips back. Pro records reclaimed licenses and reduced seat purchases from your findings in a savings ledger once a sync confirms them, and adds Software Metering for your Windows apps, support, PDF reports under your own brand, a signed data processing agreement and an MCP server for your AI assistant.",
       note: {
         month: "Excluding VAT. Cancel any time.",
         year: "Excluding VAT. Twelve months for the price of ten.",
@@ -357,6 +363,11 @@ const en: PricingContent = {
           text: "Windows Software Metering",
           detail:
             "Installed versus started for every Windows app you deploy through Intune",
+        },
+        {
+          text: "Savings ledger",
+          detail:
+            "Confirmed license removals and seat reductions count as realized savings, and are reversed if the seat is used or bought again",
         },
         { text: "Support", detail: "By email" },
         {
@@ -379,7 +390,10 @@ const en: PricingContent = {
         },
         { text: "24 months of waste history" },
         { text: "Buy on your Microsoft invoice" },
-        { text: "Covers one tenant" },
+        {
+          text: "Your whole tenant, unlimited users and devices",
+          detail: "One workspace. MSP covers a client portfolio",
+        },
       ],
     },
     msp: {
@@ -481,11 +495,12 @@ const en: PricingContent = {
       history: "Waste history",
       reports: "PDF report and CSV export",
       scripts: "Generated PowerShell scripts",
+      savingsLedger: "Savings ledger of realized savings",
       mcp: "MCP server for AI assistants",
       metering: "Windows software metering through Intune",
       portfolio: "Portfolio across client tenants",
       whiteLabel: "White-label PDF reports",
-      tenantsCovered: "Client tenants covered",
+      tenantsCovered: "Managed client tenants",
       support: "Support",
       uptime: "Uptime target",
       onboarding: "Onboarding call",
@@ -502,7 +517,8 @@ const en: PricingContent = {
     text: {
       history12: "12 months",
       history24: "24 months",
-      oneTenant: "1",
+      selfServe: "Self-serve",
+      oneWorkspace: "1 workspace",
       tenTenantsPlus: `${MSP_INCLUDED_TENANTS}+`,
       noSupport: "No support",
       email: "Email",
@@ -555,11 +571,15 @@ const en: PricingContent = {
       },
       {
         q: "Is there support on Free?",
-        a: "No. Free is the full product without support. Support by email comes with Pro and MSP.",
+        a: "No. Free includes every scan, finding and report, without support. Support by email comes with Pro and MSP.",
       },
       {
         q: "Can we sign a data processing agreement?",
         a: "Every plan includes our standard data processing agreement, accepted online with the terms. With Pro and MSP, LicenseMeter, which is operated from Germany, also signs a data processing agreement (Auftragsverarbeitungsvertrag) under GDPR Art. 28 with your company, in German or English. Data is stored in the EU. On MSP the agreement also covers your client tenants, with LicenseMeter as your sub-processor.",
+      },
+      {
+        q: "What does the savings ledger count?",
+        a: "Pro and MSP keep a savings ledger. When a finding is resolved because a license was removed or a purchased seat count was reduced, and a sync confirms it, the monthly value is recorded as realized savings. If the seat is assigned again, bought back or the source is disconnected, that entry is reversed, so the run-rate only shows savings that still hold. Exclusions, changed inactivity thresholds and accounts that become active again never count as savings.",
       },
       {
         q: "What does the MCP server give me?",
@@ -576,7 +596,7 @@ const en: PricingContent = {
       },
       {
         q: "I run an MSP. Which plan do I need?",
-        a: `You can connect as many client tenants as you like on Free. Pro covers a single tenant, with white-label PDF reports under your own brand. MSP covers ${MSP_INCLUDED_TENANTS} client tenants with everything in Pro, one brand across every client report, plus an onboarding call. Further tenants cost ${formatEuro(MSP_EXTRA_TENANT_PRICE.month, "en")} each per month.`,
+        a: `You can connect as many client tenants as you like on Free and manage them yourself. Pro covers one workspace, your own tenant, with white-label PDF reports under your own brand. MSP covers ${MSP_INCLUDED_TENANTS} client tenants with everything in Pro, one brand across every client report, plus an onboarding call. Further tenants cost ${formatEuro(MSP_EXTRA_TENANT_PRICE.month, "en")} each per month.`,
       },
       {
         q: "Do I need a plan if I self-host?",
@@ -597,7 +617,7 @@ const en: PricingContent = {
 const de: PricingContent = {
   meta: {
     title: "Preise",
-    description: `Preise von LicenseMeter: Der Free-Tarif findet und beziffert Lizenzverschwendung in Microsoft 365 kostenlos. Pro (${formatEuro(pro.month, "de")} pro Monat) ergänzt Windows Software Metering über Intune, Support per E-Mail, ein Verfügbarkeitsziel von ${UPTIME_DE} gemäß SLA, einen unterzeichneten Auftragsverarbeitungsvertrag (AVV), einen MCP-Server, White-Label-PDF-Berichte und 24 Monate Verlauf. MSP (${formatEuro(msp.month, "de")} pro Monat) deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants mit allem aus Pro ab.`,
+    description: `Preise von LicenseMeter: Der Free-Tarif findet und beziffert Lizenzverschwendung in Microsoft 365 kostenlos. Pro (${formatEuro(pro.month, "de")} pro Monat) ergänzt einen Einsparungsnachweis für realisierte Einsparungen, Windows Software Metering über Intune, Support per E-Mail, ein Verfügbarkeitsziel von ${UPTIME_DE} gemäß SLA, einen unterzeichneten Auftragsverarbeitungsvertrag (AVV), einen MCP-Server, White-Label-PDF-Berichte und 24 Monate Verlauf. MSP (${formatEuro(msp.month, "de")} pro Monat) deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants mit allem aus Pro ab.`,
   },
   breadcrumb: { home: "Startseite", page: "Preise" },
   toggleLabel: "Sprache",
@@ -608,7 +628,7 @@ const de: PricingContent = {
       struck: "Geld",
       post: "nichts.",
     },
-    lede: "Starten Sie kostenlos mit allen Scans, Ergebnissen und Berichten. Pro ergänzt Support und Software Metering für Ihre Windows-Apps. MSP deckt Ihr Kundenportfolio ab.",
+    lede: "Starten Sie kostenlos mit allen Scans, Ergebnissen und Berichten. Pro dokumentiert realisierte Einsparungen in einem Einsparungsnachweis und ergänzt Software Metering für Ihre Windows-Apps sowie Support. MSP deckt Ihr Kundenportfolio ab.",
   },
   billing: {
     legend: "Abrechnungszeitraum",
@@ -645,7 +665,7 @@ const de: PricingContent = {
         "Selbst hosten mit Docker",
       ],
       pitch:
-        "Das vollständige Produkt. Verbinden Sie einen Tenant, sehen Sie, was ungenutzte Lizenzen pro Monat kosten, und geben Sie der IT das Skript, das es behebt.",
+        "Alle Scans, Ergebnisse und Berichte, dauerhaft kostenlos. Verbinden Sie einen Tenant, sehen Sie, was ungenutzte Lizenzen pro Monat kosten, und geben Sie der IT das Skript, das es behebt.",
       note: {
         month: "Keine Kreditkarte. Kein Limit für Nutzer oder Tenants.",
         year: "Keine Kreditkarte. Kein Limit für Nutzer oder Tenants.",
@@ -671,15 +691,15 @@ const de: PricingContent = {
       ],
     },
     pro: {
-      audience: "Für Teams, die Support brauchen",
+      audience: "Für Teams, die Einsparungen belegen müssen",
       highlights: [
-        "Alles aus Free für einen Tenant",
+        "Alles aus Free, für Ihren gesamten Tenant",
+        "Einsparungsnachweis für bestätigte Rückgewinnungen",
         `E-Mail-Support und ${UPTIME_DE} Verfügbarkeitsziel`,
-        "Unterzeichneter AVV und MCP-Server",
-        "24 Monate Verlaufsdaten",
+        "Unterzeichneter AVV, MCP-Server und 24 Monate Verlauf",
       ],
       pitch:
-        "Alles aus Free für einen Tenant, dazu Support, Software Metering für Ihre Windows-Apps, PDF-Berichte unter Ihrer eigenen Marke, ein unterzeichneter Auftragsverarbeitungsvertrag und ein MCP-Server für Ihren KI-Assistenten.",
+        "Belegen Sie, was die Bereinigung gespart hat, und sehen Sie, wenn Einsparungen verloren gehen. Pro erfasst entfernte Lizenzen und reduzierte gekaufte Lizenzmengen aus Ihren Ergebnissen in einem Einsparungsnachweis, sobald eine Synchronisierung sie bestätigt, und ergänzt Software Metering für Ihre Windows-Apps, Support, PDF-Berichte unter Ihrer eigenen Marke, einen unterzeichneten Auftragsverarbeitungsvertrag und einen MCP-Server für Ihren KI-Assistenten.",
       note: {
         month: "Zzgl. USt. Jederzeit kündbar.",
         year: "Zzgl. USt. Zwölf Monate zum Preis von zehn.",
@@ -691,6 +711,11 @@ const de: PricingContent = {
           text: "Windows Software Metering",
           detail:
             "Installiert und gestartet, für jede Windows-App, die Sie über Intune verteilen",
+        },
+        {
+          text: "Einsparungsnachweis",
+          detail:
+            "Bestätigt entfernte Lizenzen und reduzierte gekaufte Lizenzmengen zählen als realisierte Einsparung und werden zurückgenommen, wenn die Lizenz wieder genutzt oder zugekauft wird",
         },
         { text: "Support", detail: "Per E-Mail" },
         {
@@ -713,7 +738,10 @@ const de: PricingContent = {
         },
         { text: "24 Monate Verlaufsdaten" },
         { text: "Kauf über Ihre Microsoft-Rechnung" },
-        { text: "Gilt für einen Tenant" },
+        {
+          text: "Ihr gesamter Tenant, unbegrenzte Nutzer und Geräte",
+          detail: "Ein Workspace. MSP deckt ein Kundenportfolio ab",
+        },
       ],
     },
     msp: {
@@ -818,11 +846,12 @@ const de: PricingContent = {
       history: "Verlaufsdaten",
       reports: "PDF-Bericht und CSV-Export",
       scripts: "Generierte PowerShell-Skripte",
+      savingsLedger: "Einsparungsnachweis",
       mcp: "MCP-Server für KI-Assistenten",
       metering: "Windows Software Metering über Intune",
       portfolio: "Portfolio über alle Kunden-Tenants",
       whiteLabel: "White-Label-PDF-Berichte",
-      tenantsCovered: "Abgedeckte Kunden-Tenants",
+      tenantsCovered: "Verwaltete Kunden-Tenants",
       support: "Support",
       uptime: "Verfügbarkeitsziel",
       onboarding: "Onboarding-Gespräch",
@@ -840,7 +869,8 @@ const de: PricingContent = {
     text: {
       history12: "12 Monate",
       history24: "24 Monate",
-      oneTenant: "1",
+      selfServe: "Selbst verwaltet",
+      oneWorkspace: "1 Workspace",
       tenTenantsPlus: `${MSP_INCLUDED_TENANTS}+`,
       noSupport: "Kein Support",
       email: "E-Mail",
@@ -893,11 +923,15 @@ const de: PricingContent = {
       },
       {
         q: "Gibt es Support im Free-Tarif?",
-        a: "Nein. Free ist das vollständige Produkt ohne Support. Support per E-Mail ist in Pro und MSP enthalten.",
+        a: "Nein. Free enthält alle Scans, Ergebnisse und Berichte, aber keinen Support. Support per E-Mail ist in Pro und MSP enthalten.",
       },
       {
         q: "Können wir einen Auftragsverarbeitungsvertrag abschließen?",
         a: "Jeder Tarif enthält unseren Standard-Auftragsverarbeitungsvertrag (AVV), der online zusammen mit den Nutzungsbedingungen akzeptiert wird. In Pro und MSP unterzeichnet LicenseMeter, betrieben aus Deutschland, zusätzlich einen AVV nach Art. 28 DSGVO mit Ihrem Unternehmen, auf Deutsch oder Englisch. Die Daten werden in der EU gespeichert. Im MSP-Tarif deckt der Vertrag auch Ihre Kunden-Tenants ab, mit LicenseMeter als Ihrem Unterauftragsverarbeiter.",
+      },
+      {
+        q: "Was zählt der Einsparungsnachweis?",
+        a: "Pro und MSP führen einen Einsparungsnachweis. Wird ein Ergebnis behoben, weil eine Lizenz entfernt oder eine gekaufte Lizenzmenge reduziert wurde, und durch eine Synchronisierung bestätigt, wird der Monatswert als realisierte Einsparung erfasst. Wird die Lizenz erneut zugewiesen, wieder zugekauft oder die Quelle getrennt, wird dieser Eintrag zurückgenommen, sodass der laufende Monatswert nur Einsparungen zeigt, die weiterhin bestehen. Ausnahmen, geänderte Inaktivitätsschwellen und wieder aktive Konten zählen nie als Einsparung.",
       },
       {
         q: "Was bringt mir der MCP-Server?",
@@ -914,7 +948,7 @@ const de: PricingContent = {
       },
       {
         q: "Ich betreibe einen MSP. Welchen Tarif brauche ich?",
-        a: `Im Free-Tarif können Sie beliebig viele Kunden-Tenants verbinden. Pro deckt einen einzelnen Tenant ab, mit White-Label-PDF-Berichten unter Ihrer eigenen Marke. MSP deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants mit allem aus Pro ab, mit einer Marke auf jedem Kundenbericht und einem Onboarding-Gespräch. Jeder weitere Tenant kostet ${formatEuro(MSP_EXTRA_TENANT_PRICE.month, "de")} pro Monat.`,
+        a: `Im Free-Tarif können Sie beliebig viele Kunden-Tenants verbinden und selbst verwalten. Pro deckt einen Workspace ab, Ihren eigenen Tenant, mit White-Label-PDF-Berichten unter Ihrer eigenen Marke. MSP deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants mit allem aus Pro ab, mit einer Marke auf jedem Kundenbericht und einem Onboarding-Gespräch. Jeder weitere Tenant kostet ${formatEuro(MSP_EXTRA_TENANT_PRICE.month, "de")} pro Monat.`,
       },
       {
         q: "Brauche ich einen Tarif, wenn ich selbst hoste?",
