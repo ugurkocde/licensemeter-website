@@ -275,6 +275,9 @@ export const RenewalPlanView = ({
 }) => {
   const { summary } = plan;
   const next = summary.next;
+  const pastDeadline = plan.items.filter(
+    (i) => i.cutSeats > 0 && !i.trialOnly && i.noticeDaysUntil < 0,
+  ).length;
   return (
     <section
       aria-labelledby="renewal-plan-heading"
@@ -303,9 +306,11 @@ export const RenewalPlanView = ({
             <p className="text-ink-soft mt-1 max-w-xl text-sm">
               {summary.actionable > 0
                 ? `Cut ${seatsLabel(summary.cutSeats, currency)} across ${summary.actionable} of ${summary.renewals} upcoming ${summary.renewals === 1 ? "renewal" : "renewals"}.`
-                : summary.renewals > 0
-                  ? `None of the ${summary.renewals} upcoming ${summary.renewals === 1 ? "renewal" : "renewals"} has more paid seats than active seats plus the buffer.`
-                  : "No upcoming renewal dates yet. Microsoft dates appear after the next sync; add other contracts below."}
+                : pastDeadline > 0
+                  ? `${pastDeadline === 1 ? "One renewal has" : `${pastDeadline} renewals have`} seats to cut, but the notice deadline has passed. They come back into the plan for the next renewal.`
+                  : summary.renewals > 0
+                    ? `None of the ${summary.renewals} upcoming ${summary.renewals === 1 ? "renewal" : "renewals"} has more paid seats than active seats plus the buffer.`
+                    : "No upcoming renewal dates yet. Microsoft dates appear after the next sync; add other contracts below."}
               {summary.unpricedCutSeats > 0 &&
                 summary.annualSavingsCents > 0 &&
                 ` ${seatsLabel(summary.unpricedCutSeats, currency)} of these have no price yet.`}
