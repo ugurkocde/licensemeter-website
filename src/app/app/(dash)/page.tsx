@@ -16,6 +16,7 @@ import {
 } from "~/components/workspace/MetricCards";
 import { OnboardingEmptyState } from "~/components/workspace/OnboardingEmptyState";
 import { PriceAccuracyCard } from "~/components/workspace/PriceAccuracyCard";
+import { NextRenewalAction } from "~/components/workspace/RenewalPlanView";
 import { UnpricedNotice } from "~/components/workspace/UnpricedNotice";
 import { SyncNowButton } from "~/components/workspace/SyncNowButton";
 import {
@@ -37,6 +38,9 @@ import { ALL_RULES, RULE_META } from "~/lib/rules";
 import { upgradePath } from "~/lib/upgrade";
 import type { WasteRuleId } from "~/server/types";
 import { requireAccess, hasRole } from "~/server/access";
+import { hasFeature } from "~/server/entitlement";
+import { loadRenewalPlan } from "~/server/renewals/loadPlan";
+import { nextRenewalAction } from "~/server/renewals/plan";
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
 import {
@@ -211,6 +215,9 @@ export default async function OverviewPage({
   ]);
 
   const history = [...wasteHistory.rows].reverse();
+  const renewalAction = nextRenewalAction(
+    await loadRenewalPlan(ctx.tenant, new Date(), { skus, prices, spend }),
+  );
 
   const priceBySku = new Map(prices.map((p) => [p.skuId, p.monthlyPriceCents]));
 
@@ -635,6 +642,14 @@ export default async function OverviewPage({
             </Card>
           </section>
         )}
+
+      {renewalAction && (
+        <NextRenewalAction
+          item={renewalAction}
+          teaser={!hasFeature(ctx.entitlement, "renewalPlans")}
+          currency={currency}
+        />
+      )}
 
       <MetricCards cards={metricCards} />
 

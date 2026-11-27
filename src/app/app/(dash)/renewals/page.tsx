@@ -2,41 +2,64 @@ import { and, asc, eq, isNotNull } from "drizzle-orm";
 import type { Metadata } from "next";
 
 import { Card, Pill } from "~/components/ui";
+import { savingsTrialLabel } from "~/components/workspace/PriceConfidence";
 import { RenewalManager } from "~/components/workspace/RenewalManager";
+import {
+  RenewalPlanTeaser,
+  RenewalPlanView,
+} from "~/components/workspace/RenewalPlanView";
 import { lifecycleLabel } from "~/components/workspace/SkuTerms";
 import { calendarDaysUntil, fmtDate, relativeDayLabel } from "~/lib/format";
 import { hasRole, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
+import { hasFeature } from "~/server/entitlement";
 import { isKnownFreeSku } from "~/server/graph/skuCatalog";
+import { loadRenewalPlan } from "~/server/renewals/loadPlan";
+import { teaserOf } from "~/server/renewals/plan";
 import { memberships, tenantSkus, vendorRenewals } from "~/server/db/schema";
 
 export const metadata: Metadata = { title: "Renewals" };
 
 export default async function RenewalsPage() {
   const ctx = await requireAccess("viewer");
-  const [renewals, members, microsoftTerms] = await Promise.all([
-    db.query.vendorRenewals.findMany({
-      where: eq(vendorRenewals.tenantId, ctx.tenant.id),
-      orderBy: asc(vendorRenewals.renewalDate),
-    }),
-    db.query.memberships.findMany({
-      where: eq(memberships.tenantId, ctx.tenant.id),
-      columns: { id: true, name: true, email: true },
-    }),
-    db.query.tenantSkus.findMany({
-      where: and(
-        eq(tenantSkus.tenantId, ctx.tenant.id),
-        isNotNull(tenantSkus.nextLifecycleAt),
-      ),
-      orderBy: asc(tenantSkus.nextLifecycleAt),
-    }),
-  ]);
+  const now = new Date();
+  const fullPlan = hasFeature(ctx.entitlement, "renewalPlans");
+  const [renewals, members, microsoftTerms, plan, paidSkus] = await Promise.all(
+    [
+      db.query.vendorRenewals.findMany({
+        where: eq(vendorRenewals.tenantId, ctx.tenant.id),
+        orderBy: asc(vendorRenewals.renewalDate),
+      }),
+      db.query.memberships.findMany({
+        where: eq(memberships.tenantId, ctx.tenant.id),
+        columns: { id: true, name: true, email: true },
+      }),
+      db.query.tenantSkus.findMany({
+        where: and(
+          eq(tenantSkus.tenantId, ctx.tenant.id),
+          isNotNull(tenantSkus.nextLifecycleAt),
+        ),
+        orderBy: asc(tenantSkus.nextLifecycleAt),
+      }),
+      loadRenewalPlan(ctx.tenant, now),
+      // Subscriptions a contract can cover, for the Pro contract form.
+      fullPlan
+        ? db.query.tenantSkus.findMany({
+            where: eq(tenantSkus.tenantId, ctx.tenant.id),
+            columns: { skuId: true, skuPartNumber: true, displayName: true },
+            orderBy: asc(tenantSkus.skuPartNumber),
+          })
+        : Promise.resolve([]),
+    ],
+  );
   const microsoftDates = microsoftTerms.filter(
     (s) => !isKnownFreeSku(s.skuId, s.skuPartNumber),
   );
   const canEdit = hasRole(ctx, "admin") && !ctx.tenant.isDemo;
-  const now = new Date();
   const nowMs = now.getTime();
+  const skuOptions = paidSkus
+    .filter((s) => !isKnownFreeSku(s.skuId, s.skuPartNumber))
+    .map((s) => ({ id: s.skuId, label: s.displayName ?? s.skuPartNumber }));
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 pb-8">
       <header className="rise rise-1">
@@ -46,6 +69,23 @@ export default async function RenewalsPage() {
           value across every vendor.
         </p>
       </header>
+      <div className="rise rise-2">
+        {fullPlan ? (
+          <RenewalPlanView
+            plan={plan}
+            currency={ctx.tenant.currency}
+            // Like findings, the demo shows admin controls and its actions
+            // answer that the workspace is read-only.
+            canEdit={hasRole(ctx, "admin")}
+          />
+        ) : (
+          <RenewalPlanTeaser
+            teaser={teaserOf(plan)}
+            currency={ctx.tenant.currency}
+            ctaLabel={savingsTrialLabel}
+          />
+        )}
+      </div>
       <div className="rise rise-2">
         <RenewalManager
           renewals={renewals}
@@ -58,6 +98,7 @@ export default async function RenewalsPage() {
           currency={ctx.tenant.currency}
           canEdit={canEdit}
           nowMs={nowMs}
+          skuOptions={fullPlan ? skuOptions : null}
         />
       </div>
       {microsoftDates.length > 0 && (

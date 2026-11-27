@@ -93,6 +93,7 @@ const COMPARISON_GROUPS = [
       { id: "scripts", cells: ALL },
       { id: "mcp", cells: PAID },
       { id: "metering", cells: PAID, isNew: true },
+      { id: "renewalPlan", cells: PAID, isNew: true },
     ],
   },
   {
@@ -374,6 +375,11 @@ const en: PricingContent = {
             "Query waste, findings and trends from Claude, Copilot or any MCP client",
         },
         {
+          text: "Renewal savings plan",
+          detail:
+            "Seats to renew and cut before each renewal, with the yearly savings and a calendar export",
+        },
+        {
           text: "White-label PDF reports",
           detail: "Your logo, name and colour on every report",
         },
@@ -483,6 +489,7 @@ const en: PricingContent = {
       scripts: "Generated PowerShell scripts",
       mcp: "MCP server for AI assistants",
       metering: "Windows software metering through Intune",
+      renewalPlan: "Renewal savings plan with calendar export",
       portfolio: "Portfolio across client tenants",
       whiteLabel: "White-label PDF reports",
       tenantsCovered: "Client tenants covered",
@@ -708,6 +715,11 @@ const de: PricingContent = {
             "Verschwendung, Ergebnisse und Trends aus Claude, Copilot oder jedem MCP-Client abfragen",
         },
         {
+          text: "Sparplan für Verlängerungen",
+          detail:
+            "Zu verlängernde und zu kündigende Lizenzen vor jeder Verlängerung, mit der jährlichen Einsparung und einem Kalenderexport",
+        },
+        {
           text: "White-Label-PDF-Berichte",
           detail: "Ihr Logo, Name und Ihre Farbe auf jedem Bericht",
         },
@@ -820,6 +832,7 @@ const de: PricingContent = {
       scripts: "Generierte PowerShell-Skripte",
       mcp: "MCP-Server für KI-Assistenten",
       metering: "Windows Software Metering über Intune",
+      renewalPlan: "Sparplan für Verlängerungen mit Kalenderexport",
       portfolio: "Portfolio über alle Kunden-Tenants",
       whiteLabel: "White-Label-PDF-Berichte",
       tenantsCovered: "Abgedeckte Kunden-Tenants",

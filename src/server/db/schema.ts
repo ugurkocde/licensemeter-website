@@ -30,6 +30,7 @@ import type {
   JoinRequestStatus,
   MembershipRole,
   RemediationStatus,
+  RenewalTerm,
   PaidPlan,
   PlanInterval,
   SaasProvider,
@@ -162,6 +163,16 @@ export const tenants = pgTable(
     leakAlerts: boolean("leak_alerts").notNull().default(true),
     /** Monthly PDF waste report to owners/admins (QBR deliverable). */
     monthlyReport: boolean("monthly_report").notNull().default(false),
+    /**
+     * Workspace switch for renewal reminders. Which SKUs a reminder may cover
+     * is decided per SKU by renewalSkuTerms (see renewalAlertsApply).
+     */
+    renewalAlerts: boolean("renewal_alerts").notNull().default(true),
+    /**
+     * Headroom kept on top of active seats when the renewal savings plan
+     * recommends a seat count, in percent.
+     */
+    renewalBufferPct: integer("renewal_buffer_pct").notNull().default(5),
     /** Signal quality from the last sync; lets price edits re-run analysis offline. */
     activitySignal: text("activity_signal").$type<ActivitySignal>(),
     copilotSignal: text("copilot_signal").$type<
@@ -230,6 +241,10 @@ export const tenants = pgTable(
       sql`${t.currency} in ('EUR', 'USD', 'GBP', 'CHF', 'CAD', 'AUD', 'DKK', 'NOK', 'SEK', 'PLN', 'CZK')`,
     ),
     check("tenants_currency_rate_positive", sql`${t.currencyRatePpm} > 0`),
+    check(
+      "tenants_renewal_buffer_pct_range",
+      sql`${t.renewalBufferPct} between 0 and 50`,
+    ),
     check(
       "tenants_domain_join_mode_check",
       sql`${t.domainJoinMode} in ('off', 'approval', 'auto')`,
@@ -699,6 +714,16 @@ export const vendorRenewals = pgTable(
       { onDelete: "set null" },
     ),
     notes: text("notes"),
+    /**
+     * Microsoft SKUs this contract covers. The renewal savings plan shows them
+     * under the contract instead of as separate subscription rows.
+     */
+    skuIds: text("sku_ids")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    /** Seat count the admin plans to renew at; overrides the recommendation. */
+    targetSeats: integer("target_seats"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -717,8 +742,41 @@ export const vendorRenewals = pgTable(
       "vendor_renewals_annual_value_nonneg",
       sql`${t.annualValueCents} >= 0`,
     ),
+    check(
+      "vendor_renewals_target_seats_nonneg",
+      sql`${t.targetSeats} is null or ${t.targetSeats} >= 0`,
+    ),
   ],
 );
+
+/**
+ * Billing term per Microsoft SKU, as the admin set it. No row means an annual
+ * or multi-year term, which renewal reminders cover by default. A monthly
+ * (NCE) term renews every month, so reminders cover it only when
+ * monthlyAlerts is on. renewalAlertsApply in src/lib/renewalTerm.ts is the
+ * one rule every reader uses.
+ */
+export const renewalSkuTerms = pgTable(
+  "renewal_sku_terms",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    skuId: text("sku_id").notNull(),
+    term: text("term").$type<RenewalTerm>().notNull(),
+    monthlyAlerts: boolean("monthly_alerts").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.skuId] }),
+    check(
+      "renewal_sku_terms_term_check",
+      sql`${t.term} in ('annual', 'monthly')`,
+    ),
+  ],
+).enableRLS();
 
 export const syncRuns = pgTable(
   "sync_runs",

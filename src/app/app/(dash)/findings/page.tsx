@@ -15,12 +15,14 @@ import {
 import { PriceAccuracyCard } from "~/components/workspace/PriceAccuracyCard";
 import { ButtonAnchor, Pill, buttonClass } from "~/components/ui";
 import { fmtDate, fmtMoney } from "~/lib/format";
+import { CONNECTOR_LABELS, CONNECTORS } from "~/lib/connectors";
 import { calculatePriceCoverage } from "~/lib/priceCoverage";
 import { ALL_RULES, isWasteRule, RULE_META } from "~/lib/rules";
 import { hasRole, requireAccess } from "~/server/access";
 import { bulkSetFindingStatus } from "~/server/actions";
 import { db } from "~/server/db";
 import { findings, priceBook } from "~/server/db/schema";
+import { skuDisplayName } from "~/server/graph/skuCatalog";
 import type { FindingStatus } from "~/server/types";
 
 export const metadata: Metadata = { title: "Findings" };
@@ -60,6 +62,15 @@ export default async function FindingsPage({
   const ruleParam =
     typeof sp.rule === "string" && isWasteRule(sp.rule) ? sp.rule : null;
   const showResolved = sp.show === "resolved";
+  // Renewal plan drill-downs: one Microsoft subscription, or one other vendor.
+  const skuParam =
+    typeof sp.sku === "string" && /^[0-9a-f-]{36}$/i.test(sp.sku)
+      ? sp.sku.toLowerCase()
+      : null;
+  const sourceParam =
+    sp.source === "adobe" || CONNECTORS.some((c) => c.provider === sp.source)
+      ? (sp.source as string)
+      : null;
   const query = typeof sp.q === "string" ? sp.q.trim().slice(0, 100) : "";
   const sort =
     sp.sort === "newest" || sp.sort === "oldest" || sp.sort === "status"
@@ -79,6 +90,18 @@ export default async function FindingsPage({
     eq(findings.tenantId, ctx.tenant.id),
     statusFilter,
     ruleParam ? eq(findings.rule, ruleParam) : undefined,
+    skuParam
+      ? or(
+          eq(findings.skuId, skuParam),
+          sql`${findings.detail}->'licenses' @> jsonb_build_array(jsonb_build_object('skuId', ${skuParam}::text))`,
+          sql`${findings.detail}->'redundantSkuIds' @> jsonb_build_array(${skuParam}::text)`,
+        )
+      : undefined,
+    sourceParam === "adobe"
+      ? sql`${findings.rule} like 'adobe%'`
+      : sourceParam
+        ? sql`${findings.rule} like 'saas%' and ${findings.detail}->>'provider' = ${sourceParam}`
+        : undefined,
     query
       ? or(
           ilike(findings.title, `%${query}%`),
@@ -156,6 +179,8 @@ export default async function FindingsPage({
   ) => {
     const params = new URLSearchParams();
     if (rule) params.set("rule", rule);
+    if (skuParam) params.set("sku", skuParam);
+    if (sourceParam) params.set("source", sourceParam);
     if (resolved) params.set("show", "resolved");
     if (queryValue) params.set("q", queryValue);
     if (sort !== "impact") params.set("sort", sort);
@@ -216,6 +241,18 @@ export default async function FindingsPage({
       ? RULE_META[ruleParam].short
       : "All active";
 
+  const scriptParams = new URLSearchParams();
+  if (ruleParam) scriptParams.set("rule", ruleParam);
+  if (skuParam) scriptParams.set("sku", skuParam);
+  const scriptHref = `/api/export/remediation${scriptParams.size ? `?${scriptParams}` : ""}`;
+  const scopeLabel = skuParam
+    ? skuDisplayName(skuParam)
+    : sourceParam
+      ? sourceParam === "adobe"
+        ? "Adobe"
+        : CONNECTOR_LABELS[sourceParam as keyof typeof CONNECTOR_LABELS]
+      : null;
+
   const empty = query
     ? { icon: SearchX, heading: "No findings match your search." }
     : showResolved
@@ -238,19 +275,24 @@ export default async function FindingsPage({
               ? `${rowCount} resolved findings`
               : `${rowCount} findings worth ${fmtMoney(shownImpact, currency)}/mo`}
           </p>
+          {scopeLabel && (
+            <p className="text-ink-soft mt-2 flex flex-wrap items-center gap-2 text-sm">
+              <Pill tone="outline">Only {scopeLabel}</Pill>
+              <Link
+                href={`/app/findings${ruleParam ? `?rule=${ruleParam}` : ""}`}
+                className="hover:text-ink underline underline-offset-4"
+              >
+                Show all findings
+              </Link>
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin && (
             <>
-              <CopyScriptButton
-                url={`/api/export/remediation${ruleParam ? `?rule=${ruleParam}` : ""}`}
-              />
-              <ButtonAnchor
-                href={`/api/export/remediation${ruleParam ? `?rule=${ruleParam}` : ""}`}
-              >
-                Download .ps1
-              </ButtonAnchor>
+              <CopyScriptButton url={scriptHref} />
+              <ButtonAnchor href={scriptHref}>Download .ps1</ButtonAnchor>
             </>
           )}
           <ButtonAnchor href="/api/export/findings">Export CSV</ButtonAnchor>
@@ -263,6 +305,10 @@ export default async function FindingsPage({
           className="flex flex-col gap-2 sm:flex-row sm:items-center"
         >
           {ruleParam && <input type="hidden" name="rule" value={ruleParam} />}
+          {skuParam && <input type="hidden" name="sku" value={skuParam} />}
+          {sourceParam && (
+            <input type="hidden" name="source" value={sourceParam} />
+          )}
           {showResolved && <input type="hidden" name="show" value="resolved" />}
           <label htmlFor="finding-search" className="sr-only">
             Search findings by title or email

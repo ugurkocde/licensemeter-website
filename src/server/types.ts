@@ -7,6 +7,9 @@ export type DomainJoinMode = "off" | "approval" | "auto";
 
 export type JoinRequestStatus = "pending" | "approved" | "declined";
 
+/** Billing term of a Microsoft SKU for renewal planning; monthly is NCE month to month. */
+export type RenewalTerm = "annual" | "monthly";
+
 export type FindingStatus = "open" | "acknowledged" | "resolved";
 
 export type SyncRunStatus = "running" | "success" | "partial" | "failed";
@@ -201,6 +204,10 @@ export type AuditAction =
   | "renewal_created"
   | "renewal_updated"
   | "renewal_deleted"
+  | "renewal_alerts_changed"
+  | "renewal_buffer_changed"
+  | "renewal_sku_term_changed"
+  | "export_renewal_ics"
   | "export_audit_log_csv"
   | "leak_alerts_changed"
   | "monthly_report_changed"
