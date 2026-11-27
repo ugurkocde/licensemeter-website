@@ -265,8 +265,8 @@ export default function LandingPage() {
           <p className="text-ink-soft mx-auto mt-5 max-w-lg text-base leading-7">
             Find your unused licenses today. Scans and continuous monitoring are
             free for as long as you need, and you only pay when you want to
-            prove the savings, get support and a signed DPA, or cover a client
-            portfolio.
+            prove the savings, get support and a signed DPA, or extend Pro
+            across a client portfolio.
           </p>
           <div className="mt-8">
             <SignInButtons
