@@ -39,6 +39,7 @@ import { opsErrorText } from "~/server/opsError";
 import {
   makeMembershipUnsubToken,
   makeSharedUnsubToken,
+  type UnsubJob,
 } from "~/server/unsubToken";
 import {
   workspaceEmailRecipients,
@@ -95,7 +96,7 @@ const EMAIL_LABEL: Record<EmailJob, string> = {
 /** Personal, token-signed unsubscribe link for one membership and one job. */
 export const membershipUnsubscribeUrl = (
   membershipId: string,
-  job: EmailJob,
+  job: UnsubJob,
 ): string => {
   const t = makeMembershipUnsubToken(membershipId, job, env.AUTH_SECRET);
   return `${siteUrl()}/api/unsubscribe?m=${membershipId}&j=${job}&t=${t}`;
@@ -104,16 +105,16 @@ export const membershipUnsubscribeUrl = (
 /** The shared notification address unsubscribes per workspace, not per member. */
 export const sharedUnsubscribeUrl = (
   tenantId: string,
-  job: EmailJob,
+  job: UnsubJob,
 ): string => {
   const t = makeSharedUnsubToken(tenantId, job, env.AUTH_SECRET);
   return `${siteUrl()}/api/unsubscribe?w=${tenantId}&j=${job}&t=${t}`;
 };
 
-const unsubscribeUrlFor = (
+export const unsubscribeUrlFor = (
   tenantId: string,
   recipient: EmailRecipient,
-  job: EmailJob,
+  job: UnsubJob,
 ): string =>
   recipient.kind === "membership"
     ? membershipUnsubscribeUrl(recipient.membershipId, job)

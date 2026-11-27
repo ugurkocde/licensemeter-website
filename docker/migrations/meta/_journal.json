@@ -169,6 +169,13 @@
       "when": 1795791917946,
       "tag": "0023_renewal_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795811309715,
+      "tag": "0024_renewal_alerts",
+      "breakpoints": true
     }
   ]
 }

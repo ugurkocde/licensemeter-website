@@ -24,6 +24,10 @@
     {
       "path": "/api/cron/retention",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/renewal-alerts",
+      "schedule": "0 6 * * *"
     }
   ]
 }

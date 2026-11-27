@@ -57,13 +57,13 @@ const request = (query: string, method: "GET" | "POST" = "GET") =>
   });
 
 const memberQuery = (
-  job: "digest" | "report",
+  job: "digest" | "report" | "renewal",
   token = makeMembershipUnsubToken(MEMBERSHIP_ID, job, SECRET),
   membershipId = MEMBERSHIP_ID,
 ) => `m=${membershipId}&j=${job}&t=${token}`;
 
 const sharedQuery = (
-  job: "digest" | "report",
+  job: "digest" | "report" | "renewal",
   tenantId = TENANT_ID,
   token = makeSharedUnsubToken(tenantId, job, SECRET),
 ) => `w=${tenantId}&j=${job}&t=${token}`;
@@ -116,6 +116,23 @@ describe("membership unsubscribe links", () => {
     const row = await membership();
     expect(row?.reportOptOut).toBe(true);
     expect(row?.digestOptOut).toBe(false);
+  });
+
+  it("GET for renewal reminders only shows the confirm page", async () => {
+    const res = await GET(request(memberQuery("renewal")));
+    const html = await res.text();
+    expect(html).toContain("Unsubscribe from the renewal reminders");
+    expect(html).toContain("No more renewal reminder emails");
+    expect((await membership())?.renewalOptOut).toBe(false);
+  });
+
+  it("POST for renewal reminders sets only the renewal opt-out", async () => {
+    await POST(request(memberQuery("renewal"), "POST"));
+    expect(await membership()).toMatchObject({
+      renewalOptOut: true,
+      digestOptOut: false,
+      reportOptOut: false,
+    });
   });
 
   it("is idempotent", async () => {
@@ -201,6 +218,17 @@ describe("shared address unsubscribe links", () => {
       digestOptOut: false,
       reportOptOut: false,
     });
+  });
+
+  it("POST for renewal reminders turns off only the renewal switch", async () => {
+    await POST(request(sharedQuery("renewal"), "POST"));
+    expect(await sharedAddress()).toMatchObject({
+      renewalAlerts: false,
+      digest: true,
+      report: true,
+      leakAlerts: true,
+    });
+    expect((await sharedAddress(OTHER_ID))?.renewalAlerts).toBe(true);
   });
 
   it("rejects a membership token used as a shared token", async () => {

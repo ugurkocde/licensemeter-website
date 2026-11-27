@@ -28,8 +28,8 @@ import type { EmailJob } from "~/server/emailPeriods";
 export const TOKEN_TTL_HOURS = 24;
 const TOKEN_TTL_MS = TOKEN_TTL_HOURS * 60 * 60 * 1000;
 
-/** The three workspace emails the shared address has its own switch for. */
-export type SharedEmailJob = EmailJob | "leak";
+/** The workspace emails the shared address has its own switch for. */
+export type SharedEmailJob = EmailJob | "leak" | "renewal";
 
 /** What an admin may type in. Stored trimmed and lowercased. */
 export const sharedAddressSchema = z
@@ -70,7 +70,9 @@ export const sharedRecipient = async (
       ? row.digest
       : job === "report"
         ? row.report
-        : row.leakAlerts;
+        : job === "renewal"
+          ? row.renewalAlerts
+          : row.leakAlerts;
   return wanted ? row.email.trim() : null;
 };
 
@@ -188,7 +190,7 @@ export const confirmAddress = async (
   });
 };
 
-/** Turn one of the three emails on or off for the shared address. */
+/** Turn one of the shared address's emails on or off. */
 export const setSharedJob = async (
   tenantId: string,
   job: SharedEmailJob,
@@ -201,7 +203,9 @@ export const setSharedJob = async (
         ? { digest: enabled }
         : job === "report"
           ? { report: enabled }
-          : { leakAlerts: enabled }),
+          : job === "renewal"
+            ? { renewalAlerts: enabled }
+            : { leakAlerts: enabled }),
       updatedAt: new Date(),
     })
     .where(eq(notificationAddresses.tenantId, tenantId));
