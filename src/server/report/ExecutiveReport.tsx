@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.canvas,
     color: C.ink,
     paddingTop: 40,
-    paddingBottom: 40,
+    paddingBottom: 26,
     paddingHorizontal: 44,
     fontSize: 9,
     fontFamily: "Helvetica",
@@ -115,7 +115,8 @@ const styles = StyleSheet.create({
   cellTitle: { flex: 1, paddingRight: 8 },
   /** Two lines at most, so a long contract name cannot push the page over. */
   clamp: { maxLines: 2, textOverflow: "ellipsis" },
-  cellImpact: { width: 70, textAlign: "right", color: C.waste },
+  clampOne: { maxLines: 1, textOverflow: "ellipsis" },
+  cellImpact: { width: 88, textAlign: "right", color: C.waste },
   muted: { color: C.inkFaint },
   chart: {
     flexDirection: "row",
@@ -160,11 +161,10 @@ const styles = StyleSheet.create({
   cDate: { width: 62 },
   cSeats: { width: 52, textAlign: "right" },
   cSave: { width: 92, textAlign: "right", color: C.waste },
+  /** Grows to push the footer down; content that does not fit breaks the page. */
+  body: { flexGrow: 1 },
   footer: {
-    position: "absolute",
-    bottom: 26,
-    left: 44,
-    right: 44,
+    marginTop: 12,
     borderTopWidth: 1,
     borderTopColor: C.line,
     paddingTop: 6,
@@ -274,169 +274,176 @@ export const ExecutiveReport = ({
       author={branding?.name ?? "LicenseMeter"}
     >
       <Page size="A4" style={styles.page}>
-        <Header summary={summary} branding={branding} />
+        <View style={styles.body}>
+          <Header summary={summary} branding={branding} />
 
-        <View style={styles.kpiRow}>
-          <Kpi
-            label="License spend"
-            value={perYear(summary.spend.annualCents, currency)}
-            sub={`${perMonth(summary.spend.monthlyCents, currency)} today`}
-          />
-          <Kpi
-            label="Open waste"
-            value={perYear(waste.annualCents, currency)}
-            sub={`${fmtNumber(waste.openFindings, currency)} open ${waste.openFindings === 1 ? "finding" : "findings"}`}
-            color={C.waste}
-          />
-          <Kpi
-            label="Realized savings"
-            value={
-              savings ? perYear(savings.annualRunRateCents, currency) : "-"
-            }
-            sub={
-              savings
-                ? `${fmtMoney(savings.cumulativeCents, currency)} accrued to date`
-                : "Savings ledger not enabled"
-            }
-            color={C.brand}
-          />
-          <Kpi
-            label={`Renewals, next ${renewals.windowDays} days`}
-            value={renewalsTotal(summary)}
-            sub={`${seatCount(renewals.cutSeats, currency)} to cut across ${renewals.count} ${renewals.count === 1 ? "renewal" : "renewals"}${renewals.estimate ? " (estimate)" : ""}`}
-            color={C.waste}
-          />
-        </View>
+          <View style={styles.kpiRow}>
+            <Kpi
+              label="License spend"
+              value={perYear(summary.spend.annualCents, currency)}
+              sub={`${perMonth(summary.spend.monthlyCents, currency)} today`}
+            />
+            <Kpi
+              label="Open waste"
+              value={perYear(waste.annualCents, currency)}
+              sub={`${fmtNumber(waste.openFindings, currency)} open ${waste.openFindings === 1 ? "finding" : "findings"}`}
+              color={C.waste}
+            />
+            <Kpi
+              label="Realized savings"
+              value={
+                savings ? perYear(savings.annualRunRateCents, currency) : "-"
+              }
+              sub={
+                savings
+                  ? `${fmtMoney(savings.cumulativeCents, currency)} accrued to date`
+                  : "Savings ledger not enabled"
+              }
+              color={C.brand}
+            />
+            <Kpi
+              label={`Renewals, next ${renewals.windowDays} days`}
+              value={renewalsTotal(summary)}
+              sub={`${seatCount(renewals.cutSeats, currency)} to cut across ${renewals.count} ${renewals.count === 1 ? "renewal" : "renewals"}${renewals.estimate ? " (estimate)" : ""}`}
+              color={C.waste}
+            />
+          </View>
 
-        <View style={styles.twoCol}>
-          <View style={styles.col}>
-            <T style={styles.section}>6-month trend</T>
-            <View style={styles.chart}>
-              {summary.trend.map((p) => (
-                <View key={p.month} style={styles.chartCol}>
-                  <View
-                    style={[
-                      styles.bar,
-                      {
-                        height: height(p.wasteCents),
-                        backgroundColor: C.waste,
-                        opacity: p.wasteCents ? 1 : 0.25,
-                      },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.bar,
-                      {
-                        height: height(p.realizedCents),
-                        backgroundColor: C.brand,
-                        opacity: p.realizedCents ? 1 : 0.25,
-                      },
-                    ]}
-                  />
+          <View style={styles.twoCol}>
+            <View style={styles.col}>
+              <T style={styles.section}>6-month trend</T>
+              <View style={styles.chart}>
+                {summary.trend.map((p) => (
+                  <View key={p.month} style={styles.chartCol}>
+                    <View
+                      style={[
+                        styles.bar,
+                        {
+                          height: height(p.wasteCents),
+                          backgroundColor: C.waste,
+                          opacity: p.wasteCents ? 1 : 0.25,
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.bar,
+                        {
+                          height: height(p.realizedCents),
+                          backgroundColor: C.brand,
+                          opacity: p.realizedCents ? 1 : 0.25,
+                        },
+                      ]}
+                    />
+                  </View>
+                ))}
+              </View>
+              <View style={styles.chartLabels}>
+                {summary.trend.map((p) => (
+                  <T key={p.month} style={styles.chartLabel}>
+                    {execMonth(p.month)}
+                  </T>
+                ))}
+              </View>
+              <View style={styles.legend}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <View style={[styles.swatch, { backgroundColor: C.waste }]} />
+                  <T>Open waste per month</T>
                 </View>
-              ))}
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <View style={[styles.swatch, { backgroundColor: C.brand }]} />
+                  <T>Savings realized that month</T>
+                </View>
+              </View>
             </View>
-            <View style={styles.chartLabels}>
-              {summary.trend.map((p) => (
-                <T key={p.month} style={styles.chartLabel}>
-                  {execMonth(p.month)}
+
+            <View style={styles.col}>
+              <T style={styles.section}>Open waste by rule</T>
+              {waste.byRule.length ? (
+                waste.byRule.map((r) => (
+                  <View key={r.label} style={styles.row}>
+                    <T style={[styles.cellTitle, styles.clamp]}>
+                      {r.label} ({fmtNumber(r.count, currency)})
+                    </T>
+                    <T style={styles.cellImpact}>
+                      {r.monthlyCents > 0
+                        ? perMonth(r.monthlyCents, currency)
+                        : "-"}
+                    </T>
+                  </View>
+                ))
+              ) : (
+                <T style={styles.muted}>No open findings.</T>
+              )}
+              {waste.capped && (
+                <T style={[styles.muted, { marginTop: 4, fontSize: 7 }]}>
+                  Total capped at comparable spend:{" "}
+                  {perMonth(waste.monthlyCents, currency)}.
                 </T>
-              ))}
-            </View>
-            <View style={styles.legend}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <View style={[styles.swatch, { backgroundColor: C.waste }]} />
-                <T>Open waste per month</T>
-              </View>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <View style={[styles.swatch, { backgroundColor: C.brand }]} />
-                <T>Savings realized that month</T>
-              </View>
+              )}
             </View>
           </View>
 
-          <View style={styles.col}>
-            <T style={styles.section}>Open waste by rule</T>
-            {waste.byRule.length ? (
-              waste.byRule.map((r) => (
-                <View key={r.label} style={styles.row}>
-                  <T style={styles.cellTitle}>
-                    {r.label} ({fmtNumber(r.count, currency)})
-                  </T>
-                  <T style={styles.cellImpact}>
-                    {r.monthlyCents > 0
-                      ? perMonth(r.monthlyCents, currency)
-                      : "-"}
-                  </T>
-                </View>
-              ))
-            ) : (
-              <T style={styles.muted}>No open findings.</T>
-            )}
-            {waste.capped && (
-              <T style={[styles.muted, { marginTop: 4, fontSize: 7 }]}>
-                Total capped at comparable spend:{" "}
-                {perMonth(waste.monthlyCents, currency)}.
-              </T>
-            )}
-          </View>
-        </View>
-
-        <T style={styles.section}>
-          Renewal actions, next {renewals.windowDays} days
-        </T>
-        {renewals.actions.length ? (
-          <View>
-            <View style={styles.tRow}>
-              <T style={[styles.th, styles.cName]}>Subscription</T>
-              <T style={[styles.th, styles.cDate]}>Renews</T>
-              <T style={[styles.th, styles.cDate]}>Decide by</T>
-              <T style={[styles.th, styles.cSeats]}>Renew at</T>
-              <T style={[styles.th, styles.cSeats]}>Cut</T>
-              <T style={[styles.th, styles.cSave, { color: C.inkFaint }]}>
-                Savings
-              </T>
-            </View>
-            {renewals.actions.map((a) => (
-              <View
-                key={`${a.kind}-${a.label}-${a.renewalDate}`}
-                style={styles.tRow}
-              >
-                <View style={styles.cName}>
-                  <T style={styles.clamp}>{a.label}</T>
-                  <T style={[styles.muted, { fontSize: 7 }]}>
-                    {a.vendor} · {daysLabel(a.daysUntil)}
-                    {a.estimate ? " · estimate" : ""}
-                  </T>
-                </View>
-                <T style={styles.cDate}>{execDay(a.renewalDate)}</T>
-                <T style={styles.cDate}>{execDay(a.decideBy)}</T>
-                <T style={styles.cSeats}>
-                  {fmtNumber(a.recommendedSeats, currency)} of{" "}
-                  {fmtNumber(a.paidSeats, currency)}
-                </T>
-                <T style={styles.cSeats}>{fmtNumber(a.cutSeats, currency)}</T>
-                <T style={styles.cSave}>{actionSavings(a, currency)}</T>
-              </View>
-            ))}
-            {renewals.count > renewals.actions.length && (
-              <T style={[styles.muted, { marginTop: 4, fontSize: 7 }]}>
-                {renewals.count - renewals.actions.length} more{" "}
-                {renewals.count - renewals.actions.length === 1
-                  ? "renewal"
-                  : "renewals"}{" "}
-                in the renewal savings plan.
-              </T>
-            )}
-          </View>
-        ) : (
-          <T style={styles.muted}>
-            No renewal in the next {renewals.windowDays} days has seats to cut.
+          <T style={styles.section}>
+            Renewal actions, next {renewals.windowDays} days
           </T>
-        )}
+          {renewals.actions.length ? (
+            <View>
+              <View style={styles.tRow}>
+                <T style={[styles.th, styles.cName]}>Subscription</T>
+                <T style={[styles.th, styles.cDate]}>Renews</T>
+                <T style={[styles.th, styles.cDate]}>Decide by</T>
+                <T style={[styles.th, styles.cSeats]}>Renew at</T>
+                <T style={[styles.th, styles.cSeats]}>Cut</T>
+                <T style={[styles.th, styles.cSave, { color: C.inkFaint }]}>
+                  Savings
+                </T>
+              </View>
+              {renewals.actions.map((a, i) => (
+                <View
+                  key={`${i}-${a.kind}-${a.vendor}-${a.label}`}
+                  style={styles.tRow}
+                >
+                  <View style={styles.cName}>
+                    <T style={styles.clamp}>{a.label}</T>
+                    <T style={[styles.muted, styles.clampOne, { fontSize: 7 }]}>
+                      {a.vendor} · {daysLabel(a.daysUntil)}
+                      {a.estimate ? " · estimate" : ""}
+                    </T>
+                  </View>
+                  <T style={styles.cDate}>{execDay(a.renewalDate)}</T>
+                  <T style={styles.cDate}>{execDay(a.decideBy)}</T>
+                  <T style={styles.cSeats}>
+                    {fmtNumber(a.recommendedSeats, currency)} of{" "}
+                    {fmtNumber(a.paidSeats, currency)}
+                  </T>
+                  <T style={styles.cSeats}>{fmtNumber(a.cutSeats, currency)}</T>
+                  <T style={[styles.cSave, styles.clamp]}>
+                    {actionSavings(a, currency)}
+                  </T>
+                </View>
+              ))}
+              {renewals.count > renewals.actions.length && (
+                <T style={[styles.muted, { marginTop: 4, fontSize: 7 }]}>
+                  {renewals.count - renewals.actions.length} more{" "}
+                  {renewals.count - renewals.actions.length === 1
+                    ? "renewal"
+                    : "renewals"}{" "}
+                  in the renewal savings plan.
+                </T>
+              )}
+            </View>
+          ) : (
+            <T style={styles.muted}>
+              No renewal in the next {renewals.windowDays} days has seats to
+              cut.
+            </T>
+          )}
+        </View>
 
-        <View style={styles.footer} fixed>
+        {/* In the flow, not fixed: overflow then adds a page the tests catch
+            instead of drawing under the footer. */}
+        <View style={styles.footer}>
           <T>
             {branding?.name ? `Prepared by ${branding.name}. ` : ""}
             {EXEC_FOOTNOTE}

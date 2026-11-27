@@ -1,6 +1,7 @@
 import { Lock } from "lucide-react";
 
 import { fmtMoney, fmtNumber } from "~/lib/format";
+import { brandBand, type ReportBranding } from "~/server/report/brandStyle";
 import {
   actionSavings,
   daysLabel,
@@ -29,9 +30,9 @@ const Section = ({
   children: React.ReactNode;
 }) => (
   <section className="min-w-0">
-    <h3 className="text-ink-faint mb-2 text-[11px] font-medium tracking-[0.14em] uppercase">
+    <h2 className="text-ink-faint mb-2 text-[11px] font-medium tracking-[0.14em] uppercase">
       {title}
-    </h3>
+    </h2>
     {children}
   </section>
 );
@@ -73,14 +74,74 @@ const Kpi = ({
   </div>
 );
 
+const Header = ({
+  summary,
+  branding,
+}: {
+  summary: ExecutiveSummary;
+  branding: ReportBranding | null;
+}) => {
+  const meta = (
+    <div className="text-ink-soft text-xs sm:text-right">
+      <p>{summary.workspace}</p>
+      <p>Generated {execDay(summary.generatedAt)}</p>
+    </div>
+  );
+  if (!branding) {
+    return (
+      <header className="border-ink flex flex-wrap items-end justify-between gap-3 border-b pb-3">
+        <div>
+          <p className="font-display text-xl">
+            License<span className="text-brand">Meter</span>
+          </p>
+          <p className="text-ink-soft text-sm">Executive savings report</p>
+        </div>
+        {meta}
+      </header>
+    );
+  }
+  // The white-label header as the PDF draws it.
+  const band = brandBand(branding.color);
+  const name = branding.name?.trim() ?? "";
+  return (
+    <header>
+      <div className="flex flex-wrap items-end justify-between gap-3 pb-3">
+        {branding.logo ? (
+          // A stored data URL: next/image has nothing to optimise here.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={branding.logo}
+            alt={name ? `${name} logo` : "Brand logo"}
+            className="h-8 max-w-[60%] object-contain object-left"
+          />
+        ) : (
+          <p className="font-display text-xl">{name}</p>
+        )}
+        {meta}
+      </div>
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+        style={{ backgroundColor: band.background, color: band.text }}
+      >
+        <span>Executive savings report</span>
+        {name && <span className="text-xs">Prepared by {name}</span>}
+      </div>
+    </header>
+  );
+};
+
 export function ExecutiveReportPreview({
   summary,
   teaser = false,
+  branding = null,
 }: {
   summary: ExecutiveSummary;
   teaser?: boolean;
+  /** White-label marks, as the PDF uses them; null for LicenseMeter. */
+  branding?: ReportBranding | null;
 }) {
   const { currency, waste, savings, renewals } = summary;
+  const name = branding?.name?.trim() ?? "";
   const max = trendMax(summary);
   const height = (cents: number | null) =>
     cents ? `${Math.max(3, (cents * 100) / max)}%` : "2%";
@@ -89,18 +150,7 @@ export function ExecutiveReportPreview({
       aria-label="Executive savings report preview"
       className="border-line shadow-card mx-auto w-full max-w-[52rem] rounded-sm border bg-white px-4 py-5 sm:px-10 sm:py-9"
     >
-      <header className="border-ink flex flex-wrap items-end justify-between gap-3 border-b pb-3">
-        <div>
-          <p className="font-display text-xl">
-            License<span className="text-brand">Meter</span>
-          </p>
-          <p className="text-ink-soft text-sm">Executive savings report</p>
-        </div>
-        <div className="text-ink-soft text-xs sm:text-right">
-          <p>{summary.workspace}</p>
-          <p>Generated {execDay(summary.generatedAt)}</p>
-        </div>
-      </header>
+      <Header summary={summary} branding={branding} />
 
       <dl className="border-line bg-line mt-5 grid grid-cols-2 gap-px border lg:grid-cols-4">
         <Kpi
@@ -147,7 +197,11 @@ export function ExecutiveReportPreview({
         <Section title="6-month trend">
           <ol
             className="border-line flex h-24 items-end gap-2 border-b"
-            aria-label="Open waste and realized savings per month"
+            aria-label={
+              teaser
+                ? "Open waste per month"
+                : "Open waste and realized savings per month"
+            }
           >
             {summary.trend.map((p) => (
               <li
@@ -181,7 +235,10 @@ export function ExecutiveReportPreview({
               </li>
             ))}
           </ol>
-          <div className="text-ink-faint mt-1 flex gap-2 text-[10px]">
+          <div
+            aria-hidden="true"
+            className="text-ink-faint mt-1 flex gap-2 text-[10px]"
+          >
             {summary.trend.map((p) => (
               <span key={p.month} className="flex-1 text-center">
                 {execMonth(p.month)}
@@ -291,9 +348,9 @@ export function ExecutiveReportPreview({
                   </tr>
                 </thead>
                 <tbody>
-                  {renewals.actions.map((a) => (
+                  {renewals.actions.map((a, i) => (
                     <tr
-                      key={`${a.kind}-${a.label}-${a.renewalDate}`}
+                      key={`${i}-${a.kind}-${a.vendor}-${a.label}`}
                       className="border-line border-b last:border-b-0"
                     >
                       <td className="py-2 pr-2">
@@ -343,7 +400,11 @@ export function ExecutiveReportPreview({
       </div>
 
       <p className="border-line text-ink-faint mt-8 border-t pt-3 text-[11px] leading-relaxed">
-        {EXEC_FOOTNOTE} Generated by LicenseMeter (licensemeter.com).
+        {name ? `Prepared by ${name}. ` : ""}
+        {EXEC_FOOTNOTE}
+        {branding
+          ? " Generated with LicenseMeter (licensemeter.com)."
+          : " Generated by LicenseMeter (licensemeter.com)."}
       </p>
     </article>
   );

@@ -1,3 +1,4 @@
+import { Document, Page, renderToBuffer, Text } from "@react-pdf/renderer";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -23,6 +24,9 @@ import { renderExecutiveReportPdf } from "./renderExecutive";
  */
 
 const NOW = new Date("2026-11-27T10:00:00Z");
+/** A 1x1 transparent PNG. */
+const PNG_LOGO =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 const E3 = "05e9a617-0261-4cee-bb44-138d3ef5d965";
 const inDays = (days: number) => new Date(NOW.getTime() + days * 86_400_000);
 
@@ -194,6 +198,18 @@ describe("buildExecutiveSummary", () => {
       realizedCents: 0,
     });
     expect(summary.trend[4]!.wasteCents).toBeNull();
+    // A snapshot from before the cap: waste above spend is capped like today.
+    const precap = buildExecutiveSummary({
+      ...input,
+      snapshots: [
+        {
+          day: "2026-11-01",
+          totalMonthlySpendCents: 1_000,
+          totalMonthlyWasteCents: 5_000,
+        },
+      ],
+    });
+    expect(precap.trend.at(-1)!.wasteCents).toBeLessThanOrEqual(1_000);
     expect(summary.trend[5]!.realizedCents).toBe(7_200);
   });
 
@@ -299,39 +315,70 @@ describe("executive report privacy", () => {
     expect(height).toBeCloseTo(841.89, 1);
   });
 
-  it("stays on one page at the row limits, with white-label branding", async () => {
-    const long = "Microsoft 365 E5 (no Teams) with a very long contract name";
+  it("stays on one page in the worst case, with white-label branding", async () => {
+    // Every row at its limit and every optional line shown: capped waste,
+    // long rule labels, unpriced seats, the longest vendor and contract
+    // names the forms accept, a logo and the "more renewals" line.
+    const vendor = "V".repeat(100);
+    const label = "Enterprise agreement ".repeat(8).slice(0, 160);
+    const item = plan.items[0]!;
     const crowded = buildExecutiveSummary({
       ...input,
+      monthlySpendCents: 10_000,
       plan: {
         ...plan,
         items: Array.from({ length: 12 }, (_, i) => ({
-          ...plan.items[0]!,
-          key: `sku-${i}`,
-          label: `${long} ${i}`,
+          ...item,
+          key: `contract-${i}`,
+          kind: "contract" as const,
+          vendor,
+          label: `${label}${i}`,
+          estimate: true,
+          unpricedCutSeats: 3,
         })),
       },
       findings: (
         [
-          "never_active",
-          "inactive_90d",
-          "shelfware",
-          "copilot_unused",
-          "licensed_guest",
-          "adobe_orphaned",
-          "saas_inactive",
-          "overlapping_licenses",
-          "disabled_account_with_license",
+          "saas_disabled_in_entra",
+          "adobe_disabled_in_entra",
           "saas_orphaned",
+          "adobe_orphaned",
+          "service_plans_disabled",
+          "disabled_account_with_license",
+          "overlapping_licenses",
+          "saas_inactive",
+          "never_active",
+          "copilot_unused",
         ] as WasteRuleId[]
-      ).map((rule) => ({ rule, monthlyImpactCents: 123_456 })),
+      ).map((rule) => ({ rule, monthlyImpactCents: 123_456_789 })),
     });
+    expect(crowded.waste.capped).toBe(true);
+    expect(crowded.renewals.actions).toHaveLength(MAX_RENEWAL_ROWS);
     const pdf = await renderExecutiveReportPdf(crowded, {
       name: "Northwind IT",
       color: "#ffe600",
-      logo: null,
+      logo: PNG_LOGO,
     });
     expect(pdfPages(pdf)).toHaveLength(1);
-    expect(pdfText(pdf)).toContain("Prepared by Northwind IT");
+    const text = pdfText(pdf);
+    expect(text).toContain("Prepared by Northwind IT");
+    expect(text).toContain("more renewals in the renewal savings plan");
+  });
+
+  it("reads the text of every page", async () => {
+    // Guards the helper: a missed stream would hide PII from these tests.
+    const pdf = await renderToBuffer(
+      createElement(
+        Document,
+        null,
+        ...["first page", "second page", "third page"].map((t) =>
+          createElement(Page, { key: t }, createElement(Text, null, t)),
+        ),
+      ),
+    );
+    expect(pdfPages(pdf)).toHaveLength(3);
+    const text = pdfText(pdf);
+    for (const t of ["first page", "second page", "third page"])
+      expect(text).toContain(t);
   });
 });

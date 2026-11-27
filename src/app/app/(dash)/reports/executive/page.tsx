@@ -7,6 +7,7 @@ import { PlanBadge } from "~/components/workspace/FeatureLock";
 import { savingsTrialLabel } from "~/components/workspace/PriceConfidence";
 import { upgradePath } from "~/lib/upgrade";
 import { requireAccess } from "~/server/access";
+import { getBranding } from "~/server/billing/branding";
 import { hasFeature } from "~/server/entitlement";
 import { loadExecutiveSummary } from "~/server/report/executiveData";
 
@@ -15,7 +16,10 @@ export const metadata: Metadata = { title: "Executive report" };
 export default async function ExecutiveReportPage() {
   const { tenant, entitlement } = await requireAccess("viewer");
   const full = hasFeature(entitlement, "execReport");
-  const summary = await loadExecutiveSummary(tenant, entitlement);
+  const [summary, branding] = await Promise.all([
+    loadExecutiveSummary(tenant, entitlement),
+    full ? getBranding(tenant, entitlement) : null,
+  ]);
 
   return (
     <div className="mx-auto grid max-w-5xl min-w-0 grid-cols-1 gap-6">
@@ -55,7 +59,11 @@ export default async function ExecutiveReportPage() {
           This workspace is not covered by your MSP plan.
         </p>
       )}
-      <ExecutiveReportPreview summary={summary} teaser={!full} />
+      <ExecutiveReportPreview
+        summary={summary}
+        teaser={!full}
+        branding={branding}
+      />
     </div>
   );
 }

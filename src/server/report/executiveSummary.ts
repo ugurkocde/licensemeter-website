@@ -18,7 +18,7 @@ export const RENEWAL_WINDOW_DAYS = 90;
 export const TREND_MONTHS = 6;
 /** Rows that fit on the single page; the rest are summed into one line. */
 export const MAX_RULE_ROWS = 8;
-export const MAX_RENEWAL_ROWS = 8;
+export const MAX_RENEWAL_ROWS = 6;
 
 export type ExecutiveFinding = {
   rule: WasteRuleId;
@@ -176,8 +176,14 @@ const trendOf = (
     const snap = latest.get(month);
     return {
       month,
-      spendCents: snap?.totalMonthlySpendCents ?? null,
-      wasteCents: snap?.totalMonthlyWasteCents ?? null,
+      spendCents: snap ? Math.max(0, snap.totalMonthlySpendCents) : null,
+      // Older snapshots can predate the cap; cap them like the overview chart.
+      wasteCents: snap
+        ? comparableWaste(
+            Math.max(0, snap.totalMonthlyWasteCents),
+            Math.max(0, snap.totalMonthlySpendCents),
+          )
+        : null,
       realizedCents: ledger ? (realized.get(month) ?? 0) : null,
     };
   });

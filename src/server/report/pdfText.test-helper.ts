@@ -9,7 +9,7 @@ import { inflateSync } from "node:zlib";
 const streams = (pdf: Buffer): string[] => {
   const raw = pdf.toString("latin1");
   const out: string[] = [];
-  const re = /stream\r?\n/g;
+  const re = /(?<!end)stream\r?\n/g;
   let match: RegExpExecArray | null;
   while ((match = re.exec(raw))) {
     const start = match.index + match[0].length;
@@ -21,7 +21,7 @@ const streams = (pdf: Buffer): string[] => {
     } catch {
       out.push(body.toString("latin1"));
     }
-    re.lastIndex = end;
+    re.lastIndex = end + "endstream".length;
   }
   return out;
 };
@@ -58,7 +58,8 @@ export const pdfText = (pdf: Buffer): string => {
       parts.push(text);
     }
   }
-  return parts.join(" ");
+  // Runs split for kerning or by word; one space between words reads best.
+  return parts.join(" ").replace(/\s+/g, " ");
 };
 
 /** The MediaBox of every page object, as [width, height] in points. */
