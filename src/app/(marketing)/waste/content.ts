@@ -191,44 +191,44 @@ Get-MgUser -All -Filter "signInActivity/lastSignInDateTime le $cutoff" -Property
     name: "Unassigned paid seats",
     metaTitle: "Unassigned Microsoft 365 licenses (shelfware)",
     metaDescription:
-      "Find unused Microsoft 365 licenses by comparing purchased and assigned seats per SKU with Get-MgSubscribedSku.",
-    h1: "Unassigned Microsoft 365 licenses, the shelfware problem",
+      "Compare enabled and assigned Microsoft 365 seats by SKU, review idle accounts, and check which paid licenses you can reassign or remove from billing.",
+    h1: "How to find and reclaim unused Microsoft 365 licenses",
     intro:
-      "Unused Microsoft 365 licenses show up as purchased seats assigned to nobody or as seats still assigned to disabled, inactive, or never-active accounts. At the subscription level, find unassigned paid seats by comparing prepaidUnits.enabled with consumedUnits for each SKU using Get-MgSubscribedSku. This page covers unassigned seats, and the related explainers cover licenses still assigned to users.",
+      "To find unused Microsoft 365 licenses, use Get-MgSubscribedSku to compare prepaidUnits.enabled with consumedUnits for each SKU, then use the related explainers to check licenses still assigned to disabled, inactive, or never-active accounts. Exclude free and trial seats from the paid count. You can reassign available paid seats right away. Check billing terms before reducing your subscription count, and review group assignments and data retention before unassigning a user.",
     summary:
-      "Purchased seats assigned to nobody: prepaid units minus consumed units, per SKU.",
+      "Paid seats without an assignment and how to check whether you can reuse them or reduce your subscription count.",
     what: {
-      heading: "Where shelfware comes from",
+      heading: "Which unused seats can you reclaim?",
       paragraphs: [
-        "Renewals get sized for headroom that never materializes, a hiring plan slips after the true-up, a project ends and its seats are unassigned but not cancelled, or a bundle purchase brings more seats of a SKU than the team that needed it. The unassigned seats sit on the subscription, invisible in any per-user view, and bill in full.",
-        "The raw purchased-minus-assigned arithmetic is also misleading if taken naively. Microsoft auto-provisions free and viral SKUs into every tenant, such as WINDOWS_STORE with a million prepaid units or FLOW_FREE, and capacity-style allotments of thousands of units are licensing plumbing rather than purchases. A useful shelfware number has to exclude those.",
+        "Subtract consumedUnits from prepaidUnits.enabled per SKU to find spare enabled seats, then exclude free and viral SKUs and subtract enabled trial units before counting paid seats. Licenses still assigned to disabled, inactive, or never-active accounts need a separate account review. See Related waste patterns below for those checks.",
+        "Reassign an available seat now if someone needs it. To lower what you pay, reduce the purchased quantity in the Microsoft 365 admin center. For a Microsoft Customer Agreement (MCA) billing account, recurring billing must be on. You can reduce the quantity within 7 days of purchase or renewal. After that window, the reduction takes effect at the next renewal.",
       ],
     },
     manual: {
       heading: "Detect it manually",
       intro:
-        "Get-MgSubscribedSku returns purchased and assigned counts per SKU; the difference is your unassigned seat count:",
+        "Use Get-MgSubscribedSku to compare enabled and assigned units for each SKU. Add -All to follow all pages. The Purchased column below shows enabled units before you screen for free and trial seats.",
       snippet: `Connect-MgGraph -Scopes 'Organization.Read.All'
 Get-MgSubscribedSku | Select-Object SkuPartNumber,
   @{ n = 'Purchased'; e = { $_.PrepaidUnits.Enabled } },
   ConsumedUnits,
   @{ n = 'Unassigned'; e = { $_.PrepaidUnits.Enabled - $_.ConsumedUnits } }`,
       notes: [
-        "Ignore the free and viral rows before drawing conclusions: WINDOWS_STORE, FLOW_FREE, POWERAPPS_VIRAL, TEAMS_EXPLORATORY and similar SKUs show huge prepaid counts that represent no purchase and carry no cost.",
-        "The output speaks in SKU part numbers, not prices. Turning the unassigned counts into a monthly euro figure means mapping every SKU to your contract price by hand, and repeating that every run.",
+        "Check the four counts in PrepaidUnits. Use Enabled for the active seat count and review Warning, Suspended, and LockedOut separately. Exclude free and viral SKUs such as WINDOWS_STORE, FLOW_FREE, POWERAPPS_VIRAL, and TEAMS_EXPLORATORY. Check the subscription for trial units and exclude them from the paid count.",
+        "Use the related explainers to find licensed accounts that are disabled, inactive, or never active. Before unassigning a seat, check whether it comes from a group and remove any inherited assignment through that group. Confirm mailbox and OneDrive retention needs and whether to convert the mailbox to a shared mailbox first.",
       ],
     },
     automatic: {
       heading: "How LicenseMeter detects it",
       paragraphs: [
-        "The sync reads subscribed SKUs through the read-only LicenseAssignment.Read.All permission and computes prepaidUnits.enabled minus consumedUnits per SKU. Free, viral and capacity-style SKUs are excluded by a curated exemption list plus a 5,000-unit capacity threshold, a guard added after the first live tenant sync showed how much noise Microsoft's auto-provisioned allotments create.",
-        "Because the signal is pure subscription data, shelfware detection works in every tenant: it needs no Entra ID P1 and is unaffected by concealed report names. Findings persist across nightly syncs, so a count that keeps growing is visible as a trend rather than a one-off snapshot.",
+        "LicenseMeter skips SKUs marked free in its catalog. For each remaining SKU, it subtracts enabled trial units from enabled prepaid units, then subtracts assigned units. It flags the SKU when unassigned paid seats remain.",
+        "This check uses subscription inventory and works without Entra ID P1 or identifiable usage reports.",
       ],
     },
     cost: {
       heading: "What it costs",
       paragraphs: [
-        "A shelfware finding is priced as the unassigned seat count times the SKU's monthly price from the per-tenant price book, prefilled with list-price estimates because Microsoft offers no API for your negotiated pricing, and editable to your actual rates.",
+        "LicenseMeter estimates the monthly cost by multiplying unassigned paid seats by the SKU's monthly price. Use your contract rate for a tenant-specific estimate.",
         `In the ${DEMO_FIGURES.users}-person sample tenant, unassigned paid seats waste € ${demoEuros(DEMO_FIGURES.byCategory.shelfware)} a month, the largest single category in the demo workspace.`,
       ],
     },
