@@ -326,6 +326,12 @@ export default async function SettingsPage() {
                 ) : (
                   "Off"
                 )}
+                {renewalReminders && (
+                  <p className="text-ink-faint mt-1 text-xs">
+                    Monthly subscriptions get the 30 day one only when included
+                    on the Renewals page. Trial-only subscriptions get none.
+                  </p>
+                )}
               </dd>
             </div>
             <div>
