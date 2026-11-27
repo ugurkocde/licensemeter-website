@@ -189,8 +189,18 @@ export const renewalAlertMessage = (
   };
 };
 
-const emptyTotals = (tenantCount: number): JobTotals => ({
+/**
+ * The digest's totals, plus deliveries whose retries were used up on earlier
+ * days. A reminder's ledger key stays the same for its whole band (up to 30
+ * days), so such a row comes back as "failed" on every run; counting it as a
+ * fresh failure would report the run as incomplete each morning although
+ * running it again cannot change anything.
+ */
+export type RenewalJobTotals = JobTotals & { skippedExhausted: number };
+
+const emptyTotals = (tenantCount: number): RenewalJobTotals => ({
   tenants: tenantCount,
+  skippedExhausted: 0,
   sent: 0,
   skippedAlreadySent: 0,
   skippedOptedOut: 0,
@@ -202,7 +212,7 @@ const emptyTotals = (tenantCount: number): JobTotals => ({
 const alertsForTenant = async (
   tenant: TenantRow,
   now: Date,
-  totals: JobTotals,
+  totals: RenewalJobTotals,
 ): Promise<void> => {
   // The reminders are part of the renewal savings plan. A lapsed plan keeps
   // the workspace switch as it is and simply sends nothing.
@@ -216,6 +226,9 @@ const alertsForTenant = async (
   for (const alert of due) {
     let built: RenewalAlertMessage | undefined;
     for (const recipient of audience.recipients) {
+      // deliverOnce asks for the message only after a won claim, so a
+      // "failed" without a request is a row whose retries are used up.
+      let attempted = false;
       const outcome = await deliverOnce(
         {
           tenantId: tenant.id,
@@ -224,6 +237,7 @@ const alertsForTenant = async (
           recipient: recipient.email,
         },
         () => {
+          attempted = true;
           built ??= renewalAlertMessage(tenant, alert, now);
           const unsubscribeUrl = unsubscribeUrlFor(
             tenant.id,
@@ -247,7 +261,8 @@ const alertsForTenant = async (
           });
         },
       );
-      totals[outcome]++;
+      if (outcome === "failed" && !attempted) totals.skippedExhausted++;
+      else totals[outcome]++;
     }
   }
 };
@@ -259,7 +274,7 @@ const alertsForTenant = async (
  */
 export const runRenewalAlertJob = async (
   opts: JobOptions = {},
-): Promise<JobTotals> => {
+): Promise<RenewalJobTotals> => {
   const clock = opts.clock ?? Date.now;
   const budgetMs = opts.budgetMs ?? JOB_BUDGET_MS;
   const start = clock();

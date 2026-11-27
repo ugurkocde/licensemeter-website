@@ -84,6 +84,18 @@ The figure is an estimate from your price book, not a measured increase in your 
 
 See [Detection rules](/findings/rules/) for what counts as a leak and [Remediation workflow](/findings/workflow/) for what to do next. If an alert never arrived, an Owner or Admin can ask for the leaks that are open right now, described under [Recover missed email](#recover-missed-email).
 
+## Renewal reminder
+
+Pro and MSP. Sent 90, 60 and 30 days before each paid renewal in the [renewal savings plan](/renewals/): Microsoft subscriptions with a renewal date and the contracts you track. Each reminder covers one renewal and states when it renews, the last day to change the seat count, the paid, active and recommended seats, the seats to cut and the yearly savings when the seats have a price. The renewal's calendar file (.ics) is attached.
+
+| Detail | Description |
+| --- | --- |
+| Subject | Names the vendor, how many days are left, the subscription or contract and, when there is something to cut, the yearly savings |
+| Sent to | Owners and Admins who have not turned it off, and the shared notification address if its switch is on |
+| When | Daily at 06:00 UTC, once per renewal for each of the 90, 60 and 30 day marks. A renewal first seen 45 days out gets the 60 day reminder |
+| Which renewals | Annual and multi-year terms by default. A monthly (NCE) subscription only when you chose **Monthly (NCE), include in reminders** on the Renewals page, and then only the 30 day reminder. Subscriptions that are entirely on trial are left out |
+| Turn it off | For the workspace: **Settings**, **Renewal reminders**. For yourself: **Settings**, under **Email me**, or the unsubscribe link at the bottom of the email |
+
 ## Invitation
 
 Sent when an Owner or Admin invites you under **Settings**, **Members**. It names the person who invited you, the workspace and your role.
@@ -150,15 +162,15 @@ Entering another address replaces the request and kills the older link. An addre
 
 ### What it receives
 
-Three switches under the address decide whether it gets the weekly digest, the monthly report and leak alerts. They are independent of the workspace switches and of anyone's personal preferences: a workspace that has the monthly report turned off sends none, no matter what the shared address asks for.
+Four switches under the address decide whether it gets the weekly digest, the monthly report, leak alerts and renewal reminders (Pro and MSP). They are independent of the workspace switches and of anyone's personal preferences: a workspace that has the monthly report turned off sends none, no matter what the shared address asks for.
 
-Every digest and report to the shared address carries its own unsubscribe link. Using it turns off that one email for that one workspace and touches nobody's membership. **Remove address** under **Settings** deletes the address, any pending confirmation and the switches in one step.
+Every digest, report and renewal reminder to the shared address carries its own unsubscribe link. Using it turns off that one email for that one workspace and touches nobody's membership. **Remove address** under **Settings** deletes the address, any pending confirmation and the switches in one step.
 
 Only Owners and Admins see and change any of this. The sample workspace never sends email and has no shared address.
 
 ## Delivery status
 
-Owners and Admins find **Email delivery** under **Settings**. It lists the latest digests, reports and leak alerts for the workspace, each with the recipient and what the mail provider reported back: delivered, delayed, bounced or marked as spam.
+Owners and Admins find **Email delivery** under **Settings**. It lists the latest digests, reports, renewal reminders and leak alerts for the workspace, each with the recipient and what the mail provider reported back: delivered, delayed, bounced or marked as spam.
 
 When an address bounces permanently, is held back by the mail provider, or a recipient marks an email as spam, LicenseMeter stops sending email to it and shows it under **Blocked addresses** with the reason. One dead mailbox then no longer affects delivery for everyone else in the workspace. Blocks are per workspace: the same address can still receive mail in another workspace.
 
@@ -195,8 +207,8 @@ The block is cleared for one workspace only. The same address stays blocked in a
 
 - Check the spam folder and any quarantine your organization runs, then allow the sender.
 - Confirm the address. LicenseMeter writes to the address of your membership, shown under **Settings**, **Email me**.
-- Only Owners and Admins receive the digest, the report and leak alerts. Viewers do not.
-- The digest and the report respect your personal switch, and leak alerts respect the workspace switch.
+- Only Owners and Admins receive the digest, the report, renewal reminders and leak alerts. Viewers do not.
+- The digest, the report and renewal reminders respect your personal switch, and leak alerts respect the workspace switch. The report and renewal reminders also need their workspace switch on.
 - Check **Settings**, **Email delivery** for what the mail provider reported, and whether the address is listed under **Blocked addresses**. A blocked address can be cleared there once the mailbox works again.
 - To catch up on leaks you may have missed, use **Send the current findings** under **Email delivery**.
 - A shared notification address only receives mail after somebody confirmed the emailed link, and only for the switches that are on.

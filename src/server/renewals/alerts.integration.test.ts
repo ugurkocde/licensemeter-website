@@ -104,7 +104,10 @@ const sentTo = () =>
 
 beforeEach(async () => {
   currentDb = await freshDb();
-  sendEmailMock.mockClear();
+  sendEmailMock.mockReset();
+  sendEmailMock.mockImplementation(() =>
+    Promise.resolve({ id: `re_${++receipts}` }),
+  );
   notifyOpsMock.mockClear();
   await currentDb
     .insert(schema.tenants)
@@ -132,6 +135,7 @@ describe("runRenewalAlertJob", () => {
       skippedBlocked: 0,
       failed: 0,
       unprocessedTenants: 0,
+      skippedExhausted: 0,
     });
     expect(sentTo()).toEqual(["anna@contoso.test", "ben@contoso.test"]);
 
@@ -170,12 +174,13 @@ describe("runRenewalAlertJob", () => {
   it("sends the 90, 60 and 30 day reminders as the renewal comes closer", async () => {
     await seedMember("anna@contoso.test");
     await seedSku(E3, 95);
-    const subjects: string[] = [];
-    for (let day = 0; day <= 95; day++) {
+    // The edges of every band; the full day-by-day sweep is a unit test.
+    for (const day of [0, 4, 5, 6, 34, 35, 36, 64, 65, 66, 95]) {
       await runRenewalAlertJob({ now: at(day) });
     }
-    for (const [args] of sendEmailMock.mock.calls) subjects.push(args.subject);
-    expect(subjects.map((s) => s.split(":")[0])).toEqual([
+    expect(
+      sendEmailMock.mock.calls.map(([args]) => args.subject.split(":")[0]),
+    ).toEqual([
       "Microsoft renewal in 90 days",
       "Microsoft renewal in 60 days",
       "Microsoft renewal in 30 days",
@@ -280,6 +285,84 @@ describe("runRenewalAlertJob", () => {
     await currentDb.update(schema.renewalSkuTerms).set({ monthlyAlerts: true });
     await runRenewalAlertJob({ now: NOW });
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends nothing once the paid plan has lapsed", async () => {
+    await seedMember("anna@contoso.test");
+    await seedSku(E3, 30);
+    await currentDb
+      .update(schema.entitlements)
+      .set({
+        status: "canceled",
+        currentPeriodEnd: new Date(NOW.getTime() - DAY),
+      })
+      .where(eq(schema.entitlements.tenantId, TENANT_ID));
+    expect(await runRenewalAlertJob({ now: NOW })).toMatchObject({
+      tenants: 1,
+      sent: 0,
+    });
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("skips an address the mail provider blocked", async () => {
+    await seedMember("anna@contoso.test");
+    await seedMember("ben@contoso.test");
+    await seedSku(E3, 30);
+    await currentDb.insert(schema.emailBlocks).values({
+      tenantId: TENANT_ID,
+      email: "ben@contoso.test",
+      reason: "bounced",
+    });
+    expect(await runRenewalAlertJob({ now: NOW })).toMatchObject({
+      sent: 1,
+      skippedBlocked: 1,
+    });
+    expect(sentTo()).toEqual(["anna@contoso.test"]);
+  });
+
+  it("reminds about a tracked contract once, not again for its linked SKU", async () => {
+    await seedMember("anna@contoso.test");
+    await seedSku(E3, 200);
+    await currentDb.insert(schema.vendorRenewals).values({
+      tenantId: TENANT_ID,
+      vendor: "Microsoft",
+      contractName: "Enterprise Agreement",
+      renewalDate: at(30).toISOString().slice(0, 10),
+      noticeDays: 60,
+      skuIds: [E3],
+    });
+    await runRenewalAlertJob({ now: NOW });
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const [args] = sendEmailMock.mock.calls[0]!;
+    expect(args.subject).toMatch(
+      /^Microsoft renewal in 30 days: Enterprise Agreement/,
+    );
+    expect(args.html).toContain("The notice deadline");
+    const [row] = await currentDb.query.emailDeliveries.findMany();
+    expect(row!.periodKey).toMatch(/^contract-[0-9a-f-]{36}:/);
+  });
+
+  it("does not report a run as incomplete for retries used up on earlier days", async () => {
+    await seedMember("anna@contoso.test");
+    await seedSku(E3, 30);
+    sendEmailMock.mockImplementation(() =>
+      Promise.reject(new Error("Resend responded 500")),
+    );
+    for (let i = 0; i < 3; i++) {
+      expect(await runRenewalAlertJob({ now: at(i) })).toMatchObject({
+        failed: 1,
+      });
+    }
+    notifyOpsMock.mockClear();
+    expect(await runRenewalAlertJob({ now: at(3) })).toMatchObject({
+      failed: 0,
+      skippedExhausted: 1,
+    });
+    expect(notifyOpsMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).toHaveBeenCalledTimes(3);
+    sendEmailMock.mockImplementation(() =>
+      Promise.resolve({ id: `re_${++receipts}` }),
+    );
   });
 
   it("leaves trial-only subscriptions out", async () => {

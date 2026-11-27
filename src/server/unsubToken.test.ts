@@ -153,6 +153,25 @@ describe("shared address unsubscribe tokens", () => {
     expect(verifySharedUnsubToken(TENANT, "digest", "", SECRET)).toBe(false);
   });
 
+  it("keeps a renewal reminder link to the renewal switch", () => {
+    const token = makeSharedUnsubToken(TENANT, "renewal", SECRET);
+    expect(verifySharedUnsubToken(TENANT, "renewal", token, SECRET)).toBe(true);
+    for (const job of ["digest", "report"] as const) {
+      expect(verifySharedUnsubToken(TENANT, job, token, SECRET)).toBe(false);
+      expect(
+        verifySharedUnsubToken(
+          TENANT,
+          "renewal",
+          makeSharedUnsubToken(TENANT, job, SECRET),
+          SECRET,
+        ),
+      ).toBe(false);
+    }
+    expect(verifyMembershipUnsubToken(TENANT, "renewal", token, SECRET)).toBe(
+      false,
+    );
+  });
+
   it("is a different token kind than the membership and email tokens", () => {
     const shared = makeSharedUnsubToken(TENANT, "digest", SECRET);
     expect(verifyMembershipUnsubToken(TENANT, "digest", shared, SECRET)).toBe(

@@ -995,10 +995,19 @@ export const setLeakAlerts = async (
 };
 
 /**
- * Workspace switch for the 90, 60 and 30 day renewal reminders. Turning them
- * off is always allowed; they only go out on a plan with the renewal savings
- * plan, which the reminder job checks on every run.
+ * Renewal reminders belong to the renewal savings plan. Switching them on
+ * needs the plan; switching them off is always allowed, so a lapsed plan can
+ * still opt out. The reminder job checks the plan again on every run.
  */
+const renewalRemindersRefused = (
+  ctx: AccessContext,
+  enabled: boolean,
+): ActionResult | null =>
+  enabled && !hasFeature(ctx.entitlement, "renewalPlans")
+    ? fail("Renewal reminders are included in Pro.")
+    : null;
+
+/** Workspace switch for the 90, 60 and 30 day renewal reminders. */
 export const setRenewalAlerts = async (
   enabled: boolean,
 ): Promise<ActionResult> => {
@@ -1006,6 +1015,8 @@ export const setRenewalAlerts = async (
   if (!ctx) return fail("Not allowed");
   if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
   if (typeof enabled !== "boolean") return fail("Invalid value");
+  const refused = renewalRemindersRefused(ctx, enabled);
+  if (refused) return refused;
   await db
     .update(tenants)
     .set({ renewalAlerts: enabled })
@@ -1047,6 +1058,10 @@ export const setMyEmailPreference = async (
   if (job !== "digest" && job !== "report" && job !== "renewal")
     return fail("Unknown email");
   if (typeof enabled !== "boolean") return fail("Invalid value");
+  if (job === "renewal") {
+    const refused = renewalRemindersRefused(ctx, enabled);
+    if (refused) return refused;
+  }
 
   await db
     .update(memberships)
@@ -1146,6 +1161,10 @@ export const setNotificationAddressPreference = async (
     return fail("Unknown email");
   }
   if (typeof enabled !== "boolean") return fail("Invalid value");
+  if (job === "renewal") {
+    const refused = renewalRemindersRefused(ctx, enabled);
+    if (refused) return refused;
+  }
   await setSharedJob(ctx.tenant.id, job, enabled);
   await audit(ctx, "notification_address_preference_changed", {
     email: job,

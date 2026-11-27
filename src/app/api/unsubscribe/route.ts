@@ -82,6 +82,13 @@ const JOB_LABEL: Record<UnsubJob, string> = {
   renewal: "renewal reminder",
 };
 
+/** The same emails as a plural noun, for the page titles. */
+const JOB_TITLE: Record<UnsubJob, string> = {
+  digest: "weekly digest",
+  report: "monthly report",
+  renewal: "renewal reminders",
+};
+
 const parse = (req: NextRequest): Parsed | null => {
   const sp = req.nextUrl.searchParams;
   const m = sp.get("m");
@@ -159,7 +166,7 @@ export const GET = async (req: NextRequest): Promise<Response> => {
   if (parsed.kind === "membership") {
     const workspace = await workspaceNameFor(parsed.membershipId);
     return page(
-      `Unsubscribe from the ${JOB_LABEL[parsed.job]}`,
+      `Unsubscribe from the ${JOB_TITLE[parsed.job]}`,
       `<p style="${TEXT}">
       No more ${JOB_LABEL[parsed.job]} emails for
       <strong style="color:#171b23;font-weight:600">${escapeHtml(workspace)}</strong>.
@@ -171,7 +178,7 @@ export const GET = async (req: NextRequest): Promise<Response> => {
   if (parsed.kind === "shared") {
     const workspace = await tenantNameFor(parsed.tenantId);
     return page(
-      `Unsubscribe from the ${JOB_LABEL[parsed.job]}`,
+      `Unsubscribe from the ${JOB_TITLE[parsed.job]}`,
       `<p style="${TEXT}">
       No more ${JOB_LABEL[parsed.job]} emails to this shared address for
       <strong style="color:#171b23;font-weight:600">${escapeHtml(workspace)}</strong>.
