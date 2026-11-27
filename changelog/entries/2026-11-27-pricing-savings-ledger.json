@@ -1,0 +1,7 @@
+{
+  "title": "Pricing page lists the Pro savings ledger",
+  "summary": "The pricing page now lists the savings ledger on Pro and MSP and explains what it counts: removed licenses and reduced seat purchases are recorded as realized savings, and the credit is reversed if the seat comes back. Exclusions and reactivated accounts never count. The plan cards also make clearer that Pro covers your whole tenant with unlimited users and devices. Free keeps every scan, finding and report.",
+  "type": "improved",
+  "publishedOn": "2026-11-27",
+  "idempotencyKey": "licensemeter:pricing-savings-ledger"
+}

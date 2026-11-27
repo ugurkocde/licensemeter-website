@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PLAN_PRICES } from "~/lib/pricing";
+import { MSP_INCLUDED_TENANTS, PLAN_PRICES } from "~/lib/pricing";
 import {
   PLAN_IDS,
   PRICING_CONTENT,
@@ -110,6 +110,57 @@ describe("pricing content", () => {
         .find((r) => r.id === "whiteLabel")!;
       expect(row.cells.map((cell) => cell.kind)).toEqual(["no", "yes", "yes"]);
     }
+  });
+
+  it("lists the savings ledger on both paid plans and nowhere in Free", () => {
+    for (const lang of PRICING_LANGS) {
+      const { plans, faq } = PRICING_CONTENT[lang];
+      const ledger = /savings ledger|einsparungsnachweis/i;
+      expect(plans.pro.items.some((item) => ledger.test(item.text))).toBe(true);
+      expect(plans.free.items.some((item) => ledger.test(item.text))).toBe(
+        false,
+      );
+      const row = comparisonGroups(lang, ALL_CHANNELS)
+        .flatMap((g) => g.rows)
+        .find((r) => r.id === "savingsLedger")!;
+      expect(row.cells.map((cell) => cell.kind)).toEqual(["no", "yes", "yes"]);
+      // The ledger counts reclaims only, never exclusions or reactivations.
+      const answer = faq.items.find((item) => ledger.test(item.q))!.a;
+      expect(answer).toMatch(/exclusions|ausnahmen/i);
+    }
+  });
+
+  it("sells Free on what it does, not as the full product", () => {
+    for (const lang of PRICING_LANGS) {
+      const text = allStrings(lang).join("\n");
+      expect(text).not.toMatch(/full product|vollständige produkt/i);
+    }
+  });
+
+  it("frames Pro by the whole tenant, not as a one-tenant limit", () => {
+    for (const lang of PRICING_LANGS) {
+      const { pro } = PRICING_CONTENT[lang].plans;
+      const text = [
+        pro.audience,
+        pro.pitch,
+        ...pro.highlights,
+        ...pro.items.map((item) => item.text),
+      ].join("\n");
+      expect(text).not.toMatch(/for one tenant|covers one tenant/i);
+      expect(text).not.toMatch(/für einen tenant/i);
+      expect(text).toMatch(/unlimited users|unbegrenzte nutzer/i);
+    }
+    const row = comparisonGroups("en", ALL_CHANNELS)
+      .flatMap((g) => g.rows)
+      .find((r) => r.id === "tenantsCovered")!;
+    expect(row.label).toBe("Managed client tenants");
+    expect(
+      row.cells.map((cell) => (cell.kind === "text" ? cell.text : cell.kind)),
+    ).toEqual([
+      "Self-serve",
+      "1 workspace",
+      `${MSP_INCLUDED_TENANTS}+ client tenants`,
+    ]);
   });
 
   it("follows the writing rules in every string", () => {
