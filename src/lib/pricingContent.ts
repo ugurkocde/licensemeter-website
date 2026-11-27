@@ -96,6 +96,7 @@ const COMPARISON_GROUPS = [
       { id: "mcp", cells: PAID },
       { id: "metering", cells: PAID, isNew: true },
       { id: "renewalPlan", cells: PAID, isNew: true },
+      { id: "execReport", cells: PAID, isNew: true },
     ],
   },
   {
@@ -391,6 +392,11 @@ const en: PricingContent = {
             "Seats to renew and cut before each renewal, with the yearly savings, reminder emails and a calendar export",
         },
         {
+          text: "Executive savings report",
+          detail:
+            "A one-page PDF of spend, open waste, realized savings and the renewal actions due in the next 90 days",
+        },
+        {
           text: "White-label PDF reports",
           detail: "Your logo, name and colour on every report",
         },
@@ -505,6 +511,7 @@ const en: PricingContent = {
       mcp: "MCP server for AI assistants",
       metering: "Windows software metering through Intune",
       renewalPlan: "Renewal savings plan with reminders and calendar export",
+      execReport: "One-page executive savings report (PDF)",
       portfolio: "Portfolio across client tenants",
       whiteLabel: "White-label PDF reports",
       tenantsCovered: "Managed client tenants",
@@ -745,6 +752,11 @@ const de: PricingContent = {
             "Zu verlängernde und zu kündigende Lizenzen vor jeder Verlängerung, mit der jährlichen Einsparung, Erinnerungs-E-Mails und einem Kalenderexport",
         },
         {
+          text: "Management-Bericht zu Einsparungen",
+          detail:
+            "Ein einseitiges PDF mit Ausgaben, offener Verschwendung, realisierten Einsparungen und den Verlängerungsaktionen der nächsten 90 Tage",
+        },
+        {
           text: "White-Label-PDF-Berichte",
           detail: "Ihr Logo, Name und Ihre Farbe auf jedem Bericht",
         },
@@ -863,6 +875,7 @@ const de: PricingContent = {
       metering: "Windows Software Metering über Intune",
       renewalPlan:
         "Sparplan für Verlängerungen mit Erinnerungen und Kalenderexport",
+      execReport: "Einseitiger Management-Bericht zu Einsparungen (PDF)",
       portfolio: "Portfolio über alle Kunden-Tenants",
       whiteLabel: "White-Label-PDF-Berichte",
       tenantsCovered: "Verwaltete Kunden-Tenants",

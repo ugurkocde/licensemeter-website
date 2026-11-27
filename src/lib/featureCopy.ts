@@ -28,6 +28,11 @@ export const FEATURE_COPY: Record<Feature, FeatureCopy> = {
     description:
       "For every upcoming renewal, the seats to renew, the seats to cut and the yearly savings, with reminder emails 90, 60 and 30 days before annual and multi-year renewals and a calendar (.ics) export.",
   },
+  execReport: {
+    label: "Executive savings report",
+    description:
+      "A one-page PDF for finance and leadership: license spend, open waste, realized savings, renewal actions for the next 90 days and a 6-month trend.",
+  },
   mcp: {
     label: "MCP server",
     description:

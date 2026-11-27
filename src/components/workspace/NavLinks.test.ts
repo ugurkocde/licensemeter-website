@@ -79,6 +79,23 @@ describe("Report branding sidebar badge", () => {
   });
 });
 
+describe("Executive report sidebar item", () => {
+  it("opens the preview page on every plan, locked on Free", () => {
+    for (const plan of ["free", "pro", "msp"] as const) {
+      const html = renderToStaticMarkup(
+        createElement(NavLinks, { entitlement: entitlement(plan) }),
+      );
+      const at = html.indexOf('href="/app/reports/executive"');
+      expect(at).toBeGreaterThanOrEqual(0);
+      expect(html).not.toContain("feature=execReport");
+      const item = html.slice(at, html.indexOf("</a>", at));
+      expect(item).toContain("Executive report");
+      if (plan === "free") expect(item).toContain("requires");
+      else expect(item).not.toContain("requires");
+    }
+  });
+});
+
 describe("Grouped sidebar navigation", () => {
   afterEach(() => {
     nav.pathname = "/app";
