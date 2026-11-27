@@ -53,6 +53,227 @@ const METERING_DOCS =
 
 export const BLOG_POSTS: BlogPost[] = [
   {
+    slug: "intune-software-metering",
+    title: "How to do software metering in Microsoft Intune",
+    description:
+      "Compare Intune inventory with SCCM software metering. Track Windows app starts with Event ID 4688 and Intune Remediations before renewing desktop licenses.",
+    excerpt:
+      "Microsoft Intune has no built-in software metering equivalent to Configuration Manager (SCCM). Discovered apps and App inventory show installed software only.",
+    publishedOn: "2026-11-27",
+    author: {
+      name: "Ugur Koc",
+      role: "Maintainer, Microsoft MVP for Intune",
+      url: "https://ugurkoc.de",
+    },
+    tag: "Guide",
+    cta: {
+      title: "Preview Software Metering before rollout",
+      body: "See a report with fictional device data or follow the setup guide for your Intune pilot.",
+      primary: {
+        label: "Explore the sample metering report",
+        href: "https://docs.licensemeter.com/connectors/windows-metering/#see-it-in-the-sample-workspace-first",
+      },
+      secondary: {
+        label: "Read the metering setup guide",
+        href: "https://docs.licensemeter.com/connectors/windows-metering/",
+      },
+    },
+    body: [
+      {
+        type: "h2",
+        id: "intune-versus-sccm",
+        text: "Intune app inventory and SCCM software metering",
+      },
+      {
+        type: "p",
+        text: [
+          "To decide whether to renew licenses for Visio, Project, Acrobat Pro or a CAD tool, use Windows process auditing with Intune Remediations to collect app start evidence on the devices where you deployed it. See ",
+          {
+            text: "Microsoft's guide to Discovered apps and App inventory",
+            href: "https://learn.microsoft.com/en-us/intune/app-management/discovered-apps",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Configuration Manager meters Windows desktop apps with .exe files. Enable software metering in client settings and define rules by file name or original file name, with version and language criteria. Viewing reports requires a reporting services point. Clients submit data on a seven-day default collection schedule. Metering records and summaries stay in the Configuration Manager database until configurable site maintenance tasks delete them. See ",
+          {
+            text: "Microsoft's Configuration Manager software metering reference",
+            href: "https://learn.microsoft.com/en-us/intune/configmgr/apps/deploy-use/monitor-app-usage-with-software-metering",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "check-remediations-requirements",
+        text: "Check Intune Remediations requirements",
+      },
+      {
+        type: "p",
+        text: [
+          "Start with a small group of Microsoft Entra joined or hybrid joined Windows devices. They must run Windows Enterprise, Pro or Education and be enrolled in Intune MDM, or be co-managed Windows devices. Their users need Windows Enterprise E3 or E5, Windows Education A3 or A5, or Windows Virtual Desktop Access (VDA) per user. An Intune Service Administrator must confirm licensing before the first use. See ",
+          {
+            text: "Microsoft's device and licensing requirements for Remediations",
+            href: "https://learn.microsoft.com/en-us/intune/device-management/tools/deploy-remediations#prerequisites",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "collect-app-starts",
+        text: "Collect Windows app starts with Event ID 4688",
+      },
+      {
+        type: "steps",
+        items: [
+          {
+            title: "Enable Audit Process Creation",
+            body: [
+              "In your approved Intune settings catalog or Group Policy, go to Advanced Audit Policy Configuration > Detailed Tracking and enable ",
+              { strong: "Audit Process Creation (Success)" },
+              ". Windows writes Event ID 4688 to the Security log when a process starts. Leave command-line auditing out of this setup because the event already identifies the new executable. On a pilot device, confirm Success is enabled with ",
+              {
+                strong:
+                  'auditpol /get /subcategory:"{0CCE922B-69AE-11D9-BED3-505054503030}"',
+              },
+              ". Start a pilot app and confirm its executable appears in the event. See ",
+              {
+                text: "Microsoft's Audit Process Creation policy",
+                href: "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-process-creation",
+              },
+              " and ",
+              {
+                text: "the Event ID 4688 field reference",
+                href: "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4688",
+              },
+              ".",
+            ],
+          },
+          {
+            title: "Size the Security log for the pilot",
+            body: [
+              "The default maximum is 20 MB. If old events are overwritten between runs, try 100 to 200 MB as a starting point. Set the maximum through Administrative Templates > Windows Components > Event Log Service > Security > Specify the maximum log file size (KB), or the equivalent Group Policy setting. Restart the device, then confirm the applied size with ",
+              { strong: "wevtutil gl Security" },
+              ".",
+            ],
+          },
+          {
+            title: "Assign a detection-only script",
+            body: [
+              "In the Intune admin center, open Devices > Scripts and remediations. Upload a UTF-8 detection script that reads Event ID 4688 locally and matches the executable names you want to meter. Return a compact device-level summary within Intune's 2,048-character output limit and exit with code 0 after a successful run. Keep personal data, including user names and raw event contents, out of collection and output. Set ",
+              { strong: "Run this script using the logged-on credentials" },
+              " to No so it runs as SYSTEM, and set ",
+              { strong: "Run script in 64-bit PowerShell" },
+              " to Yes. Assign it to the pilot group hourly.",
+            ],
+          },
+          {
+            title: "Check collection and coverage before expanding",
+            body: [
+              "Verify that a known pilot app start appears in the script output. Keep a local checkpoint so you can carry results across runs and identify gaps when events roll over before the script can read them. Intune can run the script hourly, but it sends recurring results when they change and sends an unchanged result every seven days. Check reporting and coverage before widening the assignment. See ",
+              {
+                text: "Microsoft's Remediations deployment and reporting guidance",
+                href: "https://learn.microsoft.com/en-us/intune/device-management/tools/deploy-remediations",
+              },
+              ".",
+            ],
+          },
+        ],
+      },
+      {
+        type: "h2",
+        id: "before-reclaiming-licenses",
+        text: "What to check before reclaiming a desktop app license",
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "Wait for a full observation window." },
+            " Choose 30, 60 or 90 days and confirm uninterrupted coverage on the device. Treat missing results, stale checkpoints and lost events as unknown.",
+          ],
+          [
+            { strong: "Check the work the app supports." },
+            " Ask the app owner about seasonal work, infrequent tasks and shared devices where a quiet period can still be normal.",
+          ],
+          [
+            { strong: "Check which executable started." },
+            " Look for background launches and other programs that share the same executable name before you interpret a start as evidence of demand.",
+          ],
+          [
+            { strong: "Confirm the assignment and owner." },
+            " Verify who or what holds the license and confirm continued access needs with the owner before uninstalling the app or reclaiming the seat.",
+          ],
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "For a separate review of cloud account activity, see ",
+          {
+            text: "how to find inactive users in Microsoft 365",
+            href: "/blog/find-inactive-users-microsoft-365",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "licensemeter-software-metering",
+        text: "How LicenseMeter Software Metering collects app starts",
+      },
+      {
+        type: "p",
+        text: [
+          "LicenseMeter generates a workspace-specific detection script and combines its start results with Intune install status. It covers Intune-deployed Win32, Microsoft Store, WinGet and line-of-business apps, plus Microsoft 365 Apps with Visio and Project listed separately. The report shows which devices have the app installed and which started it during the observation window. See ",
+          {
+            text: "the Software Metering report overview",
+            href: "/blog/software-metering",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Metering uses a separate Microsoft Entra app with its own consent. LicenseMeter reads results live from Intune and caches them in server memory for at most five minutes, without storing them. The collector reports no user names, command lines or file paths. Software Metering is included in ",
+          { text: "the Pro and MSP plans", href: "/pricing#software-metering" },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "faq",
+        text: "Frequently asked questions",
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "What does Discovered apps show on personal devices?" },
+            " It collects managed apps on personal devices. On corporate devices, it inventories both managed and unmanaged apps.",
+          ],
+          [
+            { strong: "Can I measure app starts from before rollout?" },
+            " Start your observation window with the first collector run. A short Security log cannot reconstruct months of activity.",
+          ],
+          [
+            { strong: "Does a start tell me how long someone used the app?" },
+            " A start records a process launch. Measuring foreground time or productive work would require different evidence.",
+          ],
+          [
+            { strong: "Can I preview the report before granting consent?" },
+            " Yes. Choose Open the sample tenant, then Software Metering in the sidebar to explore fictional results without granting Microsoft permissions.",
+          ],
+        ],
+      },
+    ],
+  },
+  {
     slug: "find-inactive-users-microsoft-365",
     title: "How to find inactive users in Microsoft 365",
     description:
