@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "~/server/db/schema";
 import type * as EmailModule from "~/server/email";
+import type * as WorkspaceEmailModule from "~/server/workspaceEmail";
 import { freshDb, seedProPlan, type TestDb } from "~/server/mcp/testHarness";
 
 /**
@@ -51,6 +52,20 @@ vi.mock("~/server/email", async (original) => ({
   emailEnabled: () => true,
   sendEmailWithReceipt: (args: SendArgs) => sendEmailMock(args),
 }));
+// Lets a test make one workspace's run throw before any reminder is tried.
+let recipientsFail = false;
+vi.mock("~/server/workspaceEmail", async (original) => {
+  const actual = await original<typeof WorkspaceEmailModule>();
+  return {
+    ...actual,
+    workspaceEmailRecipients: (
+      ...args: Parameters<typeof actual.workspaceEmailRecipients>
+    ) =>
+      recipientsFail
+        ? Promise.reject(new Error("database unavailable"))
+        : actual.workspaceEmailRecipients(...args),
+  };
+});
 vi.mock("~/server/ops", () => ({
   notifyOps: (text: string, opts?: unknown) => notifyOpsMock(text, opts),
 }));
@@ -109,6 +124,7 @@ beforeEach(async () => {
     Promise.resolve({ id: `re_${++receipts}` }),
   );
   notifyOpsMock.mockClear();
+  recipientsFail = false;
   await currentDb
     .insert(schema.tenants)
     .values({ id: TENANT_ID, name: "Acme", currency: "USD" });
@@ -136,6 +152,7 @@ describe("runRenewalAlertJob", () => {
       failed: 0,
       unprocessedTenants: 0,
       skippedExhausted: 0,
+      failedTenants: 0,
     });
     expect(sentTo()).toEqual(["anna@contoso.test", "ben@contoso.test"]);
 
@@ -363,6 +380,29 @@ describe("runRenewalAlertJob", () => {
     sendEmailMock.mockImplementation(() =>
       Promise.resolve({ id: `re_${++receipts}` }),
     );
+  });
+
+  it("counts a workspace that threw and reports the run as incomplete", async () => {
+    await seedMember("anna@contoso.test");
+    await seedSku(E3, 30);
+    recipientsFail = true;
+    expect(await runRenewalAlertJob({ now: NOW })).toMatchObject({
+      tenants: 1,
+      sent: 0,
+      failed: 0,
+      failedTenants: 1,
+    });
+    const texts = notifyOpsMock.mock.calls.map(([text]) => text);
+    expect(texts.some((t) => t.startsWith("renewal reminders failed"))).toBe(
+      true,
+    );
+    expect(texts.some((t) => t.includes("1 failed tenant(s)"))).toBe(true);
+    // Nothing was claimed, so the next run sends normally.
+    recipientsFail = false;
+    expect(await runRenewalAlertJob({ now: NOW })).toMatchObject({
+      sent: 1,
+      failedTenants: 0,
+    });
   });
 
   it("leaves trial-only subscriptions out", async () => {

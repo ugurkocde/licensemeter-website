@@ -196,11 +196,16 @@ export const renewalAlertMessage = (
  * fresh failure would report the run as incomplete each morning although
  * running it again cannot change anything.
  */
-export type RenewalJobTotals = JobTotals & { skippedExhausted: number };
+export type RenewalJobTotals = JobTotals & {
+  skippedExhausted: number;
+  /** Workspaces whose run threw before all their reminders were tried. */
+  failedTenants: number;
+};
 
 const emptyTotals = (tenantCount: number): RenewalJobTotals => ({
   tenants: tenantCount,
   skippedExhausted: 0,
+  failedTenants: 0,
   sent: 0,
   skippedAlreadySent: 0,
   skippedOptedOut: 0,
@@ -291,15 +296,20 @@ export const runRenewalAlertJob = async (
     try {
       await alertsForTenant(tenant, now, totals);
     } catch (err) {
+      totals.failedTenants++;
       void notifyOps(
         `renewal reminders failed for workspace ${tenant.id}: ${opsErrorText(err)}`,
         { key: `renewal:${tenant.id}`, cooldownMs: 60 * 60 * 1000 },
       );
     }
   }
-  if (totals.unprocessedTenants > 0 || totals.failed > 0) {
+  if (
+    totals.unprocessedTenants > 0 ||
+    totals.failed > 0 ||
+    totals.failedTenants > 0
+  ) {
     void notifyOps(
-      `renewal reminder run is incomplete: ${totals.failed} failed send(s), ${totals.unprocessedTenants} unprocessed tenant(s). Run /api/cron/renewal-alerts again to finish; delivered emails are not sent twice.`,
+      `renewal reminder run is incomplete: ${totals.failed} failed send(s), ${totals.failedTenants} failed tenant(s), ${totals.unprocessedTenants} unprocessed tenant(s). Run /api/cron/renewal-alerts again to finish; delivered emails are not sent twice.`,
       { key: "renewal:incomplete", cooldownMs: 60 * 60 * 1000 },
     );
   }

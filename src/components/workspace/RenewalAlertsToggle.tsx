@@ -58,7 +58,7 @@ export const RenewalAlertsToggle = ({ initial }: { initial: boolean }) => {
           }}
           className="accent-ink size-4 shrink-0"
         />
-        <span>Email admins 90, 60 and 30 days before each renewal</span>
+        <span>Email admins 90, 60 and 30 days before annual renewals</span>
       </label>
       <span
         role="status"

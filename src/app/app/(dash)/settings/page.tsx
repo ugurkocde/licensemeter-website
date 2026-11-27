@@ -174,6 +174,9 @@ export default async function SettingsPage() {
           .then((rows) => rows[0]?.n ?? 0)
       : Promise.resolve(null),
   ]);
+  // Without the plan nothing is sent and a switch can only be turned off, so
+  // a switch is shown while it is still on and disappears once it is off.
+  const sharedRenewal = sharedAddress?.renewalAlerts ?? true;
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 pb-8">
@@ -300,15 +303,22 @@ export default async function SettingsPage() {
               </dt>
               <dd className="mt-0.5">
                 {!renewalReminders ? (
-                  <span className="text-ink-soft text-sm">
-                    Emails 90, 60 and 30 days before each renewal.{" "}
-                    <Link
-                      href={upgradePath("renewalPlans")}
-                      className="hover:text-ink underline underline-offset-4"
-                    >
-                      See plans
-                    </Link>
-                  </span>
+                  <>
+                    <span className="text-ink-soft text-sm">
+                      Emails 90, 60 and 30 days before annual renewals, on Pro.{" "}
+                      <Link
+                        href={upgradePath("renewalPlans")}
+                        className="hover:text-ink underline underline-offset-4"
+                      >
+                        See plans
+                      </Link>
+                    </span>
+                    {canEdit && ctx.tenant.renewalAlerts && (
+                      <div className="mt-1">
+                        <RenewalAlertsToggle initial />
+                      </div>
+                    )}
+                  </>
                 ) : canEdit ? (
                   <RenewalAlertsToggle initial={ctx.tenant.renewalAlerts} />
                 ) : ctx.tenant.renewalAlerts ? (
@@ -361,7 +371,7 @@ export default async function SettingsPage() {
                     )}
                   </dd>
                 </div>
-                {renewalReminders && (
+                {(renewalReminders || !ctx.membership.renewalOptOut) && (
                   <div>
                     <dt className="sr-only">Renewal reminder emails</dt>
                     <dd>
@@ -400,7 +410,7 @@ export default async function SettingsPage() {
               report={sharedAddress?.report ?? true}
               leakAlerts={sharedAddress?.leakAlerts ?? true}
               renewalAlerts={
-                renewalReminders ? (sharedAddress?.renewalAlerts ?? true) : null
+                renewalReminders || sharedRenewal ? sharedRenewal : null
               }
             />
           </Card>

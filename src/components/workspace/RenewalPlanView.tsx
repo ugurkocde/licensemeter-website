@@ -359,7 +359,7 @@ export const RenewalPlanView = ({
         </p>
         <p className="text-ink-soft mt-2 text-xs leading-relaxed">
           {reminders
-            ? "Owners and admins get a reminder email 90, 60 and 30 days before each renewal, with its calendar file attached. "
+            ? "Owners and admins get a reminder email 90, 60 and 30 days before each annual or multi-year renewal, with its calendar file attached. A monthly subscription gets the 30 day one only when an admin includes it; trial-only subscriptions get none. "
             : "Renewal reminder emails are off for this workspace. "}
           <Link
             href="/app/settings"
