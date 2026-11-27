@@ -215,7 +215,10 @@ describe("buildExecutiveSummary", () => {
     ]);
     const crowded = buildExecutiveSummary({
       ...input,
-      plan: { ...plan, items: Array(12).fill(plan.items[0]!) },
+      plan: {
+        ...plan,
+        items: Array.from({ length: 12 }, () => plan.items[0]!),
+      },
     });
     expect(crowded.renewals.count).toBe(12);
     expect(crowded.renewals.actions).toHaveLength(MAX_RENEWAL_ROWS);
