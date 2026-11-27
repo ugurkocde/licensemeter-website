@@ -346,12 +346,12 @@ const en: PricingContent = {
       audience: "For teams that need to prove the savings",
       highlights: [
         "Everything in Free, across your whole tenant",
-        "Savings ledger for every reclaimed license",
+        "Savings ledger for confirmed reclaims",
         `Email support and a ${UPTIME_EN} uptime target`,
         "Signed DPA, MCP server and 24 months of history",
       ],
       pitch:
-        "Prove what the cleanup saved and see when it slips back. Pro records every removed license and reduced seat purchase in a savings ledger, and adds Software Metering for your Windows apps, support, PDF reports under your own brand, a signed data processing agreement and an MCP server for your AI assistant.",
+        "Prove what the cleanup saved and see when it slips back. Pro records reclaimed licenses and reduced seat purchases from your findings in a savings ledger once a sync confirms them, and adds Software Metering for your Windows apps, support, PDF reports under your own brand, a signed data processing agreement and an MCP server for your AI assistant.",
       note: {
         month: "Excluding VAT. Cancel any time.",
         year: "Excluding VAT. Twelve months for the price of ten.",
@@ -367,7 +367,7 @@ const en: PricingContent = {
         {
           text: "Savings ledger",
           detail:
-            "Removed licenses and reduced seat purchases count as realized savings, and come off again if the seat returns",
+            "Confirmed license removals and seat reductions count as realized savings, and are reversed if the seat is used or bought again",
         },
         { text: "Support", detail: "By email" },
         {
@@ -519,7 +519,7 @@ const en: PricingContent = {
       history24: "24 months",
       selfServe: "Self-serve",
       oneWorkspace: "1 workspace",
-      tenTenantsPlus: `${MSP_INCLUDED_TENANTS}+ client tenants`,
+      tenTenantsPlus: `${MSP_INCLUDED_TENANTS}+`,
       noSupport: "No support",
       email: "Email",
       uptime: UPTIME_EN,
@@ -579,7 +579,7 @@ const en: PricingContent = {
       },
       {
         q: "What does the savings ledger count?",
-        a: "Pro and MSP keep a savings ledger. When a license is removed or a purchased seat count is reduced and a sync confirms it, the monthly value is recorded as realized savings. If the seat is assigned again or the source is disconnected, that credit is reversed, so the run-rate only shows savings that still hold. Exclusions, changed inactivity thresholds and accounts that become active again never count as savings.",
+        a: "Pro and MSP keep a savings ledger. When a finding is resolved because a license was removed or a purchased seat count was reduced, and a sync confirms it, the monthly value is recorded as realized savings. If the seat is assigned again, bought back or the source is disconnected, that entry is reversed, so the run-rate only shows savings that still hold. Exclusions, changed inactivity thresholds and accounts that become active again never count as savings.",
       },
       {
         q: "What does the MCP server give me?",
@@ -617,7 +617,7 @@ const en: PricingContent = {
 const de: PricingContent = {
   meta: {
     title: "Preise",
-    description: `Preise von LicenseMeter: Der Free-Tarif findet und beziffert Lizenzverschwendung in Microsoft 365 kostenlos. Pro (${formatEuro(pro.month, "de")} pro Monat) ergänzt einen Nachweis realisierter Einsparungen, Windows Software Metering über Intune, Support per E-Mail, ein Verfügbarkeitsziel von ${UPTIME_DE} gemäß SLA, einen unterzeichneten Auftragsverarbeitungsvertrag (AVV), einen MCP-Server, White-Label-PDF-Berichte und 24 Monate Verlauf. MSP (${formatEuro(msp.month, "de")} pro Monat) deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants mit allem aus Pro ab.`,
+    description: `Preise von LicenseMeter: Der Free-Tarif findet und beziffert Lizenzverschwendung in Microsoft 365 kostenlos. Pro (${formatEuro(pro.month, "de")} pro Monat) ergänzt einen Einsparungsnachweis für realisierte Einsparungen, Windows Software Metering über Intune, Support per E-Mail, ein Verfügbarkeitsziel von ${UPTIME_DE} gemäß SLA, einen unterzeichneten Auftragsverarbeitungsvertrag (AVV), einen MCP-Server, White-Label-PDF-Berichte und 24 Monate Verlauf. MSP (${formatEuro(msp.month, "de")} pro Monat) deckt ${MSP_INCLUDED_TENANTS} Kunden-Tenants mit allem aus Pro ab.`,
   },
   breadcrumb: { home: "Startseite", page: "Preise" },
   toggleLabel: "Sprache",
@@ -628,7 +628,7 @@ const de: PricingContent = {
       struck: "Geld",
       post: "nichts.",
     },
-    lede: "Starten Sie kostenlos mit allen Scans, Ergebnissen und Berichten. Pro belegt die Einsparungen mit einem Einsparungsnachweis und ergänzt Software Metering für Ihre Windows-Apps sowie Support. MSP deckt Ihr Kundenportfolio ab.",
+    lede: "Starten Sie kostenlos mit allen Scans, Ergebnissen und Berichten. Pro dokumentiert realisierte Einsparungen in einem Einsparungsnachweis und ergänzt Software Metering für Ihre Windows-Apps sowie Support. MSP deckt Ihr Kundenportfolio ab.",
   },
   billing: {
     legend: "Abrechnungszeitraum",
@@ -665,7 +665,7 @@ const de: PricingContent = {
         "Selbst hosten mit Docker",
       ],
       pitch:
-        "Alle Scans, Ergebnisse und Berichte ohne Kosten. Verbinden Sie einen Tenant, sehen Sie, was ungenutzte Lizenzen pro Monat kosten, und geben Sie der IT das Skript, das es behebt.",
+        "Alle Scans, Ergebnisse und Berichte, dauerhaft kostenlos. Verbinden Sie einen Tenant, sehen Sie, was ungenutzte Lizenzen pro Monat kosten, und geben Sie der IT das Skript, das es behebt.",
       note: {
         month: "Keine Kreditkarte. Kein Limit für Nutzer oder Tenants.",
         year: "Keine Kreditkarte. Kein Limit für Nutzer oder Tenants.",
@@ -694,12 +694,12 @@ const de: PricingContent = {
       audience: "Für Teams, die Einsparungen belegen müssen",
       highlights: [
         "Alles aus Free, für Ihren gesamten Tenant",
-        "Einsparungsnachweis für jede zurückgewonnene Lizenz",
+        "Einsparungsnachweis für bestätigte Rückgewinnungen",
         `E-Mail-Support und ${UPTIME_DE} Verfügbarkeitsziel`,
         "Unterzeichneter AVV, MCP-Server und 24 Monate Verlauf",
       ],
       pitch:
-        "Belegen Sie, was die Bereinigung gespart hat, und sehen Sie, wenn Einsparungen verloren gehen. Pro erfasst jede entfernte Lizenz und jede reduzierte Lizenzmenge in einem Einsparungsnachweis und ergänzt Software Metering für Ihre Windows-Apps, Support, PDF-Berichte unter Ihrer eigenen Marke, einen unterzeichneten Auftragsverarbeitungsvertrag und einen MCP-Server für Ihren KI-Assistenten.",
+        "Belegen Sie, was die Bereinigung gespart hat, und sehen Sie, wenn Einsparungen verloren gehen. Pro erfasst entfernte Lizenzen und reduzierte gekaufte Lizenzmengen aus Ihren Ergebnissen in einem Einsparungsnachweis, sobald eine Synchronisierung sie bestätigt, und ergänzt Software Metering für Ihre Windows-Apps, Support, PDF-Berichte unter Ihrer eigenen Marke, einen unterzeichneten Auftragsverarbeitungsvertrag und einen MCP-Server für Ihren KI-Assistenten.",
       note: {
         month: "Zzgl. USt. Jederzeit kündbar.",
         year: "Zzgl. USt. Zwölf Monate zum Preis von zehn.",
@@ -715,7 +715,7 @@ const de: PricingContent = {
         {
           text: "Einsparungsnachweis",
           detail:
-            "Entfernte Lizenzen und reduzierte Lizenzmengen zählen als realisierte Einsparung und werden wieder abgezogen, wenn die Lizenz zurückkommt",
+            "Bestätigt entfernte Lizenzen und reduzierte gekaufte Lizenzmengen zählen als realisierte Einsparung und werden zurückgenommen, wenn die Lizenz wieder genutzt oder zugekauft wird",
         },
         { text: "Support", detail: "Per E-Mail" },
         {
@@ -846,7 +846,7 @@ const de: PricingContent = {
       history: "Verlaufsdaten",
       reports: "PDF-Bericht und CSV-Export",
       scripts: "Generierte PowerShell-Skripte",
-      savingsLedger: "Nachweis realisierter Einsparungen",
+      savingsLedger: "Einsparungsnachweis",
       mcp: "MCP-Server für KI-Assistenten",
       metering: "Windows Software Metering über Intune",
       portfolio: "Portfolio über alle Kunden-Tenants",
@@ -871,7 +871,7 @@ const de: PricingContent = {
       history24: "24 Monate",
       selfServe: "Selbst verwaltet",
       oneWorkspace: "1 Workspace",
-      tenTenantsPlus: `${MSP_INCLUDED_TENANTS}+ Kunden-Tenants`,
+      tenTenantsPlus: `${MSP_INCLUDED_TENANTS}+`,
       noSupport: "Kein Support",
       email: "E-Mail",
       uptime: UPTIME_DE,
@@ -931,7 +931,7 @@ const de: PricingContent = {
       },
       {
         q: "Was zählt der Einsparungsnachweis?",
-        a: "Pro und MSP führen einen Einsparungsnachweis. Wird eine Lizenz entfernt oder eine gekaufte Lizenzmenge reduziert und bestätigt eine Synchronisierung das, wird der Monatswert als realisierte Einsparung erfasst. Wird die Lizenz wieder zugewiesen oder die Quelle getrennt, wird diese Gutschrift zurückgenommen, sodass die laufende Rate nur Einsparungen zeigt, die weiter bestehen. Ausnahmen, geänderte Inaktivitätsschwellen und wieder aktive Konten zählen nie als Einsparung.",
+        a: "Pro und MSP führen einen Einsparungsnachweis. Wird ein Ergebnis behoben, weil eine Lizenz entfernt oder eine gekaufte Lizenzmenge reduziert wurde, und durch eine Synchronisierung bestätigt, wird der Monatswert als realisierte Einsparung erfasst. Wird die Lizenz erneut zugewiesen, wieder zugekauft oder die Quelle getrennt, wird dieser Eintrag zurückgenommen, sodass der laufende Monatswert nur Einsparungen zeigt, die weiterhin bestehen. Ausnahmen, geänderte Inaktivitätsschwellen und wieder aktive Konten zählen nie als Einsparung.",
       },
       {
         q: "Was bringt mir der MCP-Server?",

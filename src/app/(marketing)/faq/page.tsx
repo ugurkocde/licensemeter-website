@@ -54,7 +54,7 @@ const FAQS = [
   },
   {
     q: "Is LicenseMeter really free? What is the catch?",
-    a: "There is no catch. LicenseMeter is free to use, including continuous monitoring, nightly syncs, new findings as people join and leave, exports and remediation scripts. The Free plan has no time limit and needs no credit card. The optional Pro and MSP plans add support by email, a signed DPA (AVV), an MCP server and 24 months of waste history. The pricing page lists what each plan includes.",
+    a: "There is no catch. LicenseMeter is free to use, including continuous monitoring, nightly syncs, new findings as people join and leave, exports and remediation scripts. The Free plan has no time limit and needs no credit card. The optional Pro and MSP plans add a savings ledger of realized savings, Software Metering for Windows apps, support by email, a signed DPA (AVV), white-label PDF reports, an MCP server and 24 months of waste history. The pricing page lists what each plan includes.",
   },
   {
     q: "We are an MSP. Can we manage several client tenants?",

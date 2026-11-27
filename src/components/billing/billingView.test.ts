@@ -104,6 +104,10 @@ describe("planCardLines", () => {
     expect(lines.length).toBe(3 + PLAN_FEATURES.pro.length);
     expect(lines.map((l) => l.text)).toContain("Support by email");
     expect(lines.map((l) => l.text)).toContain("White-label reports");
+    expect(lines.map((l) => l.text)).toContain("Savings ledger");
+    // Pro covers the whole tenant; it is not sold as a one-tenant limit.
+    expect(lines.map((l) => l.text)).not.toContain("One tenant");
+    expect(lines[0]!.text).toMatch(/unlimited users and devices/);
   });
 
   it("marks the unbuilt MSP features as coming soon", () => {

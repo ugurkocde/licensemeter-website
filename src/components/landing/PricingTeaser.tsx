@@ -102,9 +102,10 @@ export const PricingTeaser = ({
             <br className="hidden sm:block" /> Paid where it helps.
           </h2>
           <p className="text-ink-soft mt-4 text-base leading-relaxed">
-            Every scan, finding and report stays free. Pro and MSP add support,
-            a signed data processing agreement and the tooling larger estates
-            need. Nothing you rely on today moves behind a paywall.
+            Every scan, finding and report stays free. Pro and MSP add a savings
+            ledger that proves what you reclaimed, support, a signed data
+            processing agreement and the tooling larger estates need. Nothing
+            you rely on today moves behind a paywall.
           </p>
         </div>
 

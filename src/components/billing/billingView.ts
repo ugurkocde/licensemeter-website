@@ -136,7 +136,7 @@ export const planCardLines = (
 ): PlanCardLine[] => {
   if (plan === "pro") {
     return [
-      { text: "One tenant" },
+      { text: "Your whole tenant, unlimited users and devices" },
       ...PRO_SERVICE_LINES,
       ...PLAN_FEATURES.pro.map(featureLine),
     ];
