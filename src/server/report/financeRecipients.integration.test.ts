@@ -462,6 +462,126 @@ describe("finance recipients", () => {
   });
 });
 
+describe("recipient edge cases", () => {
+  it("does not re-mail or re-confirm an address that is already confirmed", async () => {
+    const id = await addConfirmed("cfo@contoso.example");
+    sendMock.mockClear();
+    expect(
+      await actions.addFinanceRecipientAction(
+        form({ email: "cfo@contoso.example", name: "New name" }),
+      ),
+    ).toEqual({ ok: true });
+    expect(sendMock).not.toHaveBeenCalled();
+    const [row] = await recipientRows();
+    expect(row!.name).toBe("New name");
+    expect(row!.verifyTokenHash).toBeNull();
+    expect(await actions.resendFinanceRecipientAction(id)).toEqual({
+      ok: false,
+      error: "This address is already confirmed.",
+    });
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("voids an open confirmation link when the address unsubscribes", async () => {
+    const id = await addConfirmed("cfo@contoso.example");
+    const t = makeRecipientUnsubToken(id, "finance", SECRET);
+    await unsubscribe(`r=${id}&k=finance&t=${t}`);
+    // An admin asks again, then the address unsubscribes once more before
+    // confirming: the link from that request must not subscribe it again.
+    await actions.resendFinanceRecipientAction(id);
+    const { r, token } = tokenFromLastMail();
+    const first = (await recipientRows())[0]!.unsubscribedAt;
+    await unsubscribe(`r=${id}&k=finance&t=${t}`);
+    const [row] = await recipientRows();
+    expect(row!.verifyTokenHash).toBeNull();
+    expect(row!.unsubscribedAt).toEqual(first);
+    expect((await confirm(r, token)).status).toBe(400);
+    expect((await recipientRows())[0]!.unsubscribedAt).not.toBeNull();
+  });
+
+  it("frees the place again when the confirmation email cannot be sent", async () => {
+    sendMock.mockImplementationOnce(() =>
+      Promise.reject(new Error("provider down")),
+    );
+    expect(
+      await actions.addFinanceRecipientAction(
+        form({ email: "cfo@contoso.example" }),
+      ),
+    ).toEqual({
+      ok: false,
+      error: expect.stringMatching(/could not be sent/) as string,
+    });
+    expect(await recipientRows()).toEqual([]);
+  });
+
+  it("removes finance recipients only, and only in its own workspace", async () => {
+    const other = await seedTenant(currentDb, 2, { name: "Other" });
+    const [foreign] = await currentDb
+      .insert(schema.reportRecipients)
+      .values({ tenantId: other.id, kind: "finance", email: "x@other.example" })
+      .returning();
+    const [client] = await currentDb
+      .insert(schema.reportRecipients)
+      .values({
+        tenantId: tenant.id,
+        kind: "client",
+        email: "c@partner.example",
+      })
+      .returning();
+    for (const id of [foreign!.id, client!.id, "not-a-uuid"]) {
+      expect(await actions.removeFinanceRecipientAction(id)).toEqual({
+        ok: false,
+        error: "Recipient not found",
+      });
+    }
+    expect(await currentDb.select().from(schema.reportRecipients)).toHaveLength(
+      2,
+    );
+  });
+
+  it("shows the unsubscribe page on GET without changing anything, with private headers", async () => {
+    const id = await addConfirmed("cfo@contoso.example");
+    const t = makeRecipientUnsubToken(id, "finance", SECRET);
+    const res = await unsubRoute.GET(
+      new NextRequest(
+        `https://licensemeter.test/api/unsubscribe?r=${id}&k=finance&t=${t}`,
+      ),
+    );
+    expect(await res.text()).toContain("Unsubscribe from the executive report");
+    expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(res.headers.get("Cache-Control")).toBe("private, no-store");
+    expect((await recipientRows())[0]!.unsubscribedAt).toBeNull();
+  });
+
+  it("rate limits confirm attempts per client before touching the database", async () => {
+    const headers = { "x-real-ip": "198.51.100.9" };
+    for (let i = 0; i < 20; i++) {
+      const res = await verifyRoute.POST(
+        new Request("https://licensemeter.test/api/reports/recipients/verify", {
+          method: "POST",
+          headers,
+          body: form({
+            r: "11111111-1111-4111-8111-111111111111",
+            token: "0".repeat(64),
+          }),
+        }),
+      );
+      expect(res.status).toBe(400);
+    }
+    const limited = await verifyRoute.POST(
+      new Request("https://licensemeter.test/api/reports/recipients/verify", {
+        method: "POST",
+        headers,
+        body: form({
+          r: "11111111-1111-4111-8111-111111111111",
+          token: "0".repeat(64),
+        }),
+      }),
+    );
+    expect(limited.status).toBe(429);
+  });
+});
+
 describe("unsubscribe token domains", () => {
   it("lets a recipient link switch off only that recipient", async () => {
     const id = await addConfirmed("cfo@contoso.example");
@@ -633,6 +753,37 @@ describe("monthly delivery to finance", () => {
       now: new Date("2027-01-01T08:00:00Z"),
     });
     expect(next.tenants).toBe(0);
+  });
+
+  it("skips a blocked address and a workspace without data", async () => {
+    await seedProPlan(currentDb, tenant.id);
+    await seedData(tenant);
+    await addConfirmed("cfo@contoso.example");
+    await currentDb.insert(schema.emailBlocks).values({
+      tenantId: tenant.id,
+      email: "cfo@contoso.example",
+      reason: "bounced",
+    });
+    const empty = await seedTenant(currentDb, 4, { name: "Empty" });
+    await seedProPlan(currentDb, empty.id);
+    await currentDb.insert(schema.reportRecipients).values({
+      tenantId: empty.id,
+      kind: "finance",
+      email: "cfo@empty.example",
+      verifiedAt: new Date(),
+    });
+    sendMock.mockClear();
+    const totals = await runExecReportJob({ now: NOW });
+    expect(totals).toMatchObject({ tenants: 2, sent: 0, skippedBlocked: 1 });
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("only answers the cron with the cron secret", async () => {
+    const { GET } = await import("~/app/api/cron/exec-report/route");
+    const res = await GET(
+      new NextRequest("https://licensemeter.test/api/cron/exec-report"),
+    );
+    expect(res.status).toBe(401);
   });
 
   it("sends nothing once the plan has no executive report", async () => {

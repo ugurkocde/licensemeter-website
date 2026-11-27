@@ -113,14 +113,17 @@ export const recipientUnsubscribeUrl = (
 
 export type UpsertRecipientResult =
   | { ok: true; recipient: ReportRecipientRow; token: string }
+  /** Confirmed and subscribed already: nothing to confirm, no mail sent. */
+  | { ok: true; recipient: ReportRecipientRow; token: null }
   | { ok: false; error: "limit" };
 
 /**
  * Adds an address, or files a fresh confirmation for one that is already on
  * the list (replacing its older link). The workspace row is locked for the
- * count and the write, so two concurrent requests cannot pass the cap. A
- * confirmed address that is asked again stays confirmed; an unsubscribed one
- * stays unsubscribed until somebody there confirms the new link.
+ * count and the write, so two concurrent requests cannot pass the cap. An
+ * address that is confirmed and subscribed gets no new link (only its name
+ * may change); an unsubscribed one stays unsubscribed until somebody there
+ * confirms the new link.
  */
 export const upsertRecipient = async (
   input: {
@@ -144,7 +147,11 @@ export const upsertRecipient = async (
       .where(eq(tenants.id, input.tenantId))
       .for("update");
     const [existing] = await tx
-      .select({ id: reportRecipients.id })
+      .select({
+        id: reportRecipients.id,
+        verifiedAt: reportRecipients.verifiedAt,
+        unsubscribedAt: reportRecipients.unsubscribedAt,
+      })
       .from(reportRecipients)
       .where(
         and(
@@ -153,6 +160,17 @@ export const upsertRecipient = async (
           eq(reportRecipients.email, input.email),
         ),
       );
+    if (existing?.verifiedAt && !existing.unsubscribedAt) {
+      const [recipient] = await tx
+        .update(reportRecipients)
+        .set({
+          updatedAt: now,
+          ...(input.name !== null ? { name: input.name } : {}),
+        })
+        .where(eq(reportRecipients.id, existing.id))
+        .returning();
+      return { ok: true, recipient: recipient!, token: null } as const;
+    }
     if (existing) {
       const [recipient] = await tx
         .update(reportRecipients)
@@ -194,7 +212,9 @@ export const upsertRecipient = async (
 /**
  * Mails the confirmation link of a request upsertRecipient just filed.
  * Returns false when the mail did not go out, and then clears only the token
- * this request wrote, so a newer request made meanwhile survives.
+ * this request wrote, so a newer request made meanwhile survives. A row that
+ * never confirmed is removed instead, so a failed send does not keep one of
+ * the five places taken by an address that was never asked.
  */
 export const sendRecipientVerification = async (
   recipient: Pick<ReportRecipientRow, "id" | "tenantId" | "email">,
@@ -221,6 +241,16 @@ export const sendRecipientVerification = async (
     return true;
   } catch (err) {
     console.error("[report-recipient] verification email failed", err);
+    await db
+      .delete(reportRecipients)
+      .where(
+        and(
+          eq(reportRecipients.id, recipient.id),
+          eq(reportRecipients.verifyTokenHash, hashToken(token)),
+          isNull(reportRecipients.verifiedAt),
+          isNull(reportRecipients.unsubscribedAt),
+        ),
+      );
     await db
       .update(reportRecipients)
       .set({ verifyTokenHash: null, verifyExpiresAt: null })
@@ -286,8 +316,11 @@ export const confirmRecipient = async (
 };
 
 /**
- * One-click unsubscribe of one recipient. Only ever writes unsubscribed_at on
- * that row. Idempotent; zero rows for a removed recipient is the same answer.
+ * One-click unsubscribe of one recipient. Only ever writes that row: sets
+ * unsubscribed_at (keeping the first time) and voids any confirmation link
+ * still open, so an older link cannot subscribe the address again. Only a new
+ * request from an admin, confirmed from the mailbox, does. Idempotent; zero
+ * rows for a removed recipient is the same answer.
  */
 export const unsubscribeRecipient = async (
   recipientId: string,
@@ -296,19 +329,24 @@ export const unsubscribeRecipient = async (
 ): Promise<void> => {
   await db
     .update(reportRecipients)
-    .set({ unsubscribedAt: now, updatedAt: now })
+    .set({
+      unsubscribedAt: sql`coalesce(${reportRecipients.unsubscribedAt}, ${now.toISOString()}::timestamptz)`,
+      verifyTokenHash: null,
+      verifyExpiresAt: null,
+      updatedAt: now,
+    })
     .where(
       and(
         eq(reportRecipients.id, recipientId),
         eq(reportRecipients.kind, kind),
-        isNull(reportRecipients.unsubscribedAt),
       ),
     );
 };
 
-/** Removes a recipient of this workspace; its links die with the row. */
+/** Removes a recipient of this workspace and kind; its links die with the row. */
 export const removeRecipient = async (
   tenantId: string,
+  kind: ReportRecipientKind,
   recipientId: string,
 ): Promise<ReportRecipientRow | null> => {
   const [row] = await db
@@ -316,6 +354,7 @@ export const removeRecipient = async (
     .where(
       and(
         eq(reportRecipients.tenantId, tenantId),
+        eq(reportRecipients.kind, kind),
         eq(reportRecipients.id, recipientId),
       ),
     )

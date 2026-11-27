@@ -106,20 +106,24 @@ export default async function ExecutiveReportPage() {
           </Card>
           <Card title="Monthly delivery">
             <p className="text-ink-soft text-sm">
-              {financeRecipients.length === 0
-                ? "Email this report to finance on the first of each month, as a PDF."
-                : `This report goes to ${financeRecipients.length} confirmed finance ${financeRecipients.length === 1 ? "recipient" : "recipients"} on the first of each month.`}
+              {!full
+                ? "The monthly email to finance is included in Pro. Nothing is sent without it."
+                : financeRecipients.length === 0
+                  ? "Email this report to finance on the first of each month, as a PDF."
+                  : `This report goes to ${financeRecipients.length} confirmed finance ${financeRecipients.length === 1 ? "recipient" : "recipients"} on the first of each month.`}
             </p>
-            <p className="mt-3 text-sm">
-              <Link
-                href="/app/settings#finance-delivery"
-                className="hover:text-ink font-medium underline underline-offset-4"
-              >
-                {financeRecipients.length === 0
-                  ? "Add finance recipients"
-                  : "Manage finance recipients"}
-              </Link>
-            </p>
+            {(full || financeRecipients.length > 0) && (
+              <p className="mt-3 text-sm">
+                <Link
+                  href="/app/settings#finance-delivery"
+                  className="hover:text-ink font-medium underline underline-offset-4"
+                >
+                  {financeRecipients.length === 0
+                    ? "Add finance recipients"
+                    : "Manage finance recipients"}
+                </Link>
+              </p>
+            )}
           </Card>
         </div>
       )}

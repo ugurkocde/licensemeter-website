@@ -13,6 +13,7 @@ import {
 import { audit } from "~/server/audit";
 import { getBranding } from "~/server/billing/branding";
 import { db } from "~/server/db";
+import { emailEnabled } from "~/server/email";
 import { reportRecipients } from "~/server/db/schema";
 import { withTenant } from "~/server/db/tenant";
 import { rateLimitDurable } from "~/server/rateLimit";
@@ -189,6 +190,12 @@ const requestVerification = async (
   email: string,
   name: string | null,
 ): Promise<SimpleResult> => {
+  if (!emailEnabled()) {
+    return {
+      ok: false,
+      error: "Email is not configured on this installation.",
+    };
+  }
   const allowed = await rateLimitDurable(
     `report-recipient:${ctx.tenant.id}`,
     VERIFICATION_SENDS_PER_DAY,
@@ -212,6 +219,11 @@ const requestVerification = async (
       ok: false,
       error: `A workspace can have ${MAX_RECIPIENTS_PER_KIND} finance recipients. Remove one first.`,
     };
+  }
+  // Already confirmed and subscribed: nothing to confirm, nobody is mailed.
+  if (upserted.token === null) {
+    revalidate();
+    return { ok: true };
   }
   if (!(await sendRecipientVerification(upserted.recipient, upserted.token))) {
     return {
@@ -263,6 +275,9 @@ export async function resendFinanceRecipientAction(
       })
     : undefined;
   if (!row) return { ok: false, error: "Recipient not found" };
+  if (row.verifiedAt && !row.unsubscribedAt) {
+    return { ok: false, error: "This address is already confirmed." };
+  }
   return requestVerification(ctx, row.email, null);
 }
 
@@ -274,7 +289,7 @@ export async function removeFinanceRecipientAction(
   const { ctx } = gated;
   const id = idSchema.safeParse(recipientId);
   const removed = id.success
-    ? await removeRecipient(ctx.tenant.id, id.data)
+    ? await removeRecipient(ctx.tenant.id, "finance", id.data)
     : null;
   if (!removed) return { ok: false, error: "Recipient not found" };
   await audit(ctx, "report_recipient_removed", {

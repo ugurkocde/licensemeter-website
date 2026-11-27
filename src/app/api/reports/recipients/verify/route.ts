@@ -1,4 +1,5 @@
 import { escapeHtml } from "~/lib/html";
+import { clientIp, rateLimitDurable } from "~/server/rateLimit";
 import {
   confirmRecipient,
   RECIPIENT_TOKEN_TTL_HOURS,
@@ -49,9 +50,9 @@ const page = (title: string, body: string, status = 200): Response =>
       status,
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-store",
+        "Cache-Control": "private, no-store",
         "Referrer-Policy": "no-referrer",
-        "X-Robots-Tag": "noindex",
+        "X-Robots-Tag": "noindex, nofollow",
         "Content-Security-Policy":
           "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
       },
@@ -66,6 +67,24 @@ const invalid = (): Response =>
       who added you to send a new confirmation email.
     </p>`,
     400,
+  );
+
+/** Confirm attempts per client IP; a real recipient needs one or two. */
+const ATTEMPTS_PER_HOUR = 20;
+
+const tooMany = (): Response =>
+  page(
+    "Too many attempts",
+    `<p style="${TEXT}">Try the link again in an hour.</p>`,
+    429,
+  );
+
+const allowed = (req: Request): Promise<boolean> =>
+  rateLimitDurable(
+    `recipient-verify:${clientIp(req.headers)}`,
+    ATTEMPTS_PER_HOUR,
+    60 * 60 * 1000,
+    "deny",
   );
 
 export const GET = (req: Request): Response => {
@@ -98,6 +117,9 @@ export const GET = (req: Request): Response => {
 };
 
 export const POST = async (req: Request): Promise<Response> => {
+  // Checked before the body is read or the database is touched.
+  if (!(await allowed(req))) return tooMany();
+  if (Number(req.headers.get("content-length") ?? 0) > 4096) return invalid();
   let form: FormData;
   try {
     form = await req.formData();

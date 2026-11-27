@@ -55,6 +55,8 @@ export const loadPublicReport = async (
     `share-${purpose}:${clientIp(headerStore)}`,
     limit.max,
     limit.windowMs,
+    // No limiter, no public report: fail closed.
+    "deny",
   );
   if (!allowed) return { kind: "rateLimited" };
 

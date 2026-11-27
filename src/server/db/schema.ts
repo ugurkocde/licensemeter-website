@@ -1419,9 +1419,11 @@ export const reportShareLinks = pgTable(
       "report_share_links_mode_check",
       sql`${t.mode} in ('live', 'snapshot')`,
     ),
+    // A live link never carries a payload; a snapshot carries one until it
+    // is revoked, when the copy is dropped.
     check(
       "report_share_links_payload_check",
-      sql`(${t.mode} = 'snapshot') = (${t.snapshotPayload} is not null)`,
+      sql`(${t.mode} = 'live' and ${t.snapshotPayload} is null) or (${t.mode} = 'snapshot' and (${t.snapshotPayload} is not null or ${t.revokedAt} is not null))`,
     ),
     check(
       "report_share_links_expiry_check",

@@ -30,7 +30,7 @@ CREATE TABLE "report_share_links" (
 	"last_viewed_at" timestamp with time zone,
 	"view_count" integer DEFAULT 0 NOT NULL,
 	CONSTRAINT "report_share_links_mode_check" CHECK ("report_share_links"."mode" in ('live', 'snapshot')),
-	CONSTRAINT "report_share_links_payload_check" CHECK (("report_share_links"."mode" = 'snapshot') = ("report_share_links"."snapshot_payload" is not null)),
+	CONSTRAINT "report_share_links_payload_check" CHECK (("report_share_links"."mode" = 'live' and "report_share_links"."snapshot_payload" is null) or ("report_share_links"."mode" = 'snapshot' and ("report_share_links"."snapshot_payload" is not null or "report_share_links"."revoked_at" is not null))),
 	CONSTRAINT "report_share_links_expiry_check" CHECK ("report_share_links"."expires_at" > "report_share_links"."created_at"),
 	CONSTRAINT "report_share_links_view_count_nonneg" CHECK ("report_share_links"."view_count" >= 0)
 );

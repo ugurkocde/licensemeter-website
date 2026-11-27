@@ -68,7 +68,7 @@ export const ShareLinksPanel = ({
       {canManage && createBlocked === null && (
         <form
           action={formAction}
-          className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center"
+          className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-center"
         >
           <label htmlFor="share-label" className="sr-only">
             Name for the new link
@@ -81,7 +81,7 @@ export const ShareLinksPanel = ({
             maxLength={labelMax}
             autoComplete="off"
             placeholder="Who gets it, for example: CFO November review"
-            className="border-line-input bg-card focus:border-ink min-w-0 border px-3 py-2 text-sm"
+            className="border-line-input bg-card focus:border-ink min-w-0 border px-3 py-2 text-sm sm:col-span-3"
           />
           <label htmlFor="share-mode" className="sr-only">
             Link type

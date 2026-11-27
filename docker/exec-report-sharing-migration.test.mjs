@@ -152,6 +152,15 @@ test("share link and recipient constraints hold and stay tenant isolated", async
   assert.equal(link.view_count, 0);
   assert.equal(link.revoked_at, null);
   await insertLink({ hash: "h2", mode: "snapshot", payload: { v: 1 } });
+  // Revoking a snapshot drops its copy; an unrevoked one must keep it.
+  await assert.rejects(
+    client.query(
+      "UPDATE report_share_links SET snapshot_payload = NULL WHERE token_hash = 'h2'",
+    ),
+  );
+  await client.query(
+    "UPDATE report_share_links SET snapshot_payload = NULL, revoked_at = now() WHERE token_hash = 'h2'",
+  );
   // A live link carries no payload, a snapshot always carries one.
   await assert.rejects(
     insertLink({ hash: "h3", mode: "live", payload: { v: 1 } }),

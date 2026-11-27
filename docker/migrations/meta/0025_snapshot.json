@@ -1,5 +1,5 @@
 {
-  "id": "aa74fd99-c0d2-474b-aeaa-b6d5a2d8d198",
+  "id": "e6ffe92d-a277-4efc-8bce-bcc059a528e5",
   "prevId": "819ac10e-5d8c-4b8b-a52b-08b9f1184342",
   "version": "7",
   "dialect": "postgresql",
@@ -3012,7 +3012,7 @@
         },
         "report_share_links_payload_check": {
           "name": "report_share_links_payload_check",
-          "value": "(\"report_share_links\".\"mode\" = 'snapshot') = (\"report_share_links\".\"snapshot_payload\" is not null)"
+          "value": "(\"report_share_links\".\"mode\" = 'live' and \"report_share_links\".\"snapshot_payload\" is null) or (\"report_share_links\".\"mode\" = 'snapshot' and (\"report_share_links\".\"snapshot_payload\" is not null or \"report_share_links\".\"revoked_at\" is not null))"
         },
         "report_share_links_expiry_check": {
           "name": "report_share_links_expiry_check",

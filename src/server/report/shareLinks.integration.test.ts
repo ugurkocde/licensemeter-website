@@ -428,6 +428,30 @@ describe("public share page and PDF", () => {
 });
 
 describe("after the plan is cancelled", () => {
+  it("keeps a snapshot's white-label marks", async () => {
+    const summary = await loadExecutiveSummary(tenant, proEntitlement());
+    const created = await createShareLink({
+      tenantId: tenant.id,
+      label: "Branded",
+      mode: "snapshot",
+      ttlDays: 30,
+      createdByKey: "oid",
+      snapshot: {
+        version: 1,
+        summary,
+        branding: { name: "Fabrikam Advisory", color: "#123456", logo: null },
+      },
+    });
+    if (!created.ok) throw new Error("not created");
+    await cancelPlan();
+    const html = await renderPage(created.token);
+    expect(html).toContain("Prepared by Fabrikam Advisory");
+    const pdf = await pdfResponse(created.token);
+    expect(pdfText(Buffer.from(await pdf.arrayBuffer()))).toContain(
+      "Fabrikam Advisory",
+    );
+  });
+
   it("keeps a snapshot link working and blocks a live link", async () => {
     const live = await newLink("live");
     const snapshot = await newLink("snapshot");
@@ -447,9 +471,14 @@ describe("after the plan is cancelled", () => {
       "Contoso GmbH",
     );
 
-    // Revoking still works on Free, and then the snapshot is gone too.
+    // Revoking still works on Free, and then the snapshot is gone too,
+    // stored copy included.
     expect(await revokeShareLink(tenant.id, snapshot.link.id)).not.toBeNull();
     await expect(renderPage(snapshot.token)).rejects.toThrow("NEXT_NOT_FOUND");
+    const row = await currentDb.query.reportShareLinks.findFirst({
+      where: eq(schema.reportShareLinks.id, snapshot.link.id),
+    });
+    expect(row!.snapshotPayload).toBeNull();
   });
 
   it("serves the snapshot as it was, while a live link follows the data", async () => {

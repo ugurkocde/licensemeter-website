@@ -72,12 +72,23 @@ const page = (title: string, body: string): Response =>
     ${body}
   </div>
   <p style="font-size:12px;margin:22px 0 0 8px">
-    <a href="/" style="color:#67717e">licensemeter.com</a>
+    <a href="/" rel="noreferrer" style="color:#67717e">licensemeter.com</a>
   </p>
 </div>
 </body>
 </html>`,
-    { headers: { "Content-Type": "text/html; charset=utf-8" } },
+    {
+      // The link carries a token that never expires: keep it out of caches,
+      // indexes and the Referer of the link back to the homepage.
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "private, no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Robots-Tag": "noindex, nofollow",
+        "Content-Security-Policy":
+          "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+      },
+    },
   );
 
 type Parsed =

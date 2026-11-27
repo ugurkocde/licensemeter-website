@@ -203,7 +203,7 @@ export const revokeShareLink = async (
 ): Promise<ShareLinkSummary | null> => {
   const [link] = await db
     .update(reportShareLinks)
-    .set({ revokedAt: now })
+    .set({ revokedAt: now, snapshotPayload: null })
     .where(
       and(
         eq(reportShareLinks.tenantId, tenantId),
