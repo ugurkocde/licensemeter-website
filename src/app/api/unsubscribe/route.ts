@@ -22,9 +22,10 @@ import {
 /**
  * Unsubscribe endpoint. Three link kinds share it:
  *  - ?e=&t=  the welcome email, keyed by address;
- *  - ?m=&j=&t=  the weekly digest and monthly report, keyed by membership and
- *    email type, which sets that person's opt-out for that one workspace;
- *  - ?w=&j=&t=  the same two emails to a workspace's shared notification
+ *  - ?m=&j=&t=  the weekly digest, monthly report and renewal reminders,
+ *    keyed by membership and email type, which sets that person's opt-out
+ *    for that one workspace;
+ *  - ?w=&j=&t=  the same three emails to a workspace's shared notification
  *    address, which has no membership, so the switch sits on the workspace.
  * GET only renders a confirm page: mail scanners and link prefetchers
  * (Outlook SafeLinks, Gmail) follow GETs, so the state change happens
@@ -78,6 +79,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const JOB_LABEL: Record<UnsubJob, string> = {
   digest: "weekly digest",
   report: "monthly report",
+  renewal: "renewal reminder",
 };
 
 const parse = (req: NextRequest): Parsed | null => {
@@ -199,7 +201,9 @@ export const POST = async (req: NextRequest): Promise<Response> => {
       .set(
         parsed.job === "digest"
           ? { digestOptOut: true }
-          : { reportOptOut: true },
+          : parsed.job === "report"
+            ? { reportOptOut: true }
+            : { renewalOptOut: true },
       )
       .where(eq(memberships.id, parsed.membershipId));
     return page(
@@ -214,10 +218,16 @@ export const POST = async (req: NextRequest): Promise<Response> => {
   if (parsed.kind === "shared") {
     const workspace = await tenantNameFor(parsed.tenantId);
     // Zero rows for a workspace that removed the address meanwhile: same
-    // response, and the other two switches stay as they are.
+    // response, and the other switches stay as they are.
     await db
       .update(notificationAddresses)
-      .set(parsed.job === "digest" ? { digest: false } : { report: false })
+      .set(
+        parsed.job === "digest"
+          ? { digest: false }
+          : parsed.job === "report"
+            ? { report: false }
+            : { renewalAlerts: false },
+      )
       .where(eq(notificationAddresses.tenantId, parsed.tenantId));
     return page(
       "You are unsubscribed",

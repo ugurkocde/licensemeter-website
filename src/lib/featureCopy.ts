@@ -26,7 +26,7 @@ export const FEATURE_COPY: Record<Feature, FeatureCopy> = {
   renewalPlans: {
     label: "Renewal savings plan",
     description:
-      "For every upcoming renewal, the seats to renew, the seats to cut and the yearly savings, with a calendar (.ics) export.",
+      "For every upcoming renewal, the seats to renew, the seats to cut and the yearly savings, with reminder emails 90, 60 and 30 days ahead and a calendar (.ics) export.",
   },
   mcp: {
     label: "MCP server",

@@ -77,6 +77,7 @@ export default async function RenewalsPage() {
             // Like findings, the demo shows admin controls and its actions
             // answer that the workspace is read-only.
             canEdit={hasRole(ctx, "admin")}
+            reminders={ctx.tenant.renewalAlerts}
           />
         ) : (
           <RenewalPlanTeaser

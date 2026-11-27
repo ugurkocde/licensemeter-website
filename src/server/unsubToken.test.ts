@@ -103,9 +103,27 @@ describe("membership unsubscribe tokens", () => {
     expect(verifyUnsubToken(" USER@example.com", pinned, SECRET)).toBe(true);
   });
 
-  it("recognizes only the two jobs", () => {
+  it("does not let a renewal reminder link switch off another email", () => {
+    const token = makeMembershipUnsubToken(MEMBERSHIP, "renewal", SECRET);
+    expect(
+      verifyMembershipUnsubToken(MEMBERSHIP, "renewal", token, SECRET),
+    ).toBe(true);
+    for (const job of ["digest", "report"] as const) {
+      expect(verifyMembershipUnsubToken(MEMBERSHIP, job, token, SECRET)).toBe(
+        false,
+      );
+      const other = makeMembershipUnsubToken(MEMBERSHIP, job, SECRET);
+      expect(
+        verifyMembershipUnsubToken(MEMBERSHIP, "renewal", other, SECRET),
+      ).toBe(false);
+    }
+  });
+
+  it("recognizes only the three jobs", () => {
     expect(isUnsubJob("digest")).toBe(true);
     expect(isUnsubJob("report")).toBe(true);
+    expect(isUnsubJob("renewal")).toBe(true);
+    expect(isUnsubJob("leak")).toBe(false);
     expect(isUnsubJob("welcome")).toBe(false);
     expect(isUnsubJob(null)).toBe(false);
   });

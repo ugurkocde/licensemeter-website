@@ -15,6 +15,8 @@ import { JoinRequestActions } from "~/components/workspace/JoinRequestActions";
 import { LeakAlertsToggle } from "~/components/workspace/LeakAlertsToggle";
 import { MemberActions } from "~/components/workspace/MemberActions";
 import { MonthlyReportToggle } from "~/components/workspace/MonthlyReportToggle";
+import { PlanBadge } from "~/components/workspace/FeatureLock";
+import { RenewalAlertsToggle } from "~/components/workspace/RenewalAlertsToggle";
 import { RemoveEmailBlock } from "~/components/workspace/RemoveEmailBlock";
 import { ReplayTourButton } from "~/components/workspace/ReplayTourButton";
 import { RoleSelect } from "~/components/workspace/RoleSelect";
@@ -30,6 +32,7 @@ import {
 import { exclusionLikePatterns } from "~/lib/findingExclusions";
 import { fmtDate, fmtDateTime, workspaceLabel } from "~/lib/format";
 import { ROLE_DESCRIPTION } from "~/lib/roles";
+import { upgradePath } from "~/lib/upgrade";
 import { hasRole, inviteExpiry, requireAccess } from "~/server/access";
 import { db } from "~/server/db";
 import {
@@ -43,6 +46,7 @@ import {
 import { currentFindingsRecipients } from "~/server/currentFindings";
 import { holdsJoinableDomain, pendingJoinRequests } from "~/server/domainJoin";
 import { emailEnabled } from "~/server/email";
+import { hasFeature } from "~/server/entitlement";
 import { loadSharedAddress } from "~/server/notificationAddress";
 import { SyncStepList } from "~/components/workspace/SyncStepList";
 
@@ -88,6 +92,8 @@ export default async function SettingsPage() {
   // granted to every visitor, so editable controls would mutate shared state.
   const canEdit = isAdmin && !ctx.tenant.isDemo;
   const inviteEmailsActive = emailEnabled() && !ctx.tenant.isDemo;
+  // Renewal reminders belong to the renewal savings plan.
+  const renewalReminders = hasFeature(ctx.entitlement, "renewalPlans");
 
   const [
     members,
@@ -288,6 +294,31 @@ export default async function SettingsPage() {
               </dd>
             </div>
             <div>
+              <dt className="text-ink-faint flex items-center gap-2">
+                Renewal reminders
+                <PlanBadge feature="renewalPlans" locked={!renewalReminders} />
+              </dt>
+              <dd className="mt-0.5">
+                {!renewalReminders ? (
+                  <span className="text-ink-soft text-sm">
+                    Emails 90, 60 and 30 days before each renewal.{" "}
+                    <Link
+                      href={upgradePath("renewalPlans")}
+                      className="hover:text-ink underline underline-offset-4"
+                    >
+                      See plans
+                    </Link>
+                  </span>
+                ) : canEdit ? (
+                  <RenewalAlertsToggle initial={ctx.tenant.renewalAlerts} />
+                ) : ctx.tenant.renewalAlerts ? (
+                  "On"
+                ) : (
+                  "Off"
+                )}
+              </dd>
+            </div>
+            <div>
               <dt className="text-ink-faint">Product tour</dt>
               <dd className="mt-0.5">
                 <ReplayTourButton storageId={ctx.membership.id} />
@@ -330,6 +361,24 @@ export default async function SettingsPage() {
                     )}
                   </dd>
                 </div>
+                {renewalReminders && (
+                  <div>
+                    <dt className="sr-only">Renewal reminder emails</dt>
+                    <dd>
+                      <EmailPreferenceToggle
+                        job="renewal"
+                        label="Renewal reminders"
+                        initial={!ctx.membership.renewalOptOut}
+                      />
+                      {!ctx.tenant.renewalAlerts && (
+                        <p className="text-ink-faint mt-1 text-xs">
+                          Applies once renewal reminders are on for this
+                          workspace.
+                        </p>
+                      )}
+                    </dd>
+                  </div>
+                )}
               </>
             )}
           </dl>
@@ -350,6 +399,9 @@ export default async function SettingsPage() {
               digest={sharedAddress?.digest ?? true}
               report={sharedAddress?.report ?? true}
               leakAlerts={sharedAddress?.leakAlerts ?? true}
+              renewalAlerts={
+                renewalReminders ? (sharedAddress?.renewalAlerts ?? true) : null
+              }
             />
           </Card>
         )}
@@ -358,7 +410,7 @@ export default async function SettingsPage() {
           <Card title="Email delivery">
             <p className="text-ink-soft text-sm">
               {env.RESEND_WEBHOOK_SECRET
-                ? "The weekly digest, the monthly report and leak alerts, with what the mail provider reported back."
+                ? "The weekly digest, the monthly report, renewal reminders and leak alerts, with what the mail provider reported back."
                 : "Delivery tracking is not available on this installation. Sent only means the mail provider accepted the message, not that it arrived."}
             </p>
             {deliveries.length === 0 ? (
@@ -394,9 +446,9 @@ export default async function SettingsPage() {
               <div className="border-line mt-4 border-t pt-4">
                 <h3 className="text-sm font-medium">Blocked addresses</h3>
                 <p className="text-ink-faint mt-0.5 text-xs">
-                  LicenseMeter no longer sends the digest, the report or leak
-                  alerts to these addresses, because the mail provider reported
-                  a permanent failure.
+                  LicenseMeter no longer sends the digest, the report, renewal
+                  reminders or leak alerts to these addresses, because the mail
+                  provider reported a permanent failure.
                 </p>
                 <ul className="mt-1 flex flex-col">
                   {blocks.map((b) => (

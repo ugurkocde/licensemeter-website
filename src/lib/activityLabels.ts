@@ -52,6 +52,7 @@ const ACTION_LABELS: Record<string, string> = {
   renewal_updated: "Renewal updated",
   renewal_deleted: "Renewal deleted",
   leak_alerts_changed: "Leak alerts changed",
+  renewal_alerts_changed: "Renewal reminders changed",
   monthly_report_changed: "Monthly report changed",
   email_preference_changed: "Personal email preference changed",
   notification_address_requested: "Shared notification address requested",

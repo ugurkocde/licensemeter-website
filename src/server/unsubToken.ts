@@ -25,10 +25,10 @@ export const verifyUnsubToken = (
 };
 
 /** Scheduled email a membership can opt out of. */
-export type UnsubJob = "digest" | "report";
+export type UnsubJob = "digest" | "report" | "renewal";
 
 export const isUnsubJob = (v: unknown): v is UnsubJob =>
-  v === "digest" || v === "report";
+  v === "digest" || v === "report" || v === "renewal";
 
 /**
  * Membership-scoped token for the digest and report emails: HMAC over
@@ -36,7 +36,7 @@ export const isUnsubJob = (v: unknown): v is UnsubJob =>
  * message space disjoint from the email tokens above (an email always
  * contains "@", a membership id never does), so neither kind can stand in
  * for the other, and the job is signed so a digest link cannot switch off
- * the report.
+ * the report or the renewal reminders.
  */
 export const makeMembershipUnsubToken = (
   membershipId: string,

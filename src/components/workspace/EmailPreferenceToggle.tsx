@@ -7,8 +7,8 @@ import { setMyEmailPreference } from "~/server/actions";
 import type { ActionResult } from "~/server/actions";
 
 /**
- * Personal "Email me" toggle for one scheduled email (weekly digest or
- * monthly report). Same optimistic save-on-change pattern and live region as
+ * Personal "Email me" toggle for one scheduled email (weekly digest, monthly
+ * report or renewal reminders). Same optimistic save-on-change pattern and live region as
  * MonthlyReportToggle, but it only changes the signed-in person's own copy.
  */
 export const EmailPreferenceToggle = ({
@@ -16,7 +16,7 @@ export const EmailPreferenceToggle = ({
   label,
   initial,
 }: {
-  job: "digest" | "report";
+  job: "digest" | "report" | "renewal";
   label: string;
   initial: boolean;
 }) => {

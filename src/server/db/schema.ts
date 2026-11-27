@@ -400,6 +400,8 @@ export const memberships = pgTable(
      */
     digestOptOut: boolean("digest_opt_out").notNull().default(false),
     reportOptOut: boolean("report_opt_out").notNull().default(false),
+    /** Personal opt-out for the 90, 60 and 30 day renewal reminders. */
+    renewalOptOut: boolean("renewal_opt_out").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1223,8 +1225,8 @@ export const apiTokens = pgTable(
 ).enableRLS();
 
 /**
- * Delivery ledger for the scheduled emails (weekly digest, monthly report) and
- * the immediate leak alerts. One row per (tenant, job, period, recipient): the
+ * Delivery ledger for the scheduled emails (weekly digest, monthly report,
+ * renewal reminders) and the immediate leak alerts. One row per (tenant, job, period, recipient): the
  * row is claimed before the send and marked sent afterwards, so a repeated
  * cron run, a scheduler restart or a run cut off by the function time limit
  * never sends the same email twice. Claim rules live in ~/server/emailLedger.
@@ -1236,10 +1238,14 @@ export const emailDeliveries = pgTable(
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
-    job: text("job").$type<"digest" | "report" | "leak">().notNull(),
+    job: text("job")
+      .$type<"digest" | "report" | "leak" | "renewal">()
+      .notNull(),
     /**
      * Digest: ISO week in UTC ("2026-W38"). Report: reported month ("2026-08").
      * Leak: ISO timestamp of the alert, so every alert is its own delivery.
+     * Renewal: "<plan item key>:<renewal date>:<threshold days>", so each
+     * renewal gets each of its 90, 60 and 30 day reminders once.
      */
     periodKey: text("period_key").notNull(),
     /** Lowercased email address. */
@@ -1276,7 +1282,7 @@ export const emailDeliveries = pgTable(
     uniqueIndex("email_deliveries_provider_id_idx").on(t.providerId),
     check(
       "email_deliveries_job_check",
-      sql`${t.job} in ('digest', 'report', 'leak')`,
+      sql`${t.job} in ('digest', 'report', 'leak', 'renewal')`,
     ),
     check(
       "email_deliveries_status_check",
@@ -1340,6 +1346,8 @@ export const notificationAddresses = pgTable("notification_addresses", {
   digest: boolean("digest").notNull().default(true),
   report: boolean("report").notNull().default(true),
   leakAlerts: boolean("leak_alerts").notNull().default(true),
+  /** The 90, 60 and 30 day renewal reminders. */
+  renewalAlerts: boolean("renewal_alerts").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

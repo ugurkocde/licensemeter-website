@@ -268,10 +268,13 @@ export const RenewalPlanView = ({
   plan,
   currency,
   canEdit,
+  reminders,
 }: {
   plan: RenewalPlan;
   currency: string;
   canEdit: boolean;
+  /** The workspace switch for the renewal reminder emails. */
+  reminders: boolean;
 }) => {
   const { summary } = plan;
   const next = summary.next;
@@ -353,6 +356,17 @@ export const RenewalPlanView = ({
           buffer. Each person counts once per subscription. Trial seats are
           never counted as savings, and seats without a price show as seats
           only.
+        </p>
+        <p className="text-ink-soft mt-2 text-xs leading-relaxed">
+          {reminders
+            ? "Owners and admins get a reminder email 90, 60 and 30 days before each renewal, with its calendar file attached. "
+            : "Renewal reminder emails are off for this workspace. "}
+          <Link
+            href="/app/settings"
+            className="hover:text-ink underline underline-offset-4"
+          >
+            {reminders ? "Manage reminders" : "Turn them on in Settings"}
+          </Link>
         </p>
       </div>
 

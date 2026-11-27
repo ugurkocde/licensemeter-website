@@ -994,6 +994,27 @@ export const setLeakAlerts = async (
   return ok();
 };
 
+/**
+ * Workspace switch for the 90, 60 and 30 day renewal reminders. Turning them
+ * off is always allowed; they only go out on a plan with the renewal savings
+ * plan, which the reminder job checks on every run.
+ */
+export const setRenewalAlerts = async (
+  enabled: boolean,
+): Promise<ActionResult> => {
+  const ctx = await apiAccess("admin");
+  if (!ctx) return fail("Not allowed");
+  if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
+  if (typeof enabled !== "boolean") return fail("Invalid value");
+  await db
+    .update(tenants)
+    .set({ renewalAlerts: enabled })
+    .where(eq(tenants.id, ctx.tenant.id));
+  await audit(ctx, "renewal_alerts_changed", { enabled });
+  revalidateApp();
+  return ok();
+};
+
 /** Monthly PDF waste report emailed to workspace owners/admins. */
 export const setMonthlyReport = async (
   enabled: boolean,
@@ -1012,17 +1033,19 @@ export const setMonthlyReport = async (
 
 /**
  * Personal email preference of the signed-in owner/admin for this workspace:
- * whether they get the weekly digest or the monthly report. Only touches the
- * caller's own membership; the workspace-level switches stay separate.
+ * whether they get the weekly digest, the monthly report or the renewal
+ * reminders. Only touches the caller's own membership; the workspace-level
+ * switches stay separate.
  */
 export const setMyEmailPreference = async (
-  job: "digest" | "report",
+  job: "digest" | "report" | "renewal",
   enabled: boolean,
 ): Promise<ActionResult> => {
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
   if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
-  if (job !== "digest" && job !== "report") return fail("Unknown email");
+  if (job !== "digest" && job !== "report" && job !== "renewal")
+    return fail("Unknown email");
   if (typeof enabled !== "boolean") return fail("Invalid value");
 
   await db
@@ -1030,7 +1053,9 @@ export const setMyEmailPreference = async (
     .set(
       job === "digest"
         ? { digestOptOut: !enabled }
-        : { reportOptOut: !enabled },
+        : job === "report"
+          ? { reportOptOut: !enabled }
+          : { renewalOptOut: !enabled },
     )
     .where(eq(memberships.id, ctx.membership.id));
   await audit(ctx, "email_preference_changed", { email: job, enabled });
@@ -1104,7 +1129,7 @@ export const removeNotificationAddress = async (): Promise<ActionResult> => {
   return ok();
 };
 
-/** One of the three emails the shared address receives. */
+/** One of the emails the shared address receives. */
 export const setNotificationAddressPreference = async (
   job: SharedEmailJob,
   enabled: boolean,
@@ -1112,7 +1137,12 @@ export const setNotificationAddressPreference = async (
   const ctx = await apiAccess("admin");
   if (!ctx) return fail("Not allowed");
   if (ctx.tenant.isDemo) return fail(DEMO_READONLY);
-  if (job !== "digest" && job !== "report" && job !== "leak") {
+  if (
+    job !== "digest" &&
+    job !== "report" &&
+    job !== "leak" &&
+    job !== "renewal"
+  ) {
     return fail("Unknown email");
   }
   if (typeof enabled !== "boolean") return fail("Invalid value");

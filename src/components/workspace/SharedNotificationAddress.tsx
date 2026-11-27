@@ -15,7 +15,7 @@ import type { SharedEmailJob } from "~/server/notificationAddress";
 
 /**
  * The workspace's one shared notification address for the Settings page:
- * request, confirm state, the three switches and removal. Every control
+ * request, confirm state, the per-email switches and removal. Every control
  * follows the LeakAlertsToggle pattern, one mutation in flight at a time with
  * the outcome announced in a live region.
  */
@@ -106,6 +106,7 @@ export const SharedNotificationAddress = ({
   digest,
   report,
   leakAlerts,
+  renewalAlerts,
 }: {
   verifiedEmail: string | null;
   pendingEmail: string | null;
@@ -114,6 +115,8 @@ export const SharedNotificationAddress = ({
   digest: boolean;
   report: boolean;
   leakAlerts: boolean;
+  /** Null when the plan has no renewal reminders, so there is no switch. */
+  renewalAlerts: boolean | null;
 }) => {
   const router = useRouter();
   /* A row exists as soon as one address was requested; the switches need it. */
@@ -257,6 +260,13 @@ export const SharedNotificationAddress = ({
           <Toggle job="digest" label="Weekly digest" initial={digest} />
           <Toggle job="report" label="Monthly report" initial={report} />
           <Toggle job="leak" label="Leak alerts" initial={leakAlerts} />
+          {renewalAlerts !== null && (
+            <Toggle
+              job="renewal"
+              label="Renewal reminders"
+              initial={renewalAlerts}
+            />
+          )}
           {!verifiedEmail && (
             <p className="text-ink-faint text-xs">
               These apply once an address is confirmed.
