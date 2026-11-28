@@ -12,10 +12,17 @@ import {
   tenants,
 } from "~/server/db/schema";
 import {
+  recipientWorkspaceName,
+  unsubscribeRecipient,
+} from "~/server/report/recipients";
+import {
+  isRecipientUnsubKind,
   isUnsubJob,
   verifyMembershipUnsubToken,
+  verifyRecipientUnsubToken,
   verifySharedUnsubToken,
   verifyUnsubToken,
+  type RecipientUnsubKind,
   type UnsubJob,
 } from "~/server/unsubToken";
 
@@ -26,7 +33,11 @@ import {
  *    keyed by membership and email type, which sets that person's opt-out
  *    for that one workspace;
  *  - ?w=&j=&t=  the same three emails to a workspace's shared notification
- *    address, which has no membership, so the switch sits on the workspace.
+ *    address, which has no membership, so the switch sits on the workspace;
+ *  - ?r=&k=&t=  the monthly executive report to a finance recipient outside
+ *    the workspace, which only ever sets that recipient's unsubscribed_at.
+ *    Its token comes from a key of its own, so none of the other links can
+ *    switch it off and it can switch off none of them.
  * GET only renders a confirm page: mail scanners and link prefetchers
  * (Outlook SafeLinks, Gmail) follow GETs, so the state change happens
  * exclusively on POST. The same POST URL serves RFC 8058 one-click
@@ -61,18 +72,34 @@ const page = (title: string, body: string): Response =>
     ${body}
   </div>
   <p style="font-size:12px;margin:22px 0 0 8px">
-    <a href="/" style="color:#67717e">licensemeter.com</a>
+    <a href="/" rel="noreferrer" style="color:#67717e">licensemeter.com</a>
   </p>
 </div>
 </body>
 </html>`,
-    { headers: { "Content-Type": "text/html; charset=utf-8" } },
+    {
+      // The link carries a token that never expires: keep it out of caches,
+      // indexes and the Referer of the link back to the homepage.
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "private, no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Robots-Tag": "noindex, nofollow",
+        "Content-Security-Policy":
+          "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+      },
+    },
   );
 
 type Parsed =
   | { kind: "email"; email: string }
   | { kind: "membership"; membershipId: string; job: UnsubJob }
-  | { kind: "shared"; tenantId: string; job: UnsubJob };
+  | { kind: "shared"; tenantId: string; job: UnsubJob }
+  | {
+      kind: "recipient";
+      recipientId: string;
+      recipientKind: RecipientUnsubKind;
+    };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -100,6 +127,18 @@ const parse = (req: NextRequest): Parsed | null => {
     if (!verifyMembershipUnsubToken(m, j, sp.get("t") ?? "", env.AUTH_SECRET))
       return null;
     return { kind: "membership", membershipId: m.toLowerCase(), job: j };
+  }
+  const r = sp.get("r");
+  if (r !== null) {
+    const k = sp.get("k");
+    if (!UUID.test(r) || !isRecipientUnsubKind(k)) return null;
+    if (!verifyRecipientUnsubToken(r, k, sp.get("t") ?? "", env.AUTH_SECRET))
+      return null;
+    return {
+      kind: "recipient",
+      recipientId: r.toLowerCase(),
+      recipientKind: k,
+    };
   }
   const w = sp.get("w");
   if (w !== null) {
@@ -163,6 +202,18 @@ const unsubscribeForm = `<form method="post" style="margin-top:20px">
 export const GET = async (req: NextRequest): Promise<Response> => {
   const parsed = parse(req);
   if (!parsed) return invalid();
+  if (parsed.kind === "recipient") {
+    const workspace = await recipientWorkspaceName(parsed.recipientId);
+    return page(
+      "Unsubscribe from the executive report",
+      `<p style="${TEXT}">
+      No more monthly executive reports from
+      <strong style="color:#171b23;font-weight:600">${escapeHtml(workspace)}</strong>
+      to this address. Confirm below.
+    </p>
+    ${unsubscribeForm}`,
+    );
+  }
   if (parsed.kind === "membership") {
     const workspace = await workspaceNameFor(parsed.membershipId);
     return page(
@@ -200,6 +251,19 @@ export const GET = async (req: NextRequest): Promise<Response> => {
 export const POST = async (req: NextRequest): Promise<Response> => {
   const parsed = parse(req);
   if (!parsed) return invalid();
+  if (parsed.kind === "recipient") {
+    const workspace = await recipientWorkspaceName(parsed.recipientId);
+    // Zero rows for a recipient that was removed meanwhile: same response.
+    await unsubscribeRecipient(parsed.recipientId, parsed.recipientKind);
+    return page(
+      "You are unsubscribed",
+      `<p style="${TEXT}">
+      This address gets no further executive reports from
+      ${escapeHtml(workspace)}. An administrator of the workspace can send a
+      new confirmation email if you want them again.
+    </p>`,
+    );
+  }
   if (parsed.kind === "membership") {
     const workspace = await workspaceNameFor(parsed.membershipId);
     // Zero rows for a membership that was removed meanwhile: same response.

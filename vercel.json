@@ -28,6 +28,10 @@
     {
       "path": "/api/cron/renewal-alerts",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/exec-report",
+      "schedule": "0 8 1 * *"
     }
   ]
 }

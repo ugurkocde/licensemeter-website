@@ -3,13 +3,14 @@ import type { DeliveryStatus, EmailBlockReason } from "~/server/types";
 /** Plain words for the delivery ledger, shown under Settings, Email delivery. */
 
 export const EMAIL_JOB_LABELS: Record<
-  "digest" | "report" | "leak" | "renewal",
+  "digest" | "report" | "leak" | "renewal" | "exec_report",
   string
 > = {
   digest: "Weekly digest",
   report: "Monthly report",
   leak: "Leak alert",
   renewal: "Renewal reminder",
+  exec_report: "Executive report to finance",
 };
 
 const DELIVERY_STATUS_LABELS: Record<DeliveryStatus, string> = {

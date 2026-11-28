@@ -103,7 +103,7 @@ For an independently managed PostgreSQL database, provision the schema as the da
 
 The `scripts/db-*.sql` files describe the hosted Supabase deployment: RLS, application-role DML permissions, and denial of Supabase Data API access. Tenant isolation remains in application code. Review these files before applying them, and run `scripts/db-audit-posture.sql` after schema changes. The bundled PostgreSQL service has no Data API and does not need these Supabase-specific scripts.
 
-For Vercel, configure the database, authentication, encryption, `APP_BASE_URL`, and `CRON_SECRET`. `vercel.json` schedules the sync, digest, monthly report, the daily renewal reminders (`/api/cron/renewal-alerts`) and the daily retention job (`/api/cron/retention`), which deletes stale sign-in and rate-limit rows and pseudonymises old resolved findings. `SELF_HOSTED=true` is for instances you operate yourself.
+For Vercel, configure the database, authentication, encryption, `APP_BASE_URL`, and `CRON_SECRET`. `vercel.json` schedules the sync, digest, monthly report, the daily renewal reminders (`/api/cron/renewal-alerts`), the monthly executive report to finance (`/api/cron/exec-report`) and the daily retention job (`/api/cron/retention`), which deletes stale sign-in and rate-limit rows and pseudonymises old resolved findings. An existing hosted database (not the Docker image, which migrates itself) needs `scripts/db-add-renewal-alerts.sql` and then `scripts/db-add-exec-report-sharing.sql`, run in that order before deploying the release with the renewal reminders and the executive report to finance. `SELF_HOSTED=true` is for instances you operate yourself.
 
 ## First connection
 

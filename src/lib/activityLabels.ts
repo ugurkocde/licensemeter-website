@@ -69,6 +69,11 @@ const ACTION_LABELS: Record<string, string> = {
   branding_updated: "Report branding updated",
   branding_cleared: "Report branding reset",
   trial_reminders_changed: "Trial reminders changed",
+  report_share_link_created: "Executive report share link created",
+  report_share_link_revoked: "Executive report share link revoked",
+  report_recipient_requested: "Finance recipient requested",
+  report_recipient_verified: "Finance recipient confirmed",
+  report_recipient_removed: "Finance recipient removed",
 };
 
 const DETAIL_LABELS: Record<string, string> = {

@@ -20,6 +20,8 @@ const config = {
     "/api/export/dpa": ["./node_modules/pdfkit/**/*"],
     "/api/export/dpa-signed": ["./node_modules/pdfkit/**/*"],
     "/api/cron/report": ["./node_modules/pdfkit/**/*"],
+    "/api/cron/exec-report": ["./node_modules/pdfkit/**/*"],
+    "/api/reports/public/[token]/pdf": ["./node_modules/pdfkit/**/*"],
     // The collector is generated from this template at request time.
     "/api/metering/collector": [
       "./src/server/metering/Collect-LicenseMeterUsage.template.ps1",
@@ -92,6 +94,26 @@ const config = {
       {
         source: "/api/connect/approve",
         headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
+      // Public executive report share links: the token is the whole
+      // authorization, so it must never leave in a Referer, sit in a shared
+      // cache, or be indexed. The page and its PDF set the same headers
+      // themselves as well.
+      {
+        source: "/r/:path*",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "private, no-store" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
+      {
+        source: "/api/reports/public/:path*",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "private, no-store" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
       },
     ];
   },

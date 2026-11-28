@@ -87,3 +87,44 @@ export const verifySharedUnsubToken = (
   const given = Buffer.from(token);
   return expected.length === given.length && timingSafeEqual(expected, given);
 };
+
+/**
+ * Report recipients (people outside the workspace, such as finance) have no
+ * membership and no shared-address row, so their links get a token domain of
+ * their own: a separately derived key (its own HKDF context) over
+ * "recipient:<id>:<kind>". A recipient link can therefore never verify as a
+ * membership, shared-address or welcome-email link, and none of those can
+ * stand in for a recipient link. The unsubscribe route only ever lets this
+ * token set unsubscribed_at on that one report_recipients row.
+ */
+const recipientKey = (secret: string): Buffer =>
+  Buffer.from(
+    hkdfSync("sha256", secret, "licensemeter-unsub", "report-recipient-v1", 32),
+  );
+
+export type RecipientUnsubKind = "finance" | "client";
+
+export const isRecipientUnsubKind = (v: unknown): v is RecipientUnsubKind =>
+  v === "finance" || v === "client";
+
+export const makeRecipientUnsubToken = (
+  recipientId: string,
+  kind: RecipientUnsubKind,
+  secret: string,
+): string =>
+  createHmac("sha256", recipientKey(secret))
+    .update(`recipient:${recipientId.trim().toLowerCase()}:${kind}`)
+    .digest("base64url");
+
+export const verifyRecipientUnsubToken = (
+  recipientId: string,
+  kind: RecipientUnsubKind,
+  token: string,
+  secret: string,
+): boolean => {
+  const expected = Buffer.from(
+    makeRecipientUnsubToken(recipientId, kind, secret),
+  );
+  const given = Buffer.from(token);
+  return expected.length === given.length && timingSafeEqual(expected, given);
+};

@@ -13,6 +13,8 @@ test("UTC schedule matches the hosted sync, digest and report schedule", () => {
     "renewal-alerts",
   ]);
   assert.deepEqual(dueJobs(new Date("2026-10-01T07:00:00Z")), ["report"]);
+  assert.deepEqual(dueJobs(new Date("2026-10-01T08:00:00Z")), ["exec-report"]);
+  assert.deepEqual(dueJobs(new Date("2026-10-02T08:00:00Z")), []);
   assert.deepEqual(dueJobs(new Date("2026-09-15T06:00:00Z")), [
     "renewal-alerts",
   ]);

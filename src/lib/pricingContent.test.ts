@@ -153,10 +153,11 @@ describe("pricing content", () => {
         .flatMap((g) => g.rows)
         .find((r) => r.id === "execReport")!;
       expect(row.cells.map((cell) => cell.kind)).toEqual(["no", "yes", "yes"]);
-      // Share links and finance recipients are not built yet.
-      expect(allStrings(lang).join("\n")).not.toMatch(
-        /share link|finance recipient|freigabelink|empfänger in der finanz/i,
-      );
+      // CFO share links and the monthly email to finance ship with it.
+      const pro = plans.pro.items.find((item) => report.test(item.text))!;
+      expect(pro.detail).toMatch(/share link|freigabelink/i);
+      expect(pro.detail).toMatch(/email to finance|versand an die finanz/i);
+      expect(row.label).toMatch(/share link|freigabelink/i);
     }
   });
 

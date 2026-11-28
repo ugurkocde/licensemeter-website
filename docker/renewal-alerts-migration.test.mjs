@@ -50,7 +50,11 @@ test("self-host migration and hosted script produce the same renewal alert schem
   await docker.exec(hosted);
   await docker.exec(hosted);
   assert.deepEqual(await columnsOf(docker), dockerColumns);
-  assert.deepEqual(await jobCheckOf(docker), dockerCheck);
+  // The script writes the job list as of 0024; later migrations (0025 adds
+  // 'exec_report') widen it again with their own hosted scripts.
+  assert.deepEqual(await jobCheckOf(docker), [
+    "CHECK ((job = ANY (ARRAY['digest'::text, 'report'::text, 'leak'::text, 'renewal'::text])))",
+  ]);
 });
 
 test("hosted script keeps existing rows and their values", async (t) => {
@@ -143,7 +147,7 @@ test("renewal alert columns default safely and the ledger accepts renewal jobs o
   );
   await insertDelivery(client, tenant.id, "renewal", "sku-1:2027-01-01:60");
   await assert.rejects(
-    insertDelivery(client, tenant.id, "exec_report", "2026-11"),
+    insertDelivery(client, tenant.id, "unknown_job", "2026-11"),
   );
 });
 

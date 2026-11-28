@@ -31,6 +31,8 @@ import type {
   MembershipRole,
   RemediationStatus,
   RenewalTerm,
+  ReportRecipientKind,
+  ShareLinkMode,
   PaidPlan,
   PlanInterval,
   SaasProvider,
@@ -1226,7 +1228,7 @@ export const apiTokens = pgTable(
 
 /**
  * Delivery ledger for the scheduled emails (weekly digest, monthly report,
- * renewal reminders) and the immediate leak alerts. One row per (tenant, job, period, recipient): the
+ * renewal reminders, executive report to finance) and the immediate leak alerts. One row per (tenant, job, period, recipient): the
  * row is claimed before the send and marked sent afterwards, so a repeated
  * cron run, a scheduler restart or a run cut off by the function time limit
  * never sends the same email twice. Claim rules live in ~/server/emailLedger.
@@ -1239,13 +1241,14 @@ export const emailDeliveries = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     job: text("job")
-      .$type<"digest" | "report" | "leak" | "renewal">()
+      .$type<"digest" | "report" | "leak" | "renewal" | "exec_report">()
       .notNull(),
     /**
      * Digest: ISO week in UTC ("2026-W38"). Report: reported month ("2026-08").
      * Leak: ISO timestamp of the alert, so every alert is its own delivery.
      * Renewal: "<plan item key>:<renewal date>:<threshold days>", so each
      * renewal gets each of its 90, 60 and 30 day reminders once.
+     * Exec report: reported month ("2026-08"), like the report.
      */
     periodKey: text("period_key").notNull(),
     /** Lowercased email address. */
@@ -1282,7 +1285,7 @@ export const emailDeliveries = pgTable(
     uniqueIndex("email_deliveries_provider_id_idx").on(t.providerId),
     check(
       "email_deliveries_job_check",
-      sql`${t.job} in ('digest', 'report', 'leak', 'renewal')`,
+      sql`${t.job} in ('digest', 'report', 'leak', 'renewal', 'exec_report')`,
     ),
     check(
       "email_deliveries_status_check",
@@ -1375,3 +1378,103 @@ export const sessionRevocations = pgTable("session_revocations", {
 });
 
 export type SessionRevocationRow = typeof sessionRevocations.$inferSelect;
+
+/**
+ * Read-only links to a workspace's executive savings report, for finance and
+ * leadership who have no LicenseMeter account. Only the sha256 of the 256-bit
+ * token is stored; the link is shown once at creation. A live link renders
+ * current data and needs the execReport feature at view time. A snapshot link
+ * carries the report as it was at creation in snapshotPayload, so it keeps
+ * working after a downgrade until it expires or is revoked. The payload is
+ * the executive summary, which holds no user identifiers by construction.
+ */
+export const reportShareLinks = pgTable(
+  "report_share_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    /** First characters of the token, so admins can tell links apart. */
+    tokenPrefix: text("token_prefix").notNull(),
+    label: text("label").notNull(),
+    mode: text("mode").$type<ShareLinkMode>().notNull(),
+    /** Month the link was created in (yyyy-mm); a snapshot's report month. */
+    periodKey: text("period_key").notNull(),
+    snapshotPayload: jsonb("snapshot_payload"),
+    createdByKey: text("created_by_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    lastViewedAt: timestamp("last_viewed_at", { withTimezone: true }),
+    viewCount: integer("view_count").notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex("report_share_links_token_hash_idx").on(t.tokenHash),
+    index("report_share_links_tenant_idx").on(t.tenantId, t.createdAt),
+    check(
+      "report_share_links_mode_check",
+      sql`${t.mode} in ('live', 'snapshot')`,
+    ),
+    // A live link never carries a payload; a snapshot carries one until it
+    // is revoked, when the copy is dropped.
+    check(
+      "report_share_links_payload_check",
+      sql`(${t.mode} = 'live' and ${t.snapshotPayload} is null) or (${t.mode} = 'snapshot' and (${t.snapshotPayload} is not null or ${t.revokedAt} is not null))`,
+    ),
+    check(
+      "report_share_links_expiry_check",
+      sql`${t.expiresAt} > ${t.createdAt}`,
+    ),
+    check("report_share_links_view_count_nonneg", sql`${t.viewCount} >= 0`),
+  ],
+).enableRLS();
+
+export type ReportShareLinkRow = typeof reportShareLinks.$inferSelect;
+
+/**
+ * People outside the workspace who receive a scheduled report by email, at
+ * most five per workspace and kind. An address receives nothing until
+ * somebody reading it confirms the emailed link (only the sha256 of that
+ * token is stored), and its own one-click unsubscribe sets unsubscribedAt.
+ * "finance" gets the monthly executive report; "client" is reserved.
+ */
+export const reportRecipients = pgTable(
+  "report_recipients",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<ReportRecipientKind>().notNull(),
+    /** Lowercased email address. */
+    email: text("email").notNull(),
+    name: text("name"),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    verifyTokenHash: text("verify_token_hash"),
+    verifyExpiresAt: timestamp("verify_expires_at", { withTimezone: true }),
+    unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("report_recipients_tenant_kind_email_idx").on(
+      t.tenantId,
+      t.kind,
+      t.email,
+    ),
+    check(
+      "report_recipients_kind_check",
+      sql`${t.kind} in ('finance', 'client')`,
+    ),
+  ],
+).enableRLS();
+
+export type ReportRecipientRow = typeof reportRecipients.$inferSelect;

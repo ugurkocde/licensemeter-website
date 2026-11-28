@@ -247,7 +247,17 @@ export type AuditAction =
   | "notification_address_removed"
   | "notification_address_preference_changed"
   | "current_findings_sent"
-  | "email_block_removed";
+  | "email_block_removed"
+  | "report_share_link_created"
+  | "report_share_link_revoked"
+  | "report_recipient_requested"
+  | "report_recipient_verified"
+  | "report_recipient_removed";
+
+/** A live share link renders current data; a snapshot freezes it at creation. */
+export type ShareLinkMode = "live" | "snapshot";
+/** Who a report recipient is. Only "finance" has a product surface today. */
+export type ReportRecipientKind = "finance" | "client";
 
 /** Aggregate counts captured when user identities are concealed in usage reports. */
 export type AggregateUsage = {

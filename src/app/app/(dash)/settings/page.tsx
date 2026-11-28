@@ -22,6 +22,7 @@ import { ReplayTourButton } from "~/components/workspace/ReplayTourButton";
 import { RoleSelect } from "~/components/workspace/RoleSelect";
 import { SendCurrentFindings } from "~/components/workspace/SendCurrentFindings";
 import { SharedNotificationAddress } from "~/components/workspace/SharedNotificationAddress";
+import { FinanceRecipients } from "~/components/workspace/FinanceRecipients";
 import { Card, Pill } from "~/components/ui";
 import { env } from "~/env";
 import {
@@ -48,6 +49,12 @@ import { holdsJoinableDomain, pendingJoinRequests } from "~/server/domainJoin";
 import { emailEnabled } from "~/server/email";
 import { hasFeature } from "~/server/entitlement";
 import { loadSharedAddress } from "~/server/notificationAddress";
+import {
+  listRecipients,
+  MAX_RECIPIENTS_PER_KIND,
+  RECIPIENT_NAME_MAX,
+  recipientState,
+} from "~/server/report/recipients";
 import { SyncStepList } from "~/components/workspace/SyncStepList";
 
 const Capability = ({
@@ -106,6 +113,7 @@ export default async function SettingsPage() {
     sharedAddress,
     findingsRecipients,
     excludedAccounts,
+    financeRecipients,
   ] = await Promise.all([
     db.query.memberships.findMany({
       where: eq(memberships.tenantId, ctx.tenant.id),
@@ -173,7 +181,12 @@ export default async function SettingsPage() {
           )
           .then((rows) => rows[0]?.n ?? 0)
       : Promise.resolve(null),
+    // Finance recipients are addresses outside the workspace: owners and
+    // admins of a real workspace only.
+    canEdit ? listRecipients(ctx.tenant.id, "finance") : Promise.resolve([]),
   ]);
+  // The monthly executive report to finance belongs to the executive report.
+  const execReport = hasFeature(ctx.entitlement, "execReport");
   // Without the plan nothing is sent and a switch can only be turned off, so
   // a switch is shown while it is still on and disappears once it is off.
   const sharedRenewal = sharedAddress?.renewalAlerts ?? true;
@@ -422,11 +435,61 @@ export default async function SettingsPage() {
           </Card>
         )}
 
+        {canEdit && (execReport || financeRecipients.length > 0) && (
+          <div id="finance-delivery" className="scroll-mt-6">
+            <Card
+              title="Monthly executive report to finance"
+              badge={<PlanBadge feature="execReport" locked={!execReport} />}
+            >
+              <FinanceRecipients
+                recipients={financeRecipients.map((r) => ({
+                  id: r.id,
+                  email: r.email,
+                  name: r.name,
+                  state: recipientState(r),
+                  pendingExpires:
+                    r.verifyExpiresAt &&
+                    r.verifyExpiresAt.getTime() > Date.now()
+                      ? fmtDateTime(r.verifyExpiresAt)
+                      : null,
+                }))}
+                canManage={canEdit}
+                addBlocked={
+                  execReport
+                    ? null
+                    : "Adding finance recipients is included in Pro. Nothing is sent without it; existing recipients can still be removed."
+                }
+                max={MAX_RECIPIENTS_PER_KIND}
+                nameMax={RECIPIENT_NAME_MAX}
+              />
+            </Card>
+          </div>
+        )}
+        {canEdit && !execReport && financeRecipients.length === 0 && (
+          <div id="finance-delivery" className="scroll-mt-6">
+            <Card
+              title="Monthly executive report to finance"
+              badge={<PlanBadge feature="execReport" locked />}
+            >
+              <p className="text-ink-soft text-sm">
+                Email the one-page executive savings report to your CFO or
+                finance team on the first of each month, on Pro.{" "}
+                <Link
+                  href={upgradePath("execReport")}
+                  className="hover:text-ink underline underline-offset-4"
+                >
+                  See plans
+                </Link>
+              </p>
+            </Card>
+          </div>
+        )}
+
         {canEdit && (
           <Card title="Email delivery">
             <p className="text-ink-soft text-sm">
               {env.RESEND_WEBHOOK_SECRET
-                ? "The weekly digest, the monthly report, renewal reminders and leak alerts, with what the mail provider reported back."
+                ? "The weekly digest, the monthly report, renewal reminders, leak alerts and the executive report to finance, with what the mail provider reported back."
                 : "Delivery tracking is not available on this installation. Sent only means the mail provider accepted the message, not that it arrived."}
             </p>
             {deliveries.length === 0 ? (
