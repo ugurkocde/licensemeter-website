@@ -31,7 +31,9 @@ export const RECLAIM_ERRORS: Record<string, string> = {
     "Microsoft refused the app credentials. Check the application ID, the client secret or certificate, and that the secret has not expired.",
   wrong_tenant:
     "The token was issued for a different Microsoft tenant than the one connected to this workspace.",
-  extra: `The reclaim app holds more permissions than ${RECLAIM_ROLE}. Remove the other application permissions from the app registration, then verify again.`,
+  extra: `The reclaim app holds more Microsoft Graph application permissions than ${RECLAIM_ROLE}. Remove the other permissions from the app registration, then verify again.`,
+  directory_role:
+    "The reclaim app is assigned a Microsoft Entra administrator role. Remove the role assignment from the app, then verify again.",
   unavailable: "Microsoft could not be reached. Try again in a minute.",
 };
 
@@ -100,7 +102,7 @@ const buildApp = (cred: ReclaimCredential): ConfidentialClientApplication => {
   });
 };
 
-type Claims = { roles?: unknown; tid?: unknown; oid?: unknown };
+type Claims = { roles?: unknown; tid?: unknown; oid?: unknown; wids?: unknown };
 
 const decodeClaims = (jwt: string): Claims => {
   try {
@@ -132,11 +134,46 @@ export function checkReclaimToken(jwt: string, tid: string): void {
     throw check.code === "extra"
       ? new ReclaimError("extra", check.extra)
       : new ReclaimError("consent");
+  // Entra directory roles assigned to the service principal (User
+  // Administrator, Global Administrator, ...) appear as role template ids in
+  // wids and would make the stored credential far stronger than the one
+  // permission. The default member template carries no admin rights.
+  const wids = Array.isArray(claims.wids)
+    ? claims.wids.filter(
+        (w): w is string =>
+          typeof w === "string" && w.toLowerCase() !== DEFAULT_MEMBER_ROLE,
+      )
+    : [];
+  if (wids.length > 0)
+    throw new ReclaimError(
+      "directory_role",
+      wids.map((w) => `directory role ${w}`),
+    );
 }
 
+/** The "User" role template every member holds; not an admin role. */
+const DEFAULT_MEMBER_ROLE = "b79fbf4d-3ef9-4689-8143-76b194e85509";
+
+// Specific codes first: the AADSTS700016 text ("... or consented to by any
+// user") also contains the word consent.
 const CREDENTIAL_ERRORS =
-  /AADSTS7000215|AADSTS7000222|AADSTS700027|AADSTS700016|invalid client secret|certificate|thumbprint/i;
+  /AADSTS7000215|AADSTS7000222|AADSTS700027|invalid client secret|certificate|thumbprint/i;
+const UNKNOWN_APP = /AADSTS700016/i;
 const NOT_CONSENTED = /AADSTS650051|AADSTS65001|AADSTS7000229|consent/i;
+
+/** The error code for a failed token request, from Microsoft's message. */
+export function tokenErrorCode(
+  message: string,
+  mode: ReclaimCredential["mode"],
+): string {
+  // An app unknown in this tenant: a wrong application id for your own app,
+  // consent never granted for LicenseMeter's.
+  if (UNKNOWN_APP.test(message))
+    return mode === "byo" ? "credential" : "consent";
+  if (mode === "byo" && CREDENTIAL_ERRORS.test(message)) return "credential";
+  if (NOT_CONSENTED.test(message)) return "consent";
+  return "unavailable";
+}
 
 /** An app-only Graph token for the reclaim app, checked before it is used. */
 export async function reclaimToken(cred: ReclaimCredential): Promise<string> {
@@ -152,13 +189,7 @@ export async function reclaimToken(cred: ReclaimCredential): Promise<string> {
     const message = err instanceof Error ? err.message : String(err);
     // Log only the message: MSAL errors can carry request context.
     console.error("[reclaim] token acquisition failed:", message);
-    if (NOT_CONSENTED.test(message)) throw new ReclaimError("consent");
-    if (cred.mode === "byo" && CREDENTIAL_ERRORS.test(message))
-      throw new ReclaimError("credential");
-    // An unknown managed app in this tenant means consent was never granted.
-    if (cred.mode === "managed" && /AADSTS700016/i.test(message))
-      throw new ReclaimError("consent");
-    throw new ReclaimError("unavailable");
+    throw new ReclaimError(tokenErrorCode(message, cred.mode));
   }
   if (!token) throw new ReclaimError("consent");
   checkReclaimToken(token, cred.tid);

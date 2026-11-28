@@ -11,7 +11,7 @@ const env = vi.hoisted(() => ({
 }));
 vi.mock("~/env", () => ({ env }));
 
-const { checkReclaimToken, reclaimConfigured, ReclaimError } =
+const { checkReclaimToken, reclaimConfigured, ReclaimError, tokenErrorCode } =
   await import("./graph");
 
 const TID = "11111111-2222-3333-4444-555555555555";
@@ -81,6 +81,21 @@ describe("checkReclaimToken", () => {
       ),
     ).toBe("extra");
   });
+  it("refuses an app assigned an Entra administrator role", () => {
+    const userAdmin = "fe930be7-5e62-47db-91af-98c3a49a38b1";
+    expect(
+      codeOf(() => checkReclaimToken(jwt({ ...good, wids: [userAdmin] }), TID)),
+    ).toBe("directory_role");
+    // The default member role grants no admin rights.
+    expect(
+      codeOf(() =>
+        checkReclaimToken(
+          jwt({ ...good, wids: ["B79FBF4D-3EF9-4689-8143-76B194E85509"] }),
+          TID,
+        ),
+      ),
+    ).toBe("ok");
+  });
   it("refuses a malformed token", () => {
     expect(codeOf(() => checkReclaimToken("garbage", TID))).toBe(
       "wrong_tenant",
@@ -110,5 +125,26 @@ describe("reclaimConfigured", () => {
     env.METERING_CLIENT_ID = "12121212-3434-5656-7878-909090909090";
     env.RECLAIM_CLIENT_ID = env.METERING_CLIENT_ID;
     expect(reclaimConfigured()).toBe(false);
+  });
+});
+
+describe("tokenErrorCode", () => {
+  const unknownApp =
+    "AADSTS700016: Application with identifier 'x' was not found in the directory 'y'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant.";
+  it("reads an unknown app as a wrong id for your own app", () => {
+    expect(tokenErrorCode(unknownApp, "byo")).toBe("credential");
+    expect(tokenErrorCode(unknownApp, "managed")).toBe("consent");
+  });
+  it("tells a bad secret from missing consent", () => {
+    expect(tokenErrorCode("AADSTS7000215: Invalid client secret", "byo")).toBe(
+      "credential",
+    );
+    expect(
+      tokenErrorCode(
+        "AADSTS65001: The user or administrator has not consented",
+        "byo",
+      ),
+    ).toBe("consent");
+    expect(tokenErrorCode("ETIMEDOUT", "managed")).toBe("unavailable");
   });
 });

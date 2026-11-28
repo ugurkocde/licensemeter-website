@@ -16,10 +16,15 @@ import {
 import { audit } from "~/server/audit";
 import { encryptSecret } from "~/server/crypto";
 import { db } from "~/server/db";
-import { msConnections, reclaimConnections } from "~/server/db/schema";
+import {
+  msConnections,
+  reclaimConnections,
+  reclaimConsentStates,
+} from "~/server/db/schema";
 import { rateLimitDurable } from "~/server/rateLimit";
 import {
   loadReclaimConnection,
+  reclaimReady,
   reclaimSecretAad,
 } from "~/server/reclaim/connection";
 import {
@@ -215,14 +220,20 @@ export async function connectReclaimByo(
     lastVerifiedAt: now,
     lastVerifyError: null,
   };
-  await db
-    .insert(reclaimConnections)
-    .values({ tenantId: ctx.tenant.id, ...values })
-    .onConflictDoUpdate({
-      target: reclaimConnections.tenantId,
-      // A new id ends every consent state bound to the previous connection.
-      set: { ...values, id: sql`gen_random_uuid()` },
-    });
+  await db.transaction(async (tx) => {
+    // Pending managed consent ends here: its states point at the old id,
+    // which the new id below replaces.
+    await tx
+      .delete(reclaimConsentStates)
+      .where(eq(reclaimConsentStates.tenantId, ctx.tenant.id));
+    await tx
+      .insert(reclaimConnections)
+      .values({ tenantId: ctx.tenant.id, ...values })
+      .onConflictDoUpdate({
+        target: reclaimConnections.tenantId,
+        set: { ...values, id: sql`gen_random_uuid()` },
+      });
+  });
   await audit(ctx, "reclaim_connected", { mode: "byo", credType });
   return done();
 }
@@ -236,7 +247,8 @@ export async function setReclaimApprovalMode(
   if ("error" in gate) return fail(gate.error);
   const { ctx } = gate;
   const connection = await loadReclaimConnection(ctx.tenant.id);
-  if (!connection) return fail("Connect reclaim first.");
+  if (!reclaimReady(connection, ctx.tenant.tid))
+    return fail("Connect reclaim first.");
   if (connection.approvalMode === mode) return done();
   await db
     .update(reclaimConnections)

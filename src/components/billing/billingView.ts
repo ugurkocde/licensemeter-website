@@ -25,8 +25,15 @@ export const SOURCE_LABEL: Record<EntitlementSource, string> = {
   comped: "Provided by LicenseMeter",
 };
 
-/** In the MSP plan on paper, not built yet. Never sold as available. */
-export const COMING_SOON: readonly Feature[] = ["portfolioAlerts", "mspTeam"];
+/**
+ * Paid features listed on the plan cards before they can be used. "reclaim"
+ * leaves this list with the release that removes and restores licenses.
+ */
+export const COMING_SOON: readonly Feature[] = [
+  "reclaim",
+  "portfolioAlerts",
+  "mspTeam",
+];
 
 export const isComingSoon = (feature: Feature) => COMING_SOON.includes(feature);
 

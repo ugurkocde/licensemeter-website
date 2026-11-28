@@ -53,9 +53,13 @@ vi.mock("~/server/db", () => ({
   schema,
 }));
 
+let rateLimited = false;
 vi.mock("~/server/rateLimit", () => ({
-  rateLimitDurable: () => Promise.resolve(true),
+  rateLimitDurable: () => Promise.resolve(!rateLimited),
 }));
+
+let sameOrigin = true;
+vi.mock("~/server/auth/origin", () => ({ isSameOrigin: () => sameOrigin }));
 
 const verifyMock = vi.fn((_cred: ReclaimCredential, _waits?: number[]) =>
   Promise.resolve(),
@@ -68,10 +72,11 @@ vi.mock("./graph", async (original) => ({
 
 const RANK = { viewer: 0, admin: 1, owner: 2 } as const;
 
+let oid = "user_1";
 const context = () =>
   ({
     user: {
-      oid: "user_1",
+      oid,
       tid: TID,
       upn: "a@a.example",
       name: "A",
@@ -118,6 +123,7 @@ const {
   setReclaimApprovalMode,
   verifyReclaimConsent,
 } = await import("~/app/app/(dash)/reclaim/actions");
+const { POST: start } = await import("~/app/api/connect/reclaim/start/route");
 const { GET: callback } =
   await import("~/app/api/connect/reclaim/callback/route");
 
@@ -142,6 +148,9 @@ beforeEach(async () => {
   currentDb = await freshDb();
   tenant = await seedTenant(currentDb, 1, { tid: TID });
   member = { role: "owner", isDemo: false, plan: "pro" };
+  oid = "user_1";
+  rateLimited = false;
+  sameOrigin = true;
   verifyMock.mockReset();
   verifyMock.mockResolvedValue(undefined);
 });
@@ -319,5 +328,129 @@ describe("managed consent callback", () => {
     expect(await verifyReclaimConsent()).toEqual({ ok: true });
     expect((await row())?.consentedAt).toBeInstanceOf(Date);
     expect(await audits()).toEqual(["reclaim_connected"]);
+  });
+});
+
+describe("managed consent start", () => {
+  const post = async () =>
+    (
+      await start(
+        new Request("https://licensemeter.test/x", { method: "POST" }),
+      )
+    ).headers.get("location") ?? "";
+
+  it("creates the managed row and a state bound to the Owner, then sends them to Microsoft", async () => {
+    const location = await post();
+    const url = new URL(location);
+    expect(url.host).toBe("login.microsoftonline.com");
+    expect(url.pathname).toBe(`/${TID}/v2.0/adminconsent`);
+    expect(url.searchParams.get("client_id")).toBe(
+      "12121212-3434-5656-7878-909090909090",
+    );
+    const [state] = await currentDb.query.reclaimConsentStates.findMany();
+    expect(state).toMatchObject({ oid: "user_1", tid: TID });
+    expect(url.searchParams.get("state")).toBe(state!.state);
+    expect((await row())?.consentedAt).toBeNull();
+    // A second start reuses the row.
+    await post();
+    expect(await currentDb.query.reclaimConnections.findMany()).toHaveLength(1);
+  });
+
+  it("refuses non-Owners, Free, the demo, other origins and a missing tenant", async () => {
+    member.role = "admin";
+    expect(await post()).toContain("error=owner_required");
+    member = { role: "owner", isDemo: false, plan: "free" };
+    expect(await post()).toContain("error=plan_required");
+    member = { role: "owner", isDemo: true, plan: "pro" };
+    expect(await post()).toContain("error=demo");
+    member = { role: "owner", isDemo: false, plan: "pro" };
+    rateLimited = true;
+    expect(await post()).toContain("error=rate_limited");
+    rateLimited = false;
+    sameOrigin = false;
+    expect(
+      (await start(new Request("https://x.test", { method: "POST" }))).status,
+    ).toBe(403);
+    sameOrigin = true;
+    tenant = { ...tenant, tid: null };
+    expect(await post()).toContain("error=microsoft_first");
+    expect(await row()).toBeUndefined();
+  });
+
+  it("does not replace a connected own app", async () => {
+    await connectReclaimByo(byoForm());
+    expect(await post()).toContain("error=byo_connected");
+    expect((await row())?.mode).toBe("byo");
+  });
+
+  it("lets an unfinished managed consent give way to your own app", async () => {
+    await post();
+    expect(await connectReclaimByo(byoForm())).toEqual({ ok: true });
+    expect((await row())?.mode).toBe("byo");
+    expect(await currentDb.query.reclaimConsentStates.findMany()).toEqual([]);
+  });
+});
+
+describe("managed consent edge cases", () => {
+  const begin = async () => {
+    await start(new Request("https://licensemeter.test/x", { method: "POST" }));
+    const [state] = await currentDb.query.reclaimConsentStates.findMany();
+    return state!.state;
+  };
+  const call = (params: Record<string, string>) =>
+    callback({
+      nextUrl: new URL(
+        `https://licensemeter.test/api/connect/reclaim/callback?${new URLSearchParams(params)}`,
+      ),
+    } as never);
+
+  it("is bound to the Owner who started it, not any Owner", async () => {
+    const state = await begin();
+    oid = "other_owner";
+    const res = await call({ state, tenant: TID, admin_consent: "True" });
+    expect(res.headers.get("location")).toContain("error=invalid_state");
+    expect(verifyMock).not.toHaveBeenCalled();
+  });
+
+  it("ends a declined consent and connects nothing", async () => {
+    const state = await begin();
+    const res = await call({ state, error: "access_denied" });
+    expect(res.headers.get("location")).toContain("error=consent_declined");
+    expect(await currentDb.query.reclaimConsentStates.findMany()).toEqual([]);
+    expect((await row())?.consentedAt).toBeNull();
+  });
+
+  it("refuses the demo and Free in the callback", async () => {
+    const state = await begin();
+    member = { role: "owner", isDemo: true, plan: "pro" };
+    expect(
+      (await call({ state, tenant: TID, admin_consent: "True" })).headers.get(
+        "location",
+      ),
+    ).toContain("error=demo");
+    member = { role: "owner", isDemo: false, plan: "free" };
+    expect(
+      (await call({ state, tenant: TID, admin_consent: "True" })).headers.get(
+        "location",
+      ),
+    ).toContain("error=plan_required");
+    expect(verifyMock).not.toHaveBeenCalled();
+  });
+
+  it("records why Verify consent failed", async () => {
+    await begin();
+    verifyMock.mockRejectedValue(new ReclaimError("directory_role", ["x"]));
+    const res = await verifyReclaimConsent();
+    expect(res.ok).toBe(false);
+    expect(await row()).toMatchObject({
+      consentedAt: null,
+      lastVerifyError: "directory_role",
+    });
+  });
+
+  it("needs a verified connection before the approval rule can change", async () => {
+    await begin();
+    expect((await setReclaimApprovalMode("single_admin")).ok).toBe(false);
+    expect((await row())?.approvalMode).toBe("two_person");
   });
 });

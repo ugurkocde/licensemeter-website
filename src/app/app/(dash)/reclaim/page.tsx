@@ -13,6 +13,7 @@ import {
   ReclaimDisconnectButton,
   ReclaimVerifyButton,
 } from "~/components/workspace/ReclaimSetup";
+import { isComingSoon } from "~/components/billing/billingView";
 import { byoConnectorEnabled } from "~/env";
 import { fmtDate } from "~/lib/format";
 import { APPROVAL_MODES, RECLAIM_DOCS, RECLAIM_ROLE } from "~/lib/reclaim";
@@ -138,6 +139,12 @@ export default async function ReclaimPage({
           and uses its own Microsoft app, so connecting it is a separate
           decision from connecting Microsoft 365.
         </p>
+        {isComingSoon("reclaim") && (
+          <p className="bg-gold-soft text-ink rounded-xl p-3 text-sm">
+            Coming soon: you can connect write access now. Requesting, approving
+            and undoing removals arrive with the next release.
+          </p>
+        )}
       </header>
 
       {error && (
@@ -260,7 +267,8 @@ export default async function ReclaimPage({
                     <li>Create a client secret or upload a certificate.</li>
                   </ol>
                   <p className="text-ink-faint text-xs">
-                    LicenseMeter refuses an app that holds any other permission.
+                    LicenseMeter refuses an app that holds any other Microsoft
+                    Graph application permission or an Entra administrator role.
                     The secret or private key is stored encrypted.{" "}
                     <a
                       className="underline"

@@ -32,6 +32,12 @@ export async function POST(req: Request) {
     return back("rate_limited");
 
   const connection = await db.transaction(async (tx) => {
+    // Create first, so two starts at once lock the same row instead of
+    // racing to insert it.
+    await tx
+      .insert(reclaimConnections)
+      .values({ tenantId: ctx.tenant.id, mode: "managed", tid })
+      .onConflictDoNothing({ target: reclaimConnections.tenantId });
     const [current] = await tx
       .select()
       .from(reclaimConnections)

@@ -15,7 +15,7 @@ Checked on 2026-11-28 against Microsoft's v1.0 reference for `POST /users/{id}/a
 
 So `LicenseAssignment.ReadWrite.All` is enough for both removing a license and re-adding it (with `disabledPlans`) on undo. `User.ReadWrite.All` is not needed and is not requested. The reads before a removal (the user's current `assignedLicenses` and `licenseAssignmentStates`, and `subscribedSkus` for free seats before an undo) go through the existing read-only Microsoft 365 connector, which already holds `User.Read.All` and `LicenseAssignment.Read.All`. The reclaim app therefore never needs a read permission of its own.
 
-LicenseMeter refuses a reclaim token that holds any other application permission (managed or bring-your-own app), so the app can never be used with more power than this.
+LicenseMeter refuses a reclaim token that holds any other Microsoft Graph application permission, or any Entra directory role besides the default member role (the `wids` claim), for both the managed and the bring-your-own app. It cannot see application permissions on other APIs (Exchange Online, SharePoint, Azure Resource Manager), which a Graph token does not list; the setup page tells customers to grant only the one permission. The lab test (step 3) also confirms that an app-only token lists assigned directory roles in `wids`.
 
 ## Design
 

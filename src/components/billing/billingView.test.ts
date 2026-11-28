@@ -100,7 +100,10 @@ describe("isRunning", () => {
 describe("planCardLines", () => {
   it("lists every Pro feature on the Pro card", () => {
     const lines = planCardLines("pro", "month");
-    expect(lines.filter((l) => l.comingSoon)).toEqual([]);
+    // One-click reclaim is announced until license removal ships.
+    expect(lines.filter((l) => l.comingSoon).map((l) => l.text)).toEqual([
+      "One-click reclaim",
+    ]);
     expect(lines.length).toBe(3 + PLAN_FEATURES.pro.length);
     expect(lines.map((l) => l.text)).toContain("Support by email");
     expect(lines.map((l) => l.text)).toContain("White-label reports");
