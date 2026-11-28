@@ -34,6 +34,7 @@ import {
   findings,
   memberships,
   meteringConnections,
+  reclaimConnections,
   msConnections,
   priceBook,
   saasConnections,
@@ -94,7 +95,7 @@ import {
   sendWorkspaceDeleted,
   workspaceAdminEmails,
 } from "~/server/workspaceEmail";
-import { byoConnectorEnabled, siteUrl } from "~/env";
+import { byoConnectorEnabled, env, siteUrl } from "~/env";
 import { importEarnsCredits } from "~/server/savings/importTrust";
 import { reverseDisconnectedSavings } from "~/server/savings/ledger";
 import { WorkspaceUpdateInProgressError } from "~/server/sync/lockTenant";
@@ -1691,6 +1692,21 @@ export const connectMicrosoftByo = async (
     return { ok: false, error: "Tenant ID and Application ID must be GUIDs" };
   if (credType !== "secret" && credType !== "cert")
     return { ok: false, error: "Choose a credential type" };
+  // The connector stays read-only: never the app that holds license write.
+  const reclaimApp = await db.query.reclaimConnections.findFirst({
+    where: eq(reclaimConnections.tenantId, ctx.tenant.id),
+    columns: { appClientId: true },
+  });
+  if (
+    [env.RECLAIM_CLIENT_ID, reclaimApp?.appClientId].some(
+      (id) => id?.toLowerCase() === appClientId.toLowerCase(),
+    )
+  )
+    return {
+      ok: false,
+      error:
+        "Use a separate app registration for the connector, not the reclaim app.",
+    };
   // Refuse to silently repoint a workspace already bound to another tenant
   // (mirrors the managed consent callback's already_connected check).
   if (ctx.tenant.tid && ctx.tenant.tid.toLowerCase() !== tid)
@@ -1908,6 +1924,10 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
     await tx
       .delete(meteringConnections)
       .where(eq(meteringConnections.tenantId, ctx.tenant.id));
+    // Write access belongs to the tenant being released: never carry it over.
+    await tx
+      .delete(reclaimConnections)
+      .where(eq(reclaimConnections.tenantId, ctx.tenant.id));
     await tx
       .delete(findings)
       .where(

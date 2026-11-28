@@ -23,7 +23,7 @@ const OLD = deriveKey("auth-secret-old-auth-secret-old-auth-secret-old");
 const NEW = deriveKey("data-key-new-data-key-new-data-key-new-data-key");
 const OTHER = deriveKey("unrelated-key-unrelated-key-unrelated-key-xx");
 const KEYS = { oldKey: OLD, newKey: NEW };
-const [ms, adobe, saas] = SECRET_COLUMNS;
+const [ms, adobe, saas, reclaim] = SECRET_COLUMNS;
 
 let cachedDdl: string[] | null = null;
 const schemaDdl = async () =>
@@ -84,6 +84,17 @@ const seed = async (adobeKey: Buffer) => {
       secretEnc: enc(saas, T2, "openai", NEW),
     },
   ]);
+  await database.insert(schema.reclaimConnections).values([
+    {
+      tenantId: T1,
+      mode: "byo",
+      tid: "tid-1",
+      appClientId: "reclaim-app",
+      credType: "secret",
+      secretEnc: enc(reclaim, T1, "reclaim", OLD),
+    },
+    { tenantId: T2, mode: "managed", tid: "tid-2" },
+  ]);
 };
 
 const stored = async () => ({
@@ -98,6 +109,9 @@ const stored = async () => ({
   openai: (await database.select().from(schema.saasConnections)).find(
     (r) => r.provider === "openai",
   )!.secretEnc,
+  reclaim: (await database.select().from(schema.reclaimConnections)).find(
+    (r) => r.tenantId === T1,
+  )!.secretEnc!,
 });
 
 beforeEach(async () => {
@@ -133,6 +147,12 @@ describe("reencryptSecrets", () => {
           migrate: 1,
           unreadable: 0,
         },
+        "reclaim_connections.secret_enc": {
+          total: 1,
+          current: 0,
+          migrate: 1,
+          unreadable: 0,
+        },
       },
     });
     expect(await stored()).toEqual(before);
@@ -142,7 +162,7 @@ describe("reencryptSecrets", () => {
     await seed(OLD);
     const before = await stored();
     const result = await reencryptSecrets(database, KEYS, { dryRun: false });
-    expect(result.reencrypted).toBe(3);
+    expect(result.reencrypted).toBe(4);
 
     const after = await stored();
     expect(after.openai).toBe(before.openai);
@@ -167,6 +187,13 @@ describe("reencryptSecrets", () => {
         [NEW],
       ),
     ).toBe("plain-zoom-1");
+    expect(
+      decryptWithKeys(
+        after.reclaim,
+        aadFor(reclaim, { tenantId: T1, provider: "reclaim", value: "" }),
+        [NEW],
+      ),
+    ).toBe("plain-reclaim-1");
 
     const rerun = await reencryptSecrets(database, KEYS, { dryRun: false });
     expect(rerun.reencrypted).toBe(0);

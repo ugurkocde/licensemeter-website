@@ -380,6 +380,76 @@ export const meteringConsentStates = pgTable("metering_consent_states", {
     .defaultNow(),
 }).enableRLS();
 
+/**
+ * Separate opt-in write access for one-click reclaim (Pro). The base Microsoft
+ * connector stays read-only; only this app holds the license write permission.
+ *
+ *  - mode='managed': admin consent to LicenseMeter's reclaim app
+ *    (RECLAIM_CLIENT_ID). No credential is stored.
+ *  - mode='byo': the customer's own Entra app with only the license write
+ *    permission. The client secret or certificate private key is stored
+ *    AES-256-GCM encrypted, like the BYO connector credential.
+ *
+ * consentedAt is set only after a token for this tenant proved the permission.
+ */
+export const reclaimConnections = pgTable(
+  "reclaim_connections",
+  {
+    tenantId: uuid("tenant_id")
+      .primaryKey()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /** Changes on every reconnect, so an old consent callback cannot bind. */
+    id: uuid("id").notNull().defaultRandom().unique(),
+    mode: text("mode").$type<"managed" | "byo">().notNull(),
+    tid: text("tid").notNull(),
+    appClientId: text("app_client_id"),
+    credType: text("cred_type").$type<"secret" | "cert">(),
+    secretEnc: text("secret_enc"),
+    certThumbprint: text("cert_thumbprint"),
+    secretExpiresAt: timestamp("secret_expires_at", { withTimezone: true }),
+    /** Who must sign off a reclaim request before it runs. */
+    approvalMode: text("approval_mode")
+      .$type<"two_person" | "single_admin">()
+      .notNull()
+      .default("two_person"),
+    consentedAt: timestamp("consented_at", { withTimezone: true }),
+    lastVerifiedAt: timestamp("last_verified_at", { withTimezone: true }),
+    lastVerifyError: text("last_verify_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check(
+      "reclaim_connections_mode_check",
+      sql`${t.mode} in ('managed', 'byo')`,
+    ),
+    check(
+      "reclaim_connections_approval_mode_check",
+      sql`${t.approvalMode} in ('two_person', 'single_admin')`,
+    ),
+    check(
+      "reclaim_connections_mode_columns_check",
+      sql`(${t.mode} = 'byo' and ${t.appClientId} is not null and ${t.credType} is not null and ${t.secretEnc} is not null) or (${t.mode} = 'managed' and ${t.appClientId} is null and ${t.credType} is null and ${t.secretEnc} is null and ${t.certThumbprint} is null)`,
+    ),
+  ],
+).enableRLS();
+
+export const reclaimConsentStates = pgTable("reclaim_consent_states", {
+  state: uuid("state").primaryKey(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  connectionId: uuid("connection_id")
+    .notNull()
+    .references(() => reclaimConnections.id, { onDelete: "cascade" }),
+  oid: text("oid").notNull(),
+  tid: text("tid").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+}).enableRLS();
+
 /** Who may sign in to which tenant workspace, and as what. */
 export const memberships = pgTable(
   "memberships",

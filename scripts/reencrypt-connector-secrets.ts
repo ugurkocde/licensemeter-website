@@ -2,7 +2,8 @@
  * One-time migration of stored connector secrets from the key derived from
  * AUTH_SECRET to the key derived from DATA_ENCRYPTION_KEY.
  *
- * Covers ms_connections.secret_enc, adobe_connections.client_secret_enc and
+ * Covers ms_connections.secret_enc, adobe_connections.client_secret_enc,
+ * reclaim_connections.secret_enc and
  * saas_connections.secret_enc. Idempotent: a secret that already decrypts with
  * the new key is left unchanged, so the script can run again safely.
  *

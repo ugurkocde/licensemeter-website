@@ -33,6 +33,11 @@ export const FEATURE_COPY: Record<Feature, FeatureCopy> = {
     description:
       "A one-page PDF for finance and leadership: license spend, open waste, realized savings, renewal actions for the next 90 days and a 6-month trend. Share it with a read-only link or email it to finance every month.",
   },
+  reclaim: {
+    label: "One-click reclaim",
+    description:
+      "Remove unused Microsoft 365 licenses from LicenseMeter with approval and a 14-day undo, through a separate opt-in app. The Microsoft 365 connector stays read-only.",
+  },
   mcp: {
     label: "MCP server",
     description:
