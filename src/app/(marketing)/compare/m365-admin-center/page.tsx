@@ -100,11 +100,13 @@ export default function M365AdminCenterComparePage() {
             </h3>
             <p className="text-ink-soft mt-3 text-sm leading-relaxed">
               Usage reports carry counts, not costs, and no Microsoft API
-              exposes the prices your tenant actually pays. LicenseMeter closes
-              that gap with an editable per-tenant price book, prefilled with
-              list-price estimates and adjustable to your negotiated rates, so
-              every finding arrives as a monthly cost in your currency rather
-              than a row count.
+              exposes the prices your tenant actually pays. Copilot &gt; Cost
+              management does track spend, but only Copilot Credits consumed by
+              usage-billed services, not the seats you pay for whether anyone
+              uses them or not. LicenseMeter closes that gap with an editable
+              per-tenant price book, prefilled with list-price estimates and
+              adjustable to your negotiated rates, so every finding arrives as a
+              monthly cost in your currency rather than a row count.
             </p>
           </div>
           <div>
@@ -112,12 +114,13 @@ export default function M365AdminCenterComparePage() {
               Watching, not just looking
             </h3>
             <p className="text-ink-soft mt-3 text-sm leading-relaxed">
-              The admin center answers when asked; it never volunteers. New
-              leavers keeping seats and new idle licenses bill quietly between
-              visits. LicenseMeter syncs nightly, keeps findings across runs
-              with an acknowledge and reopen workflow, emails a weekly digest
-              and delivers a monthly PDF report, so the audit becomes a process
-              instead of an errand.
+              The admin center does not proactively alert you to idle seats or
+              licenses retained by leavers; its spending alerts cover Copilot
+              Credits. New leavers keeping seats and new idle licenses bill
+              quietly between visits. LicenseMeter syncs nightly, keeps findings
+              across runs with an acknowledge and reopen workflow, emails a
+              weekly digest and delivers a monthly PDF report, so the audit
+              becomes a process instead of an errand.
             </p>
           </div>
           <div>

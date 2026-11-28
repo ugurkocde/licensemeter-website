@@ -89,8 +89,8 @@ export const coreviewAlternatives: Roundup = {
         de: "Kleine Tenants, die Lizenzen von Hand prüfen können.",
       },
       verdict: {
-        en: "Free and authoritative, without per-person joins, cost figures or automation.",
-        de: "Kostenlos und maßgeblich, ohne Zusammenführung je Person, Kostenzahlen oder Automatisierung.",
+        en: "Free and authoritative, without per-person joins, cost figures for idle seats or automation.",
+        de: "Kostenlos und maßgeblich, ohne Zusammenführung je Person, Kostenzahlen für ungenutzte Lizenzen oder Automatisierung.",
       },
     },
   ],

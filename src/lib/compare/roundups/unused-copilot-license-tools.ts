@@ -37,8 +37,8 @@ export const copilotTools: Roundup = {
         de: "Eine kostenlose Prüfung, einmalig, von Hand.",
       },
       verdict: {
-        en: "The source of truth for Copilot activity. It shows counts and dates, not cost, and only when you go and look.",
-        de: "Die maßgebliche Quelle für Copilot-Aktivität. Sie zeigt Anzahlen und Daten, keine Kosten, und nur, wenn Sie nachsehen.",
+        en: "The source of truth for Copilot activity. It shows counts and dates, not what an idle seat costs, and only when you go and look.",
+        de: "Die maßgebliche Quelle für Copilot-Aktivität. Sie zeigt Anzahlen und Daten, nicht die Kosten einer ungenutzten Lizenz, und nur, wenn Sie nachsehen.",
       },
     },
     {
