@@ -218,7 +218,7 @@ export const BLOG_POSTS: BlogPost[] = [
             ".",
           ],
           [
-            { strong: "Reading or changing accountEnabled." },
+            { strong: "Enabling or disabling accounts." },
             " Microsoft names User.EnableDisableAccount.All plus User.Read.All as the least privileged combination to read and write the accountEnabled property.",
           ],
         ],
