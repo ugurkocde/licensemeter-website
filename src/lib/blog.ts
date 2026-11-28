@@ -53,6 +53,392 @@ const METERING_DOCS =
 
 export const BLOG_POSTS: BlogPost[] = [
   {
+    slug: "microsoft-graph-licenseassignment-read-all",
+    title: 'What the "Read all license assignments" Graph permission allows',
+    description:
+      "LicenseAssignment.Read.All lets an app read license assignments for users and groups. See its limits, a read-only license review set, and how to check a grant in Entra.",
+    excerpt:
+      "LicenseAssignment.Read.All is a Microsoft Graph permission that allows an app to read license assignments for users and groups. As an application permission it works without a signed-in user and needs admin consent, and as a delegated permission it acts on behalf of the signed-in user.",
+    publishedOn: "2026-11-28",
+    author: {
+      name: "Ugur Koc",
+      role: "Maintainer, Microsoft MVP for Intune",
+      url: "https://ugurkoc.de",
+    },
+    tag: "Guide",
+    cta: {
+      title: "Compare LicenseMeter's grant with the docs",
+      body: "Read the connector's permission table and consent lines, then match them against the Admin consent tab in your tenant.",
+      primary: {
+        label: "Read the Microsoft 365 connector permissions",
+        href: "https://docs.licensemeter.com/connectors/microsoft/#data-used",
+      },
+      secondary: {
+        label: "Review LicenseMeter security",
+        href: "/security",
+      },
+    },
+    body: [
+      {
+        type: "h2",
+        id: "what-it-allows",
+        text: "What LicenseAssignment.Read.All allows",
+      },
+      {
+        type: "p",
+        text: [
+          'Microsoft\'s permissions reference lists LicenseAssignment.Read.All in two forms, both with the display text "Read all license assignments." The application permission "Allows an app to read license assignments for users and groups, without a signed-in user" and requires admin consent. The delegated permission allows the same read on behalf of the signed-in user, and Microsoft lists it as not requiring admin consent. See ',
+          {
+            text: "Microsoft's Graph permissions reference",
+            href: "https://learn.microsoft.com/en-us/graph/permissions-reference",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "For ",
+          { strong: "GET /subscribedSkus" },
+          ", Microsoft marks LicenseAssignment.Read.All as the least privileged permission for both delegated and application access. Directory.Read.All, Directory.ReadWrite.All, Organization.Read.All and Organization.ReadWrite.All are listed as higher privileged alternatives. Microsoft's advice is to use a higher privileged permission only if your app requires it. See ",
+          {
+            text: "the List subscribedSkus permissions table",
+            href: "https://learn.microsoft.com/en-us/graph/api/subscribedsku-list?view=graph-rest-1.0",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "subscribedskus-fields",
+        text: "What the subscribedSkus counts show",
+      },
+      {
+        type: "p",
+        text: [
+          "Each SKU in the response carries these fields, as defined in ",
+          {
+            text: "the subscribedSku resource reference",
+            href: "https://learn.microsoft.com/en-us/graph/api/resources/subscribedsku?view=graph-rest-1.0",
+          },
+          ":",
+        ],
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "skuPartNumber:" },
+            " the SKU part number, for example AAD_PREMIUM or RMSBASIC.",
+          ],
+          [
+            { strong: "consumedUnits:" },
+            " the number of licenses that have been assigned.",
+          ],
+          [
+            { strong: "prepaidUnits:" },
+            " information about the number and status of prepaid licenses.",
+          ],
+          [
+            { strong: "appliesTo:" },
+            " only SKUs with target class User are assignable.",
+          ],
+          [
+            { strong: "capabilityStatus:" },
+            " Enabled means prepaidUnits has at least one enabled unit. LockedOut means the customer canceled the subscription.",
+          ],
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Inside prepaidUnits, ",
+          {
+            text: "the licenseUnitsDetail resource",
+            href: "https://learn.microsoft.com/en-us/graph/api/resources/licenseunitsdetail?view=graph-rest-1.0",
+          },
+          " splits the units by status:",
+        ],
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "enabled:" },
+            " units that are enabled for the active subscription of the SKU.",
+          ],
+          [
+            { strong: "warning:" },
+            " units in warning status. When the subscription has expired, there is a grace period to renew before it is canceled and moved to a suspended state.",
+          ],
+          [
+            { strong: "suspended:" },
+            " units suspended because the subscription was canceled. They can't be assigned but can still be reactivated before they're deleted.",
+          ],
+          [
+            { strong: "lockedOut:" },
+            " units locked out because the subscription was canceled.",
+          ],
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Reading consumedUnits next to prepaidUnits puts assigned licenses beside the number and status of prepaid licenses for each SKU. The method supports only the $select query parameter and doesn't support $filter, so narrow the fields with $select and filter the results on your side.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "what-it-does-not-cover",
+        text: "What LicenseAssignment.Read.All does not cover",
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "Changing assignments." },
+            ' Managing license assignments is a separate permission, LicenseAssignment.ReadWrite.All, shown as "Manage all license assignments". Its application form allows an app to manage license assignments for users and groups without a signed-in user. If you see this line in a dialog for a tool you expected to be read-only, stop and ask why.',
+          ],
+          [
+            { strong: "Per-user licenseDetails without a signed-in user." },
+            " For the List licenseDetails API, Microsoft lists delegated LicenseAssignment.Read.All as least privileged and application permissions as not supported. See ",
+            {
+              text: "the List licenseDetails permissions table",
+              href: "https://learn.microsoft.com/en-us/graph/api/user-list-licensedetails?view=graph-rest-1.0",
+            },
+            ".",
+          ],
+          [
+            { strong: "Listing users." },
+            " LicenseAssignment.Read.All is not among the application permissions Microsoft lists for List users. The least privileged one there is User.Read.All. See ",
+            {
+              text: "the List users permissions table",
+              href: "https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0",
+            },
+            ".",
+          ],
+          [
+            { strong: "Enabling or disabling accounts." },
+            " Microsoft names User.EnableDisableAccount.All plus User.Read.All as the least privileged combination to read and write the accountEnabled property.",
+          ],
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Directory.Read.All reads data in your organization's directory, such as users, groups and apps. Organization.Read.All reads the organization and related resources, such as subscribed SKUs and tenant branding information. For reading SKUs, Microsoft lists both as higher privileged than LicenseAssignment.Read.All.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "If your review ends with removing licenses from accounts that are already disabled, follow the ",
+          {
+            text: "license removal guide for disabled Microsoft 365 users",
+            href: "/blog/remove-license-from-disabled-user",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "read-only-permission-set",
+        text: "A read-only permission set for a license review",
+      },
+      {
+        type: "p",
+        text: [
+          "LicenseMeter's live connector pairs LicenseAssignment.Read.All with four other read permissions. It reads directory users and assigned licenses, purchased and assigned SKU counts, available sign-in activity, usage and Copilot reports, and report-privacy settings. Each line shows the text Microsoft displays in the consent dialog and what the connector reads with it.",
+        ],
+      },
+      {
+        type: "list",
+        items: [
+          [
+            { strong: "User.Read.All" },
+            ' ("Read all users\' full profiles"): directory users, enabled state and assigned licenses.',
+          ],
+          [
+            { strong: "AuditLog.Read.All" },
+            ' ("Read all audit log data"): sign-in timestamps, subject to the tenant\'s licensing and available signal.',
+          ],
+          [
+            { strong: "Reports.Read.All" },
+            ' ("Read all usage reports"): usage and Copilot activity reports.',
+          ],
+          [
+            { strong: "LicenseAssignment.Read.All" },
+            ' ("Read all license assignments."): purchased versus assigned seat counts.',
+          ],
+          [
+            { strong: "ReportSettings.Read.All" },
+            ' ("Read all admin report settings"): whether reports conceal user identities.',
+          ],
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Microsoft lists all five application permissions as requiring admin consent. Read access is tenant-wide for the approved data, not limited to the person who signs in. The connector does not request mailbox, calendar, Teams message, OneDrive file or SharePoint document content. See ",
+          {
+            text: "the connector's data and permission table",
+            href: "https://docs.licensemeter.com/connectors/microsoft/#data-used",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "note",
+        title: "The sixth line in the dialog",
+        text: [
+          "Microsoft adds \"Sign in and read user profile\" (User.Read, delegated) to the consent dialog itself. LicenseMeter's connector registration doesn't declare it, and the connector authenticates as an application without a signed-in user, so it never reads data on behalf of the approving administrator.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "check-grant-in-entra",
+        text: "Check what an app was granted in Entra",
+      },
+      {
+        type: "steps",
+        items: [
+          {
+            title: "Open the enterprise application",
+            body: [
+              "Sign in to the Microsoft Entra admin center as at least a Cloud Application Administrator. Browse to ",
+              { strong: "Entra ID > Enterprise apps > All applications" },
+              " and select the application you want to check.",
+            ],
+          },
+          {
+            title: "Read the Admin consent tab",
+            body: [
+              "Select ",
+              { strong: "Permissions" },
+              ". The ",
+              { strong: "Admin consent" },
+              " tab shows permissions that apply to your entire organization. The ",
+              { strong: "User consent" },
+              " tab shows permissions granted to a specific user or group.",
+            ],
+          },
+          {
+            title: "Open the details of each permission",
+            body: [
+              "Select a permission from the list to open the ",
+              { strong: "Permission Details" },
+              " pane. Compare each entry with the permissions the vendor or app owner documented.",
+            ],
+          },
+          {
+            title: "Revoke a permission you don't expect",
+            body: [
+              "Before you revoke, confirm with the app's owner which feature relies on the permission. In the Admin consent tab, choose the permission, select the ",
+              { strong: "..." },
+              " control for it, then select ",
+              { strong: "Revoke permission" },
+              ". Revoking the current grant doesn't stop users from consenting again to the permissions the application requests.",
+            ],
+          },
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "You can't revoke permissions in the User consent tab using the portal. Microsoft points to Microsoft Graph API calls or PowerShell cmdlets for those.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "See ",
+          {
+            text: "Microsoft's guide to reviewing permissions granted to enterprise applications",
+            href: "https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/manage-application-permissions",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "h2",
+        id: "check-licensemeter-grant",
+        text: "Check LicenseMeter's connector grant",
+      },
+      {
+        type: "p",
+        text: [
+          "Accepting consent creates an enterprise application named ",
+          { strong: "LicenseMeter Connector" },
+          " in your tenant. Its publisher is Ugurlabs UG (haftungsbeschränkt) as a Microsoft verified publisher, and its application ID is ",
+          { strong: "1a1a346a-05d5-4f54-87a5-5b5e63f9c610" },
+          ". In Enterprise applications, clear the application type filter or search by name or application ID, then open Permissions. The Admin consent tab lists the five Microsoft Graph application permissions. No client secret or certificate is created in your tenant.",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "A publisher shown as unverified, a different application name, or any permission containing write, manage or mail, file and chat content is not the LicenseMeter connector. Select Cancel and contact Support. See ",
+          {
+            text: "how to review Microsoft's approval screen and find the grant afterwards",
+            href: "https://docs.licensemeter.com/connectors/microsoft-managed/",
+          },
+          ".",
+        ],
+      },
+      {
+        type: "p",
+        text: [
+          "Consent grants no connector write permission. To end the connector's access, disconnect it and revoke that application's permissions in Entra, or delete the enterprise application. Previously collected data remains until separately deleted. The ",
+          { text: "security overview", href: "/security" },
+          " and the ",
+          { text: "trust center", href: "/trust-center" },
+          " describe how the rest of the service handles that data, and the ",
+          { text: "FAQ", href: "/faq" },
+          " answers whether LicenseMeter can change anything in your tenant.",
+        ],
+      },
+      {
+        type: "h2",
+        id: "faq",
+        text: "Frequently asked questions",
+      },
+      {
+        type: "list",
+        items: [
+          [
+            {
+              strong:
+                "Can LicenseAssignment.Read.All assign or remove licenses?",
+            },
+            ' No. Microsoft describes it as a read permission. Managing assignments is LicenseAssignment.ReadWrite.All, shown as "Manage all license assignments".',
+          ],
+          [
+            { strong: "Does the delegated permission need admin consent?" },
+            " Microsoft lists admin consent as not required for the delegated permission and required for the application permission.",
+          ],
+          [
+            {
+              strong:
+                "Do I need Directory.Read.All or Organization.Read.All to read subscribedSkus?",
+            },
+            " No. Microsoft lists LicenseAssignment.Read.All as the least privileged permission for that API and the other two as higher privileged.",
+          ],
+          [
+            {
+              strong:
+                "Can an app read a user's licenseDetails with application permissions?",
+            },
+            " Microsoft lists application permissions as not supported for List licenseDetails. The least privileged delegated permission there is LicenseAssignment.Read.All.",
+          ],
+          [
+            { strong: "What does the User consent tab show?" },
+            " Permissions granted to a specific user or group, as opposed to the organization-wide grants on the Admin consent tab. You can't revoke User consent permissions in the portal.",
+          ],
+        ],
+      },
+    ],
+  },
+  {
     slug: "intune-software-metering",
     title: "How to do software metering in Microsoft Intune",
     description:
