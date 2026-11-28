@@ -13,6 +13,7 @@ import {
   LifeBuoy,
   Palette,
   Plug,
+  RotateCcw,
   ScanSearch,
   ScrollText,
   Server,
@@ -94,6 +95,13 @@ const GROUPS: NavGroup[] = [
           { href: "/app/metering/devices", label: "Devices" },
           { href: "/app/metering/setup", label: "Setup" },
         ],
+      },
+      {
+        href: "/app/reclaim",
+        label: "Reclaim",
+        icon: RotateCcw,
+        feature: "reclaim",
+        teaser: true,
       },
       {
         href: "/app/reports/executive",

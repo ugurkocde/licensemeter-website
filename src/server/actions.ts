@@ -34,6 +34,7 @@ import {
   findings,
   memberships,
   meteringConnections,
+  reclaimConnections,
   msConnections,
   priceBook,
   saasConnections,
@@ -1908,6 +1909,10 @@ export const disconnectMicrosoft = async (): Promise<ActionResult> => {
     await tx
       .delete(meteringConnections)
       .where(eq(meteringConnections.tenantId, ctx.tenant.id));
+    // Write access belongs to the tenant being released: never carry it over.
+    await tx
+      .delete(reclaimConnections)
+      .where(eq(reclaimConnections.tenantId, ctx.tenant.id));
     await tx
       .delete(findings)
       .where(

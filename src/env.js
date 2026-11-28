@@ -73,6 +73,13 @@ export const env = createEnv({
     /** Optional, separate metering registration. Never reuse sign-in or core connector IDs. */
     METERING_CLIENT_ID: z.guid().optional(),
     METERING_CLIENT_SECRET: z.string().optional(),
+    /**
+     * Optional, separate reclaim registration holding only the license write
+     * permission (LicenseAssignment.ReadWrite.All). Never reuse the sign-in,
+     * core connector or metering IDs: the core connector stays read-only.
+     */
+    RECLAIM_CLIENT_ID: z.guid().optional(),
+    RECLAIM_CLIENT_SECRET: z.string().optional(),
 
     /**
      * Gates the "bring your own app registration" Microsoft connector path.
@@ -185,6 +192,8 @@ export const env = createEnv({
     CONNECTOR_CLIENT_SECRET: process.env.CONNECTOR_CLIENT_SECRET,
     METERING_CLIENT_ID: process.env.METERING_CLIENT_ID,
     METERING_CLIENT_SECRET: process.env.METERING_CLIENT_SECRET,
+    RECLAIM_CLIENT_ID: process.env.RECLAIM_CLIENT_ID,
+    RECLAIM_CLIENT_SECRET: process.env.RECLAIM_CLIENT_SECRET,
     MS_BYO_ENABLED: process.env.MS_BYO_ENABLED,
     BILLING_ENABLED: process.env.BILLING_ENABLED,
     POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN,

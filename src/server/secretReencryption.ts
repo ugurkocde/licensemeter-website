@@ -2,13 +2,18 @@ import { and, eq, isNotNull } from "drizzle-orm";
 
 import { decryptWithKeys, encryptWithKey, secretAad } from "./cryptoCore";
 import type { Db } from "./db";
-import { adobeConnections, msConnections, saasConnections } from "./db/schema";
+import {
+  adobeConnections,
+  msConnections,
+  reclaimConnections,
+  saasConnections,
+} from "./db/schema";
 import type { SaasProvider } from "./types";
 
 /**
  * Every column that stores an encrypted connector credential, with the AAD
  * parts its encrypt and decrypt sites use (actions.ts, msConnection.ts,
- * runSync.ts). `provider` is a fixed string or, for SaaS connectors, read from
+ * runSync.ts, reclaim/connection.ts). `provider` is a fixed string or, for SaaS connectors, read from
  * the row's provider column.
  */
 export const SECRET_COLUMNS = [
@@ -32,6 +37,13 @@ export const SECRET_COLUMNS = [
     aadColumn: "secretEnc",
     provider: { fromColumn: "provider" },
     keyColumns: ["tenant_id", "provider"],
+  },
+  {
+    table: "reclaim_connections",
+    column: "secret_enc",
+    aadColumn: "secretEnc",
+    provider: "reclaim",
+    keyColumns: ["tenant_id"],
   },
 ] as const;
 
@@ -194,6 +206,37 @@ const TARGETS: SecretTarget[] = [
             ),
           )
           .returning({ tenantId: saasConnections.tenantId })
+      ).length,
+  },
+  {
+    column: SECRET_COLUMNS[3],
+    read: async (tx, lock) => {
+      const q = tx
+        .select({
+          tenantId: reclaimConnections.tenantId,
+          value: reclaimConnections.secretEnc,
+        })
+        .from(reclaimConnections)
+        .where(isNotNull(reclaimConnections.secretEnc));
+      const rows = lock ? await q.for("update") : await q;
+      return rows.map((r) => ({
+        tenantId: r.tenantId,
+        provider: "reclaim",
+        value: r.value!,
+      }));
+    },
+    write: async (tx, row, value) =>
+      (
+        await tx
+          .update(reclaimConnections)
+          .set({ secretEnc: value })
+          .where(
+            and(
+              eq(reclaimConnections.tenantId, row.tenantId),
+              eq(reclaimConnections.secretEnc, row.value),
+            ),
+          )
+          .returning({ tenantId: reclaimConnections.tenantId })
       ).length,
   },
 ];
